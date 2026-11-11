@@ -283,20 +283,20 @@ RSI 是跨越 Layer 0 至 Layer 4 的全生态协同工程，各系统职责分�
 
 ---
 
-## 6. 与工程实施计划 (IMPLEMENTATION_PLAN.md) 的落地映射
+## 6. 与工程实施总计划 (`IMPLEMENTATION_PLAN.md` v2.0) 的落地映射
 
-本规范确立的 RSI 闭环机制由 `docs/IMPLEMENTATION_PLAN.md` 中的既有 PR 组合支撑，并作为高级特性由相应模块承接：
+> 详细类/函数级实施规范见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
 
-| RSI 飞轮能力 | 支撑底层 PR 矩阵 | 核心代码承载位置 | 验收里程碑 |
+| RSI 飞轮能力 | 支撑 PR 矩阵 | 权威代码承载路径 | 验收里程碑 |
 | :--- | :--- | :--- | :---: |
 | **FGPP 物理真值提取与比对** | `PR-02`, `PR-03` | `python/synapse/fgpp/` | 15 通道 OpenEXR 零拷贝读写，几何对齐无漂移 |
-| **自探索视频生成推理** | `PR-05`, `PR-07` | `python/synapse/adapters/wan.py` | 结合 ControlNeXt 与光流先验稳定推演 |
-| **残差定位与局部自修正** | `PR-10`, `PR-11` | `python/synapse/composite/` | 3D$\cup$SAM2 掩膜生成与 16px 环带泊松融合 |
-| **物理验算与 C++ 算子桥接** | `PR-12` | `python/synapse/bridge/` | 零拷贝调用 `vg-core` 流形度与足底零滑动 IK 检验 |
-| **四维跨模态指标量化判决** | `PR-13` | `python/synapse/metrics/` | 计算 RMSE、IoU、时序稳定性与法线角偏差 |
-| **全自动基准测试防退化门禁** | `PR-14a`, `PR-15` | `python/synapse/bench/` | 30 场景自动化端到端往返评测与 HTML 报告 |
-| **无状态 RSI 容器 Worker 调度**| `PR-14b` | `python/synapse/cli/worker.py` | 统一接收 `JobBundle`，标准退出码与 `agent_fix_hint` |
-| **解耦 LoRA 增量进化微调** | `docs/DESIGN_LORA_PIPELINE.md` | `python/synapse/training/` | 潜空间离线缓存，5 大专用 LoRA 矩阵靶向更新 |
+| **自探索视频生成推理** | `PR-05` ~ `PR-07` | `python/synapse/adapters/` | 结合 ControlNeXt 与光流先验稳定推演 |
+| **残差定位与局部自修正** | `PR-10`, `PR-11` | `python/synapse/composite/` | `3D ∪ SAM2` 掩膜生成与 16px 环带泊松融合 |
+| **物理验算与 C++ 算子桥接** | `PR-12` | `python/synapse/bridge/vg_bridge.py` | 零拷贝调用 `vg-core` 流形度与足底零滑动 IK 检验 |
+| **四维跨模态指标与三级门禁** | `PR-13` | `python/synapse/metrics/` | `rsi_promotion` 严苛档位阈值统一 |
+| **解耦 LoRA 增量进化微调** | `PR-16` ~ `PR-19` | `python/synapse/training/` & `adapters/lora/` | 潜空间离线缓存，5 大专用 LoRA 矩阵靶向更新（含 DPO 损失） |
+| **课程生成 + 双重验算 + 偏好配对** | **`PR-24`** | `python/synapse/rsi/curriculum.py`, `dual_verifier.py`, `pair_builder.py` | 自动构建 $\mathcal{D}_{\text{self}}$ 并强制混入 $\ge 20\%$ L0 黄金锚点 |
+| **单调递增准出门禁与隔离回滚**| **`PR-25`** | `python/synapse/rsi/promotion_gate.py` & `synapse rsi ...` CLI | 30 场景零退化硬门禁通过后晋升，否则自动 Quarantine 回滚 |
 
 ---
 

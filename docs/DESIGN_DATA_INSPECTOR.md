@@ -288,23 +288,43 @@ Data Inspector 通过打开一个标准化的 **Inspection Bundle** 目录来加
 
 ---
 
-## 5. C++ Native Binary 设计
+## 5. C++ Native Binary 设计（独立 Bazel 子工作区规范）
 
-### 5.1 Target 与依赖
+### 5.1 `MODULE.bazel` 与 Target 依赖（修复跨仓可见性契约）
+
+由于 `synapse` 仓库根目录为纯 Python 包（无根级 `MODULE.bazel`），`synapse/tools/data-inspector/native/` 作为独立 Bazel 9.3.1 Bzlmod 子工作区构建，通过 `local_path_override` 引用同级 `@aether` 与 `@fulgur` 公开模块，**严禁依赖 `@fulgur//course/...` 内部私有目标**：
 
 ```python
+# synapse/tools/data-inspector/native/MODULE.bazel
+module(name = "synapse_data_inspector_native", version = "0.1.0")
+
+bazel_dep(name = "aether", version = "0.1.0")
+bazel_dep(name = "fulgur", version = "0.1.0")
+local_path_override(module_name = "aether", path = "../../../../aether")
+local_path_override(module_name = "fulgur", path = "../../../../fulgur")
+
 # synapse/tools/data-inspector/native/BUILD.bazel
 cc_binary(
     name = "data-inspector-native",
-    srcs = ["main.cc", "inspector_app.cc", "comparison_engine.cc"],
+    srcs = [
+        "main.cc",
+        "inspector_app.cc",
+        "comparison_engine.cc",
+        "inspector_shm_server.cc",
+    ],
+    hdrs = [
+        "inspector_app.h",
+        "comparison_engine.h",
+        "inspector_shm_server.h",
+    ],
     deps = [
-        "//engine/rhi",
-        "//engine/renderer",
-        "//engine/asset",
-        "//engine/animation",
-        "//engine/physics",          # BVH 用于 Chamfer 距离计算
+        "@aether//core",
         "@aether//pal",
-        "//course/common:headless",  # 复用 HeadlessServer
+        "@fulgur//engine/rhi",
+        "@fulgur//engine/renderer",
+        "@fulgur//engine/asset",
+        "@fulgur//engine/animation",
+        "@fulgur//engine/physics",  # BVH 用于点到面 Chamfer 距离预计算
     ],
 )
 ```

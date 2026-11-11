@@ -80,7 +80,9 @@ sequenceDiagram
     Scheduler->>VAE: 流式解码输出无缝拼接视频帧
 ```
 
-### 2.2 潜空间因果退火混合函数 (Sigmoid Annealing Blending)
+### 2.2 潜空间因果退火混合与 3 帧因果前导暖启动 (Sigmoid Annealing & Causal Warm-Start)
+针对 `Wan 2.1` $4\times 8\times 8$ 3D 因果 VAE 的首帧非对称压缩特性（窗口内首帧单独映射为 $\tau'=0$，后续每 4 帧映射为一个潜步 $\tau'=1..24$），非首窗口 $k \ge 1$（名义全局帧区间 $[64k, 64k+96]$）在编码时必须额外输入前序 3 帧 `[64k-3, 64k-2, 64k-1]` 暖启动 3D 因果卷积缓存，并对边界潜步 $\tau'=0$ 令退火权重 $\alpha(0) = 0$（保留窗口 $k-1$ 具备完整 4 帧因果感受野的 $\mathbf{z}_{k-1}[16]$），从而使 $\tau'=1..8$ 与 $\mathbf{z}_{k-1}[17..24]$ 在 `100%` 四帧同相网格上融合。
+
 在重叠区间 $t \in [t_{\text{start}}, t_{\text{end}}]$（长度为 $\tau_{\text{overlap}}$）内，前后两段潜空间张量 $\mathbf{z}_{k}(t)$ 与 $\mathbf{z}_{k+1}(t)$ 严禁采用简单的线性插值（会引起潜空间方差收缩、导致画面模糊）。必须采用**保方差的因果 S 曲线退火权重**：
 
 $$\alpha(t) = \frac{1}{1 + e^{-\lambda \left(\frac{t - t_{\text{mid}}}{\tau_{\text{overlap}}}\right)}}, \quad \text{其中 } t_{\text{mid}} = \frac{t_{\text{start}} + t_{\text{end}}}{2}, \; \lambda = 8.0$$
@@ -112,13 +114,12 @@ $$\kappa(t) = w_v \cdot \frac{\|\mathbf{V}_t - \mathbf{V}_{t-1}\|_2}{\text{diag}
 - $\mathcal{M}_t$ 为 Cryptomatte 角色实例掩膜；
 - 权重分配为 $w_v = 0.4, w_n = 0.4, w_m = 0.2$。
 
-### 3.2 自适应时间步重分割与动态强锚点机制
-系统设定突变阈值 $\kappa_{\text{threshold}} = 0.65$：
+### 3.2 自适应时间步重分割与两级动态强锚点机制
+系统设定突变阈值 $\kappa_{\text{threshold}} = 0.65$，并严守无状态容器边界（`synapse` 容器内不直接持有 `fulgur` 场景源工程）：
 1. **稳态区间 ($\kappa \le 0.65$)**：按标准 48 帧物理锚点节奏与光流正则化执行；
 2. **瞬态突变点 ($\kappa > 0.65$)**：
-   - 立即将突变帧 $t_{\text{event}}$ 动态标记为 **“临时物理强锚点 (Dynamic Physical Anchor)”**；
-   - 在该帧强制重置潜空间光流累积积分（Flush Latent Flow Buffer），切断前后两段的时间注意力传递；
-   - 在 $t_{\text{event}} \pm 2$ 帧范围内启用局部时间过采样（Sub-frame Super-sampling），由 `fulgur` 补算插值 FGPP 导引，引导神经模型快速稳定到新的拓扑形态。
+   - **容器内即时自愈（Level-A）**：立即将突变帧 $t_{\text{event}}$ 动态标记为 **“临时物理强锚点 (Dynamic Physical Anchor)”**，在该帧强制重置潜空间光流累积积分（Flush Latent Flow Buffer），切断前后两段的时间注意力传递；
+   - **跨阶段重烘焙协同（Level-B）**：若突变超出单帧插值容限，在 `result_manifest.json` 中输出结构化 `reanchor_requests`（指定 $t_{\text{event}} \pm 2$ 帧局部过采样区间），由上游 `render-farm`（Go）编排器回调 `fulgur` 补算子帧 FGPP 导引。
 
 ```mermaid
 stateDiagram-v2
@@ -148,17 +149,17 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    A["@aether//fgpp<br/>fgpp_types.h (C++20 SSOT)"] -->|Clang AST / 正则抽取| B["tools/wire-guard<br/>(契约抽取器)"]
-    B -->|自动生成| C["python/synapse/fgpp/wire_schema.py<br/>(强类型 TypedDict & 结构体)"]
-    C -->|运行时解析| D["synapse.fgpp.reader<br/>(OpenEXR 2.0 校验)"]
-    A -.->|ctypes 对齐断言| E["tests/test_fgpp_wire_guard.py<br/>(黄金契约集成测试)"]
+    A["@aether//fgpp<br/>fgpp_types.h (C++20 SSOT)"] -->|Clang AST / 正则抽取| B["tools/wire_guard.py<br/>(契约抽取器)"]
+    B -->|自动生成与校验| C["python/synapse/fgpp/schema.py<br/>(强类型规格表 & 守卫函数)"]
+    C -->|运行时解析| D["synapse.fgpp.io<br/>(OpenEXR 2.0 校验)"]
+    A -.->|常量逐字节对齐断言| E["tests/test_fgpp_contract.py<br/>(黄金契约集成测试)"]
     C -.->|二进制对齐断言| E
 ```
 
 ### 4.3 黄金契约自检指标与线格式锁死
-自动生成的 `wire_schema.py` 必须通过以下 4 项静态和动态断言：
+自动生成与校验的 `schema.py` 必须通过以下 4 项静态和动态断言（100% 对齐 `aether/fgpp/include/aether/fgpp/fgpp_types.h`）：
 1. **通道总数与顺序断言**：通道列表必须严格为 **15 个标量通道**，且名称排序严格遵循 ASCII 字典序：
-   `BaseColor.B`, `BaseColor.G`, `BaseColor.R`, `CameraLinearDepth.Z`, `Cryptomatte.ID`, `DirectRadiance.B`, `DirectRadiance.G`, `DirectRadiance.R`, `MotionVector.X`, `MotionVector.Y`, `ResidualOcclusion.R`, `RoughnessMetallic.B`, `RoughnessMetallic.G`, `WorldNormal.X`, `WorldNormal.Y`, `WorldNormal.Z`；
+   `BaseColor.B`, `BaseColor.G`, `BaseColor.R`, `CameraLinearDepth.Z`, `Cryptomatte.ID`, `DirectRadiance.B`, `DirectRadiance.G`, `DirectRadiance.R`, `MotionVector.X`, `MotionVector.Y`, `RoughnessMetallic.G`, `RoughnessMetallic.R`, `WorldNormal.X`, `WorldNormal.Y`, `WorldNormal.Z`；
 2. **像素字节步长断言**：单个像素解包尺寸严格等于：
    $$1 \times \text{UINT32} (4\text{B}) + 1 \times \text{FLOAT32} (4\text{B}) + 13 \times \text{HALF16} (26\text{B}) = 34 \text{ Bytes/pixel}$$
 3. **矩阵序列化主序断言**：`metadata.json` 导出必须显式标注 `view_matrix_col_major` 与 `proj_matrix_col_major`（16 元素一维平铺浮点数组），并在 Python 读取时强制校验行列式 $|\det(\mathbf{R}) - 1.0| < 10^{-5}$；
@@ -282,17 +283,17 @@ xychart-beta
 
 ## 9. 工程实施映射与 PR 责任矩阵
 
-本设计增强规范全量吸收并深化至 `docs/IMPLEMENTATION_PLAN.md`（M1–M4 阶段）中，各模块与原子 PR 的对应落地责任如下：
+本设计增强规范全量吸收并对齐至 [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) 与 [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)（`v2.0`，M1–M8 阶段），各模块与权威文件路径及原子 PR 的对应落地责任如下：
 
-| 增强模块 | 对应技术实现 | 承载文件路径 | 归属 PR | 阶段验收门禁标准 |
+| 增强模块 | 对应技术实现 | 权威承载文件路径 | 归属 PR | 阶段验收门禁标准 |
 | :--- | :--- | :--- | :---: | :--- |
-| **§2 长镜头流式切片** | `CausalStreamingScheduler`<br/>因果退火加权融合 | `python/synapse/pipeline/streaming.py`<br/>`python/synapse/composite/annealing.py` | `PR-06`<br/>`PR-14b` | 成功连续生成 385 帧（>16 秒），重叠区间 PSNR $\ge 42\text{dB}$，显存曲线完全平直 |
-| **§3 拓扑突变保护** | `DiscontinuityDetector`<br/>动态重锚定注入 | `python/synapse/bench/conditions.py`<br/>`python/synapse/adapters/wan.py` | `PR-06`<br/>`PR-07` | 角色剧烈转身/遮挡场景下光流残差平稳，无局部几何熔融伪影 |
-| **§4 契约自动生成器** | `wire-guard` 工具链<br/>黄金契约断言测试 | `tools/wire_guard.py`<br/>`python/synapse/fgpp/wire_schema.py`<br/>`tests/test_fgpp_wire_guard.py` | `PR-02`<br/>`PR-03` | CI 阶段与 `@aether//fgpp` 字节级比对 100% 通过，杜绝任何字段漂移 |
-| **§5 显存前瞻预测** | `MemoryForecaster`<br/>三级弹性降级决策树 | `python/synapse/pipeline/memory.py`<br/>`python/synapse/cli/worker.py` | `PR-04`<br/>`PR-14b` | 在 24GB (RTX 4090) 与 80GB (A100) 显卡上预测误差 $<8\%$，0 发生未捕获 CUDA OOM |
-| **§6 软肩逆色调映射** | `SoftKneeInverseTonemap`<br/>ACEScg 辐射度守卫 | `python/synapse/style/color_space.py`<br/>`python/synapse/composite/blending.py` | `PR-09`<br/>`PR-11` | 极端高光测试场景下辐射度 $\le 12.0$，无 NaN/Inf 传染，导数平滑连续 |
-| **§7 分布式自愈总线** | W3C Trace 上下文解析<br/>`agent_fix_hint` 输出 | `python/synapse/cli/common.py`<br/>`python/synapse/pipeline/worker.py` | `PR-04`<br/>`PR-14b` | `--json` 模式下输出纯标准 JSON，非零退出时必须包含 `agent_fix_hint` 字段 |
-| **§8 物理驱动 RSI 飞轮** | 自演进闭环流水线<br/>单调递增防退化门禁 | `python/synapse/pipeline/rsi.py`<br/>`docs/DESIGN_RSI_FLYWHEEL.md` | `PR-14a`<br/>`PR-14b` | 自动化生成 D_self 偏好对，Synapse-Bench 验证能力单调递增，0 模型崩溃 |
+| **§2 长镜头流式切片** | `ConditionScheduler`<br/>3 帧暖启动 + 因果退火融合 | `python/synapse/adapters/scheduler.py`<br/>`python/synapse/pipeline/bundle_worker.py` | `PR-06`<br/>`PR-14b` | 成功连续生成 385 帧（>16 秒），重叠区间 PSNR $\ge 42\text{dB}$，显存曲线完全平直 |
+| **§3 拓扑突变保护** | `DiscontinuityDetector`<br/>两级动态重锚定协议 | `python/synapse/adapters/scheduler.py`<br/>`python/synapse/adapters/wan.py` | `PR-06`<br/>`PR-07` | 角色剧烈转身/遮挡场景下光流残差平稳，无局部几何熔融伪影 |
+| **§4 契约自动生成器** | `wire_guard.py` 工具链<br/>黄金契约断言测试 | `tools/wire_guard.py`<br/>`python/synapse/fgpp/schema.py`<br/>`tests/test_fgpp_contract.py` | `PR-02`<br/>`PR-03` | CI 阶段与 `@aether//fgpp` 字节级比对 100% 通过，杜绝任何字段漂移 |
+| **§5 显存前瞻预测** | `MemoryForecaster`<br/>三级弹性降级决策树 | `python/synapse/telemetry.py`<br/>`python/synapse/pipeline/bundle_worker.py` | `PR-04`<br/>`PR-14b` | 在 24GB (RTX 4090) 与 80GB (A100) 显卡上预测误差 $<8\%$，0 发生未捕获 CUDA OOM |
+| **§6 软肩逆色调映射** | `soft_knee_inverse_tonemap`<br/>ACEScg 辐射度守卫 | `python/synapse/style/aces_color.py`<br/>`python/synapse/composite/blend.py` | `PR-09`<br/>`PR-11` | 极端高光测试场景下辐射度 $\le 12.0$，无 NaN/Inf 传染，导数平滑连续 |
+| **§7 分布式自愈总线** | W3C Trace 上下文解析<br/>`agent_fix_hint` 输出 | `python/synapse/errors.py` & `telemetry.py`<br/>`python/synapse/cli/__init__.py` | `PR-04`<br/>`PR-14b` | `--json` 模式下输出纯标准 JSON，非零退出时必须包含 `agent_fix_hint` 字段 |
+| **§8 物理驱动 RSI 飞轮** | 双重验算与偏好对提纯<br/>单调递增防退化门禁 | `python/synapse/rsi/`<br/>`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md` | `PR-24`<br/>`PR-25` | 自动化生成 $\mathcal{D}_{\text{self}}$ 偏好对，保留 $\ge 20\%$ L0 锚点，Synapse-Bench 单调递增 |
 
 ---
 
