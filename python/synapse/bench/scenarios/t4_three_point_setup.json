@@ -1,0 +1,44 @@
+{
+  "id": "t4_three_point_setup",
+  "tier": "T4",
+  "description": "Sphere with classic 3-point lighting setup. Tests key/fill/rim light balance reproduction.",
+  "tags": [
+    "style",
+    "lighting",
+    "three-point",
+    "classic"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 15.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 180
+  },
+  "conditions": {
+    "style": "three_point",
+    "key_azimuth_deg": 45.0,
+    "fill_azimuth_deg": -45.0,
+    "rim_azimuth_deg": 180.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "psnr_db": 25.0,
+    "ssim": 0.85,
+    "style_color_de": 6.0,
+    "style_light_error_deg": 10.0
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

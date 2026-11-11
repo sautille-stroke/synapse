@@ -1,0 +1,42 @@
+{
+  "id": "t2_humanoid_walk_orbit",
+  "tier": "T2",
+  "description": "Humanoid-53 proxy walking with orbiting camera. Tests skeletal consistency under viewpoint change.",
+  "tags": [
+    "dynamic",
+    "humanoid",
+    "walking",
+    "orbit"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 4.0,
+    "elevation_deg": 15.0,
+    "num_frames": 97,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "animation": "walk",
+    "walk_cycles": 2
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 10.0,
+    "psnr_db": 20.0,
+    "ssim": 0.78,
+    "foot_sliding_cm": 2.5,
+    "bone_length_drift_pct": 1.5
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

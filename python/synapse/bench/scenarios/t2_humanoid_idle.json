@@ -1,0 +1,40 @@
+{
+  "id": "t2_humanoid_idle",
+  "tier": "T2",
+  "description": "Humanoid-53 proxy in idle standing pose. Baseline for skeletal mesh without motion.",
+  "tags": [
+    "dynamic",
+    "humanoid",
+    "idle",
+    "baseline"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.5,
+    "elevation_deg": 10.0,
+    "num_frames": 97,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "animation": "idle"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 24.0,
+    "ssim": 0.83,
+    "bone_length_drift_pct": 0.5
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

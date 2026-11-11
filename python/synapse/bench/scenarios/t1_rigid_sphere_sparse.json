@@ -1,0 +1,37 @@
+{
+  "id": "t1_rigid_sphere_sparse",
+  "tier": "T1",
+  "description": "Sphere with sparse 8-view coverage (F01=L3). Stress-test: can reconstruction survive limited views?",
+  "tags": [
+    "rigid",
+    "sparse",
+    "stress"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 15.0,
+    "num_frames": 8,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "F01_viewpoint": "L3"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 8.0,
+    "psnr_db": 22.0,
+    "ssim": 0.8
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "discrete_views"
+}

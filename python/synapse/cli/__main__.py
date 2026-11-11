@@ -1,7 +1,8 @@
-"""Main CLI entrypoint for `python -m synapse.cli`."""
+"""Main CLI entrypoint for ``python -m synapse.cli``."""
 
 import sys
-from synapse.cli import main
+
+from synapse.cli import main_synapse
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_synapse())

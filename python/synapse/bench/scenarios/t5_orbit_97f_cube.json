@@ -1,0 +1,42 @@
+{
+  "id": "t5_orbit_97f_cube",
+  "tier": "T5",
+  "description": "Full 360-degree orbit of cube over 97 frames. End-to-end pipeline roundtrip test.",
+  "tags": [
+    "e2e",
+    "orbit",
+    "97-frame",
+    "roundtrip"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 20.0,
+    "num_frames": 97,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.85,
+    "temporal_warp_error": 0.05,
+    "flicker_score": 0.03
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}

@@ -1,0 +1,35 @@
+{
+  "id": "t1_rigid_cylinder_closeup",
+  "tier": "T1",
+  "description": "Cylinder with close-up camera at short distance. Tests detail preservation at high magnification.",
+  "tags": [
+    "rigid",
+    "closeup",
+    "detail"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cylinder",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 1.5,
+    "elevation_deg": 10.0,
+    "num_frames": 8,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 3.0,
+    "psnr_db": 27.0,
+    "ssim": 0.87
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "discrete_views"
+}

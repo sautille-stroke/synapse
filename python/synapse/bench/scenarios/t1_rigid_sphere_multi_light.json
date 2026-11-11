@@ -1,0 +1,37 @@
+{
+  "id": "t1_rigid_sphere_multi_light",
+  "tier": "T1",
+  "description": "Sphere under 3 different directional lights. Tests shading consistency across lighting changes.",
+  "tags": [
+    "rigid",
+    "lighting",
+    "multi-light"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 20.0,
+    "num_frames": 8,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "light_directions": 3
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 3.5,
+    "psnr_db": 27.0,
+    "ssim": 0.87
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "discrete_views"
+}

@@ -1,0 +1,35 @@
+{
+  "id": "t1_rigid_sphere_orbit",
+  "tier": "T1",
+  "description": "Smooth sphere, full orbit. Tests curved surface reconstruction and normal estimation accuracy.",
+  "tags": [
+    "baseline",
+    "rigid",
+    "smooth"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 20.0,
+    "num_frames": 97,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 3.0,
+    "psnr_db": 28.0,
+    "ssim": 0.88
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

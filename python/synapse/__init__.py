@@ -1,4 +1,4 @@
-"""Synapse — 3D CG Rendering & Neural Video Generation Interoperability Hub.
+"""Synapse --- 3D CG Rendering & Neural Video Generation Interoperability Hub.
 
 Implements the Hybrid Cinema Pipeline (RFC 0044 & RFC 0059).
 
@@ -10,6 +10,8 @@ Submodules:
     composite   Selective re-rendering & surgical compositing
     metrics     Cross-modal temporal, fidelity, and style metrics
     bench       Synapse-Bench evaluation dataset & scenarios
+    inspect     3D asset inspection schemas & pose alignment
+    training    LoRA training pipeline
     cli         CLI tools
 """
 
@@ -20,10 +22,12 @@ from synapse import (
     composite,
     fgpp,
     generators,
+    inspect,
     metrics,
     models,
     pipeline,
     style,
+    training,
     viewer,
 )
 
@@ -41,5 +45,7 @@ __all__ = [
     "metrics",
     "bench",
     "cli",
+    "inspect",
+    "training",
     "__version__",
 ]

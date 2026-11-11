@@ -1,0 +1,41 @@
+{
+  "id": "t2_falling_sphere",
+  "tier": "T2",
+  "description": "Sphere falling under gravity with fixed camera. Tests vertical motion temporal coherence.",
+  "tags": [
+    "dynamic",
+    "gravity",
+    "physics"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 4.0,
+    "elevation_deg": 15.0,
+    "azimuth_deg": 0.0,
+    "num_frames": 49,
+    "fps": 24
+  },
+  "conditions": {
+    "animation": "fall",
+    "gravity_m_s2": 9.81,
+    "initial_height_m": 2.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 4.0,
+    "psnr_db": 25.0,
+    "ssim": 0.85,
+    "temporal_warp_error": 0.06
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

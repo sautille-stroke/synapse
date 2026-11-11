@@ -1,0 +1,42 @@
+{
+  "id": "t2_humanoid_walk_side",
+  "tier": "T2",
+  "description": "Humanoid-53 proxy walking, side view. Tests limb articulation visibility from profile angle.",
+  "tags": [
+    "dynamic",
+    "humanoid",
+    "walking",
+    "side"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 4.0,
+    "elevation_deg": 5.0,
+    "azimuth_deg": 90.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "animation": "walk",
+    "walk_cycles": 2
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 8.0,
+    "psnr_db": 22.0,
+    "ssim": 0.80,
+    "foot_sliding_cm": 2.0,
+    "bone_length_drift_pct": 1.0
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}
