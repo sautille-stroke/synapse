@@ -44,6 +44,8 @@ full = [
 
 [project.scripts]
 synapse-bench = "synapse.cli:main"
+synapse-data-gen = "synapse.cli:main_data_gen"
+synapse-viewer = "synapse.cli:main_viewer"
 
 [tool.setuptools.packages.find]
 where = ["python"]
@@ -52,3 +54,4 @@ where = ["python"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
+addopts = "--basetemp=./.pytest_tmp"

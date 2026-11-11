@@ -88,6 +88,9 @@ flowchart TD
 | **NG-4** | ❌ **严禁在 `synapse` 内直连 `asset-vault` 数据库/API 或硬编码存储凭证** | 通过 `JobBundle` 传入本地挂载路径或 Presigned URLs | **RFC 0039**（资产/算力解耦与自洽作业闭包） |
 | **NG-5** | ❌ **严禁在桌面客户端（`grand-studio` / `scene-forge` / `asset-forge`）内直接 `import synapse` 拉起 PyTorch** | 客户端仅组装 JSON `JobBundle` 发往远端 `render-farm` | **RFC 0044 §3.1**（桌面端零重型 Python 依赖） |
 
+> [!NOTE]
+> **NG-1 豁免声明**：`synapse.viewer` 中的本地 HTTP 预览服务器（`server.py`）属于**离线开发调试辅助工具**，仅在开发者本机通过 `synapse view` 命令手动启动、用于临时预览数据集，不参与任何生产流水线或容器部署，因此不违反 NG-1 的“严禁常驻微服务”约束。
+
 ---
 
 ## 3. 现状深度审计与 10 大问题纠偏清单 (Detailed Audit Findings)
@@ -235,6 +238,16 @@ synapse/
 │   │   └── report.py                # 自包含 HTML 评估仪表盘与差分热力图生成
 │   └── cli/                         # CLI-First 工具链 (--json, 确定性退出码, agent_fix_hint)
 │       └── __init__.py              # `synapse` (fgpp/worker) 与 `synapse-bench` (list/run/report)
+│   ├── generators/                  # [v1.1 整合规划] 已有软光栅数据集生成器 → PR-01 整合至 bench/
+│   │   ├── rasterizer.py            # 多通道 FGPP 软光栅核心 → bench/rasterizer.py
+│   │   ├── dataset.py               # 多角度数据集生成 → 有价值部分迁入 bench/
+│   │   └── visualizer.py            # 接触表可视化 → 迁入 viewer/ 或 bench/
+│   ├── models/                      # [v1.1 整合规划] 已有 3D 模型加载器 → PR-01 整合至 bench/
+│   │   ├── asset.py                 # 资产数据模型 → bench/model_loader.py
+│   │   └── loader.py                # glTF/OBJ 加载 → bench/model_loader.py
+│   ├── viewer/                      # [保留] 离线开发调试工具 (本地 HTTP 预览器，NG-1 豁免)
+│   │   ├── server.py                # 本地数据集预览 HTTP 服务（仅开发调试用途）
+│   │   └── static_html.py           # 自包含 HTML 单页预览模板
 ├── data/scenarios/                  # T1-T5 标准化场景定义 JSON (同步挂载进 wheel package-data)
 └── tests/                           # 单元测试、@aether//fgpp 跨语言黄金契约测试与 Mock E2E 测试
 ```

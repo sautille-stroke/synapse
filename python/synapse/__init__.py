@@ -19,15 +19,21 @@ from synapse import (
     cli,
     composite,
     fgpp,
+    generators,
     metrics,
+    models,
     pipeline,
     style,
+    viewer,
 )
 
 __version__ = "0.1.0"
 
 __all__ = [
     "fgpp",
+    "models",
+    "generators",
+    "viewer",
     "adapters",
     "pipeline",
     "style",
