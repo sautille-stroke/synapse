@@ -76,7 +76,8 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 ## 5. 核心文档导航
 
 - **架构审查与跨仓边界定界**：[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)
-- **分阶段可落地实施计划（M1–M4, 15 PRs）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+- **全系统工程设计增强规范**：[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)
+- **分阶段可落地实施计划（M1–M4, 16 PRs）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 - **LoRA & PEFT 微调流水线设计规范**：[docs/DESIGN_LORA_PIPELINE.md](docs/DESIGN_LORA_PIPELINE.md)
 - **训练数据可视化检查器方案**：[docs/DESIGN_DATA_INSPECTOR.md](docs/DESIGN_DATA_INSPECTOR.md)
 - **3D 建模智能质检与精修数据飞轮设计规范**：[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
