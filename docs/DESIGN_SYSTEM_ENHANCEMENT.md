@@ -7,6 +7,7 @@
   - [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md) (整体目标审查与生态架构定界)
   - [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (M1–M4 16-PR 工程实施计划)
   - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) (LoRA 微调流水线设计)
+  - [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md) (递归自我提升 RSI 飞轮设计)
   - [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md) (数据检查器方案)
   - [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) (3D 质检与精修飞轮)
 
@@ -14,7 +15,7 @@
 
 ## 1. 概述与设计演进动机
 
-在完成了前期原型研发（`M0`）与核心问题审计诊断（10 大现状问题）之后，`synapse` 即将全面进入向工业级影视/游戏资产生产环境转正的阶段。当前架构虽然在生态分工、双轨模型定位、FGPP 15 通道定义及离线评测闭环上具备了严密的理论基础，但在面对**长镜头生成、极端剧烈运动、跨语言底层契约演进、算力显存突发负载以及极端光学曝光**等严苛工业场景时，原设计仍存在六大深水区盲区：
+在完成了前期原型研发（`M0`）与核心问题审计诊断（10 大现状问题）之后，`synapse` 即将全面进入向工业级影视/游戏资产生产环境转正的阶段。当前架构虽然在生态分工、双轨模型定位、FGPP 15 通道定义及离线评测闭环上具备了严密的理论基础，但在面对**长镜头生成、极端剧烈运动、跨语言底层契约演进、算力显存突发负载以及极端光学曝光**以及**模型自迭代缺乏物理锚点陷入退化崩溃**等严苛工业场景时，原设计仍存在七大深水区盲区：
 
 ```mermaid
 flowchart TD
@@ -25,6 +26,7 @@ flowchart TD
         B4["盲区 4: 显存静态估计易 OOM<br/>缺乏前瞻预测与动态自适应降级"]
         B5["盲区 5: 逆色调映射数值溢出<br/>极端光源导致 NaN/Inf 传染"]
         B6["盲区 6: 容器退出缺乏分布式追踪<br/>排错无法形成自愈闭环"]
+        B7["盲区 7: 缺乏客观物理真理验算<br/>神经自训易陷入模型崩溃"]
     end
 
     subgraph Solutions ["Synapse 2.0 核心设计增强"]
@@ -34,6 +36,7 @@ flowchart TD
         S4["§5 显存前瞻预测 & 三级弹性降级<br/>(消除 GPU OOM 进程崩溃)"]
         S5["§6 双曲正切软肩逆映射<br/>(高动态 ACEScg 辐射能量守恒)"]
         S6["§7 W3C 分布式追踪 & 自愈控制面<br/>(确定性退出码 + agent_fix_hint)"]
+        S7["§8 物理渲染驱动自演进飞轮<br/>(递归自我提升 RSI 闭环)"]
     end
 
     B1 ==> S1
@@ -42,9 +45,10 @@ flowchart TD
     B4 ==> S4
     B5 ==> S5
     B6 ==> S6
+    B7 ==> S7
 ```
 
-本规范作为全系统最高优先级的架构设计增强方案，正式确立这 6 大模块的数学表征、工程接口与状态转移契约，并指导 `docs/IMPLEMENTATION_PLAN.md` 中 `PR-01` ~ `PR-15` 的演进。
+本规范作为全系统最高优先级的架构设计增强方案，正式确立这 7 大模块的数学表征、工程接口与状态转移契约，并指导 `docs/IMPLEMENTATION_PLAN.md` 中 `PR-01` ~ `PR-15` 的演进。
 
 ---
 
@@ -255,7 +259,28 @@ xychart-beta
 
 ---
 
-## 8. 工程实施映射与 PR 责任矩阵
+## 8. 突破进化边界：物理渲染驱动的递归自我提升 (RSI) 自演进闭环 (Recursive Self-Improvement Engine)
+
+### 8.1 物理模拟与确定性 Verifier 的核心范式
+在通用大模型领域，递归自我提升（Recursive Self-Improvement, RSI）面临的核心死结是**缺乏客观世界的 Ground-Truth 验证器**，导致模型在自生成数据自训时不可避免地走向自食性退化（Model Collapse）。
+
+而在 `synapse` + `fulgur` + `vg-core` 体系中，渲染物理学、几何拓扑学与刚体动力学为系统提供了绝对不可欺骗的客观物理真理锚：
+- **物理绝对验算（vg-core / fulgur）**：流形度 $100\%$ 水密、穿模体积比 $\le 0.001$、运动学足底零滑步（$\|\mathbf{v}_{\text{foot}}\| \le 0.02\text{ m/s}$）、重投影深度残差 $\text{RMSE} \le 0.03\text{m}$；
+- **多尺度过程奖励（PRM / Visual Jev）**：在全局残差热区调度虚拟微距相机（Macro Camera）捕获局部 Patch，通过校准置信度给出结构化判决；
+- **两级修复与数据沉淀**：通过 Trellis-Refine 算法自修正沉淀无人工偏好对 $\mathcal{D}_{\text{self}}$；通过 RFC 0044 15分钟熔断由 L2 美术介入，利用 RFC 0020 `CommandIR` 探针捕获专家五元组 $\mathcal{D}_{\text{human}}$。
+
+### 8.2 正交解耦 LoRA 进化与单调递增发布门禁
+为杜绝灾难性遗忘，系统严格遵循 [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md) 与 [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md)：
+1. **五维 LoRA 正交解耦**：将权重更新严格解耦至 `control`、`motion`、`whitebox`、`identity` 与 `style` 五大专用 LoRA，根据缺陷类型靶向微调，冻结骨干网络；
+2. **Synapse-Bench 自动化发布硬门禁**：
+   $$\text{PromoteCondition} \iff \text{Score}(G_{t+1}) > \text{Score}(G_t) \;\land\; \max_{k \in \text{T1..T5}} \Delta \text{Regression}_k \le 0$$
+   全量回归通过后方可晋升为下一代基线，否则自动隔离回滚，确保模型进化沿时间轴**严格单调递增**。
+
+*详细数学公式、跨仓无状态编排与防御红线参见专门规范*: [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md)。
+
+---
+
+## 9. 工程实施映射与 PR 责任矩阵
 
 本设计增强规范全量吸收并深化至 `docs/IMPLEMENTATION_PLAN.md`（M1–M4 阶段）中，各模块与原子 PR 的对应落地责任如下：
 
@@ -267,6 +292,7 @@ xychart-beta
 | **§5 显存前瞻预测** | `MemoryForecaster`<br/>三级弹性降级决策树 | `python/synapse/pipeline/memory.py`<br/>`python/synapse/cli/worker.py` | `PR-04`<br/>`PR-14b` | 在 24GB (RTX 4090) 与 80GB (A100) 显卡上预测误差 $<8\%$，0 发生未捕获 CUDA OOM |
 | **§6 软肩逆色调映射** | `SoftKneeInverseTonemap`<br/>ACEScg 辐射度守卫 | `python/synapse/style/color_space.py`<br/>`python/synapse/composite/blending.py` | `PR-09`<br/>`PR-11` | 极端高光测试场景下辐射度 $\le 12.0$，无 NaN/Inf 传染，导数平滑连续 |
 | **§7 分布式自愈总线** | W3C Trace 上下文解析<br/>`agent_fix_hint` 输出 | `python/synapse/cli/common.py`<br/>`python/synapse/pipeline/worker.py` | `PR-04`<br/>`PR-14b` | `--json` 模式下输出纯标准 JSON，非零退出时必须包含 `agent_fix_hint` 字段 |
+| **§8 物理驱动 RSI 飞轮** | 自演进闭环流水线<br/>单调递增防退化门禁 | `python/synapse/pipeline/rsi.py`<br/>`docs/DESIGN_RSI_FLYWHEEL.md` | `PR-14a`<br/>`PR-14b` | 自动化生成 D_self 偏好对，Synapse-Bench 验证能力单调递增，0 模型崩溃 |
 
 ---
 

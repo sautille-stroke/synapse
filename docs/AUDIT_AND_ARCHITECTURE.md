@@ -9,6 +9,7 @@
   - **LoRA 微调流水线设计**: [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md)
   - **数据检查器方案**: [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md)
   - **3D 质检与精修飞轮**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
+  - **递归自我提升 RSI 飞轮**: [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
   - **RFC 0043**: 全生态同场景多风格渲染架构与 `aether//style` `StyleProfile` SSOT
@@ -61,7 +62,7 @@ flowchart TD
         FUL["fulgur (C++20)<br/>Track B 毫秒级 (<2ms) 光栅 FGPP EXR 导出"]
         CC["caelum-core (C++20/CUDA)<br/>Track A 16-64 SPP 光追 FGPP & 光学增量层"]
         VG["vg-core (C++20/CUDA + pybind11)<br/>去光照 / Graph-Cut / Quad 重拓扑 / Humanoid-53 IK"]
-        SYN["★ synapse (Python SDK & Stateless Worker)<br/>FGPP PySDK · 双轨模型 Adapter · 风格提取对齐<br/>3D+SAM2 局部合成 · Synapse-Bench 评测"]
+        SYN["★ synapse (Python SDK & Stateless Worker)<br/>FGPP PySDK · 双轨模型 Adapter · 风格提取对齐<br/>3D+SAM2 局部合成 · 物理驱动 RSI 闭环 · Synapse-Bench 评测"]
     end
 
     subgraph L1_L0 ["Layer 1 & 0: 算力底座与跨语言契约 SSOT"]
