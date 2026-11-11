@@ -3,6 +3,11 @@
 - **文档状态**: Accepted Baseline (`v1.0`)
 - **审查范围**: `synapse` 仓库整体目标、当前 `v0.1.0` 基线代码、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
 - **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
+- **关联设计规范**:
+  - **全系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
+  - **LoRA 微调流水线设计**: [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md)
+  - **数据检查器方案**: [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md)
+  - **3D 质检与精修飞轮**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
   - **RFC 0043**: 全生态同场景多风格渲染架构与 `aether//style` `StyleProfile` SSOT
@@ -250,4 +255,18 @@ synapse/
 │   │   └── static_html.py           # 自包含 HTML 单页预览模板
 ├── data/scenarios/                  # T1-T5 标准化场景定义 JSON (同步挂载进 wheel package-data)
 └── tests/                           # 单元测试、@aether//fgpp 跨语言黄金契约测试与 Mock E2E 测试
+```
+
+---
+
+## 5. Synapse 2.0 系统设计增强与工业级鲁棒性演进
+
+为确保从原型研发向工业级生产环境平稳演进，针对长视频时序生成、极端拓扑形变、显存 OOM 弹性容错与跨语言黄金守卫等深水区挑战，全系统正式确立 **[docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)** 作为架构级增强规范：
+
+1. **长镜头因果流式切片 (`Causal Latent Streaming`)**：以 $W=97$ 因果滑动窗口、$S=64$ 步长与 $\Delta=33$ 帧因果重叠带打破显存限制，采用 Sigmoid 因果退火实现长视频无缝融合；
+2. **拓扑突变检测与自适应重锚定 (`Topological Discontinuity Protection`)**：通过几何-光学梯度突变指数 $\kappa_{\text{frame}}$ 实时检测网格剧烈变形与遮挡，动态插入物理强锚点并重置光流累积，彻底消除局部伪影；
+3. **跨语言 Wire Guard 自动化契约守卫 (`Wire Guard Codegen`)**：从 Layer 0 `@aether//fgpp`（`fgpp_types.h`）自动生成 Python 强类型 Schema，通过 CI 黄金断言 100% 锁死 15 通道 ASCII 字典序与 34B/px 布局；
+4. **显存前瞻预测与三级自适应弹性降级 (`Proactive OOM Defense`)**：解析式精确建模 DiT 峰值显存，自动触发空间 Tiling 或短因果窗口降级，消除未捕获的 CUDA OOM 崩溃；
+5. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Regularization`)**：对极端高光执行连续软钳位，确保线性 ACEScg 辐射能量守恒，杜绝 NaN/Inf 浮点污染；
+6. **全链路 W3C 分布式追踪与 Agent 自愈闭环 (`Unified Telemetry`)**：贯穿 `traceparent` / `tracestate`，统一确定性退出码 `0/10/20/30/40` 并输出标准化 `agent_fix_hint`。
 ```

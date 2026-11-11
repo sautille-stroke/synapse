@@ -1,6 +1,12 @@
 # Synapse 可落地工程实施计划 (Actionable Implementation Plan)
 
-- **计划版本**: `v1.1`
+- **计划版本**: `v1.2`
+- **前置架构决议**: [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)
+- **前置系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
+- **前置专项设计规范**:
+  - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) (LoRA 微调流水线设计)
+  - [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md) (数据检查器方案)
+  - [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) (3D 质检与精修飞轮)
 - **前置架构决议**: [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)
 - **执行原则**:
   1. **原子 PR 推进**：全计划拆解为 **4 个阶段（M1–M4）、16 个独立可合并、可测试的原子 PR（`PR-01` ~ `PR-15`，其中 `PR-14` 拆分为 `PR-14a` 与 `PR-14b`）**，单 PR 代码净增控制在 `300 ~ 800` 行以内，严禁巨型单体提交。
@@ -106,10 +112,11 @@ flowchart LR
 ### PR-02：`feat(fgpp): implement canonical @aether//fgpp wire schema and matrix interop`
 - **解决痛点**：彻底修复审计报告 `[P0-1]` 中的跨语言通道名漂移、`metadata.json` 字段分裂与行列主序转置隐患。
 - **涉及文件**：
-  - 新增：`python/synapse/fgpp/schema.py`, `tests/test_fgpp_contract.py`
+  - 新增：`python/synapse/fgpp/schema.py`, `tools/wire_guard.py`, `tests/test_fgpp_contract.py`
   - 修改：`python/synapse/fgpp/frame.py`, `python/synapse/fgpp/__init__.py`
 - **具体落地设计**：
-  1. **`schema.py` 精确镜像 `aether/fgpp/include/aether/fgpp/fgpp_types.h`**：
+  1. **引入 `wire-guard` 自动生成与 `schema.py` 镜像（对齐 `DESIGN_SYSTEM_ENHANCEMENT.md §4`）**：
+     - 提供 `tools/wire_guard.py` 脚本，从 `aether/fgpp/include/aether/fgpp/fgpp_types.h` 正则/AST 抽取常量并自动生成 `schema.py` 强类型定义；
      - 定义 `PixelType(IntEnum)`（`UINT32=0, HALF=1, FLOAT=2`）；
      - 定义 7 个逻辑通道组常量（`DirectRadiance.RGB`, `CameraLinearDepth.Z`, `WorldNormal.XYZ`, `MotionVector.XY`, `BaseColor.RGB`, `RoughnessMetallic.RG`, `Cryptomatte.ID`）与严格按 ASCII 排序的 **15 个标量 EXR 子通道规格表 `ALPHABETICAL_EXR_CHANNEL_SPECS`**（含 `allow_spatial_filtering` 标志，总像素步幅锁死 `34 Bytes/px`）；
      - 实现向量化 `linear_to_log_normalized_depth(z_m, z_near, z_far)` 与逆函数 `log_normalized_to_linear_depth`（对 `z_near <= 0` 或 `NaN/Inf` 零异常安全钳位）；
@@ -152,6 +159,10 @@ flowchart LR
 
   4. **`pyproject.toml` 依赖分层修正**：新增 `[gpu]` 可选依赖组（`torch>=2.0.0`），将 `torch` 从 `[metrics]` 移出；`[metrics]` 仅保留 CPU 指标依赖（`scipy`, `scikit-image`）；新增 `[metrics-gpu]` 组合（`synapse[metrics,gpu]`）供需要 FVD 等 GPU 指标的场景使用。同时在 `[tool.setuptools.package-data]` 中显式配置场景 JSON 包含规则，或将 `data/scenarios/` 迁入 `python/synapse/bench/scenarios/` 后由 `find` 自动发现。
 
+  5. **前瞻显存预检与 W3C Trace 贯穿（对齐 `DESIGN_SYSTEM_ENHANCEMENT.md §5 & §7`）**：
+     - 提供 `MemoryForecaster` 峰值显存解析式预检函数，超出显存限制时抛出 `EXIT_RESOURCE_LIMIT (30)` 并给出降级建议；
+     - CLI 支持从环境或 `JobBundle` 解析 W3C `traceparent` / `tracestate`，所有 JSON 输出与结构化日志自动注入 Trace Context。
+
 - **验证门禁**：子进程测试所有 CLI 命令在成功/参数非法/路径缺失三种路径下的退出码（`0 / 10 / 20`）及 `json.loads(stdout)` 100% 合法。
 
 ---
@@ -175,7 +186,10 @@ flowchart LR
 - **涉及文件**：
   - 新增：`python/synapse/adapters/scheduler.py`, `tests/test_condition_scheduler.py`
 - **具体落地设计**：
-  1. **长镜头分窗与 48 帧物理重锚定**：实现 `ConditionScheduler`（默认 `anchor_interval=48`，滑窗长度 `97` 帧，重叠区 `17` 帧余弦混合权重），支持为每个条件通道配置去噪步衰减曲线（`cosine` / `linear` / `step`）。
+  1. **长镜头因果流式切片与拓扑突变重锚定（对齐 `DESIGN_SYSTEM_ENHANCEMENT.md §2 & §3`）**：
+     - 实现 `ConditionScheduler`：采用标准 $W=97$ 因果滑窗、$S=64$ 步长与 $\Delta=33$ 帧重叠带（严格满足 $T=4k+1$）；
+     - 实现 Sigmoid 因果退火保方差融合函数，消除潜空间拼接时的能量衰减；
+     - 实现 `DiscontinuityDetector` 突变检测器，根据几何-光学梯度突变指数 $\kappa(t)$ 在剧烈形变时动态插入临时物理强锚点并重置光流累积。
   2. **3D Causal VAE 潜空间光流积分与最小深度池化 (`compute_latent_flow_operator`)**：
      - 输入逐帧屏幕光流 $\mathbf{f}_{t \to t+1}$ `[T, H, W, 2]` 与线性深度 `depth` `[T, H, W]`（要求 $T = 4k + 1$）；
      - 执行跨 4 帧前向欧拉轨迹积分，结合前后向光流一致性校验生成遮挡掩膜 $O_{\tau \to \tau'} \in \{0, 1\}$；
@@ -214,7 +228,7 @@ flowchart LR
   - 新增：`python/synapse/style/aces_color.py`, `python/synapse/style/descriptor.py`, `python/synapse/style/extractor.py`, `python/synapse/style/profile_mapper.py`, `tests/test_style.py`
   - 修改：`python/synapse/style/__init__.py`
 - **具体落地设计**：
-  1. **`aces_color.py`**：实现严格符合色彩科学的 sRGB EOTF 线性化、`Linear sRGB (Rec.709) <-> ACEScg (AP1)` $3 \times 3$ Bradford 色适应矩阵变换、CIE LAB / CIEDE2000 色差底数、以及可逆色调映射（Inverse ACES Filmic / Reinhard，高光平滑肩部防溢出）。
+  1. **`aces_color.py`（对齐 `DESIGN_SYSTEM_ENHANCEMENT.md §6`）**：实现严格符合色彩科学的 sRGB EOTF 线性化、`Linear sRGB (Rec.709) <-> ACEScg (AP1)` $3 \times 3$ Bradford 色适应矩阵变换、CIE LAB / CIEDE2000 色差底数，以及**双曲正切软肩逆色调映射 (`Hyperbolic Soft-Knee Inverse Tonemapping`)**（在线性阈值 $L_{\text{threshold}}=4.0$ 处启用双曲正切软延伸，高光辐射严格钳制 $\le 12.0$，彻底消除 NaN/Inf 浮点溢出与高光噪点火花）。
   2. **`StyleDescriptor` & `extractor.py`**：
      - 实现 `histogram_optical`（基于跨帧中位数聚合估算白平衡色温 $T_c \in [2000\text{K}, 12000\text{K}]$、Tint、曝光 EV、1D Tone Curve、33³ 3D LUT、高频残差胶片颗粒强度与径向暗角）；
      - 实现 `fgpp_intrinsic`（结合 FGPP `WorldNormal.XYZ` 与 `BaseColor.RGB` 求解最小二乘低阶球谐光照/主光源方向 `key_light_direction`、主光颜色与环境光比 `ambient_ratio`）。
@@ -301,7 +315,8 @@ flowchart LR
   1. **`bundle_worker.py` (`JobBundleWorker`)**：
      - 解析符合 RFC 0039 的 `bundle_manifest.json`（仅消费本地工作目录或只读/只写 Presigned URLs，**零数据库连接、零 `asset-vault` SDK 耦合**）；
      - 支持 4 种原子容器执行模式：`fgpp_validate`、`neural_video_generate`、`style_extract_and_map`、`surgical_composite`；
-     - 执行完毕写出 `result_manifest.json`（含输出文件 SHA256、耗时遥测、指标摘要）并立即退出进程；挂载至 CLI `synapse worker run --bundle <path> [--json]`。
+     - **集成三级显存自适应降级与自愈诊断（对齐 `DESIGN_SYSTEM_ENHANCEMENT.md §5 & §7`）**：执行 `neural_video_generate` 前自动进行显存解析式预检，必要时按 Level 1（空间 2x2 Tiling）或 Level 2（因果流式切片）降级执行；失败时输出标准确定性退出码（`0/10/20/30/40`）与 `agent_fix_hint`；
+     - 执行完毕写出 `result_manifest.json`（含输出文件 SHA256、耗时遥测、指标摘要、W3C Trace 跨上下文）并立即退出进程；挂载至 CLI `synapse worker run --bundle <path> [--json]`。
 - **验证门禁**：构造完整模拟 `JobBundle` 目录，通过 `synapse worker run --bundle ... --json` 跑通全部 4 种原子阶段，校验输出产物完整性与退出码 `0`。
 ---
 
