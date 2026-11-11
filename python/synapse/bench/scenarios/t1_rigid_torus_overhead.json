@@ -1,0 +1,35 @@
+{
+  "id": "t1_rigid_torus_overhead",
+  "tier": "T1",
+  "description": "Torus viewed from directly overhead. Tests top-down reconstruction of genus-1 topology.",
+  "tags": [
+    "rigid",
+    "overhead",
+    "topology"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "torus",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 75.0,
+    "num_frames": 8,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.84
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "discrete_views"
+}

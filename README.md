@@ -12,7 +12,7 @@
 
 - **向上承接编排**：作为无状态单步 GPU Worker（消费 **RFC 0039 `JobBundle`**），由 Go 分布式农场 `render-farm` 与影视管线 `narrative-rail` 在 `foundary` 推理容器中按需拉起执行，**绝不自建常驻 Python 服务端**；
 - **向下严守契约**：Python 端 `synapse.fgpp` 严格镜像 Layer 0 **`@aether//fgpp`** C++20 线格式 SSOT，与 `fulgur`（Track B 毫秒级光栅）和 `caelum-core`（Track A 物理光追）实现多通道 OpenEXR 2.0 零歧义互通；
-- **横向零拷贝协同**：风格描述符对齐 **`@aether//style` (`RFC 0043`)** 与 **ACEScg (`RFC 0058`)**；重型几何重拓扑、物理去光照与 Humanoid-53 足底锁定 IK 通过零拷贝接口委托 **`vg-core`** C++20/CUDA 原生算子执行，拒绝在 Python 中重复造轮子。
+- **横向原生闭环**：风格描述符对齐 **`@aether//style` (`RFC 0043`)** 与 **ACEScg (`RFC 0058`)**；4D 点追踪、6-DoF 运镜解算、流形闭合校验与 Quad 重拓扑、Humanoid-53 足底防滑锁定 IK（$<0.3\text{ cm/s}$）以及球谐/Retinex 混合去光照全面由原生算法模块 **`synapse.recon`** 提供，实现零外部 C++ 强依赖开箱即用，并向下兼容 `synapse.bridge.vg_bridge` 抽象。
 
 ---
 
@@ -52,6 +52,7 @@ flowchart LR
 | `python/synapse/adapters/` | 双轨视频适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 API）、97f 因果滑窗与 Multi-LoRA | 📋 待实施 | `PR-05` ~ `PR-08`, `PR-16` |
 | `python/synapse/style/` | 双曲正切软肩 ACEScg 逆色调映射、球谐主光提取与 `StyleProfile v2.0` 映射 | 📋 待实施 | `PR-09` |
 | `python/synapse/composite/` | 穿模/闪烁检测、`3D ∪ SAM2` 膨胀掩膜、16px 环带 LAB 与光学增量融合 | 📋 待实施 | `PR-10`, `PR-11` |
+| `python/synapse/recon/` | Video-to-3D 几何逆向重建与资产蒸馏：4D 点追踪、6-DoF 运镜解算、2-流形/闭合验证、Quad 重拓扑、足底防滑零位移 IK (<0.3 cm/s)、球谐与 Retinex 本征去光照 | 🟢 原生全面就绪 | Stage 3 核心 |
 | `python/synapse/bridge/` | `vg-core` / `foundary` 薄桥接、Track-B 白模反投硬拦截与 HITL 15m 熔断 | 📋 待实施 | `PR-12` |
 | `python/synapse/metrics/` | 四维 16 项指标与三级质量门禁档位（`track_b` / `track_a` / `rsi_promotion`） | 📋 待实施 | `PR-13` |
 | `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器执行核与离线 `BenchPipelineRunner` | 📋 待实施 | `PR-14a`, `PR-14b` |

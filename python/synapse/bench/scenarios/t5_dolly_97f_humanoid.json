@@ -1,0 +1,46 @@
+{
+  "id": "t5_dolly_97f_humanoid",
+  "tier": "T5",
+  "description": "Dolly push into humanoid-53 proxy over 97 frames. Tests scale-change robustness end-to-end.",
+  "tags": [
+    "e2e",
+    "dolly",
+    "97-frame",
+    "humanoid"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "dolly",
+  "camera_params": {
+    "start_distance": 6.0,
+    "end_distance": 2.0,
+    "elevation_deg": 10.0,
+    "azimuth_deg": 0.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "animation": "idle"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 23.0,
+    "ssim": 0.82,
+    "temporal_warp_error": 0.06,
+    "flicker_score": 0.04,
+    "bone_length_drift_pct": 1.0
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}

@@ -44,10 +44,25 @@ def _look_at(
     """Compute a 4×4 world-to-camera (view) matrix.
 
     Right-handed, Y-up, camera looks along -Z.
+
+    Includes a zenith/nadir singularity guard: when *forward* is nearly
+    parallel to *up*, a fallback up-vector is used so the cross product
+    remains well-conditioned.
     """
     forward = target - eye
     forward = forward / (np.linalg.norm(forward) + 1e-12)
-    right = np.cross(forward, up)
+
+    up_norm = up / (np.linalg.norm(up) + 1e-12)
+
+    # Zenith / nadir singularity guard
+    if abs(float(np.dot(forward, up_norm))) > 0.9999:
+        up_fallback = np.array(
+            [0.0, 0.0, -1.0 if forward[1] > 0 else 1.0], dtype=np.float64,
+        )
+        right = np.cross(forward, up_fallback)
+    else:
+        right = np.cross(forward, up_norm)
+
     right = right / (np.linalg.norm(right) + 1e-12)
     new_up = np.cross(right, forward)
 
@@ -56,6 +71,12 @@ def _look_at(
     view[1, :3] = new_up
     view[2, :3] = -forward
     view[:3, 3] = -view[:3, :3] @ eye
+
+    # Sanity: rotation sub-matrix must be orthonormal (det ≈ 1)
+    assert abs(np.linalg.det(view[:3, :3]) - 1.0) < 1e-6, (
+        f"_look_at produced non-orthonormal rotation "
+        f"(det={np.linalg.det(view[:3, :3])})"
+    )
     return view
 
 
@@ -67,6 +88,8 @@ def _make_camera(
     fov_deg: float,
     z_near: float = 0.1,
     z_far: float = 1000.0,
+    aperture_fstop: float = 0.0,
+    shutter_angle_deg: float = 180.0,
 ) -> CameraParams:
     """Build a CameraParams from eye/target positions."""
     view = _look_at(eye, target)
@@ -90,6 +113,8 @@ def _make_camera(
         world_matrix=world,
         z_near=z_near,
         z_far=z_far,
+        aperture_fstop=aperture_fstop,
+        shutter_angle_deg=shutter_angle_deg,
     )
 
 
@@ -103,15 +128,34 @@ def _generate_orbit(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    endpoint: bool | None = None,
+    **kwargs: object,
 ) -> list[CameraParams]:
-    """Generate an orbital camera trajectory around a target point."""
+    """Generate an orbital camera trajectory around a target point.
+
+    Parameters
+    ----------
+    endpoint:
+        If ``True``, the last frame revisits the start azimuth (inclusive
+        endpoint). If ``False``, frames are spaced so that concatenating
+        the sequence would produce a seamless loop. When ``None``
+        (default), ``endpoint`` is inferred: it is ``False`` for a full
+        360° sweep and ``True`` otherwise.
+    """
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     el_rad = math.radians(elevation_deg)
-    cameras = []
+
+    # Auto-detect endpoint: full 360° loops should NOT include endpoint
+    if endpoint is None:
+        endpoint = abs(azimuth_range_deg) < 360.0
+
+    cameras: list[CameraParams] = []
 
     for i in range(num_frames):
-        t = i / max(num_frames - 1, 1)
+        if endpoint:
+            t = i / max(num_frames - 1, 1)
+        else:
+            t = i / max(num_frames, 1)
         az_deg = azimuth_start_deg + t * azimuth_range_deg
         az_rad = math.radians(az_deg)
 
@@ -135,13 +179,13 @@ def _generate_tracking(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a linear tracking shot (camera moves, looks at target)."""
     start_pt = np.array(start or [-3.0, 1.5, 0.0], dtype=np.float64)
     end_pt = np.array(end or [3.0, 1.5, 0.0], dtype=np.float64)
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
-    cameras = []
+    cameras: list[CameraParams] = []
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
@@ -163,13 +207,13 @@ def _generate_dolly(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a dolly push-in / pull-out shot."""
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     el_rad = math.radians(elevation_deg)
     az_rad = math.radians(azimuth_deg)
-    cameras = []
+    cameras: list[CameraParams] = []
 
     direction = np.array([
         math.cos(el_rad) * math.sin(az_rad),
@@ -196,12 +240,12 @@ def _generate_static(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a static (or slow-drift) camera."""
     pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
-    cameras = []
+    cameras: list[CameraParams] = []
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
@@ -228,12 +272,12 @@ def _generate_arc(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a vertical arc (elevation sweep at fixed azimuth)."""
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     az_rad = math.radians(azimuth_deg)
-    cameras = []
+    cameras: list[CameraParams] = []
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
@@ -260,11 +304,11 @@ def _generate_pan(
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
-    **kwargs,
+    **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a horizontal pan (camera rotates in place)."""
     pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
-    cameras = []
+    cameras: list[CameraParams] = []
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
@@ -295,7 +339,7 @@ _GENERATORS = {
 
 def generate_cameras(
     scenario_or_type: "Scenario | CameraTrajectoryType | str",
-    **override_params,
+    **override_params: object,
 ) -> list[CameraParams]:
     """Generate camera trajectory for a scenario or trajectory type."""
     if isinstance(scenario_or_type, str):

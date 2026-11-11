@@ -1,0 +1,40 @@
+{
+  "id": "t3_cube_behind_cylinder",
+  "tier": "T3",
+  "description": "Cube partially occluded by cylinder. Tests partial occlusion handling and depth reasoning.",
+  "tags": [
+    "multi-body",
+    "occlusion",
+    "partial"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 4.0,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 180
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "occluder": "cylinder",
+    "occludee": "cube"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 22.0,
+    "ssim": 0.80
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

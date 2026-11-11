@@ -22,6 +22,8 @@ class ConditionLevel(str, Enum):
     L4 = "L4"  # Extreme / stress-test
 
 
+_VALID_LEVELS = frozenset({"L1", "L2", "L3", "L4"})
+
 RENDERING_CONDITION_FACTORS: dict[str, dict[str, Any]] = {
     "F01_viewpoint": {
         "name": "Viewpoint Coverage",
@@ -336,6 +338,8 @@ RENDERING_CONDITION_FACTORS: dict[str, dict[str, Any]] = {
     },
 }
 
+_VALID_FACTOR_KEYS = frozenset(RENDERING_CONDITION_FACTORS.keys())
+
 
 @dataclass
 class Conditions:
@@ -355,7 +359,7 @@ class Conditions:
 
     def to_dict(self) -> dict[str, str]:
         """Return non-None factors as ``{factor_id: level}``."""
-        result = {}
+        result: dict[str, str] = {}
         for f in self.__dataclass_fields__:
             v = getattr(self, f)
             if v is not None:
@@ -364,16 +368,32 @@ class Conditions:
 
     @classmethod
     def from_dict(cls, d: dict[str, str]) -> "Conditions":
-        """Construct from ``{factor_id: level_str}``."""
-        kwargs = {}
+        """Construct from ``{factor_id: level_str}``.
+
+        Raises
+        ------
+        ValueError
+            If *d* contains an unknown factor key or a level value
+            outside ``{L1, L2, L3, L4}``.
+        """
+        kwargs: dict[str, ConditionLevel] = {}
         for k, v in d.items():
-            if k in cls.__dataclass_fields__:
-                kwargs[k] = ConditionLevel(v)
+            if k not in _VALID_FACTOR_KEYS:
+                raise ValueError(
+                    f"Unknown condition factor key '{k}'. "
+                    f"Valid keys: {sorted(_VALID_FACTOR_KEYS)}"
+                )
+            if v not in _VALID_LEVELS:
+                raise ValueError(
+                    f"Illegal condition level '{v}' for factor '{k}'. "
+                    f"Must be one of {sorted(_VALID_LEVELS)}"
+                )
+            kwargs[k] = ConditionLevel(v)
         return cls(**kwargs)
 
     def resolve(self) -> dict[str, dict]:
         """Expand to full factor parameter dicts."""
-        resolved = {}
+        resolved: dict[str, dict] = {}
         for factor_id, factor_def in RENDERING_CONDITION_FACTORS.items():
             field_name = factor_id
             level = getattr(self, field_name, None) or ConditionLevel.L1
@@ -384,6 +404,33 @@ class Conditions:
                 **level_data,
             }
         return resolved
+
+    def get_scale_multiplier(self) -> float:
+        """Return the camera distance multiplier from F08_scale."""
+        if self.F08_scale is None:
+            return 1.0
+        level_data = RENDERING_CONDITION_FACTORS["F08_scale"]["levels"].get(
+            self.F08_scale.value, {}
+        )
+        return float(level_data.get("camera_distance_multiplier", 1.0))
+
+    def get_aperture_fstop(self) -> float:
+        """Return the aperture f-stop from F09_dof."""
+        if self.F09_dof is None:
+            return 0.0
+        level_data = RENDERING_CONDITION_FACTORS["F09_dof"]["levels"].get(
+            self.F09_dof.value, {}
+        )
+        return float(level_data.get("aperture", 0.0))
+
+    def get_shutter_angle_deg(self) -> float:
+        """Return the shutter angle in degrees from F10_motion_blur."""
+        if self.F10_motion_blur is None:
+            return 180.0
+        level_data = RENDERING_CONDITION_FACTORS["F10_motion_blur"]["levels"].get(
+            self.F10_motion_blur.value, {}
+        )
+        return float(level_data.get("shutter_angle_deg", 180.0))
 
 
 SINGLE_FACTOR_CONDITIONS: list[dict[str, str]] = []

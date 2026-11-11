@@ -36,22 +36,46 @@ image = [
 metrics = [
     "scipy>=1.10.0",
     "scikit-image>=0.20.0",
+]
+gpu = [
     "torch>=2.0.0",
 ]
+mesh = [
+    "trimesh>=4.0.0",
+]
+jit = [
+    "numba>=0.58.0",
+]
+train = [
+    "safetensors>=0.4.0",
+    "pyyaml>=6.0",
+]
 full = [
-    "synapse[image,metrics,dev]",
+    "synapse[image,metrics,gpu,mesh,jit,train,dev]",
 ]
 
 [project.scripts]
-synapse-bench = "synapse.cli:main"
-synapse-data-gen = "synapse.cli:main_data_gen"
-synapse-viewer = "synapse.cli:main_viewer"
+synapse = "synapse.cli:main_synapse"
+synapse-bench = "synapse.cli:main_bench"
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.setuptools.package-data]
+synapse = ["py.typed", "bench/scenarios/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 addopts = "--basetemp=./.pytest_tmp"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100

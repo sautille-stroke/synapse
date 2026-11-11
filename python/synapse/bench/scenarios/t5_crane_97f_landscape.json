@@ -1,0 +1,47 @@
+{
+  "id": "t5_crane_97f_landscape",
+  "tier": "T5",
+  "description": "Crane shot rising over procedural landscape of objects over 97 frames. Tests elevation sweep end-to-end.",
+  "tags": [
+    "e2e",
+    "crane",
+    "97-frame",
+    "landscape"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "crane",
+  "camera_params": {
+    "distance": 5.0,
+    "azimuth_deg": 30.0,
+    "elevation_start_deg": 5.0,
+    "elevation_end_deg": 60.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "layout": "scattered",
+    "objects": ["sphere", "cube", "torus"]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 23.0,
+    "ssim": 0.82,
+    "temporal_warp_error": 0.06,
+    "flicker_score": 0.04
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}

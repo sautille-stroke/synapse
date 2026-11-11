@@ -11,11 +11,12 @@ Each scenario specifies:
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 
 class ScenarioTier(str, Enum):
@@ -94,7 +95,15 @@ class ExpectedMetrics:
 
 @dataclass
 class Scenario:
-    """A single Synapse-Bench evaluation scenario."""
+    """A single Synapse-Bench evaluation scenario.
+
+    Attributes
+    ----------
+    temporal_mode:
+        ``"continuous_clip"`` (default) for Wan 2.1 temporal video
+        generation — enforces ``(num_frames - 1) % 4 == 0``.
+        ``"discrete_views"`` for sparse multi-view (no temporal constraint).
+    """
 
     id: str
     tier: ScenarioTier
@@ -106,15 +115,26 @@ class Scenario:
     camera_params: dict = field(default_factory=lambda: {
         "radius": 3.0,
         "elevation_deg": 15.0,
-        "num_frames": 120,
+        "num_frames": 97,
         "fps": 24,
     })
+    temporal_mode: Literal["continuous_clip", "discrete_views"] = "continuous_clip"
 
     conditions: dict = field(default_factory=dict)
     width: int = 1024
     height: int = 1024
     expected: ExpectedMetrics = field(default_factory=ExpectedMetrics)
     validates_stages: list[int] = field(default_factory=lambda: [2, 3])
+
+    def __post_init__(self) -> None:
+        """Validate T=4k+1 constraint for continuous clips."""
+        num_frames = self.camera_params.get("num_frames", 120)
+        if self.temporal_mode == "continuous_clip" and (num_frames - 1) % 4 != 0:
+            raise ValueError(
+                f"Scenario '{self.id}': continuous_clip requires "
+                f"(num_frames - 1) % 4 == 0, got num_frames={num_frames}. "
+                f"Valid values: 5, 9, 13, ..., 97, 101, ..."
+            )
 
     def to_dict(self) -> dict:
         return {
@@ -125,6 +145,7 @@ class Scenario:
             "asset": self.asset.to_dict(),
             "camera_type": self.camera_type,
             "camera_params": self.camera_params,
+            "temporal_mode": self.temporal_mode,
             "conditions": self.conditions,
             "width": self.width,
             "height": self.height,
@@ -142,6 +163,7 @@ class Scenario:
             asset=Asset.from_dict(d["asset"]),
             camera_type=d.get("camera_type", "orbit"),
             camera_params=d.get("camera_params", {}),
+            temporal_mode=d.get("temporal_mode", "continuous_clip"),
             conditions=d.get("conditions", {}),
             width=d.get("width", 1024),
             height=d.get("height", 1024),
@@ -166,7 +188,21 @@ class Scenario:
 
 
 def _scenarios_dir() -> Path:
-    """Locate the ``data/scenarios/`` directory."""
+    """Locate the scenarios directory.
+
+    Primary: ``synapse.bench.scenarios`` package data (wheel-friendly).
+    Fallback: ``data/scenarios/`` relative to repo root.
+    """
+    # Try package data first (importlib.resources)
+    try:
+        pkg_files = importlib.resources.files("synapse.bench") / "scenarios"
+        pkg_path = Path(str(pkg_files))
+        if pkg_path.is_dir():
+            return pkg_path
+    except (TypeError, ModuleNotFoundError):
+        pass
+
+    # Fallback to repo-relative data/scenarios/
     pkg_root = Path(__file__).resolve().parent.parent.parent.parent
     return pkg_root / "data" / "scenarios"
 
@@ -182,7 +218,7 @@ def list_scenarios(tier: Optional[ScenarioTier] = None) -> list[Scenario]:
             s = Scenario.load(path)
             if tier is None or s.tier == tier:
                 scenarios.append(s)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, ValueError):
             continue
     return scenarios
 

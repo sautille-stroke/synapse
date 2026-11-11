@@ -1,0 +1,36 @@
+{
+  "id": "t1_rigid_torus_dolly",
+  "tier": "T1",
+  "description": "Torus with dolly push-in. Tests genus-1 topology reconstruction and varying scale.",
+  "tags": [
+    "rigid",
+    "topology",
+    "dolly"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "torus",
+    "license": "MIT"
+  },
+  "camera_type": "dolly",
+  "camera_params": {
+    "start_distance": 5.0,
+    "end_distance": 2.0,
+    "elevation_deg": 25.0,
+    "azimuth_deg": 30.0,
+    "num_frames": 97
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 4.0,
+    "psnr_db": 26.0,
+    "ssim": 0.86
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

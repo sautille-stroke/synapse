@@ -1,0 +1,42 @@
+{
+  "id": "t3_humanoid_with_prop",
+  "tier": "T3",
+  "description": "Humanoid-53 proxy holding a cube prop. Tests multi-body contact and attachment stability.",
+  "tags": [
+    "multi-body",
+    "humanoid",
+    "prop",
+    "contact"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 4.0,
+    "elevation_deg": 15.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "prop": "cube",
+    "animation": "idle_hold"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 8.0,
+    "psnr_db": 21.0,
+    "ssim": 0.79,
+    "bone_length_drift_pct": 1.0
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

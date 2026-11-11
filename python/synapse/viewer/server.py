@@ -43,11 +43,12 @@ class _DatasetHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 
 class ViewerServer:
-    """Embedded HTTP server hosting the interactive dataset viewer."""
+    """Local HTTP server serving the Synapse dataset viewer."""
 
-    def __init__(self, dataset_dir: str | Path, port: int = 8765):
+    def __init__(self, dataset_dir: str | Path, port: int = 8765, host: str = "127.0.0.1"):
         self.dataset_dir = Path(dataset_dir).resolve()
         self.port = port
+        self.host = host
         self.httpd: Optional[socketserver.TCPServer] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -62,12 +63,12 @@ class ViewerServer:
 
         # Allow port reuse
         socketserver.TCPServer.allow_reuse_address = True
-        
+
         # Try requested port or fallback to next available
         cur_port = self.port
         for attempt in range(10):
             try:
-                self.httpd = socketserver.TCPServer(("", cur_port), handler_cls)
+                self.httpd = socketserver.TCPServer((self.host, cur_port), handler_cls)
                 self.port = cur_port
                 break
             except OSError:
@@ -79,7 +80,7 @@ class ViewerServer:
         self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self._thread.start()
 
-        url = f"http://127.0.0.1:{self.port}"
+        url = f"http://{self.host}:{self.port}"
         if open_browser:
             webbrowser.open(url)
 
@@ -98,9 +99,10 @@ def launch_viewer(
     port: int = 8765,
     open_browser: bool = True,
     block: bool = True,
+    host: str = "127.0.0.1",
 ) -> ViewerServer:
     """One-click entry point to launch the viewer."""
-    server = ViewerServer(dataset_dir, port=port)
+    server = ViewerServer(dataset_dir, port=port, host=host)
     url = server.start(open_browser=open_browser)
     print(f"\n[Synapse Viewer] Running at: {url}")
     print(f"[Synapse Viewer] Serving dataset from: {Path(dataset_dir).resolve()}\n")

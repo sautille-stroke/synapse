@@ -1,0 +1,40 @@
+{
+  "id": "t2_rotating_cube",
+  "tier": "T2",
+  "description": "Cube rotating around Y-axis with fixed camera. Tests rigid-body rotation temporal consistency.",
+  "tags": [
+    "dynamic",
+    "rotation",
+    "rigid"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 3.0,
+    "elevation_deg": 20.0,
+    "azimuth_deg": 0.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "animation": "rotate_y",
+    "rotation_speed_deg_per_s": 90.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.85,
+    "temporal_warp_error": 0.05
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

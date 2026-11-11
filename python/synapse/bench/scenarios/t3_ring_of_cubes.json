@@ -1,0 +1,40 @@
+{
+  "id": "t3_ring_of_cubes",
+  "tier": "T3",
+  "description": "Eight cubes arranged in a circle. Tests multi-body mutual occlusion and spatial arrangement.",
+  "tags": [
+    "multi-body",
+    "ring",
+    "arrangement"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 6.0,
+    "elevation_deg": 30.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "layout": "ring",
+    "object_count": 8
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 8.0,
+    "psnr_db": 21.0,
+    "ssim": 0.79
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

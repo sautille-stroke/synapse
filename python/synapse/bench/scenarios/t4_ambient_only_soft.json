@@ -1,0 +1,43 @@
+{
+  "id": "t4_ambient_only_soft",
+  "tier": "T4",
+  "description": "Torus with ambient-only illumination, no direct light. Tests soft, shadow-free rendering fidelity.",
+  "tags": [
+    "style",
+    "lighting",
+    "ambient",
+    "soft"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "torus",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 180
+  },
+  "conditions": {
+    "style": "ambient_only",
+    "ambient_intensity": 1.0,
+    "direct_intensity": 0.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "psnr_db": 25.0,
+    "ssim": 0.85,
+    "style_color_de": 6.0,
+    "style_light_error_deg": 20.0
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

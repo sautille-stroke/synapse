@@ -1,0 +1,41 @@
+{
+  "id": "t2_pendulum_cylinder",
+  "tier": "T2",
+  "description": "Cylinder swinging as a pendulum. Tests oscillatory motion temporal coherence.",
+  "tags": [
+    "dynamic",
+    "pendulum",
+    "oscillation"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cylinder",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 4.0,
+    "elevation_deg": 10.0,
+    "azimuth_deg": 0.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "animation": "pendulum",
+    "amplitude_deg": 45.0,
+    "period_s": 2.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 24.0,
+    "ssim": 0.84,
+    "temporal_warp_error": 0.06
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "t3_two_spheres_crossing",
+  "tier": "T3",
+  "description": "Two spheres passing each other mid-frame. Tests multi-body occlusion and depth ordering.",
+  "tags": [
+    "multi-body",
+    "occlusion",
+    "crossing"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "sphere",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 5.0,
+    "elevation_deg": 15.0,
+    "azimuth_deg": 0.0,
+    "num_frames": 49,
+    "fps": 24
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "object_count": 2,
+    "animation": "cross_paths"
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 23.0,
+    "ssim": 0.82,
+    "temporal_warp_error": 0.07
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

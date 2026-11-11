@@ -1,0 +1,46 @@
+{
+  "id": "t5_pan_97f_multi_object",
+  "tier": "T5",
+  "description": "Horizontal pan across multiple objects over 97 frames. Tests wide-baseline temporal coherence.",
+  "tags": [
+    "e2e",
+    "pan",
+    "97-frame",
+    "multi-object"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "pan",
+  "camera_params": {
+    "distance": 4.0,
+    "elevation_deg": 15.0,
+    "azimuth_start_deg": -45.0,
+    "azimuth_end_deg": 45.0,
+    "num_frames": 97,
+    "fps": 24
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "objects": ["cube", "sphere", "cylinder"]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 24.0,
+    "ssim": 0.83,
+    "temporal_warp_error": 0.05,
+    "flicker_score": 0.03
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}

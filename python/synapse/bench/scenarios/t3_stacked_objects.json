@@ -1,0 +1,40 @@
+{
+  "id": "t3_stacked_objects",
+  "tier": "T3",
+  "description": "Vertically stacked cube, sphere, and cylinder. Tests multi-body depth ordering and contact.",
+  "tags": [
+    "multi-body",
+    "stacked",
+    "contact"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 5.0,
+    "elevation_deg": 25.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {
+    "scene_type": "multi_object",
+    "layout": "vertical_stack",
+    "objects": ["cube", "sphere", "cylinder"]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 22.0,
+    "ssim": 0.81
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "t1_rigid_cylinder_arc",
+  "tier": "T1",
+  "description": "Cylinder with vertical arc camera. Tests elevation-dependent reconstruction quality.",
+  "tags": [
+    "rigid",
+    "arc",
+    "primitive"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cylinder",
+    "license": "MIT"
+  },
+  "camera_type": "arc",
+  "camera_params": {
+    "radius": 3.5,
+    "azimuth_deg": 0.0,
+    "elevation_start_deg": -10.0,
+    "elevation_end_deg": 70.0,
+    "num_frames": 97
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 4.0,
+    "psnr_db": 26.0,
+    "ssim": 0.86
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

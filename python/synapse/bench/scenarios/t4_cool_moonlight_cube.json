@@ -1,0 +1,43 @@
+{
+  "id": "t4_cool_moonlight_cube",
+  "tier": "T4",
+  "description": "Cube under cool blue moonlight. Tests cold color temperature and low-key lighting.",
+  "tags": [
+    "style",
+    "lighting",
+    "cool",
+    "moonlight"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 180
+  },
+  "conditions": {
+    "style": "cool_moonlight",
+    "color_temperature_k": 8000,
+    "key_light_elevation_deg": 45.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "psnr_db": 24.0,
+    "ssim": 0.83,
+    "style_color_de": 8.0,
+    "style_light_error_deg": 15.0
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}
