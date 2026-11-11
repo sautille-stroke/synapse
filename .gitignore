@@ -44,6 +44,7 @@ venv.bak/
 
 # Testing & coverage
 .pytest_cache/
+.pytest_tmp/
 .coverage
 htmlcov/
 
@@ -52,3 +53,4 @@ data/cache/
 data/downloads/
 output/
 tmp/
+data/datasets/
