@@ -1,28 +1,29 @@
 # Synapse (神经突触)
 
-> **3D CG 渲染与神经视频生成互操作中枢 & 电影级低成本混合渲染管线**  
-> Interoperability Hub between 3D CG Rendering and Generative Video Models & Hybrid Cinema Pipeline.
+> **3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器 Worker 与跨模态评测基准 (`Synapse-Bench`)**  
+> Interoperability SDK, Stateless GPU Worker Runtime & Benchmark Suite between 3D CG Rendering and Generative Video Models.
 
 ---
 
-## 1. 核心定位与目标
+## 1. 核心定位与生态边界
 
-当前 3D 渲染（确定性物理几何与材质）与生成式视频模型（潜空间时序像素扩散）存在根本性的表示鸿沟。  
-**Synapse** 扮演连接两者的“神经突触”，以**极低成本实现电影级画面质量**：
-- **3D 渲染**提供精确的时空几何骨架与局部物理修正；
-- **视频生成模型**提供丰富的质感、色彩与细节补全；
-- 两者深度互操作、互为先验，而非割裂单向替代。
+当前 3D 物理渲染（确定性时空几何与辐射度量）与生成式视频扩散模型（潜空间时序分布）存在根本性的表示鸿沟。  
+**`synapse`** 位于 DervGen 生态 **Layer 2**，扮演连接两者的“神经突触”算法与评测层（落实 **RFC 0044** 神经-物理混合工业流水线）：
+
+- **向上承接编排**：作为无状态单步 GPU Worker（消费 **RFC 0039 `JobBundle`**），由 Go 分布式农场 `render-farm` 与影视管线 `narrative-rail` 在 `foundary` 推理容器中按需拉起执行，**绝不自建常驻 Python 服务端**；
+- **向下严守契约**：Python 端 `synapse.fgpp` 严格镜像 Layer 0 **`@aether//fgpp`** C++20 线格式 SSOT，与 `fulgur`（Track B 毫秒级光栅）和 `caelum-core`（Track A 物理光追）实现多通道 OpenEXR 2.0 零歧义互通；
+- **横向零拷贝协同**：风格描述符对齐 **`@aether//style` (`RFC 0043`)** 与 **ACEScg (`RFC 0058`)**；重型几何重拓扑、物理去光照与 Humanoid-53 足底锁定 IK 通过零拷贝接口委托 **`vg-core`** C++20/CUDA 原生算子执行，拒绝在 Python 中重复造轮子。
 
 ---
 
-## 2. 混合渲染管线流程（5 阶段）
+## 2. 混合渲染管线协同全景（5 阶段）
 
 ```mermaid
 flowchart LR
-    A["① 分镜布景\n(WGP-style 代理场景)"] --> B["② 白模引导视频生成\n(FGPP 几何锁死生成)"]
-    B --> C["③ 精细 3D 建模\n(Video→3D 重建与人工精修)"]
-    C --> D["④ 局部重渲染与风格对齐\n(3D+SAM2 手术刀重绘)"]
-    D --> E["⑤ 统一剪辑与成片\n(全流程色彩时序合成)"]
+    A["① 分镜布景\n(scene-forge + film-studio + wgp)"] --> B["② 白模引导视频生成\n(fulgur/caelum FGPP → synapse.adapters)"]
+    B --> C["③ 精细 3D 资产反哺\n(foundary Gen3D + vg-core + asset-forge)"]
+    C --> D["④ 局部重渲染与风格对齐\n(synapse.style + synapse.composite)"]
+    D --> E["⑤ 终审光学合成与成片\n(caelum-core 增量 + narrative-rail)"]
 
     style A fill:#e3f2fd,stroke:#1565c0
     style B fill:#fff3e0,stroke:#e65100
@@ -31,40 +32,37 @@ flowchart LR
     style E fill:#f3e5f5,stroke:#6a1b9a
 ```
 
-1. **分镜布景**：使用类 WGP/StageForge 轻量交互完成 3D 代理白模（Blocking Geometry）与运镜轨迹规划。
-2. **白模引导生成**：通过 **FGPP**（深度/法线/光流）特征引导包注入视频模型（Wan 2.1 / Seedance / Veo），生成大体风格与动态对齐的视频。
-3. **精细 3D 建模**：从生成的视频中提取多视角帧与光照，逆向重建高保真角色与道具资产并由人工介入精修。
-4. **局部重渲染与风格对齐**：对视频中穿模、畸变或不合理的局部区域提取掩膜，结合风格描述符（Style Descriptor）用 3D 引擎局部重渲染后无缝融合。
-5. **统一剪辑**：时序一致性检测、色调统一匹配，输出标准成片。
+1. **分镜布景**：在 `grand-studio` 宿主内通过 `scene-forge`、`film-studio` 与 `wgp` 完成 3D 代理白模（角色满足 $\ge 1500$ 顶点粗糙度下限）与运镜轨迹规划。
+2. **白模引导生成**：`fulgur` / `caelum-core` 导出 15 标量通道 **FGPP** OpenEXR 序列，`synapse.adapters` 驱动白盒主力（`Wan 2.1 14B` + ControlNeXt + 3D Causal VAE 软光流偏置）或黑盒商业 API（`Seedance 2.5` / `Kling 1.5` / `Veo`）生成时空受控视频。
+3. **精细 3D 资产反哺**：经 `foundary` 正交关键帧 3D 重建（`TRELLIS`/`Hunyuan3D`）破解白模反投悖论，由 `vg-core` 完成混合去光照与 Graph-Cut 缝合，并由 L2 美术在 `asset-forge` 限时精修（15 分钟硬熔断）。
+4. **局部手术刀重渲染与风格对齐**：`synapse.style` 提取视频色温、曝光与球谐主光映射为 `StyleProfile` 驱动 3D 局部重渲；`synapse.composite` 构建 `3D ∪ SAM2` 运动膨胀掩膜，在 CIE LAB 与线性 ACEScg 空间完成无缝融合。
+5. **终审合成与评测闭环**：叠加高阶物理接触阴影/焦散，全流程由 `Synapse-Bench` 四维 16 项指标量化守门。
 
 ---
 
-## 3. 四大核心互操作能力
+## 3. 模块架构与当前就绪状态
 
-- **能力 1：Video → 3D 建模**：多视角视频摄入 → 几何重建 → 材质反解（去光照） → 人工精修。
-- **能力 2：3D ↔ 视频 双向布景辅助**：正向 3D 白模生成引导信号；逆向视频反解相机与场景空间布局。
-- **能力 3：风格提取与对齐**：从生成视频提取色温、曝光、阴影软硬与材质质感描述符，直接映射驱动 3D 渲染引擎参数。
-- **能力 4：局部手术刀重渲染**：3D 投影与 SAM2 联合掩膜，沿光流膨胀，风格一致性边缘环带融合。
+> 详细架构审查见 [docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)，分阶段 15-PR 实施计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。
+
+| 模块路径 | 核心职责 | 当前状态 | 对应实施里程碑 |
+| :--- | :--- | :---: | :---: |
+| `python/synapse/bench/` | `Synapse-Bench` 场景模型、11×4 渲染条件因子、6 类轨迹与程序化几何 | 🟡 M0 原型可用 | `PR-01`, `PR-15` |
+| `python/synapse/fgpp/` | 对齐 `@aether//fgpp` 的 15 通道 OpenEXR 2.0 读写与 DLPack 张量桥接 | 🟡 内存骨架就绪 | `PR-02`, `PR-03` |
+| `python/synapse/cli/` | Agent-Native CLI（`--json`、确定性退出码 `0/10/20/30/40`、`agent_fix_hint`） | 📋 待实施 | `PR-04` |
+| `python/synapse/adapters/` | 双轨视频模型适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 `Seedance`/`Kling`/`Veo`）与 48f 锚点调度 | 📋 待实施 | `PR-05` ~ `PR-08` |
+| `python/synapse/style/` | ACEScg 逆色调映射、视频风格提取与 `@aether//style` `StyleProfile` 映射 | 📋 待实施 | `PR-09` |
+| `python/synapse/composite/` | 穿模/闪烁异常检测、`3D ∪ SAM2` 运动膨胀掩膜、16px 环带 LAB 与泊松融合 | 📋 待实施 | `PR-10`, `PR-11` |
+| `python/synapse/bridge/` | `vg-core` 零拷贝算子桥接、Track-B 白模反投防呆门禁与 HITL 15 分钟熔断器 | 📋 待实施 | `PR-12` |
+| `python/synapse/metrics/` | 时序一致性、FGPP 保真度、3D 往返保真度与风格一致性 16 项指标 | 📋 待实施 | `PR-13` |
+| `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器单步执行核与离线基准串联器 | 📋 待实施 | `PR-14` |
 
 ---
 
-## 4. 目录架构
+## 4. 文档导航
 
-```
-synapse/
-├── python/synapse/
-│   ├── fgpp/         # FGPP (Feature Guidance Package Protocol) 引导信号 SDK
-│   ├── bench/        # Synapse-Bench 标准评测场景、相机轨迹与程序化几何
-│   ├── adapters/     # 视频生成模型统一适配器 (Wan 2.1 / Seedance / Veo2)
-│   ├── pipeline/     # 5 阶段混合渲染生产管线编排调度
-│   ├── style/        # 风格提取、风格描述符与渲染参数映射
-│   ├── composite/    # 不合理区域检测、联合掩膜与手术刀合成
-│   ├── metrics/      # 跨模态时序、保真度与往返度量
-│   └── cli/          # 命令行工具 (synapse-bench 等)
-├── data/
-│   └── scenarios/    # 内置基准场景定义 JSON
-└── tests/            # 完整单元测试套件
-```
+- **[AGENTS.md](AGENTS.md)**：AI Agent 与开发者行为铁律、测试机器分工与编码规范
+- **[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)**：整体目标审查、跨仓职责定界与 10 大现状问题诊断报告
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**：M1–M4 四阶段 15 个原子 PR 可落地工程实施计划
 
 ---
 
@@ -74,6 +72,6 @@ synapse/
 # 安装开发环境
 pip install -e ".[dev]"
 
-# 运行全套测试
-pytest tests/ -v
+# 运行单元测试（日常全量回归优先在云端主力机 ubuntu24 执行）
+ssh ubuntu24 "cd ~/work/dervgen/synapse && pytest tests/ -v"
 ```
