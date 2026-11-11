@@ -1,9 +1,9 @@
 # Synapse 可落地工程实施计划 (Actionable Implementation Plan)
 
-- **计划版本**: `v1.0`
+- **计划版本**: `v1.1`
 - **前置架构决议**: [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)
 - **执行原则**:
-  1. **原子 PR 推进**：全计划拆解为 **4 个阶段（M1–M4）、15 个独立可合并、可测试的原子 PR（`PR-01` ~ `PR-15`）**，单 PR 代码净增控制在 `300 ~ 800` 行以内，严禁巨型单体提交。
+  1. **原子 PR 推进**：全计划拆解为 **4 个阶段（M1–M4）、16 个独立可合并、可测试的原子 PR（`PR-01` ~ `PR-15`，其中 `PR-14` 拆分为 `PR-14a` 与 `PR-14b`）**，单 PR 代码净增控制在 `300 ~ 800` 行以内，严禁巨型单体提交。
   2. **零 GPU 阻塞 CI**：依托 `PR-05` 的确定性 `MockVideoAdapter` 与程序化合成 FGPP 数据，100% 的核心协议、掩膜算子、色彩空间、调度逻辑与指标计算均可在云端主力机 `ubuntu24`（CPU 环境）全自动验证；真实大模型推理在 `foundary` GPU 容器专项验收。
   3. **实证数据诚实门禁（RFC 0044 §7.2）**：本计划列出的全部精度/耗时指标均为 **阶段验收门禁目标值（Target SLA）**。在对应 PR 合并且通过自动化测试（防静默失败三问：**存在、接线、执行**）前，追踪表一律保持 `🔲 待实施`。
 
@@ -14,10 +14,10 @@
 ```mermaid
 flowchart LR
     subgraph M1 ["Phase M1: 契约归正与基座 (Week 1-2)"]
-        PR01["PR-01: 修复 bench 4 处缺陷\n& T=4k+1 场景规范"]
+        PR01["PR-01: 修复 bench 4 处缺陷\n& T=4k+1 场景规范\n& 整合 generators/models"]
         PR02["PR-02: fgpp.schema 对齐\n@aether//fgpp Wire SSOT"]
         PR03["PR-03: fgpp OpenEXR 2.0 读写\n& Torch DLPack 零拷贝"]
-        PR04["PR-04: CLI 基座 (--json / 退出码\n/ agent_fix_hint)"]
+        PR04["PR-04: CLI 基座 (--json / 退出码\n/ agent_fix_hint / 入口点收敛)"]
     end
 
     subgraph M2 ["Phase M2: 双轨视频生成适配 (Week 3-4)"]
@@ -36,7 +36,9 @@ flowchart LR
 
     subgraph M4 ["Phase M4: 指标体系、Worker 与全量评测 (Week 7-8)"]
         PR13["PR-13: metrics 四维 16 项\n跨模态评测指标"]
-        PR14["PR-14: pipeline JobBundleWorker\n& BenchPipelineRunner"]
+        PR14a["PR-14a: BenchPipelineRunner\n离线评测串联器"]
+
+        PR14b["PR-14b: JobBundleWorker\n无状态容器执行核"]
         PR15["PR-15: Synapse-Bench T1-T5 30 场景\n(Humanoid-53 白模 + HTML 报告)"]
     end
 
@@ -54,16 +56,18 @@ flowchart LR
     PR03 --> PR12
     PR05 --> PR13
     PR09 --> PR13
-    PR07 --> PR14
-    PR08 --> PR14
-    PR11 --> PR14
-    PR12 --> PR14
-    PR13 --> PR14
+    PR05 --> PR14a
+    PR13 --> PR14a
+    PR07 --> PR14b
+    PR08 --> PR14b
+    PR11 --> PR14b
+    PR12 --> PR14b
+    PR14a --> PR14b
     PR01 --> PR15
-    PR14 --> PR15
+    PR14a --> PR15
 ```
 
-> **并行加速路径**：`PR-03` 落地后，**M2（模型适配线：`PR-05~08`）**、**M3-A（风格与合成线：`PR-09~11`）** 与 **M3-B（`vg-core` 桥接与 HITL 线：`PR-12`）** 三条研发支线完全解耦，可由 3 个 Agent Worktree 并行推进！
+> **并行加速路径**：`PR-03` 落地后，**M2（模型适配线：`PR-05~08`）**、**M3-A（风格与合成线：`PR-09~11`）** 与 **M3-B（`vg-core` 桥接与 HITL 线：`PR-12`）** 三条研发支线完全解耦，可由 3 个 Agent Worktree 并行推进！`PR-14` 拆分后，**`PR-14a`（评测串联器）** 仅需 `PR-05` + `PR-13`，可在 M3 中期启动，使 `PR-15`（30 场景全量评测）不再被全链路适配器阻塞。
 
 ---
 
@@ -74,6 +78,7 @@ flowchart LR
 - **涉及文件**：
   - 修改：`pyproject.toml`, `python/synapse/bench/camera.py`, `python/synapse/bench/scenario.py`, `python/synapse/bench/conditions.py`, `data/scenarios/*.json`, `tests/test_bench.py`
   - 新增：`python/synapse/py.typed`
+  - 整合：`python/synapse/generators/` → `python/synapse/bench/`, `python/synapse/models/` → `python/synapse/bench/`
 - **具体落地设计**：
   1. **修复环绕轨迹首尾重合 (`camera.py`)**：`_generate_orbit` 增加 `endpoint: Optional[bool] = None` 参数；当 `abs(azimuth_range_deg) >= 360.0` 时默认 `endpoint=False`（步长 `i / num_frames`），确保 `sparse_8view` 精确生成 `0°, 45°, ..., 315°` 共 8 个正交均匀视角，120/97 帧环绕无接缝停顿。
   2. **修复天顶/天底奇异矩阵 (`camera.py`)**：`_look_at` 检测 `abs(np.dot(forward, up_norm)) > 0.9999`，共线时自动平滑切换备用参考轴 `[0.0, 0.0, 1.0]`（或 `[-1.0, 0.0, 0.0]`），保证 `elevation_deg = ±90°` 时 `view_matrix` 正交可逆（$\det(R) = +1$）。
@@ -84,6 +89,16 @@ flowchart LR
   5. **对齐 `Wan 2.1` $T = 4k + 1$ 帧数法则 (`data/scenarios/*.json`)**：
      - `Scenario` 新增 `temporal_mode: Literal["continuous_clip", "discrete_views"] = "continuous_clip"`；
      - 将连续视频基准场景帧数统一更新为 **`97` 帧**（对齐 `0, 48, 96` 物理锚点与 3D Causal VAE $\tau=25$），将 `t1_rigid_sphere_sparse.json` 标记为 `temporal_mode: "discrete_views"`（`num_frames: 8`）。
+  6. **整合已有 `generators` 与 `models` 模块至 `bench/` 包（消除孤立代码）**：
+
+     - 将 `generators/rasterizer.py` 的软光栅核心逻辑（多通道 FGPP 渲染）重构整合为 `bench/rasterizer.py`，作为 `synapse-bench export-fgpp` 程序化生成黄金测试 FGPP 序列的基础引擎；
+
+     - 将 `models/loader.py`（glTF/OBJ 加载）整合为 `bench/model_loader.py`，供 `bench/procedural.py` 与 `bench/registry.py` 复用；
+
+     - 将 `generators/dataset.py` 与 `generators/visualizer.py` 中仍有价值的接触表生成与数据集可视化函数迁入 `bench/` 或 `viewer/`，迁移完成后删除空壳 `generators/` 与 `models/` 包目录；
+
+     - `viewer/` 保留为离线开发调试工具（不违反 NG-1，因其为本地开发辅助而非生产常驻服务）。
+
 - **验证门禁**：`ubuntu24` 执行 `pip wheel .` 安装到隔离虚拟环境后（脱离源码目录）运行 `pytest`、`mypy --strict`、`ruff check` 100% 通过；测试覆盖 `±90°` 仰角、`sparse_8view` 45° 精确间隔、`F08_scale` 距离缩放。
 
 ---
@@ -133,6 +148,10 @@ flowchart LR
      - `synapse fgpp validate <dir> [--json]`：校验 EXR 通道完整性、类型、`NaN/Inf` 污染、`metadata.json` 矩阵正交性与 `4k+1` 帧数合规性，违规时返回 `exit_code=10` 及精确 `agent_fix_hint`；
      - `synapse fgpp inspect <dir> [--json]`：输出序列摘要（分辨率、FPS、锚点帧索引、深度分位数分布）；
      - `synapse-bench list [--tier T1] [--json]` 与 `synapse-bench export-fgpp --scenario <id> --out <dir> [--json]`（用程序化软光栅为内置几何体生成黄金测试 FGPP 序列！）。
+  3. **CLI 入口点收敛（`pyproject.toml`）**：废弃历史遗留的 `synapse-data-gen` 与 `synapse-viewer` 独立入口点，统一收敛为 `synapse generate` 与 `synapse view` 子命令；保留 `synapse-bench` 作为评测专用快捷入口。
+
+  4. **`pyproject.toml` 依赖分层修正**：新增 `[gpu]` 可选依赖组（`torch>=2.0.0`），将 `torch` 从 `[metrics]` 移出；`[metrics]` 仅保留 CPU 指标依赖（`scipy`, `scikit-image`）；新增 `[metrics-gpu]` 组合（`synapse[metrics,gpu]`）供需要 FVD 等 GPU 指标的场景使用。同时在 `[tool.setuptools.package-data]` 中显式配置场景 JSON 包含规则，或将 `data/scenarios/` 迁入 `python/synapse/bench/scenarios/` 后由 `find` 自动发现。
+
 - **验证门禁**：子进程测试所有 CLI 命令在成功/参数非法/路径缺失三种路径下的退出码（`0 / 10 / 20`）及 `json.loads(stdout)` 100% 合法。
 
 ---
@@ -161,7 +180,7 @@ flowchart LR
      - 输入逐帧屏幕光流 $\mathbf{f}_{t \to t+1}$ `[T, H, W, 2]` 与线性深度 `depth` `[T, H, W]`（要求 $T = 4k + 1$）；
      - 执行跨 4 帧前向欧拉轨迹积分，结合前后向光流一致性校验生成遮挡掩膜 $O_{\tau \to \tau'} \in \{0, 1\}$；
      - 使用 $8 \times 8$ **最小深度池化（Min-Depth Pooling）** 优先保留前景刚体/角色运动向量，输出潜空间扭曲网格 $\mathcal{W}_{\tau \to \tau'}^{\text{latent}}$ `[τ, H/8, W/8, 2]` 与截断软偏置权重掩膜（杜绝背景静止像素稀释前景边缘运动）。
-- **验证门禁**：构造已知刚体平移（如前景球每帧右移 `8px`，背景静止）的合成 17 帧 FGPP 序列，验证池化后潜空间位移精确等于 `(8px * 4) / 8 = 4.0` 个潜空间网格单位，且被遮挡边缘 $O_{\tau \to \tau'} = 0$。
+- **验证门禁**：构造已知刚体平移（如前景球每帧右移 `8px`，背景静止）的合成 17 帧 FGPP 序列，验证池化后潜空间位移等于 `4.0 ± 0.5` 个潜空间网格单位（边缘像素池化容差；测试用例中前景球半径须远大于 8×8 池化窗口以确保内部像素无混叠），且被遮挡边缘 $O_{\tau \to \tau'} = 0$。
 
 ---
 
@@ -262,20 +281,28 @@ flowchart LR
 
 ---
 
-### PR-14：`feat(pipeline): implement stateless RFC 0039 JobBundleWorker and local BenchPipelineRunner`
+### PR-14a：`feat(pipeline): implement local BenchPipelineRunner for offline evaluation`
+- **解决痛点**：提供离线评测串联能力，使 PR-15 的 Synapse-Bench 可以在 `MockVideoAdapter` + `metrics` 就绪后立即串联跑通，无需等待全部适配器和合成模块。
+- **涉及文件**：
+  - 新增：`python/synapse/pipeline/bench_runner.py`, `tests/test_bench_runner.py`
+  - 修改：`python/synapse/pipeline/__init__.py`, `python/synapse/cli/__init__.py`
+- **具体落地设计**：
+  1. **`bench_runner.py` (`BenchPipelineRunner`)**：面向离线评测串联"场景加载 → FGPP 生成/加载 → 适配器生成 → 指标门禁判定"，支持 `--adapter mock` 一键运行；当指定 `--adapter wan|seedance` 时自动检测对应适配器是否可用，不可用时给出明确 `EXIT_BACKEND_UNAVAILABLE` 提示。
+- **验证门禁**：使用 `MockVideoAdapter` 端到端跑通"程序化 FGPP → Mock 视频生成 → 指标计算 → Pass/Fail 判定"全流程，退出码 `0`。
+
+---
+
+### PR-14b：`feat(pipeline): implement stateless RFC 0039 JobBundleWorker for container execution`
 - **解决痛点**：落实审计报告 `[P0-2]`，以无状态容器执行核对接 `render-farm`（Go），彻底规避服务端 Python 反模式。
 - **涉及文件**：
-  - 新增：`python/synapse/pipeline/bundle_worker.py`, `python/synapse/pipeline/bench_runner.py`, `tests/test_bundle_worker.py`
+  - 新增：`python/synapse/pipeline/bundle_worker.py`, `tests/test_bundle_worker.py`
   - 修改：`python/synapse/pipeline/__init__.py`, `python/synapse/cli/__init__.py`
 - **具体落地设计**：
   1. **`bundle_worker.py` (`JobBundleWorker`)**：
      - 解析符合 RFC 0039 的 `bundle_manifest.json`（仅消费本地工作目录或只读/只写 Presigned URLs，**零数据库连接、零 `asset-vault` SDK 耦合**）；
      - 支持 4 种原子容器执行模式：`fgpp_validate`、`neural_video_generate`、`style_extract_and_map`、`surgical_composite`；
      - 执行完毕写出 `result_manifest.json`（含输出文件 SHA256、耗时遥测、指标摘要）并立即退出进程；挂载至 CLI `synapse worker run --bundle <path> [--json]`。
-  2. **`bench_runner.py` (`BenchPipelineRunner`)**：
-     - 面向离线评测串联“场景加载 → FGPP 生成/加载 → 适配器生成 → 局部修复/逆向评测 → 指标门禁判定”，支持 `--adapter mock|wan|seedance` 一键运行。
 - **验证门禁**：构造完整模拟 `JobBundle` 目录，通过 `synapse worker run --bundle ... --json` 跑通全部 4 种原子阶段，校验输出产物完整性与退出码 `0`。
-
 ---
 
 ### PR-15：`feat(bench): expand Synapse-Bench to 30 T1-T5 scenarios, Humanoid-53 whitebox proxy, and HTML report`
@@ -307,21 +334,23 @@ flowchart LR
 
 | PR 编号 | 阶段 | 核心交付模块 | 依赖前置 | 预估工作量 | 目标测试门禁 (`ubuntu24`) | 当前状态 |
 | :---: | :---: | :--- | :---: | :---: | :--- | :---: |
-| **PR-01** | M1 | `bench` 4 处缺陷修复 + `T=4k+1` 规范 + Wheel 资源打包 | — | 0.5 天 | `tests/test_bench.py` + 隔离 Wheel 安装测试 | 🔲 待实施 |
+| **PR-01** | M1 | `bench` 4 处缺陷修复 + `T=4k+1` 规范 + Wheel 资源打包 + `generators`/`models` 整合 | — | 1.0 天 | `tests/test_bench.py` + 隔离 Wheel 安装测试 | 🔲 待实施 |
 | **PR-02** | M1 | `fgpp.schema` 对齐 `@aether//fgpp` 15 通道 & 行列主序契约 | — | 1.0 天 | `tests/test_fgpp_contract.py` (误差 $<10^{-12}$) | 🔲 待实施 |
-| **PR-03** | M1 | `fgpp.io` 多通道 OpenEXR 读写、消毒器与 Torch DLPack 桥接 | PR-02 | 1.5 天 | `tests/test_fgpp_io.py` (`UINT32` 逐 bit 无损) | 🔲 待实施 |
+| **PR-03** | M1 | `fgpp.io` 多通道 OpenEXR 读写、消毒器与 Torch DLPack 桥接 | PR-02 | 2.0 天 | `tests/test_fgpp_io.py` (`UINT32` 逐 bit 无损) | 🔲 待实施 |
 | **PR-04** | M1 | `errors.py` + Agent-Native CLI (`--json`, 退出码 `0/10/20/30/40`) | PR-01, PR-03 | 1.0 天 | `tests/test_cli.py` | 🔲 待实施 |
 | **PR-05** | M2 | `adapters.base` 抽象注册表 + 零 GPU 确定性 `MockVideoAdapter` | PR-03 | 1.0 天 | `tests/test_adapters_base.py` | 🔲 待实施 |
 | **PR-06** | M2 | `adapters.scheduler` 48f 锚点滑窗 + 3D Causal VAE 光流积分池化 | PR-05 | 1.5 天 | `tests/test_condition_scheduler.py` | 🔲 待实施 |
 | **PR-07** | M2 | `adapters.wan` Tier-1 白盒 ControlNeXt + 软光流偏置载荷 | PR-06 | 1.5 天 | `tests/test_wan_adapter.py` | 🔲 待实施 |
 | **PR-08** | M2 | `adapters.cloud` Tier-2 黑盒 (`Seedance`/`Kling`/`Veo`) 降级适配 | PR-06 | 1.0 天 | `tests/test_cloud_adapters.py` | 🔲 待实施 |
-| **PR-09** | M3 | `style` ACEScg 逆色调映射 + 风格提取 + RFC 0043 `StyleProfile` 导出 | PR-03 | 1.5 天 | `tests/test_style.py` (光源误差 $<8^\circ$) | 🔲 待实施 |
+| **PR-09** | M3 | `style` ACEScg 逆色调映射 + 风格提取 + RFC 0043 `StyleProfile` 导出 | PR-03 | 2.0 天 | `tests/test_style.py` (光源误差 $<8^\circ$) | 🔲 待实施 |
 | **PR-10** | M3 | `composite.detector` 异常检测 + `3D ∪ SAM2` 运动膨胀掩膜 | PR-03 | 1.0 天 | `tests/test_composite_mask.py` | 🔲 待实施 |
 | **PR-11** | M3 | `composite.blend` 16px 环带 LAB 匹配 + 泊松融合 + 光学增量合成 | PR-09, PR-10 | 1.5 天 | `tests/test_composite_blend.py` ($\Delta E_{00} < 2.5$) | 🔲 待实施 |
 | **PR-12** | M3 | `bridge` (`vg-core`/`foundary` 薄桥接 + Track-B 防呆门禁 + 15m 熔断) | PR-03 | 1.0 天 | `tests/test_bridge_and_hitl.py` | 🔲 待实施 |
 | **PR-13** | M4 | `metrics` 四维 16 项跨模态时序/保真度/往返/风格指标 | PR-05, PR-09 | 1.5 天 | `tests/test_metrics.py` | 🔲 待实施 |
-| **PR-14** | M4 | `pipeline` 无状态 `JobBundleWorker` + `BenchPipelineRunner` | PR-07~13 | 1.5 天 | `tests/test_bundle_worker.py` | 🔲 待实施 |
-| **PR-15** | M4 | `Synapse-Bench` 30 场景 (T1–T5) + Humanoid-53 白模 + HTML 报告 | PR-01, PR-14 | 1.5 天 | `tests/test_bench_full_suite.py` (CPU `<30s`) | 🔲 待实施 |
+| **PR-14a** | M4 | `pipeline` 离线 `BenchPipelineRunner` 评测串联器 | PR-05, PR-13 | 1.0 天 | `tests/test_bench_runner.py` | 🔲 待实施 |
+
+| **PR-14b** | M4 | `pipeline` 无状态 `JobBundleWorker` 容器执行核 | PR-07~12, PR-14a | 1.0 天 | `tests/test_bundle_worker.py` | 🔲 待实施 |
+| **PR-15** | M4 | `Synapse-Bench` 30 场景 (T1–T5) + Humanoid-53 白模 + HTML 报告 | PR-01, PR-14a | 2.5 天 | `tests/test_bench_full_suite.py` (CPU `<30s`) | 🔲 待实施 |
 
 ---
 
@@ -334,3 +363,5 @@ flowchart LR
 | **未微调 DiT 模型强行注入大权重光流偏置导致画质崩塌** | 在原始 `Wan 2.1` 基座权重上设置过大 $\gamma_\theta$ | `PR-07` 默认将未加载微调 LoRA 时的软偏置门控初始化为 $\gamma_\theta = 0.0$，并附带遮挡自动释放门控 $O_{\tau \to \tau'}$ |
 | **LDR 视频与 HDR 物理阴影直接相乘导致暗部死黑与色偏** | 在非线性 sRGB 空间直接混合 `caelum-core` AOV | `PR-09` & `PR-11` 强制经 `aces_color.py` 逆色调映射至线性 `ACEScg` 空间完成合成后再重映射输出 |
 | **长尾坏样本引发人工无底洞返工** | 复杂多手交互或玻璃折射导致局部修复与去光照反复失败 | `PR-12` 实装 15 分钟硬熔断器 (`EXIT_CIRCUIT_BREAKER = 40`)，超时自动回退重调 3D 白模或降级为单向视角贴花 |
+
+| **已有 `generators`/`models` 模块整合遗漏导致死代码或功能重复** | PR-01 未处理历史模块，后续 PR 重复实现已有功能 | `PR-01` 显式整合 `generators/rasterizer` → `bench/rasterizer` 与 `models/loader` → `bench/model_loader`，删除空壳目录，杜绝功能重复 |
