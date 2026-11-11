@@ -342,7 +342,7 @@ flowchart LR
 
 在 `synapse` 仓库内，LoRA 流水线模块严格遵循分层与无状态规范：
 
-### 5.1 目录组织结构
+### 5.1 目录组织结构（对齐 `DESIGN_REVIEW_AND_ALIGNMENT.md` §3.1）
 ```
 python/synapse/
 ├── adapters/
@@ -352,21 +352,15 @@ python/synapse/
 │   │   ├── manager.py                 # MultiLoRAManager: 动态融合、掩膜隔离与正交化
 │   │   └── patcher.py                 # DiT Attention 层的 PyTorch 挂钩与权重注入
 │   └── wan.py                         # WanAdapter: 挂接 MultiLoRAManager
-├── training/                          # 训练与预处理 (Worker Runtime)
-│   ├── data/
-│   │   ├── pre_encode_vae.py          # 3D Causal VAE 离线预编码 Worker
-│   │   ├── pre_encode_text.py         # T5/CLIP 离线词嵌入提取
-│   │   └── pool_fgpp.py               # FGPP 最小深度池化与光流张量生成
-│   ├── peft/
-│   │   ├── trainer.py                 # DiT Flow-Matching 分布式 LoRA 训练器
-│   │   └── loss.py                    # 潜空间与几何辅助损失函数
-│   └── packager.py                    # 资产打包器与校验器
-└── bench/
-    └── lora_evaluator.py              # Synapse-Bench LoRA 自动化评测打分器
+└── training/                          # 无状态训练与预处理 (Worker Runtime)
+    ├── feature_store.py               # 3D Causal VAE + T5 + FGPP 最小深度池化与 WebDataset 打包
+    ├── losses.py                      # Flow-Matching + Sobel 深度边缘 + 法线一致性 + DPO 损失
+    ├── trainer.py                     # DiT 分布式 LoRA 训练器 (5 类正交 LoRA)
+    └── packager.py                    # Safetensors 打包器与 Synapse-Bench 准出评估器
 ```
 
 ### 5.2 统一 CLI 接口与确定性退出码
-所有 CLI 工具支持 `--json` 输出结构化诊断数据，并遵循确定的退出状态码：
+所有 CLI 工具统一收敛至顶层 `synapse lora ...` 子命令族（不额外新建顶层二进制入口），支持 `--json` 输出结构化诊断数据，并遵循确定的退出状态码：
 - `0`: 成功完成；
 - `10`: 参数格式或 `lora_manifest.json` 契约校验失败；
 - `20`: 依赖的 FGPP EXR 序列或预编码张量文件缺失；
@@ -377,45 +371,45 @@ python/synapse/
 
 ```bash
 # 1. 离线潜空间预计算 (在 GPU 容器中批量运行)
-synapse-lora prepare-data \
-  --scene-dir data/scenarios/t2_humanoid_walk/ \
-  --output-wds data/cache/t2_humanoid_wds.tar \
+synapse lora prepare-data \
+  --input data/scenarios/t2_humanoid_walk/ \
+  --out-wds data/cache/t2_humanoid_wds.tar \
   --vae-type wan2.1_3d_causal \
   --json
 
 # 2. 启动分布式 LoRA 微调
-synapse-lora train \
+synapse lora train \
   --config configs/lora/char_valkyrie.yaml \
   --dataset data/cache/t2_humanoid_wds.tar \
-  --output-dir checkpoints/lora_valkyrie_v1 \
+  --out checkpoints/lora_valkyrie_v1 \
   --json
 
 # 3. 运行 Synapse-Bench 自动化准出验收
-synapse-lora eval \
+synapse lora eval \
   --lora-bundle checkpoints/lora_valkyrie_v1 \
-  --golden-scenario t2_humanoid_walk_orbit \
+  --scenario t2_humanoid_walk_orbit \
   --json
 
 # 4. 多 LoRA 无损离线融合为新权重 (可选发布形态)
-synapse-lora merge \
-  --base-model weights/wan2.1_14b.safetensors \
+synapse lora merge \
+  --base weights/wan2.1_14b.safetensors \
   --lora checkpoints/lora_valkyrie_v1:scale=0.8 \
   --lora checkpoints/lora_anime_style:scale=0.5 \
-  --output weights/wan2.1_valkyrie_custom.safetensors \
+  --out weights/wan2.1_valkyrie_custom.safetensors \
   --json
 ```
 
 ---
 
-## 6. 分阶段实施路线图 (Implementation Roadmap)
+## 6. 分阶段实施路线图 (映射至主计划 Phase M5: `PR-16` ~ `PR-19`)
 
-全套 LoRA 流水线划分为 4 个原子 PR，与当前主实施计划无缝挂接：
+> 完整类/函数级实施蓝图详见 [docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)。
 
 ```mermaid
 flowchart LR
-    PR_L01["PR-L01: LoRA 契约 Schema<br/>& 运行时 MultiLoRAManager<br/>(挂接 WanAdapter)"] --> PR_L02["PR-L02: 特征离线预编码<br/>(3D VAE + FGPP 池化<br/>+ WebDataset 封装)"]
-    PR_L02 --> PR_L03["PR-L03: DiT LoRA 训练引擎<br/>(PEFT Trainer + 几何辅助损失)"]
-    PR_L03 --> PR_L04["PR-L04: 自动化评测套件<br/>& Synapse-Bench 质量门禁"]
+    PR16["PR-16 (原 PR-L01): LoRA Manifest\n& MultiLoRAManager (Cryptomatte 掩膜)"] --> PR17["PR-17 (原 PR-L02): 离线潜空间缓存\n(3D VAE + FGPP 池化 + WebDataset)"]
+    PR17 --> PR18["PR-18 (原 PR-L03): DiT PEFT 训练器\n(Flow-Matching + 边缘/法线/DPO 损失)"]
+    PR18 --> PR19["PR-19 (原 PR-L04): 准出门禁评估器\n& synapse lora CLI 集成"]
 ```
 
 ### PR-L01：`feat(lora): add LoRA manifest schema and runtime MultiLoRAManager in adapters`

@@ -301,12 +301,17 @@ synapse inspect export-rl-data \
 
 ---
 
-## 7. 实施计划与里程碑 (Roadmap & Milestones)
+## 7. 跨仓边界澄清与主计划映射 (Phase M6: `PR-20` ~ `PR-23`)
 
-| 阶段 | 交付物 | 核心成果 | 依赖项 | 耗时 |
-|:---|:---|:---|:---|:---:|
-| **Phase 1** | `synapse.inspect.align` | 实现 Fibonacci 球面 DINOv2 检索 + FoundationPose 姿态对齐，输出标准相机外参 | `fulgur` headless, `torch` | 1.5 周 |
-| **Phase 2** | `synapse.inspect.jev` | 接入 `Visual Jev` 共享视觉上下文推理引擎，实现批量多通道强类型质检打分 | `vllm`, `FGPP` | 1.5 周 |
-| **Phase 3** | `synapse.inspect.macro`| 实现动态微距相机视锥拉近，2D 缺陷反投 3D BoundingBox / Vertex Mask | `aether.math` | 1.0 周 |
-| **Phase 4** | `synapse.inspect.refine`| 接入 Trellis-Refine / Inpainting 局部网格修补与贴图缝合，完成往返验证门禁 | `vg-core` | 1.5 周 |
-| **Phase 5** | `synapse.inspect.flywheel`| 完整挂接 RFC 0020 / RFC 0021 时间轴，落地 DPO / PRM 训练样本自动化导出 | `forgekit` | 1.0 周 |
+> [!IMPORTANT]
+> **与 `vg-core`（NG-3）及 `RFC 0053`（Agentic 3D Repair Harness）的去重边界**：
+> - 密集几何拓扑校验（非流形边、半边流形度、BVH 距离、四边面重拓扑、足底零滑移 IK）严格委托 **`vg-core` C++20/CUDA** 经 `synapse.bridge.vg_bridge` 执行，严禁在 `synapse.inspect` 中用 Python 重写几何网格循环；
+> - 交互式 MCP 修复沙箱（`RepairSandbox`）与 8 机位摄影棚评测归属 `forgekit` / `grand-studio` / `asset-forge`（RFC 0053）；`synapse.inspect` 聚焦于 **DINOv2 姿态反求包装、微距视锥规划、Visual Jev 校准 Logits 强类型裁决、以及 RFC 0020/0021 DPO/PRM 训练数据导出**。
+> - 详细工程拆解见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
+
+| 原子 PR | 交付模块 | 核心成果 | 依赖项 | 预估工时 |
+|:---:|:---|:---|:---|:---:|
+| **`PR-20`** | `synapse.inspect.schemas` & `align` | `InspectionReport` v2.0 契约 + Fibonacci 球面 DINOv2 检索 + `vg.recon` 6DoF 精配准 | `PR-12`, `PR-13` | 1.5 天 |
+| **`PR-21`** | `synapse.inspect.macro` | 同位多通道残差热力图计算 + 虚拟微距相机视锥规划与 2D→3D 包围球反投 | `PR-20` | 1.5 天 |
+| **`PR-22`** | `synapse.inspect.jev_critic` | `Visual Jev` 共享视觉上下文客户端（校准 Logits 提取）+ `asset_inspect_3d` Worker 模式 | `PR-21`, `PR-14b` | 1.5 天 |
+| **`PR-23`** | `synapse.inspect.flywheel_exporter`| `Trellis-Refine` 往返编排 + RFC 0020/0021 `IntentGroup` / `StepAnnotation` / Undo-DPO JSONL 导出 | `PR-12`, `PR-22` | 1.5 天 |

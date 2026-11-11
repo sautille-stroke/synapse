@@ -2,7 +2,8 @@
 
 - **文档状态**: Accepted Baseline (`v1.0`)
 - **审查范围**: `synapse` 仓库整体目标、当前 `v0.1.0` 基线代码、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
-- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
+- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 30 PRs)
+- **关联跨文档评审与对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-01~RV-10` 契约锁死)
 - **关联设计规范**:
   - **行业差距与代偿设计规范**: [docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
   - **全系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
@@ -243,8 +244,8 @@ synapse/
 │   │   ├── procedural.py            # 基础几何基元 + Humanoid-53 (>=1500 顶点) 铰接代理白模
 │   │   ├── registry.py              # 按需拉取重型测试资产 (SHA256 强校验 + 本地缓存)
 │   │   └── report.py                # 自包含 HTML 评估仪表盘与差分热力图生成
-│   └── cli/                         # CLI-First 工具链 (--json, 确定性退出码, agent_fix_hint)
-│       └── __init__.py              # `synapse` (fgpp/worker) 与 `synapse-bench` (list/run/report)
+│   ├── cli/                         # CLI-First 工具链 (--json, 确定性退出码, agent_fix_hint)
+│   │   └── __init__.py              # `synapse` (fgpp/worker/lora/inspect/rsi) 与 `synapse-bench`
 │   ├── generators/                  # [v1.1 整合规划] 已有软光栅数据集生成器 → PR-01 整合至 bench/
 │   │   ├── rasterizer.py            # 多通道 FGPP 软光栅核心 → bench/rasterizer.py
 │   │   ├── dataset.py               # 多角度数据集生成 → 有价值部分迁入 bench/
@@ -252,12 +253,14 @@ synapse/
 │   ├── models/                      # [v1.1 整合规划] 已有 3D 模型加载器 → PR-01 整合至 bench/
 │   │   ├── asset.py                 # 资产数据模型 → bench/model_loader.py
 │   │   └── loader.py                # glTF/OBJ 加载 → bench/model_loader.py
-│   ├── viewer/                      # [保留] 离线开发调试工具 (本地 HTTP 预览器，NG-1 豁免)
-│   │   ├── server.py                # 本地数据集预览 HTTP 服务（仅开发调试用途）
-│   │   └── static_html.py           # 自包含 HTML 单页预览模板
+│   └── viewer/                      # [保留] 离线开发调试工具 (本地 HTTP 预览器，NG-1 豁免)
+│       ├── server.py                # 本地数据集预览 HTTP 服务（仅开发调试用途，绑定 127.0.0.1）
+│       └── static_html.py           # 自包含 HTML 单页预览模板
 ├── data/scenarios/                  # T1-T5 标准化场景定义 JSON (同步挂载进 wheel package-data)
 └── tests/                           # 单元测试、@aether//fgpp 跨语言黄金契约测试与 Mock E2E 测试
 ```
+
+> **v2.0 全域统一目录树（含 Phase M5–M8 扩展模块 `lora/`、`inspect/`、`rsi/`、`telemetry/` 与 `tools/data-inspector/`）**：详见 **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) §3**。
 
 ---
 
@@ -271,7 +274,6 @@ synapse/
 4. **显存前瞻预测与三级自适应弹性降级 (`Proactive OOM Defense`)**：解析式精确建模 DiT 峰值显存，自动触发空间 Tiling 或短因果窗口降级，消除未捕获的 CUDA OOM 崩溃；
 5. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Regularization`)**：对极端高光执行连续软钳位，确保线性 ACEScg 辐射能量守恒，杜绝 NaN/Inf 浮点污染；
 6. **全链路 W3C 分布式追踪与 Agent 自愈闭环 (`Unified Telemetry`)**：贯穿 `traceparent` / `tracestate`，统一确定性退出码 `0/10/20/30/40` 并输出标准化 `agent_fix_hint`。
-```
 
 ---
 
@@ -281,7 +283,16 @@ synapse/
 
 1. **合成数据反哺飞轮 (`Synthetic Data Loop`)**：以 `fulgur` 毫秒级 15 通道 FGPP 生成无穷成对数据，通过 5 维解耦 LoRA 定向提升开源 DiT 的几何服从度，绕开通用千万卡底模军备竞赛；
 2. **48 帧物理强锚点与因果光流积分 (`Physical Anchors & Latent Flow Warping`)**：以 48 帧硬性重置截断误差累积，以 $W=97, S=64, \Delta=33$ 因果滑动窗口突破时间限制；
-3. **同位解耦多通道与 Visual Jev 强类型质检门禁 (`Decoupled Macro Jev QA`)**：视锥微距放大聚焦，百毫秒 Logits 校准置信度，前置拦截 2D 瑕疵，守死 RFC 0044 §4.4 反投防呆门禁；
+3. **同位解耦多通道与 Visual Jev 强类型质检门禁 (`Decoupled Macro Jev QA`)**：视锥微距放大聚焦，百毫秒 Logits 校准置信度，守死 RFC 0044 §4.4 反投防呆门禁；
 4. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Guard`)**：软约束最大辐射度在 12.0 内，保持全链路 ACEScg 辐射能量守恒，杜绝高光溢出与 NaN/Inf 浮点污染；
 5. **无状态自洽作业闭包与自愈总线 (`Stateless JobBundle & Remediation Bus`)**：坚守 Rule 11（Server-side Zero-Python），确立 `0/10/20/30/40` 确定性退出状态码与可操作 `agent_fix_hint`；
 6. **现存具体工程实现缺陷修补规范 (`Concrete Defect Remediation`)**：全量锁死 `camera.py` 360° 环绕无重复、仰角 $\pm 90^\circ$ 正交非奇异、Conditions 因子绑定、Wan 2.1 $T=4k+1$ 与 Wheel 打包资源多级寻址规范。
+
+---
+
+## 7. 全域架构对齐与分阶段落地总纲 (`v2.0` Master Plan)
+
+针对多篇专项设计演进过程中产生的跨文档契约冲突与孤立规划问题，全仓通过以下三层治理体系完成架构收口与原子化排期：
+
+- **全域设计审查与契约对齐总纲**：**[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（识别并解决 `RV-01` ~ `RV-10` 共 10 项关键架构隐患，锁定唯一目录树、双入口 CLI 语法、8 阶段 `JobBundleWorker` 契约与三档分级评测门禁）。
+- **两期八阶段 30-PR 主实施计划 (`v2.0`)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 5 份子计划（覆盖 `M1`–`M8`，共 `30` 个可独立合入的原子 PR 与 7-Wave 多 Agent 并行执行矩阵）。
