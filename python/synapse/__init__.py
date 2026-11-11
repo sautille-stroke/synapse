@@ -15,37 +15,58 @@ Submodules:
     cli         CLI tools
 """
 
-from synapse import (
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING
+
+__version__ = "0.1.0"
+
+# Lightweight submodules that have no heavy third-party deps (cv2, numba,
+# trimesh) are imported eagerly so that ``import synapse`` stays fast in
+# minimal / CI environments.
+from synapse import (  # noqa: E402
     adapters,
     bench,
     cli,
     composite,
     fgpp,
-    generators,
     inspect,
     metrics,
-    models,
     pipeline,
     style,
     training,
-    viewer,
 )
 
-__version__ = "0.1.0"
+# Heavy submodules are lazy-loaded: they pull in cv2 (generators/dataset.py),
+# numba (generators/rasterizer.py), or trimesh (models/loader.py) at import
+# time.  Deferring them avoids ImportError in environments that only need the
+# lightweight core (e.g. FGPP SDK, bench scenarios, CLI list).
+_LAZY_SUBMODULES = {"generators", "models", "viewer"}
+
+if TYPE_CHECKING:  # pragma: no cover — static analysis only
+    from synapse import generators, models, viewer
+
+
+def __getattr__(name: str):  # noqa: N807
+    if name in _LAZY_SUBMODULES:
+        return importlib.import_module(f"synapse.{name}")
+    raise AttributeError(f"module 'synapse' has no attribute {name!r}")
+
 
 __all__ = [
-    "fgpp",
-    "models",
-    "generators",
-    "viewer",
+    "__version__",
     "adapters",
-    "pipeline",
-    "style",
-    "composite",
-    "metrics",
     "bench",
     "cli",
+    "composite",
+    "fgpp",
+    "generators",
     "inspect",
+    "metrics",
+    "models",
+    "pipeline",
+    "style",
     "training",
-    "__version__",
+    "viewer",
 ]
