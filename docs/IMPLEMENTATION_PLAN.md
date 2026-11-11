@@ -3,6 +3,7 @@
 - **计划版本**: `v1.2`
 - **前置架构决议**: [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)
 - **前置系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
+- **前置行业差距与代偿设计规范**: [docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
 - **前置专项设计规范**:
   - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) (LoRA 微调流水线设计)
   - [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md) (数据检查器方案)

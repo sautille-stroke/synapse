@@ -62,6 +62,7 @@ flowchart LR
 
 - **[AGENTS.md](AGENTS.md)**：AI Agent 与开发者行为铁律、测试机器分工与编码规范
 - **[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)**：整体目标审查、跨仓职责定界与 10 大现状问题诊断报告
+- **[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)**：**行业成熟流水线对比差距与当前范围代偿性系统设计规范**（Wonder Studio/UE5/Runway 对标、6 大核心维度差距、6 大代偿性架构设计与具体代码修复契约）
 - **[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)**：**Synapse 2.0 系统设计增强规范**（流式潜空间切片、拓扑突变重锚定、Wire Guard 自动契约、显存 OOM 弹性降级、软肩逆色调映射与分布式自愈）
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**：M1–M4 四阶段 16 个原子 PR 可落地工程实施计划
 - **[docs/DESIGN_LORA_PIPELINE.md](docs/DESIGN_LORA_PIPELINE.md)**：LoRA & PEFT 微调流水线设计规范（合成数据、离线潜空间缓存、Multi-LoRA 调度与准出门禁）

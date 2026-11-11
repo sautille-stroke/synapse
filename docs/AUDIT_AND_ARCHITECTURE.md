@@ -4,6 +4,7 @@
 - **审查范围**: `synapse` 仓库整体目标、当前 `v0.1.0` 基线代码、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
 - **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 - **关联设计规范**:
+  - **行业差距与代偿设计规范**: [docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
   - **全系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
   - **LoRA 微调流水线设计**: [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md)
   - **数据检查器方案**: [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md)
@@ -270,3 +271,16 @@ synapse/
 5. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Regularization`)**：对极端高光执行连续软钳位，确保线性 ACEScg 辐射能量守恒，杜绝 NaN/Inf 浮点污染；
 6. **全链路 W3C 分布式追踪与 Agent 自愈闭环 (`Unified Telemetry`)**：贯穿 `traceparent` / `tracestate`，统一确定性退出码 `0/10/20/30/40` 并输出标准化 `agent_fix_hint`。
 ```
+
+---
+
+## 6. 行业成熟流水线对比、核心差距与当前范围内的代偿性架构设计
+
+对标 Wonder Studio、Unreal Engine 5、Runway Gen-3 与 TRELLIS 等行业成熟生产体系，本系统客观剖析六大核心差距（底模先验、几何度量控制、双向往返闭环误差累积、DCC 视口交互、工业抗压覆盖、基础代码成熟度），并正式确立 **[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)** 作为当前工程范围内的代偿性架构设计基线：
+
+1. **合成数据反哺飞轮 (`Synthetic Data Loop`)**：以 `fulgur` 毫秒级 15 通道 FGPP 生成无穷成对数据，通过 5 维解耦 LoRA 定向提升开源 DiT 的几何服从度，绕开通用千万卡底模军备竞赛；
+2. **48 帧物理强锚点与因果光流积分 (`Physical Anchors & Latent Flow Warping`)**：以 48 帧硬性重置截断误差累积，以 $W=97, S=64, \Delta=33$ 因果滑动窗口突破时间限制；
+3. **同位解耦多通道与 Visual Jev 强类型质检门禁 (`Decoupled Macro Jev QA`)**：视锥微距放大聚焦，百毫秒 Logits 校准置信度，前置拦截 2D 瑕疵，守死 RFC 0044 §4.4 反投防呆门禁；
+4. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Guard`)**：软约束最大辐射度在 12.0 内，保持全链路 ACEScg 辐射能量守恒，杜绝高光溢出与 NaN/Inf 浮点污染；
+5. **无状态自洽作业闭包与自愈总线 (`Stateless JobBundle & Remediation Bus`)**：坚守 Rule 11（Server-side Zero-Python），确立 `0/10/20/30/40` 确定性退出状态码与可操作 `agent_fix_hint`；
+6. **现存具体工程实现缺陷修补规范 (`Concrete Defect Remediation`)**：全量锁死 `camera.py` 360° 环绕无重复、仰角 $\pm 90^\circ$ 正交非奇异、Conditions 因子绑定、Wan 2.1 $T=4k+1$ 与 Wheel 打包资源多级寻址规范。
