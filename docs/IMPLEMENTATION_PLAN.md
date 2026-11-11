@@ -8,6 +8,7 @@
   - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) (LoRA 微调流水线设计)
   - [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md) (数据检查器方案)
   - [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) (3D 质检与精修飞轮)
+  - [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md) (递归自我提升 RSI 飞轮设计)
 - **前置架构决议**: [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)
 - **执行原则**:
   1. **原子 PR 推进**：全计划拆解为 **4 个阶段（M1–M4）、16 个独立可合并、可测试的原子 PR（`PR-01` ~ `PR-15`，其中 `PR-14` 拆分为 `PR-14a` 与 `PR-14b`）**，单 PR 代码净增控制在 `300 ~ 800` 行以内，严禁巨型单体提交。
