@@ -1,0 +1,27 @@
+{
+  "id": "t1_rigid_cube_orbit",
+  "tier": "T1",
+  "description": "Baseline: unit cube, full 360° orbit, neutral conditions. Validates basic geometry reconstruction roundtrip.",
+  "tags": ["baseline", "rigid", "primitive"],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 15.0,
+    "num_frames": 120,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.85
+  },
+  "validates_stages": [2, 3]
+}

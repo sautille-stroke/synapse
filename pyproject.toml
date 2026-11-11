@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synapse"
+version = "0.1.0"
+description = "3D CG Rendering & Neural Video Generation Interoperability Hub & Hybrid Cinema Pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "sautille-stroke", email = "dev@dervgen.org" },
+]
+keywords = [
+    "rendering", "video-generation", "interoperability", "3d", "cg",
+    "hybrid-rendering", "diffusion", "fgpp", "benchmark"
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+]
+image = [
+    "opencv-python-headless>=4.8.0",
+    "pillow>=9.5.0",
+    "openexr>=3.2.0",
+]
+metrics = [
+    "scipy>=1.10.0",
+    "scikit-image>=0.20.0",
+    "torch>=2.0.0",
+]
+full = [
+    "synapse[image,metrics,dev]",
+]
+
+[project.scripts]
+synapse-bench = "synapse.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
