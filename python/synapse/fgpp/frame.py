@@ -1,8 +1,8 @@
 """FGPP frame and sequence data classes.
 
-Mirrors the ``nexus//fgpp`` SSOT channel layout defined in RFC 0044 §4.1.
+Implements the FGPP channel layout defined in RFC 0044 §4.1.
 All channel names, data types, and coordinate-space conventions follow
-the authoritative nexus specification.
+the authoritative FGPP specification (synapse is now the SSOT).
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ class CameraParams:
 class FGPPFrame:
     """A single FGPP (Feature Guidance Package Protocol) frame.
 
-    Channel semantics follow ``nexus//fgpp`` SSOT (RFC 0044 §4.1):
+    Channel semantics follow the FGPP specification (RFC 0044 §4.1):
 
     +-----------------------+----------+-------------------------------------+
     | Channel               | dtype    | Description                         |
