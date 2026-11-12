@@ -1,0 +1,16 @@
+{
+  "name": "synapse-data-inspector",
+  "version": "0.1.0",
+  "description": "Synapse Data Inspector — 3D training data inspection and comparison tool",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/test-bundle-loading.js"
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  },
+  "devDependencies": {},
+  "private": true,
+  "license": "UNLICENSED"
+}

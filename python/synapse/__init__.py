@@ -12,6 +12,7 @@ Submodules:
     bench       Synapse-Bench evaluation dataset & scenarios
     inspect     3D asset inspection schemas & pose alignment
     training    LoRA training pipeline
+    rsi         Recursive Self-Improvement flywheel
     cli         CLI tools
 """
 
@@ -34,6 +35,7 @@ from synapse import (
     inspect,
     metrics,
     pipeline,
+    rsi,
     style,
     training,
 )
@@ -68,5 +70,6 @@ __all__ = [
     "pipeline",
     "style",
     "training",
+    "rsi",
     "viewer",
 ]

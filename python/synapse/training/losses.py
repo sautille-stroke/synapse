@@ -95,7 +95,7 @@ def diffusion_dpo_loss(
         beta: DPO temperature scaling factor.
 
     Returns:
-        Scalar DPO loss value.
+        Scalar DPO loss value (non-negative).
     """
     v_tw = np.asarray(v_theta_w, dtype=np.float64)
     v_tl = np.asarray(v_theta_l, dtype=np.float64)
@@ -110,11 +110,13 @@ def diffusion_dpo_loss(
     logit = beta * (err_w - err_l)
 
     # -log(sigmoid(logit)) = log(1 + exp(-logit))
-    # Use numerically stable version
-    if logit > 20.0:
+    # Numerically stable: softplus(-logit) equivalent
+    if logit < -20.0:
+        # log(1 + exp(-logit)) ≈ -logit when logit << 0
         return float(-logit)
-    elif logit < -20.0:
-        return 0.0
+    elif logit > 20.0:
+        # log(1 + exp(-logit)) ≈ exp(-logit) ≈ 0
+        return float(np.exp(-logit))
     else:
         return float(np.log(1.0 + np.exp(-logit)))
 

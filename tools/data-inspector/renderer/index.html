@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>Synapse Data Inspector</title>
+  <style>
+    /* ─── Forge Dark Neutral theme tokens ─── */
+    :root {
+      --bg-deep:      #0a0e17;
+      --bg-base:      #0d1117;
+      --bg-surface:   #161b22;
+      --bg-raised:    #1c2333;
+      --bg-hover:     #21262d;
+      --border:       #21262d;
+      --border-light: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted:   #6e7681;
+      --accent:       #0f7ae5;
+      --accent-glow:  rgba(15, 122, 229, 0.25);
+      --danger:       #f85149;
+      --success:      #3fb950;
+      --warning:      #d29922;
+      --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+      --sidebar-w:    240px;
+      --right-w:      300px;
+      --toolbar-h:    40px;
+      --radius:       6px;
+      --radius-sm:    4px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Toolbar ─── */
+    .toolbar {
+      height: var(--toolbar-h);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      -webkit-app-region: drag;
+    }
+    .toolbar button {
+      -webkit-app-region: no-drag;
+      background: var(--bg-raised);
+      border: 1px solid var(--border-light);
+      color: var(--text-primary);
+      padding: 4px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: var(--font-sans);
+    }
+    .toolbar button:hover { background: var(--bg-hover); }
+    .toolbar button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .toolbar .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-right: auto;
+    }
+    .toolbar .status {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Main layout ─── */
+    .main-layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ─── Left sidebar (scene tree) ─── */
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .sidebar-header {
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar .bundle-name {
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+    .sidebar .no-bundle {
+      padding: 20px 12px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .scene-tree {
+      flex: 1;
+      padding: 4px 0;
+    }
+    .tree-node {
+      padding: 4px 12px 4px 20px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tree-node:hover { background: var(--bg-hover); }
+    .tree-node.selected { background: var(--accent-glow); }
+    .tree-icon { font-size: 14px; }
+
+    /* ─── Center viewport ─── */
+    .viewport {
+      flex: 1;
+      position: relative;
+      background: var(--bg-deep);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #viewport-canvas {
+      display: block;
+      cursor: grab;
+    }
+    #viewport-canvas:active { cursor: grabbing; }
+    .viewport-overlay {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      pointer-events: none;
+    }
+    .viewport-empty {
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .viewport-empty h2 {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .viewport-empty p {
+      font-size: 13px;
+    }
+
+    /* ─── Right panel (properties) ─── */
+    .properties-panel {
+      width: var(--right-w);
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .prop-section {
+      margin-bottom: 16px;
+    }
+    .prop-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+    .prop-label { color: var(--text-secondary); }
+    .prop-value {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    /* ─── View tabs ─── */
+    .view-tabs {
+      display: flex;
+      gap: 2px;
+    }
+    .view-tab {
+      -webkit-app-region: no-drag;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-family: var(--font-sans);
+    }
+    .view-tab:hover { color: var(--text-secondary); }
+    .view-tab.active {
+      color: var(--text-primary);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ─── Debug view mode buttons ─── */
+    .debug-modes {
+      display: flex;
+      gap: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="title">Synapse Data Inspector</span>
+
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="source">Source Model</button>
+      <button class="view-tab" data-view="animation" style="display:none">Animation</button>
+      <button class="view-tab" data-view="video" style="display:none">Video + FGPP</button>
+      <button class="view-tab" data-view="comparison" style="display:none">Comparison</button>
+    </div>
+
+    <div class="debug-modes">
+      <button data-mode="lit" class="active" title="Lit">Lit</button>
+      <button data-mode="wireframe" title="Wireframe">Wire</button>
+      <button data-mode="normal" title="Normal">Norm</button>
+      <button data-mode="uv" title="UV">UV</button>
+    </div>
+
+    <span class="status" id="status-text">No bundle loaded</span>
+  </div>
+
+  <!-- Main 3-column layout -->
+  <div class="main-layout">
+    <!-- Left sidebar: scene tree -->
+    <div class="sidebar">
+      <div class="sidebar-header">Scene Hierarchy</div>
+      <div id="sidebar-content">
+        <div class="no-bundle">
+          Open a bundle to inspect.<br>
+          <button id="btn-open-bundle" style="margin-top: 12px;">Open Bundle...</button>
+        </div>
+      </div>
+      <div class="scene-tree" id="scene-tree"></div>
+    </div>
+
+    <!-- Center viewport -->
+    <div class="viewport" id="viewport">
+      <div class="viewport-empty" id="viewport-empty">
+        <h2>No Model Loaded</h2>
+        <p>Open an InspectionBundle directory to begin.</p>
+      </div>
+      <canvas id="viewport-canvas" style="display: none;"></canvas>
+      <div class="viewport-overlay" id="viewport-overlay"></div>
+    </div>
+
+    <!-- Right panel: mesh/material stats -->
+    <div class="properties-panel">
+      <div class="prop-section">
+        <div class="prop-section-title">Bundle Info</div>
+        <div id="bundle-info">
+          <div class="prop-row">
+            <span class="prop-label">Status</span>
+            <span class="prop-value" id="prop-status">Not loaded</span>
+          </div>
+        </div>
+      </div>
+      <div class="prop-section">
+        <div class="prop-section-title">Mesh Statistics</div>
+        <div id="mesh-stats">
+          <div class="prop-row">
+            <span class="prop-label">Vertices</span>
+            <span class="prop-value" id="prop-vertices">--</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Triangles</span>
+            <span class="prop-value" id="prop-triangles">--</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Submeshes</span>
+            <span class="prop-value" id="prop-submeshes">--</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Materials</span>
+            <span class="prop-value" id="prop-materials">--</span>
+          </div>
+        </div>
+      </div>
+      <div class="prop-section">
+        <div class="prop-section-title">Renderer</div>
+        <div id="renderer-stats">
+          <div class="prop-row">
+            <span class="prop-label">FPS</span>
+            <span class="prop-value" id="prop-fps">--</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Resolution</span>
+            <span class="prop-value" id="prop-resolution">--</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Debug View</span>
+            <span class="prop-value" id="prop-debug-view">Lit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/app.js"></script>
+</body>
+</html>

@@ -59,6 +59,65 @@ class LoRATrainConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Lazy LoRA nn.Module subclass factory
+# ---------------------------------------------------------------------------
+
+_lora_linear_cls: type | None = None
+
+
+def _get_lora_linear_class() -> type:
+    """Return a ``torch.nn.Module`` LoRA wrapper, created once."""
+    global _lora_linear_cls
+    if _lora_linear_cls is not None:
+        return _lora_linear_cls
+
+    import torch
+
+    class LoRALinear(torch.nn.Module):
+        """Drop-in nn.Linear replacement with LoRA A/B adapters.
+
+        At initialisation ``B = 0``, so the output equals the base
+        layer exactly (identity property at step 0).
+        """
+
+        def __init__(
+            self,
+            orig: torch.nn.Linear,
+            rank: int,
+            alpha: float,
+        ) -> None:
+            super().__init__()
+            self.orig = orig
+            self.rank = rank
+            self.alpha = alpha
+
+            in_f = orig.in_features
+            out_f = orig.out_features
+
+            self.lora_A = torch.nn.Parameter(
+                torch.randn(rank, in_f) * 0.01,
+            )
+            self.lora_B = torch.nn.Parameter(
+                torch.zeros(out_f, rank),
+            )
+
+            # Freeze original layer weights
+            for p in self.orig.parameters():
+                p.requires_grad = False
+
+        def forward(self, x: Any) -> Any:
+            """Forward: base + LoRA delta."""
+            base = self.orig(x)
+            lora_out = (
+                x @ self.lora_A.T @ self.lora_B.T
+            ) * (self.alpha / self.rank)
+            return base + lora_out
+
+    _lora_linear_cls = LoRALinear
+    return _lora_linear_cls
+
+
+# ---------------------------------------------------------------------------
 # StatelessLoRATrainer
 # ---------------------------------------------------------------------------
 
@@ -95,7 +154,7 @@ class StatelessLoRATrainer:
             and ``trainable_ratio``.
 
         Raises:
-            RuntimeError: If more than 3% of parameters remain
+            RuntimeError: If more than 3 pct of parameters remain
                 trainable after freezing.
         """
         import torch
@@ -115,8 +174,8 @@ class StatelessLoRATrainer:
 
         if ratio > 0.03:
             raise RuntimeError(
-                f"Trainable ratio {ratio:.4f} exceeds 3% after "
-                "freezing; backbone freeze incomplete."
+                f"Trainable ratio {ratio:.4f} exceeds 3 pct "
+                "after freezing; backbone freeze incomplete."
             )
 
         return {
@@ -133,40 +192,45 @@ class StatelessLoRATrainer:
         """Inject LoRA adapters into matching ``nn.Linear`` layers.
 
         For each ``nn.Linear`` sub-module whose fully-qualified name
-        contains any string in *target_patterns*, the layer is wrapped
-        with a ``LoRALinear`` adapter (A ~ N(0, 0.01), B = 0).
+        contains any string in *target_patterns*, the layer is
+        replaced with a ``LoRALinear`` wrapper (A ~ N(0, 0.01),
+        B = 0).
 
         Args:
             module: Root ``torch.nn.Module``.
-            target_patterns: List of substring patterns to match
-                against ``named_modules()`` keys.
+            target_patterns: Substring patterns to match against
+                ``named_modules()`` keys.
 
         Returns:
             Number of layers injected.
         """
         import torch
 
+        LoRALinear = _get_lora_linear_class()
         injected = 0
-        replacements: list[tuple[str, str, Any]] = []
+        replacements: list[tuple[str, Any]] = []
 
-        for name, child in module.named_modules():
+        for name, child in list(module.named_modules()):
             if not isinstance(child, torch.nn.Linear):
                 continue
+            if isinstance(child, LoRALinear):
+                continue
             if any(pat in name for pat in target_patterns):
-                lora = _LoRALinear(
+                lora = LoRALinear(
                     child,
                     rank=self._config.rank,
                     alpha=self._config.alpha,
                 )
-                replacements.append((name, child, lora))
+                replacements.append((name, lora))
                 injected += 1
 
-        # Apply replacements
-        for full_name, _old, new_mod in replacements:
+        for full_name, new_mod in replacements:
             parts = full_name.rsplit(".", 1)
             if len(parts) == 2:
                 parent_name, attr = parts
-                parent = dict(module.named_modules())[parent_name]
+                parent = dict(module.named_modules())[
+                    parent_name
+                ]
             else:
                 parent = module
                 attr = parts[0]
@@ -187,9 +251,8 @@ class StatelessLoRATrainer:
 
         Args:
             module: The model with LoRA adapters injected.
-            batch: Dict with keys ``"latent"`` (x_1), ``"noise"``
-                (x_0), and optionally ``"fgpp_cond"`` for edge
-                loss.  DPO mode also expects ``"chosen"`` and
+            batch: Dict with ``"latent"`` (x_1), ``"noise"``
+                (x_0).  DPO mode also expects ``"chosen"`` and
                 ``"rejected"`` tensors.
             step: Current step index.
 
@@ -198,15 +261,15 @@ class StatelessLoRATrainer:
         """
         import torch
 
-        # Lazy-create optimizer on first call
         if self._optimizer is None:
             trainable = [
-                p for p in module.parameters() if p.requires_grad
+                p for p in module.parameters()
+                if p.requires_grad
             ]
             if not trainable:
                 raise RuntimeError(
-                    "No trainable parameters found. "
-                    "Call inject_lora() before train_step()."
+                    "No trainable parameters. "
+                    "Call inject_lora() first."
                 )
             self._optimizer = torch.optim.AdamW(
                 trainable, lr=self._config.lr_spatial,
@@ -231,21 +294,22 @@ class StatelessLoRATrainer:
         module: Any,
         path: Path,
     ) -> Path:
-        """Export LoRA-only weights to safetensors.
+        """Export LoRA-only weights to safetensors format.
 
         Args:
             module: Model with LoRA adapters.
-            path: Output file path (should end with
-                ``.safetensors``).
+            path: Output file path.
 
         Returns:
-            Absolute path to the saved checkpoint.
+            Absolute path to the saved checkpoint file.
         """
         from safetensors.torch import save_file
 
+        LoRALinear = _get_lora_linear_class()
         lora_state: dict[str, Any] = {}
+
         for name, child in module.named_modules():
-            if isinstance(child, _LoRALinear):
+            if isinstance(child, LoRALinear):
                 lora_state[f"{name}.lora_A"] = (
                     child.lora_A.data.clone()
                 )
@@ -253,61 +317,53 @@ class StatelessLoRATrainer:
                     child.lora_B.data.clone()
                 )
 
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        save_file(lora_state, str(path))
-        return path.resolve()
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        save_file(lora_state, str(out))
+        return out.resolve()
 
     # ---------------------------------------------------------------
-    # Private helpers
+    # Private loss helpers
     # ---------------------------------------------------------------
 
     @staticmethod
-    def _sft_step(module: Any, batch: dict[str, Any]) -> Any:
+    def _sft_step(
+        module: Any, batch: dict[str, Any],
+    ) -> Any:
         """Compute flow-matching SFT loss."""
         import torch
 
         x_1 = batch["latent"]
         x_0 = batch["noise"]
-
-        # Random timestep t ~ U(0, 1)
-        t = torch.rand(1, device=x_1.device, dtype=x_1.dtype)
-
-        # Interpolated sample x_t = (1 - t) * x_0 + t * x_1
+        t = torch.rand(
+            1, device=x_1.device, dtype=x_1.dtype,
+        )
         x_t = (1.0 - t) * x_0 + t * x_1
-
-        # Target velocity
         v_target = x_1 - x_0
-
-        # Model prediction
         v_pred = module(x_t)
-
-        # MSE loss
-        loss = torch.mean((v_pred - v_target) ** 2)
-        return loss
+        return torch.mean((v_pred - v_target) ** 2)
 
     @staticmethod
-    def _dpo_step(module: Any, batch: dict[str, Any]) -> Any:
+    def _dpo_step(
+        module: Any, batch: dict[str, Any],
+    ) -> Any:
         """Compute diffusion DPO loss."""
         import torch
 
         chosen = batch["chosen"]
         rejected = batch["rejected"]
         x_0 = batch["noise"]
-
-        t = torch.rand(1, device=chosen.device, dtype=chosen.dtype)
-
+        t = torch.rand(
+            1, device=chosen.device, dtype=chosen.dtype,
+        )
         x_t_w = (1.0 - t) * x_0 + t * chosen
         x_t_l = (1.0 - t) * x_0 + t * rejected
 
         v_w = module(x_t_w)
         v_l = module(x_t_l)
 
-        v_target_w = chosen - x_0
-        v_target_l = rejected - x_0
-
-        err_w = torch.mean((v_w - v_target_w) ** 2)
-        err_l = torch.mean((v_l - v_target_l) ** 2)
+        err_w = torch.mean((v_w - (chosen - x_0)) ** 2)
+        err_l = torch.mean((v_l - (rejected - x_0)) ** 2)
 
         beta = 500.0
         logit = beta * (err_w - err_l)
@@ -439,8 +495,9 @@ def _create_lora_linear(
 # Stage registration
 # ---------------------------------------------------------------------------
 
-
-from synapse.pipeline.bundle_worker import register_stage  # noqa: E402
+from synapse.pipeline.bundle_worker import (  # noqa: E402
+    register_stage,
+)
 
 
 @register_stage("lora_train")
@@ -454,12 +511,9 @@ def _handle_lora_train(
     """
     params = dict(manifest.params)
     config_dict = params.get("train_config", {})
-
     if "category" not in config_dict:
         config_dict["category"] = "style"
-
     config = LoRATrainConfig(**config_dict)
-
     return {
         "output_paths": {},
         "config": config.model_dump(),

@@ -1,0 +1,13 @@
+{
+  "schema_version": "inspection.v1.0",
+  "bundle_id": "test_minimal_001",
+  "created_at": "2026-11-11T15:35:55.326Z",
+  "description": "Minimal test bundle for unit testing",
+  "sources": {
+    "source_model": "source/model.glb"
+  },
+  "scene": {
+    "up_axis": "Y",
+    "units": "meters"
+  }
+}

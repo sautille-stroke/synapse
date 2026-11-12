@@ -1,0 +1,22 @@
+{
+  "schema_version": "inspection.v1.0",
+  "bundle_id": "test_full_roundtrip",
+  "created_at": "2026-11-11T15:35:55.330Z",
+  "description": "Full roundtrip test bundle",
+  "sources": {
+    "source_model": "source/model.glb",
+    "animations": [
+      "source/animations/walk.glb"
+    ],
+    "fgpp_sequence": "fgpp/",
+    "generated_video": "generated/video.mp4",
+    "reconstructed_model": "reconstructed/model.glb",
+    "metrics": "metrics/comparison.json"
+  },
+  "scene": {
+    "up_axis": "Y",
+    "units": "meters",
+    "scenario_id": "t2_humanoid_walk_orbit",
+    "adapter_id": "wan_2.1_controlnext"
+  }
+}
