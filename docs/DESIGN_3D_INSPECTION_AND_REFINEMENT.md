@@ -1,6 +1,6 @@
 # Synapse 3D 建模智能质检、多尺度对齐与精修数据飞轮设计规范 (3D Quality Inspection, Multi-scale Alignment & Refinement Flywheel Specification)
 
-- **文档状态**: `Approved Technical Spec v1.1`
+- **文档状态**: `Approved Technical Spec v1.2`
 - **关联仓库**: `synapse`（执行核心、CLI 与评测 SDK）、`fulgur`（C++20 AAA 渲染引擎与离屏 FGPP 提取器）、`aether`（底层类型、数学库与 FGPP SSOT）、`forgekit` / `tecton`（3D 编辑器交互、TimeWarp 与数据采集）、`foundary`（GPU 训练与容器调度）
 - **关联生态规约**:
   - **RFC 0019**: `CommandIR` 序列化操作协议与离线同步机制
@@ -129,6 +129,9 @@
 
 ## 3. 分阶段评价机制与量化指标库 (Quantitative Metrics Suite)
 
+> [!IMPORTANT]
+> **跨文档指标全景对齐声明**：本节定义的所有指标均已纳入 [DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md §6](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) 的全景评估矩阵。包括实现状态、四层递进门禁阈值、场景指标名称映射表及外部数据集接入规范。新增指标时必须同步更新两份文档。
+- 完整交付清单与实施验证: [REVIEW_3D_EVAL_DELIVERY.md](REVIEW_3D_EVAL_DELIVERY.md)
 流水线的每一个流转节点均受量化指标约束，禁止通过模糊经验放行。
 
 ### 3.0 Stage 0：几何拓扑硬门禁指标（Tier 0 零容忍物理红线）
