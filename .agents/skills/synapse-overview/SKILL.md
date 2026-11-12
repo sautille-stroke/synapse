@@ -1,7 +1,7 @@
 ---
 name: synapse-overview
 description: >-
-  Synapse（Layer 2）3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器执行核与跨模态往返评测基准（Synapse-Bench）全景指南。涵盖架构边界、全模块索引、跨仓协作契约（@aether//fgpp、fulgur、caelum-core、vg-core）、CLI 确定性状态码以及 ubuntu24 + Google Colab 双阶段实验工作流。在进入 synapse 开发、定位模块或执行测试前必读。
+  Synapse（Layer 2）3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器执行核与跨模态往返评测基准（Synapse-Bench）全景指南。涵盖架构边界、全模块索引（含 3D 模型评估脚本与 HTML 报告）、跨仓协作契约（@aether//fgpp、fulgur、caelum-core、vg-core）、CLI 确定性状态码以及 ubuntu24 + Google Colab 双阶段实验工作流。在进入 synapse 开发、定位模块或执行测试前必读。
 ---
 
 # Synapse 架构全景与开发指南
@@ -32,7 +32,7 @@ description: >-
 | `synapse.style` | `StyleDescriptor`, `extract_style_optical`, `extract_style_fgpp_intrinsic`, `to_style_profile_dict`, `to_engine_light_overrides`, `aces_color` | ACEScg 对数色度内蕴风格提取、高光软肩压缩（Soft-Shoulder Rolloff）与 `StyleProfile v2.0.0` 引擎灯光回写。 |
 | `synapse.composite` | `generate_surgical_mask`, `border_ring_lab_match`, `laplacian_pyramid_blend`, `composite_surgical_sequence`, `composite_optical_increments` | 运动自适应手术刀掩码 $M_{\text{surgical}}(t) = \text{Dilate}_{\mathbf{v}(t)}(M_{\text{3D}} \cup M_{\text{SAM2}})$、16px 边界环 CIE LAB 仿射色彩对齐与多层拉普拉斯金字塔无缝融合。 |
 | `synapse.training` | `FeatureStoreBuilder`, `iter_feature_shards`, `format_structured_caption`, `losses`, `trainer` | 离线 VAE/文本潜变量预编码、WebDataset `.tar` 分片构建与流式读取、5 段式结构化 Caption 以及 LoRA 混合损失训练器。 |
-| `synapse.inspect` | `geometry`, `material`, `rigging`, `scoring`, `router` | 3D 网格拓扑/法线/UV 质检、PBR 材质反照率能量守恒校验、骨骼蒙皮质检与 L0/L1/L2 三级精修路由（15 分钟 HITL 熔断）。 |
+| `synapse.inspect` | `schemas`, `align`, `macro`, `jev_critic`, `flywheel_exporter`, `eval_report` | 3D 网格拓扑/法线/UV 质检（`InspectionReport` v2.0）、Fibonacci 球面配准、多通道残差热力图、Visual Jev 判别、RL 飞轮样本导出、**3D 模型评估脚本与 HTML 报告**（`TopologyResult`/`ModelEvalResult`/`EvalReportData`）及 L0/L1/L2 三级精修路由（15 分钟 HITL 熔断）。 |
 | `synapse.rsi` | `flywheel`, `reward`, `replay_buffer`, `curriculum`, `pareto` | 递归自我提升（RSI）物理驱动自演进飞轮、多目标帕累托前沿筛选与反遗忘经验回放。 |
 | `synapse.bench` | `list_scenarios`, `load_scenario`, `SoftwareRasterizer`, `generate_humanoid_proxy`, `export_inspection_bundle` | `Synapse-Bench` 30 个标准评测场景（T1–T5 五大 Tier）、纯 NumPy 软光栅真值生成器与 HTML 诊断报告。 |
 | `synapse.metrics` | `psnr`, `ssim`, `ciede2000`, `temporal_warp_error`, `flicker_score`, `chamfer_distance` | 图像/色度/时序/3D 几何全维度量化评测指标。 |

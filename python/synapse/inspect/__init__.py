@@ -6,6 +6,7 @@ Submodules:
     macro             Multi-channel residual heatmap and macro camera planning
     jev_critic        Visual Jev calibrated logits critic for defect detection
     flywheel_exporter Refinement roundtrip orchestrator and RL data exporter
+    eval_report       3D model topology/render evaluation and HTML report with SVG radar charts
 """
 
 from __future__ import annotations
@@ -38,6 +39,12 @@ from synapse.inspect.schemas import (
     DefectAnnotation3D,
     InspectionReport,
 )
+from synapse.inspect.eval_report import (
+    EvalReportData,
+    ModelEvalResult,
+    TopologyResult,
+    generate_eval_html_report,
+)
 
 __all__ = [
     "CameraPose",
@@ -58,4 +65,8 @@ __all__ = [
     "StepAnnotation",
     "export_rl_flywheel_dataset",
     "run_targeted_refinement",
+    "EvalReportData",
+    "ModelEvalResult",
+    "TopologyResult",
+    "generate_eval_html_report",
 ]

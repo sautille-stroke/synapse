@@ -1,7 +1,7 @@
 ---
 name: synapse-lora-and-flywheel
 description: >-
-  Synapse LoRA & PEFT 微调流水线、Cryptomatte 多实体空域掩码、3D 资产智能质检（synapse.inspect）与 RSI 物理驱动自演进飞轮指南。涵盖 FeatureStoreBuilder WebDataset 分片、LoRAManifest 安全校验、MultiLoRAManager 正交合并及 Synapse-Bench 评测。在开发训练管线、质检路由或 RSI 飞轮时使用。
+  Synapse LoRA & PEFT 微调流水线、Cryptomatte 多实体空域掩码、3D 资产智能质检（synapse.inspect）与 RSI 物理驱动自演进飞轮指南。涵盖 FeatureStoreBuilder WebDataset 分片、LoRAManifest 安全校验、MultiLoRAManager 正交合并、Synapse-Bench 评测及 3D 模型评估脚本与 HTML 报告（三级门禁、SVG 雷达图）。在开发训练管线、质检路由、RSI 飞轮或模型评估时使用。
 ---
 
 # LoRA 微调、3D 智能质检与 RSI 自演进飞轮指南
@@ -72,3 +72,46 @@ for sample in iter_feature_shards(shard_paths):
    - `L0`（全自动放行）$\to$ `L1`（算法自动自愈：法线重算、流形修复、反照率去高光裁剪）$\to$ `L2`（导出 `.inspection.tar.zst` 交由人工精修，单资产/单镜头超时 **15 分钟** 立即触发退出码 `40` 工程熔断降级）。
 3. **RSI 闭环演进 (`synapse.rsi`)**：
    - 结合物理渲染一致性奖励（几何 Chamfer、材质能量守恒、骨骼骨长零漂移）与 `ReplayBuffer` 20% 历史黄金锚点混采，防止多轮自演进出现色彩过饱和或高频伪影坍缩。
+
+---
+
+## 四、3D 模型评估脚本与 HTML 报告 (`synapse.inspect.eval_report`)
+
+> 独立于 Visual Jev 判别流水线，提供零外部依赖的确定性 3D 模型拓扑与渲染质量评估。
+
+### 1. 评估脚本 CLI (`scripts/evaluate_3d_models.py`)
+```bash
+# 扫描目录下所有 .obj 模型，使用 TRACK_A_ASSET 门禁，生成 HTML 报告
+python scripts/evaluate_3d_models.py \
+    --input-dir /path/to/models \
+    --output-dir /path/to/report \
+    --gate-profile TRACK_A_ASSET \
+    --views 8 --resolution 512
+```
+
+**三级门禁档位** (`--gate-profile`)：
+| 档位 | 适用场景 | 严格度 |
+| :--- | :--- | :---: |
+| `TRACK_B_VIDEO` | 白模视频预演快速筛选 | 宽松 |
+| `TRACK_A_ASSET` | 生产 3D 资产准出 | 标准 |
+| `RSI_PROMOTION` | LoRA/RSI 自演进模型晋升 | 严苛 |
+
+**退出码**：`0`=全部 PASS，`1`=存在 FAIL，`10`=参数错误，`20`=输入缺失。
+
+### 2. 评估报告数据模型 (`synapse.inspect.eval_report`)
+```python
+from synapse.inspect.eval_report import (
+    TopologyResult,       # 拓扑检查结果 (vertices, faces, manifold, watertight, ...)
+    ModelEvalResult,      # 单模型评估结果 (topology, screenshots, metrics, gate_pass)
+    EvalReportData,       # 完整报告数据 (models[], gate_profile, aggregate_scores)
+    generate_eval_html_report,  # 生成自包含 HTML 报告 (内嵌 CSS/SVG 雷达图/Base64 截图)
+)
+```
+
+### 3. 6 维评估指标
+拓扑完整性、几何复杂度、法线质量、UV 覆盖率、面积均匀度、纵横比——每项归一化至 `[0, 1]` 后绘制 SVG 雷达图，依据门禁档位阈值自动判定 PASS/FAIL。
+
+### 4. 测试覆盖
+`tests/test_eval_report.py` 包含 24 项自动化测试，覆盖数据模型、拓扑检查、HTML 生成、门禁判定与边界条件。
+
+> 完整交付清单与 Review 指南：[docs/REVIEW_3D_EVAL_DELIVERY.md](docs/REVIEW_3D_EVAL_DELIVERY.md)
