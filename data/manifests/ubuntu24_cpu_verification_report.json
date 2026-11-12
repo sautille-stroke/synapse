@@ -1,0 +1,78 @@
+{
+  "environment": "ubuntu24_cpu_headless",
+  "elapsed_sec": 146.383,
+  "all_passed": true,
+  "experiments": {
+    "E1_fgpp_conditioning_ablation": {
+      "status": "PASS",
+      "track_b_tensor_shape": [
+        7,
+        17,
+        480,
+        832
+      ],
+      "track_a_tensor_shape": [
+        7,
+        17,
+        480,
+        832
+      ],
+      "ablation_l2_norms": {
+        "E1-A_rgb_only": 0.0,
+        "E1-B_rgb_depth": 2273.202392578125,
+        "E1-C_rgb_depth_normal": 3457.888916015625,
+        "E1-D_full_7ch": 3459.798583984375
+      },
+      "depth_channel_range": [
+        0.5542954802513123,
+        0.999992847442627
+      ]
+    },
+    "E2_acescg_style_and_surgical_composite": {
+      "status": "PASS",
+      "style_profile_version": "style_profile.v2.0.0",
+      "mask_foreground_ratio": 0.1281475360576923,
+      "mean_abs_diff_before": 0.025629578158259392,
+      "mean_abs_diff_after": 0.005519339349120855
+    },
+    "E3_causal_sliding_window_and_shot_cut": {
+      "status": "PASS",
+      "num_windows_for_161f": 2,
+      "overlap_latent_steps": 9,
+      "fused_latent_shape": [
+        9,
+        16,
+        16,
+        16
+      ],
+      "detected_shot_cut_frames": [
+        64,
+        65
+      ]
+    },
+    "E4_feature_store_and_cryptomatte_lora": {
+      "status": "PASS",
+      "shard_samples_verified": 1,
+      "latent_shape": [
+        16,
+        5,
+        60,
+        104
+      ],
+      "multi_lora_mask_leakage": 0.0
+    },
+    "E5_whitebox_floor_and_synapse_bench": {
+      "status": "PASS",
+      "humanoid_proxy_vertices": 1991,
+      "whitebox_coarseness_floor_passed": true,
+      "synapse_bench_total_scenarios": 30,
+      "scenarios_by_tier": {
+        "T1": 8,
+        "T2": 7,
+        "T3": 5,
+        "T4": 6,
+        "T5": 4
+      }
+    }
+  }
+}
