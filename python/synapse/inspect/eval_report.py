@@ -10,10 +10,7 @@ from __future__ import annotations
 import html
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-
 
 # -------------------------------------------------------------------
 # Data model
@@ -63,8 +60,19 @@ class EvalReportData:
 # -------------------------------------------------------------------
 
 
+# Raw scale/count fields displayed in tables, NOT plotted as [0, 1] quality axes
+_NON_QUALITY_METRIC_KEYS: frozenset[str] = frozenset(
+    {
+        "vertex_count",
+        "face_count",
+        "num_vertices",
+        "num_faces",
+    }
+)
+
+
 def _normalize_metric(name: str, value: float) -> float:
-    """Normalise a metric value to ``[0, 1]`` for radar chart display.
+    """Normalise a metric value to ``[0, 1]`` quality score (1.0 = best).
 
     Parameters
     ----------
@@ -76,17 +84,46 @@ def _normalize_metric(name: str, value: float) -> float:
     Returns
     -------
     float
-        Normalised score in ``[0, 1]``.
+        Normalised quality score in ``[0, 1]`` where ``1.0`` is optimal.
     """
+    if not math.isfinite(value):
+        return 0.0
     if name == "chamfer_mm":
-        return max(0.0, 1.0 - min(value / 10.0, 1.0))
+        return max(0.0, 1.0 - min(max(value, 0.0) / 10.0, 1.0))
     if name == "volume_breathing":
         return max(0.0, 1.0 - min(abs(value) / 0.5, 1.0))
-    if name in ("silhouette_iou", "f_score"):
+    if name == "volume_breathing_pct":
+        return max(0.0, 1.0 - min(abs(value) / 10.0, 1.0))
+    if name in ("silhouette_iou", "f_score", "f_score_1mm", "ssim"):
         return max(0.0, min(value, 1.0))
+    if name == "psnr_db":
+        return max(0.0, min(value / 50.0, 1.0))
+    if name == "lpips":
+        return max(0.0, 1.0 - min(max(value, 0.0), 1.0))
+    if name in (
+        "ciede2000",
+        "albedo_delta_e00",
+        "border_ring_ciede2000",
+        "style_color_de",
+    ):
+        return max(0.0, 1.0 - min(max(value, 0.0) / 10.0, 1.0))
     if name in ("is_manifold", "is_watertight"):
         return 1.0 if value >= 0.5 else 0.0
-    # Default: assume higher is better, cap at 1
+    if name in (
+        "num_degenerate_faces",
+        "degenerate_faces",
+        "boundary_edges",
+        "num_boundary_edges",
+        "self_intersecting_pairs",
+        "floating_island_faces",
+    ):
+        # 0 defects = 1.0; monotonically decays toward 0 as defects grow
+        return 1.0 / (1.0 + max(0.0, value))
+    if name in ("connected_components", "num_connected_components"):
+        if value <= 0.0:
+            return 0.0
+        return min(1.0, 1.0 / value)
+    # Default: assume higher is better in [0, 1]
     return max(0.0, min(value, 1.0))
 
 
@@ -429,12 +466,12 @@ def _append_model_card(parts: list[str], m: ModelEvalResult) -> None:
             )
         parts.append("</tbody></table>")
 
-    # Per-model radar chart
+    # Per-model radar chart (exclude raw scale counts like vertex_count)
     if m.metrics:
         norm_scores = {
             k: _normalize_metric(k, v)
             for k, v in m.metrics.items()
-            if isinstance(v, (int, float))
+            if isinstance(v, (int, float)) and k not in _NON_QUALITY_METRIC_KEYS
         }
         if norm_scores:
             parts.append('<div class="chart-container">')
@@ -447,7 +484,7 @@ def _append_model_card(parts: list[str], m: ModelEvalResult) -> None:
 def _compute_aggregate_scores(
     models: list[ModelEvalResult],
 ) -> dict[str, float]:
-    """Compute aggregate normalised scores across all models."""
+    """Compute aggregate normalised quality scores across all models."""
     accum: dict[str, list[float]] = {}
     for m in models:
         # Topology scores
@@ -460,9 +497,13 @@ def _compute_aggregate_scores(
         accum.setdefault("clean_topo", []).append(
             1.0 if not m.topology.has_degenerate_faces else 0.0
         )
-        # Metric-derived scores
+        # Metric-derived quality scores (skip raw counts & duplicate topo flags)
         for k, v in m.metrics.items():
-            if isinstance(v, (int, float)):
+            if (
+                isinstance(v, (int, float))
+                and k not in _NON_QUALITY_METRIC_KEYS
+                and k not in ("is_manifold", "is_watertight")
+            ):
                 accum.setdefault(k, []).append(
                     _normalize_metric(k, v)
                 )

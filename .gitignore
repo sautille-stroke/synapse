@@ -3,9 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
+# C extensions & Bazel symlinks
 *.so
 *.pyd
+**/bazel-*
 
 # Distribution / packaging
 .Python

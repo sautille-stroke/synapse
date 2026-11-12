@@ -1,5 +1,6 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 COMMON_COPTS = select({
     "@platforms//os:windows": [
@@ -32,20 +33,30 @@ cc_library(
     name = "geometry",
     srcs = ["src/mesh_checks.cc"],
     hdrs = glob(["include/**/*.h"]),
-    includes = ["include"],
     copts = COMMON_COPTS + NO_EXCEPTIONS_COPTS,
+    includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         "@aether//math",
     ],
-    visibility = ["//visibility:public"],
 )
 
 pybind_extension(
     name = "_c_geometry",
     srcs = ["src/bindings.cc"],
     copts = COMMON_COPTS,
+    visibility = ["//visibility:public"],
     deps = [
         ":geometry",
     ],
-    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "test_geometry",
+    size = "small",
+    srcs = ["tests/test_geometry.cc"],
+    copts = COMMON_COPTS + NO_EXCEPTIONS_COPTS,
+    deps = [
+        ":geometry",
+    ],
 )

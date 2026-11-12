@@ -447,7 +447,14 @@ def _compute_metrics(
         normal_angular_error_deg,
         silhouette_iou,
     )
+    from synapse.metrics.image_quality import (
+        ciede2000,
+        lpips,
+        psnr_db,
+        ssim,
+    )
     from synapse.metrics.temporal import flicker_score
+    from synapse.style.aces_color import linear_to_srgb
 
     metrics: dict[str, float] = {}
     gen_frames = video_result.frames_srgb_u8  # [T, H, W, 3] uint8
@@ -460,10 +467,14 @@ def _compute_metrics(
     gen_float = gen_frames[:n_frames].astype(np.float32) / 255.0
     metrics["flicker_score"] = flicker_score(gen_float)
 
-    # --- Per-frame FGPP fidelity metrics (average over frames) --------
+    # --- Per-frame FGPP fidelity & image quality metrics --------------
     depth_errors: list[float] = []
     normal_errors: list[float] = []
     iou_scores: list[float] = []
+    psnr_scores: list[float] = []
+    ssim_scores: list[float] = []
+    de00_scores: list[float] = []
+    lpips_scores: list[float] = []
 
     for i in range(n_frames):
         gt = fgpp_frames[i]
@@ -499,6 +510,19 @@ def _compute_metrics(
                     silhouette_iou(pred_mask, gt_mask),
                 )
 
+        # Image quality against rendered FGPP direct_radiance (linear -> sRGB)
+        if gt.direct_radiance is not None:
+            gt_srgb = np.clip(
+                linear_to_srgb(np.asarray(gt.direct_radiance, dtype=np.float32)),
+                0.0,
+                1.0,
+            )
+            if gt_srgb.shape == gen_f.shape:
+                psnr_scores.append(psnr_db(gen_f, gt_srgb))
+                ssim_scores.append(ssim(gen_f, gt_srgb))
+                de00_scores.append(ciede2000(gen_f, gt_srgb))
+                lpips_scores.append(lpips(gen_f, gt_srgb))
+
     if depth_errors:
         metrics["depth_rmse_m"] = float(np.mean(depth_errors))
     if normal_errors:
@@ -507,6 +531,14 @@ def _compute_metrics(
         )
     if iou_scores:
         metrics["silhouette_iou"] = float(np.mean(iou_scores))
+    if psnr_scores:
+        metrics["psnr_db"] = float(np.mean(psnr_scores))
+    if ssim_scores:
+        metrics["ssim"] = float(np.mean(ssim_scores))
+    if de00_scores:
+        metrics["ciede2000"] = float(np.mean(de00_scores))
+    if lpips_scores:
+        metrics["lpips"] = float(np.mean(lpips_scores))
 
     return metrics
 

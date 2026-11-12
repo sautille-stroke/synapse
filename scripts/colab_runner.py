@@ -186,7 +186,7 @@ def finalize_job_workspace(
         conclusion_lines = [
             f"- **总耗时**: {duration:.2f}s",
             f"- **完成阶段**: {list(state.get('completed', {}).keys())}",
-            f"- **核心产物**: `output/experiment_summary.json`, `checkpoints/colab_experiment_state.json`",
+            "- **核心产物**: `output/experiment_summary.json`, `checkpoints/colab_experiment_state.json`",
             f"- **最终状态**: `{status}`",
         ]
         scorecard = "\n".join(conclusion_lines)

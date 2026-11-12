@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
+from synapse.inspect.geometry_gate import validate_mesh_geometry
+from synapse.inspect.schemas import GeometricValidationResult
 from synapse.recon.geometry import (
     check_degenerate_faces,
     check_manifold,
@@ -26,9 +27,6 @@ from synapse.recon.geometry import (
     find_connected_components,
     prune_floating_islands,
 )
-from synapse.inspect.geometry_gate import validate_mesh_geometry
-from synapse.inspect.schemas import GeometricValidationResult
-
 
 # ===================================================================
 # Fixtures — canonical test meshes
@@ -328,10 +326,8 @@ class TestManifoldWatertight:
 
     def test_bowtie_not_manifold(self, bowtie_mesh):
         verts, faces = bowtie_mesh
-        # Bowtie has a pinch vertex — should fail manifold
-        # (depends on topology; two disjoint triangles sharing only a
-        # vertex may pass edge-manifold but fail vertex-manifold)
-        # At minimum it should NOT be watertight
+        # Bowtie has a pinch vertex at vertex 2 — must fail both manifold & watertight
+        assert not check_manifold(verts, faces)
         assert not check_watertight(verts, faces)
 
 

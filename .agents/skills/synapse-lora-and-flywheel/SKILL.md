@@ -79,43 +79,47 @@ for sample in iter_feature_shards(shard_paths):
 
 ---
 
-## 四、3D 模型评估脚本与 HTML 报告 (`synapse.inspect.eval_report`)
+## 四、3D 模型评估模块、CLI 与 HTML 报告 (`synapse.inspect.model_evaluator` & `eval_report`)
 
-> 独立于 Visual Jev 判别流水线，提供零外部依赖的确定性 3D 模型拓扑与渲染质量评估。
+> 独立于 Visual Jev 判别流水线，提供零重型外部依赖的确定性 3D 模型拓扑、自穿插、参考网格几何精度与多视角渲染质量评估。
 
-### 1. 评估脚本 CLI (`scripts/evaluate_3d_models.py`)
+### 1. 统一 CLI 与脚本入口 (`synapse inspect evaluate` / `scripts/evaluate_3d_models.py`)
 ```bash
-# 扫描目录下所有 .obj 模型，使用 TRACK_A_ASSET 门禁，生成 HTML 报告
-python scripts/evaluate_3d_models.py \
+# 主 CLI 入口（同时兼容 python scripts/evaluate_3d_models.py ...）
+synapse inspect evaluate \
     --input-dir /path/to/models \
     --output-dir /path/to/report \
-    --gate-profile TRACK_A_ASSET \
-    --views 8 --resolution 512
+    --reference-dir /path/to/ref_models \
+    --profile TRACK_A_ASSET \
+    --num-views 8 --resolution 256
 ```
+> 兼容参数别名：`--gate-profile` 等价于 `--profile`，`--views` 等价于 `--num-views`。
 
-**三级门禁档位** (`--gate-profile`)：
-| 档位 | 适用场景 | 严格度 |
-| :--- | :--- | :---: |
-| `TRACK_B_VIDEO` | 白模视频预演快速筛选 | 宽松 |
-| `TRACK_A_ASSET` | 生产 3D 资产准出 | 标准 |
-| `RSI_PROMOTION` | LoRA/RSI 自演进模型晋升 | 严苛 |
+**三级门禁档位** (`--profile` / `--gate-profile`，非法档位按 Fail-Closed 返回退出码 `10`)：
+| 档位 | 适用场景 | 拓扑门禁 | `chamfer_mm` 阈值 |
+| :--- | :--- | :--- | :---: |
+| `TRACK_B_VIDEO` | 白模视频预演快速筛选 | `is_manifold` | `≤ 8.0 mm` |
+| `TRACK_A_ASSET` | 生产 3D 资产准出 | `is_manifold` + `is_watertight` + 零退化面/自穿插 | `≤ 5.0 mm` |
+| `RSI_PROMOTION` | LoRA/RSI 自演进模型晋升 | `is_manifold` + `is_watertight` + 零退化面/自穿插 | `≤ 4.0 mm` |
 
-**退出码**：`0`=全部 PASS，`1`=存在 FAIL，`10`=参数错误，`20`=输入缺失。
+**退出码**：`0`=全部 PASS，`10`=参数或档位名校验失败，`20`=输入目录/模型缺失，`40`=存在模型门禁未达标（`"status": "gate_failed"`，HTML 与 JSON 报告仍完整生成）。
 
 ### 2. 评估报告数据模型 (`synapse.inspect.eval_report`)
 ```python
 from synapse.inspect.eval_report import (
     TopologyResult,       # 拓扑检查结果 (vertices, faces, manifold, watertight, ...)
-    ModelEvalResult,      # 单模型评估结果 (topology, screenshots, metrics, gate_pass)
-    EvalReportData,       # 完整报告数据 (models[], gate_profile, aggregate_scores)
+    ModelEvalResult,      # 单模型评估结果 (topology, screenshots, metrics, gate_results)
+    EvalReportData,       # 完整报告数据 (models[], profile_name, timestamp)
     generate_eval_html_report,  # 生成自包含 HTML 报告 (内嵌 CSS/SVG 雷达图/Base64 截图)
 )
 ```
 
-### 3. 6 维评估指标
-拓扑完整性、几何复杂度、法线质量、UV 覆盖率、面积均匀度、纵横比——每项归一化至 `[0, 1]` 后绘制 SVG 雷达图，依据门禁档位阈值自动判定 PASS/FAIL。
+### 3. 核心评估指标与正向归一化雷达图
+- **无参考网格必评指标**：`is_manifold`、`is_watertight`、`num_degenerate_faces`、`self_intersecting_pairs`、`connected_components`、`boundary_edges`、`floating_island_faces`（由 `validate_mesh_geometry` 双轨几何核计算）；
+- **提供 `--reference-dir` 同名网格时附加指标**：几何精度 `chamfer_mm`、`f_score_1mm`，以及多视角同位软光栅渲染画质 `psnr_db`、`ssim`、`ciede2000`、`lpips`；
+- **雷达图正向归一化**：所有误差/缺陷计数指标严格映射为 `0 缺陷 → 1.0 满分`，并剔除 `vertex_count`/`face_count` 等非质量规模量，杜绝雷达图方向反转。
 
 ### 4. 测试覆盖
-`tests/test_eval_report.py` 包含 24 项自动化测试，覆盖数据模型、拓扑检查、HTML 生成、门禁判定与边界条件。
+`tests/test_eval_report.py`、`tests/test_geometry_oracle_parity.py` 与 `tests/test_metrics_image_quality.py` 全面覆盖数据模型、C++/Python 双轨几何一致性、雷达图正向归一化、多视角画质指标与 CLI 确定性退出码。
 
-> 完整交付清单与 Review 指南：[docs/REVIEW_3D_EVAL_DELIVERY.md](docs/REVIEW_3D_EVAL_DELIVERY.md)
+> 完整交付清单与 Review 指南：[docs/REVIEW_3D_EVAL_DELIVERY.md](../../../docs/REVIEW_3D_EVAL_DELIVERY.md)

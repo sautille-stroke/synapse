@@ -62,11 +62,11 @@ struct AABB {
     expand(other.hi);
   }
 
-  /// Test whether this box overlaps @p other (inclusive boundaries).
-  bool overlaps(const AABB& other) const {
-    return lo.x <= other.hi.x && hi.x >= other.lo.x &&
-           lo.y <= other.hi.y && hi.y >= other.lo.y &&
-           lo.z <= other.hi.z && hi.z >= other.lo.z;
+  /// Test whether this box overlaps @p other (inclusive boundaries + epsilon).
+  [[nodiscard]] bool overlaps(const AABB& other, double eps = 1e-9) const {
+    return lo.x <= other.hi.x + eps && hi.x + eps >= other.lo.x &&
+           lo.y <= other.hi.y + eps && hi.y + eps >= other.lo.y &&
+           lo.z <= other.hi.z + eps && hi.z + eps >= other.lo.z;
   }
 };
 

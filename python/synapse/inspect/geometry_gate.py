@@ -7,7 +7,7 @@ faces, self-intersections, floating islands) and produces a structured
 The gate supports two execution backends:
 
 * **python** — Pure-Python Oracle (NumPy-based, always available).
-* **native** — C++ accelerated via ``synapse._c_geometry`` (optional).
+* **native** — C++20 accelerated via ``synapse._c_geometry`` (optional).
 * **auto** (default) — Tries native first, falls back to Python with a
   ``RuntimeWarning``.
 """
@@ -15,7 +15,7 @@ The gate supports two execution backends:
 from __future__ import annotations
 
 import warnings
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 
@@ -29,17 +29,18 @@ from synapse.recon.geometry import (
 )
 
 
-def _get_floating_island_indices(
-    faces: np.ndarray,
+def _floating_island_indices_from_components(
+    components: list[Any],
+    total_faces: int,
     min_face_ratio: float,
 ) -> list[int]:
-    """Return face indices belonging to floating islands.
+    """Return sorted face indices belonging to floating islands.
 
     A connected component is a "floating island" if its face count is
     strictly less than ``min_face_ratio * total_faces``.
     """
-    components = find_connected_components(faces)
-    total_faces = len(faces)
+    if total_faces <= 0:
+        return []
     threshold = min_face_ratio * total_faces
     island_indices: list[int] = []
     for comp in components:
@@ -92,9 +93,6 @@ def validate_mesh_geometry(
             f"Invalid backend {backend!r}; expected 'auto', 'python', or 'native'."
         )
 
-    # ------------------------------------------------------------------
-    # Backend selection
-    # ------------------------------------------------------------------
     use_native = False
     if backend in ("auto", "native"):
         try:
@@ -111,22 +109,43 @@ def validate_mesh_geometry(
                 stacklevel=2,
             )
 
-    # ------------------------------------------------------------------
-    # Dispatch geometry checks
-    # ------------------------------------------------------------------
-    v = np.asarray(vertices, dtype=np.float64)
-    f = np.asarray(faces, dtype=np.int64)
+    v = np.ascontiguousarray(vertices, dtype=np.float64)
+    f = np.ascontiguousarray(faces, dtype=np.int64)
+
+    if v.ndim == 1 and len(v) == 0:
+        v = v.reshape((0, 3))
+    if f.ndim == 1 and len(f) == 0:
+        f = f.reshape((0, 3))
 
     failure_reasons: list[str] = []
 
     if use_native:
-        is_manifold: bool = _cg.check_manifold(v, f)  # type: ignore[possibly-undefined]
-        is_watertight: bool = _cg.check_watertight(v, f)  # type: ignore[possibly-undefined]
-        degen_indices: np.ndarray = _cg.check_degenerate_faces(  # type: ignore[possibly-undefined]
-            v, f, min_area=min_area, max_aspect_ratio=max_aspect_ratio,
+        verts_per_face = int(f.shape[1]) if f.ndim == 2 and f.shape[1] >= 3 else 3
+        is_manifold: bool = bool(
+            _cg.check_manifold(v, f, verts_per_face=verts_per_face)  # type: ignore[possibly-undefined]
         )
-        si_pairs: list[tuple[int, int]] = _cg.check_self_intersections(v, f)  # type: ignore[possibly-undefined]
-        components = _cg.find_connected_components(f)  # type: ignore[possibly-undefined]
+        is_watertight: bool = bool(
+            _cg.check_watertight(v, f, verts_per_face=verts_per_face)  # type: ignore[possibly-undefined]
+        )
+        degen_indices = _cg.check_degenerate_faces(  # type: ignore[possibly-undefined]
+            v,
+            f,
+            verts_per_face=verts_per_face,
+            min_area=min_area,
+            max_aspect_ratio=max_aspect_ratio,
+        )
+        si_pairs: list[tuple[int, int]] = [
+            (int(a), int(b))
+            for a, b in _cg.check_self_intersections(  # type: ignore[possibly-undefined]
+                v, f, verts_per_face=verts_per_face,
+            )
+        ]
+        components = _cg.find_connected_components(  # type: ignore[possibly-undefined]
+            f,
+            verts_per_face=verts_per_face,
+            num_vertices=int(len(v)),
+        )
+        num_faces = int(len(f)) if f.ndim == 2 else int(len(f) // verts_per_face)
     else:
         is_manifold = check_manifold(v, f)
         is_watertight = check_watertight(v, f)
@@ -134,14 +153,14 @@ def validate_mesh_geometry(
             v, f, min_area=min_area, max_aspect_ratio=max_aspect_ratio,
         )
         si_pairs = check_self_intersections(v, f)
-        components = find_connected_components(f)
+        components = find_connected_components(f) if f.ndim == 2 and len(f) > 0 else []
+        num_faces = int(len(f)) if f.ndim == 2 else 0
 
     num_components = len(components)
-    floating_island_indices = _get_floating_island_indices(f, min_face_ratio)
+    floating_island_indices = _floating_island_indices_from_components(
+        components, num_faces, min_face_ratio,
+    )
 
-    # ------------------------------------------------------------------
-    # Gate logic
-    # ------------------------------------------------------------------
     degenerate_list = [int(i) for i in degen_indices]
 
     if not is_manifold:
@@ -179,7 +198,7 @@ def validate_mesh_geometry(
         is_manifold=is_manifold,
         is_watertight=is_watertight,
         num_vertices=int(len(v)),
-        num_faces=int(len(f)),
+        num_faces=num_faces,
         degenerate_face_indices=degenerate_list,
         self_intersecting_pairs=si_pairs,
         num_connected_components=num_components,

@@ -77,18 +77,22 @@ namespace synapse::geometry {
     std::span<const int64_t> faces,
     int verts_per_face);
 
-/// Find connected components via Union-Find.
+/// Find connected components via Union-Find over shared undirected edges.
 ///
-/// Two faces are in the same component if they share at least one vertex.
+/// Two faces are in the same component if they share at least one undirected
+/// polygon edge. Components are returned sorted largest-first (with ties broken
+/// by smallest face index), and face indices within each component are sorted
+/// in ascending order.
 ///
 /// @param faces          Flat index buffer.
 /// @param verts_per_face Number of vertices per face.
-/// @param num_vertices   Total number of unique vertices.
-/// @return Vector of components; each component is a vector of face indices.
+/// @param num_vertices   Optional vertex count (unused by edge-based DSU;
+///                       retained for API compatibility).
+/// @return Vector of components; each component is a sorted vector of face indices.
 [[nodiscard]] std::vector<std::vector<int64_t>> findConnectedComponents(
     std::span<const int64_t> faces,
     int verts_per_face,
-    int64_t num_vertices);
+    int64_t num_vertices = 0);
 
 /// Full Tier-0 geometric validation.
 ///

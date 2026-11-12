@@ -1,10 +1,12 @@
-"""synapse.metrics — Cross-modal temporal, fidelity, and style metrics.
+"""synapse.metrics — Cross-modal temporal, fidelity, image quality, and style metrics.
 
-4-pillar, 16-metric evaluation suite with 3-tier quality gate profiles.
+4-pillar, 16-metric core evaluation suite plus standard image quality metrics
+(PSNR, SSIM, CIEDE2000, LPIPS) and 3-tier quality gate profiles.
 
 Pillars:
     temporal          Temporal consistency (warp error, flicker, FVD)
     fgpp_fidelity     FGPP channel fidelity (depth, normals, flow, IoU)
+    image_quality     Frame/multi-view perceptual quality (PSNR, SSIM, CIEDE2000, LPIPS)
     roundtrip         Roundtrip geometry & appearance (Chamfer, F-score,
                       volume, skeleton, albedo)
     style_consistency Style alignment (border ring, light, tone, histogram)
@@ -20,7 +22,14 @@ from synapse.metrics.fgpp_fidelity import (
     scale_invariant_depth_error,
     silhouette_iou,
 )
+from synapse.metrics.image_quality import (
+    ciede2000,
+    lpips,
+    psnr_db,
+    ssim,
+)
 from synapse.metrics.profiles import (
+    METRIC_ALIASES,
     RSI_PROMOTION,
     RSI_PROMOTION_TARGET,
     TRACK_A_ASSET,
@@ -57,6 +66,7 @@ __all__ = [
     "GateProfileName",
     "GateVerdict",
     "GateViolation",
+    "METRIC_ALIASES",
     "TRACK_B_VIDEO",
     "TRACK_A_ASSET",
     "RSI_PROMOTION",
@@ -74,6 +84,11 @@ __all__ = [
     "normal_angular_error_deg",
     "flow_endpoint_error_px",
     "silhouette_iou",
+    # image_quality
+    "psnr_db",
+    "ssim",
+    "ciede2000",
+    "lpips",
     # roundtrip
     "chamfer_mm",
     "f_score_1mm",

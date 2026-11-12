@@ -4,7 +4,7 @@
 - **前置设计文档**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) · [docs/DESIGN_RSI_FLYWHEEL.md](../DESIGN_RSI_FLYWHEEL.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-04`, `RV-09`)
 - **覆盖范围**: `PR-20` ~ `PR-25`（共 6 个原子 PR，预估 8.5 人天）
 - **跨仓边界红线**:
-  - 严禁在 `synapse.inspect` 或 `synapse.rsi` 中用 Python 手写半边网格流形遍历、BVH 加速结构或骨骼 IK 循环（全部通过 `synapse.bridge.vg_bridge` 调用 `vg-core` C++20 算子）；
+  - Tier 0 确定性几何拓扑、退化面、共面+MT 自穿插与连通域门禁统一由本仓自包含的 **`csrc/geometry/` C++20 原生算子 + `synapse.recon.geometry` Python Oracle** 双轨承载（由 `tests/test_geometry_oracle_parity.py` 锁死 100% 一致）；重型四边面重拓扑（QuadWild）、关节刚体 IK 与 Graph-Cut 多视角贴图缝合通过 `synapse.bridge.vg_bridge` 调用 C++20/CUDA 算子，严禁在业务流中手写低效 Python 网格变形循环；
   - 严禁使用纯神经自评做唯一裁判——任何进入 RSI 正样本池的数据**必须通过至少一项闭式物理几何验算**，且每轮训练集必须保留 **$\ge 20\%$ 人类专家 L0 黄金样本**。
 
 ---

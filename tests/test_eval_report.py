@@ -7,13 +7,10 @@ import json
 import struct
 import subprocess
 import sys
-import tempfile
 import zlib
 from pathlib import Path
 
-import numpy as np
 import pytest
-
 from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
 from synapse.inspect.eval_report import (
     EvalReportData,
@@ -23,7 +20,6 @@ from synapse.inspect.eval_report import (
     generate_eval_html_report,
 )
 from synapse.recon.geometry import check_manifold, check_watertight
-
 
 # -------------------------------------------------------------------
 # Helpers
@@ -297,6 +293,15 @@ class TestNormalizeMetric:
             0.5
         )
 
+    def test_defect_counts_zero_is_best(self) -> None:
+        assert _normalize_metric("num_degenerate_faces", 0.0) == pytest.approx(1.0)
+        assert _normalize_metric("num_degenerate_faces", 50.0) < 0.05
+        assert _normalize_metric("boundary_edges", 0.0) == pytest.approx(1.0)
+        assert _normalize_metric("boundary_edges", 20.0) < 0.1
+        assert _normalize_metric("connected_components", 1.0) == pytest.approx(1.0)
+        assert _normalize_metric("connected_components", 4.0) == pytest.approx(0.25)
+        assert _normalize_metric("connected_components", 0.0) == pytest.approx(0.0)
+
 
 # -------------------------------------------------------------------
 # Integration tests: CLI script
@@ -394,3 +399,63 @@ class TestEvalScript:
             timeout=30,
         )
         assert result.returncode == 20
+
+    def test_invalid_profile_fails_closed_exit_10(
+        self,
+        script_path: Path,
+        model_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                "--input-dir", str(model_dir),
+                "--output-dir", str(tmp_path / "output"),
+                "--profile", "NON_EXISTENT_PROFILE",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 10
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "error"
+        assert payload["exit_code"] == 10
+        assert payload["agent_fix_hint"]
+
+    def test_cli_inspect_evaluate_and_mesh_obj(
+        self,
+        model_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        from synapse.cli import main as cli_main
+
+        out_dir = tmp_path / "cli_eval_out"
+        rc = cli_main(
+            [
+                "--json",
+                "inspect",
+                "evaluate",
+                "--input-dir", str(model_dir),
+                "--output-dir", str(out_dir),
+                "--gate-profile", "track_b_video",
+                "--resolution", "64",
+                "--views", "4",
+            ]
+        )
+        assert rc == 0
+        assert (out_dir / "eval_report.html").is_file()
+        assert (out_dir / "eval_results.json").is_file()
+
+        # Also test 'synapse inspect mesh' on .obj without requiring trimesh
+        rc_mesh = cli_main(
+            [
+                "--json",
+                "inspect",
+                "mesh",
+                str(model_dir / "test_cube.obj"),
+            ]
+        )
+        assert rc_mesh == 0

@@ -217,17 +217,19 @@ stateDiagram-v2
 
 | 轮次 | 门禁关键指标 | 阈值标准 (REVIEW SSOT) | 失败处置与自愈逻辑 |
 | :---: | :--- | :---: | :--- |
-| **Round 1** | 相机静态重投影误差 (`reproj_error_px`)<br/>SAM 2 视频跟踪一致性 (`mask_stability`) | $\le 1.5\text{px}$<br/>$\ge 0.95$ | 扩大静态区域范围，重采样背景特征点；若仍发散返回退出码 `20` |
-| **Round 2** | 网格流形度 (`is_watertight_manifold`)<br/>四边面顶点规模 (`vertex_count`)<br/>简并面比例 (`degenerate_faces_pct`) | `True` (100% 流形)<br/>$\ge 1500$ 且 $\le 8000$<br/>$= 0.0\%$ | 调用 `vg-core` 修复非流形边缘并重新执行 QuadWild 四边面重拓扑 |
+| **Round 1** | 相机静态重投影误差 (`reproj_error_px`)<br/>SAM 2 视频跟踪一致性 (`mask_stability`) | $\le 1.5\text{px}$<br/>$\ge 0.95$ | 扩大静态区域范围，重采样背景特征点；若仍发散触发门禁熔断返回退出码 `40`（输入视频缺失或损坏才返回退出码 `20`） |
+| **Round 2** | 网格流形度 (`is_watertight_manifold`)<br/>四边面顶点规模 (`vertex_count`)<br/>简并面比例 (`degenerate_faces_pct`) | `True` (100% 流形)<br/>$\ge 1500$ 且 $\le 8000$<br/>$= 0.0\%$ | 先经本仓自包含 `csrc/geometry/` Tier 0 拓扑核校验，未通过则调用重拓扑算子执行 QuadWild 四边面重拓扑 |
 | **Round 3** | 轮廓重叠度 (`silhouette_iou`)<br/>足底着地水平位移 (`foot_sliding_cm`)<br/>深度均方根误差 (`depth_rmse_m`) | $\ge 0.90$<br/>$\le 0.2\text{cm}$<br/>$\le 0.03\text{m}$ | 增大 $\lambda_{\text{foot}}$ 权重并启动 `vg-core` 两级互补 IK 调整关节根位姿 |
 | **Round 4** | 贴图接缝色差 (`seam_delta_e`)<br/>去光照阴影残留度 (`residual_shadow_pct`) | $\Delta E_{00} \le 2.0$<br/>$\le 3.0\%$ | 重新分配 Graph-Cut 视向独占权重，重跑局部内生分解扩散 Pass |
 | **Round 5** | Visual Jev 置信度 (`confidence_score`)<br/>单镜头人工精修耗时 (`hitl_elapsed_sec`) | $\ge 0.85$<br/>$\le 900\text{s}$ (15 分钟) | 若耗时超过 15 分钟，触发 RFC 0044 熔断，返回退出码 `40` 并生成降级白模 |
 
 ---
 
-## 5. C++ 与 Python 跨语言算子协同契约 (`vg-core` & `fulgur`)
+## 5. C++ 与 Python 跨语言算子协同契约 (`csrc/geometry/`, `vg-core` & `fulgur`)
 
-按照架构铁律，**严禁在 Python 中进行密集顶点变形、网格重拓扑与大矩阵 IK 迭代**。
+按照架构铁律，**严禁在 Python 中进行生产级密集顶点变形、网格重拓扑与大矩阵 IK 迭代**：
+- **Tier 0 几何拓扑与穿插校验**：由 `synapse` 自包含的 `csrc/geometry/` C++20 原生扩展（`synapse._c_geometry`）承载，与 `synapse.recon.geometry` Python Oracle 双轨互验；
+- **重型重拓扑 / 关节刚体 IK / 多视角贴图缝合**：在生产容器中通过 `synapse.bridge.vg_bridge` 调用 C++20/CUDA 重型算子。
 
 ```
                     Python (synapse.inversion)
@@ -348,14 +350,16 @@ synapse invert video \
 
 ### 6.3 异常失败与自愈提示规范 (`agent_fix_hint`)
 
-当任务异常中断时，强制输出结构化修复建议：
+当任务因质量门禁异常中断时，严格遵循 `AGENTS.md` §3 与 `synapse/errors.py`（`SynapseError.to_json_dict`）契约：退出码为 `40`（`QualityGateError`，区别于 `20` 资产缺失），`"agent_fix_hint"` 为可直接执行的修复指引字符串，结构化调参元数据置于 `"details"` 字段中：
 ```json
 {
-  "status": "failure",
-  "exit_code": 20,
-  "error_category": "CameraDriftError",
+  "status": "error",
+  "exit_code": 40,
+  "error_type": "QualityGateError",
   "message": "DUST3R camera pose solver failed to converge: static reprojection error 3.42px exceeds gate (1.5px)",
-  "agent_fix_hint": {
+  "agent_fix_hint": "Expand SAM2 static background mask dilation and re-run: synapse invert video --input wild_footage.mp4 --sam2-dilation 15 --camera-fallback colab_bundle",
+  "details": {
+    "error_category": "CameraDriftError",
     "recommended_action": "expand_sam2_static_mask",
     "parameters": {
       "mask_dilation_kernel": 15,
@@ -371,9 +375,9 @@ synapse invert video \
 ## 7. 强化学习数据闭环与自演进反哺 (RL Flywheel Integration)
 
 全面对接 RFC 0020 / RFC 0021 / RFC 0044 规约：
-1. **五元组轨迹采集**：反演过程中产生的初始预测、残差热力图、`vg-core` 修正量与人工介入操作，实时封装为 `IntentGroup` 五元组；
+1. **五元组轨迹采集**：反演过程中产生的初始预测、残差热力图、C++ 几何修正量与人工介入操作，实时封装为 `IntentGroup` 五元组；
 2. **PRM 过程奖励模型样本**：记录每一步优化（如关节姿态微调 $\to$ IoU 变化量 $\Delta \text{IoU}$），作为多模态过程奖励模型的监督信号；
 3. **DPO 偏好对构建**：
    - 负样本（Rejected）：存在足底滑移（$>0.2\text{cm}$）或网格非流形的直接反投模型；
-   - 正样本（Chosen）：经 `vg-core` IK 约束、四边面重拓扑并去光照的规范化资产；
-   - 持续反哺 `synapse.lora` 训练管线，实现物理逆向建模能力的自动进化。
+   - 正样本（Chosen）：经 IK 约束、四边面重拓扑并去光照的规范化资产；
+   - 持续反哺 `synapse.training` 与 `synapse.adapters.lora` 微调管线，实现物理逆向建模能力的自动进化。
