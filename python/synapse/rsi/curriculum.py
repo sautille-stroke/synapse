@@ -5,8 +5,10 @@ Provides:
   on Synapse-Bench weakness scores, with factor-level upsampling
 
 The sampler analyses the previous round's benchmark report to
-identify weak dimensions and increases sampling probability for
-harder condition levels (L3/L4) on those factors.
+identify weak dimensions across all 11 canonical Synapse-Bench
+condition factors (imported from ``synapse.bench.conditions``)
+and increases sampling probability for harder condition levels
+(L3/L4) on those factors.
 """
 
 from __future__ import annotations
@@ -15,20 +17,13 @@ import random
 
 from pydantic import BaseModel, Field
 
+from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
+
 # -------------------------------------------------------------------
-# Factor definitions (matching Synapse-Bench condition factors)
+# Factor definitions (SSOT from synapse.bench.conditions)
 # -------------------------------------------------------------------
 
-_CONDITION_FACTORS: list[str] = [
-    "F01_viewpoint",
-    "F02_distance",
-    "F03_lighting",
-    "F04_material",
-    "F05_animation",
-    "F06_occlusion",
-    "F07_background",
-    "F08_resolution",
-]
+_CONDITION_FACTORS: list[str] = list(RENDERING_CONDITION_FACTORS.keys())
 
 _DIFFICULTY_LEVELS: list[str] = ["L1", "L2", "L3", "L4"]
 
@@ -96,7 +91,8 @@ class CurriculumSampler:
     """
 
     def __init__(
-        self, config: CurriculumConfig | None = None,
+        self,
+        config: CurriculumConfig | None = None,
     ) -> None:
         self._config = config or CurriculumConfig()
 
@@ -111,26 +107,39 @@ class CurriculumSampler:
     ) -> dict[str, float]:
         """Identify weak factors from benchmark scores.
 
+        Uses a continuous, bounded weight formula::
+
+            weight = 1.0 + (boost - 1.0) * ((threshold - score) / max(threshold, 0.01))
+
+        so that ``score == threshold`` gives weight ``1.0`` (no cliff jump),
+        and ``score == 0.0`` gives weight ``boost``. Factors not present in
+        *bench_scores* default to neutral weight ``1.0`` unless *bench_scores*
+        is completely empty.
+
         Args:
             bench_scores: Mapping of factor name to aggregate
                 score in [0, 1].
 
         Returns:
             Mapping of factor name to sampling weight.
-            Weak factors get boosted weights.
         """
         weights: dict[str, float] = {}
         threshold = self._config.weakness_threshold
         boost = self._config.boost_factor
 
-        for factor in _CONDITION_FACTORS:
-            score = bench_scores.get(factor, 0.5)
+        all_factors = list(_CONDITION_FACTORS)
+        for extra_k in bench_scores:
+            if extra_k not in all_factors:
+                all_factors.append(extra_k)
+
+        for factor in all_factors:
+            if factor not in bench_scores:
+                weights[factor] = 1.0
+                continue
+            score = max(0.0, min(1.0, float(bench_scores[factor])))
             if score < threshold:
-                # Weak factor: boost proportional to weakness
-                weakness = 1.0 - score
-                weights[factor] = 1.0 + (boost - 1.0) * (
-                    weakness / max(1.0 - threshold, 0.01)
-                )
+                deficit = (threshold - score) / max(threshold, 0.01)
+                weights[factor] = 1.0 + (boost - 1.0) * deficit
             else:
                 weights[factor] = 1.0
 
@@ -157,12 +166,15 @@ class CurriculumSampler:
         # Build weighted pool of (factor, level) pairs
         pool: list[tuple[str, str, float]] = []
         for factor, w in weights.items():
-            factor_score = bench_scores.get(factor, 0.5)
+            is_weak = (
+                factor in bench_scores
+                and float(bench_scores[factor])
+                < self._config.weakness_threshold
+            )
             for i, level in enumerate(_DIFFICULTY_LEVELS):
                 if i > self._config.max_level:
                     break
-                # Higher levels get more weight for weak factors
-                if factor_score < self._config.weakness_threshold:
+                if is_weak:
                     level_w = w * (1.0 + i * 0.5)
                 else:
                     level_w = w
@@ -171,12 +183,10 @@ class CurriculumSampler:
         if not pool:
             return []
 
-        # Weighted sampling
         scenarios: list[ChallengeScenario] = []
         total_weight = sum(p[2] for p in pool)
 
         for idx in range(self._config.num_scenarios):
-            # Weighted random selection
             r = rng.random() * total_weight
             cumulative = 0.0
             selected = pool[0]
@@ -187,15 +197,17 @@ class CurriculumSampler:
                     break
 
             factor, level, weight = selected
-            scenarios.append(ChallengeScenario(
-                scenario_id=f"rsi_challenge_{idx:04d}",
-                factor=factor,
-                level=level,
-                weight=round(weight, 4),
-                description=(
-                    f"Challenge {factor} at {level} "
-                    f"(weight={weight:.2f})"
-                ),
-            ))
+            scenarios.append(
+                ChallengeScenario(
+                    scenario_id=f"rsi_challenge_{idx:04d}",
+                    factor=factor,
+                    level=level,
+                    weight=round(weight, 4),
+                    description=(
+                        f"Challenge {factor} at {level} "
+                        f"(weight={weight:.2f})"
+                    ),
+                )
+            )
 
         return scenarios

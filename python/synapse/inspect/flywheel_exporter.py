@@ -117,23 +117,57 @@ class IntentGroup(BaseModel):
 
 
 class DPORecord(BaseModel):
-    """A single DPO preference pair.
+    """A single DPO preference pair compatible with ``PreferencePair``.
 
     Attributes:
+        pair_id: Unique pair identifier (defaults to ``source_intent_id``).
         prompt: The prompt/context describing the task.
-        state_before: URI to the state before editing.
-        chosen: URI to the preferred (accepted) state.
-        rejected: URI to the rejected (undone) state.
+        state_before: URI to the state before editing (also aliased as ``condition_key``).
+        chosen: URI to the preferred (accepted) state (also aliased as ``chosen_uri``).
+        rejected: URI to the rejected (undone) state (also aliased as ``rejected_uri``).
         asset_id: Asset identifier.
         source_intent_id: Source intent group ID.
+        source: Origin of the pair (`human`, `self`, `golden`).
+        category: Target LoRA category.
+        is_golden: Whether this record is an L0 golden sample.
     """
 
+    pair_id: str = ""
     prompt: str
     state_before: str
     chosen: str
     rejected: str
     asset_id: str = ""
     source_intent_id: str = ""
+    source: Literal["self", "human", "golden"] = "human"
+    category: str = "style"
+    is_golden: bool = False
+
+    @property
+    def chosen_uri(self) -> str:
+        """Canonical alias for ``PreferencePair`` compatibility."""
+        return self.chosen
+
+    @property
+    def rejected_uri(self) -> str:
+        """Canonical alias for ``PreferencePair`` compatibility."""
+        return self.rejected
+
+    @property
+    def condition_key(self) -> str:
+        """Canonical alias for ``PreferencePair`` compatibility."""
+        return self.state_before
+
+    def to_preference_pair(self) -> Any:
+        """Convert this ``DPORecord`` into a ``synapse.rsi.pair_builder.PreferencePair``."""
+        from synapse.rsi.pair_builder import PreferencePair
+
+        return PreferencePair.from_dpo_record(
+            self,
+            source=self.source,
+            category=self.category,
+            is_golden=self.is_golden,
+        )
 
 
 class PRMRecord(BaseModel):
@@ -463,32 +497,61 @@ def _build_dpo_records(
             elif g.final_passed_gate:
                 chosen_intents.append(g)
 
-        # Pair rejected with a matching chosen on the same initial state
-        for rej in rejected_intents:
-            for ch in chosen_intents:
-                if (
-                    ch.final_passed_gate
-                    and (
-                        not rej.initial_state_uri
-                        or not ch.initial_state_uri
-                        or rej.initial_state_uri
-                        == ch.initial_state_uri
-                    )
-                ):
-                    records.append(
-                        DPORecord(
-                            prompt=rej.prompt_context
-                            or (
-                                f"Fix defect on asset {asset_id}"
-                            ),
-                            state_before=rej.initial_state_uri,
-                            chosen=ch.final_state_uri,
-                            rejected=rej.final_state_uri,
-                            asset_id=asset_id,
-                            source_intent_id=rej.intent_id,
-                        )
-                    )
+        # Pair each rejected intent with a distinct chosen intent on the same initial_state_uri
+        used_chosen_ids: set[str] = set()
+        for rej_idx, rej in enumerate(asset_groups):
+            if not (rej.undo_triggered or not rej.final_passed_gate):
+                continue
+
+            def _matches_initial_state(
+                r: IntentGroup, c: IntentGroup,
+            ) -> bool:
+                if not c.final_passed_gate or c.undo_triggered:
+                    return False
+                if c.final_state_uri == r.final_state_uri and c.final_state_uri != "":
+                    return False
+                # If both specify initial_state_uri, they MUST match exactly
+                if r.initial_state_uri and c.initial_state_uri:
+                    return r.initial_state_uri == c.initial_state_uri
+                # Only allow empty initial_state_uri when both are empty
+                return r.initial_state_uri == c.initial_state_uri
+
+            # Prefer a subsequent passing intent in chronological order that hasn't been used yet
+            matched_ch: IntentGroup | None = None
+            for ch in asset_groups[rej_idx + 1 :]:
+                if ch.intent_id not in used_chosen_ids and _matches_initial_state(rej, ch):
+                    matched_ch = ch
                     break
+
+            # Fallback 1: any unused passing intent on the same initial_state_uri
+            if matched_ch is None:
+                for ch in chosen_intents:
+                    if ch.intent_id not in used_chosen_ids and _matches_initial_state(rej, ch):
+                        matched_ch = ch
+                        break
+
+            # Fallback 2: any passing intent on the same initial_state_uri
+            if matched_ch is None:
+                for ch in chosen_intents:
+                    if _matches_initial_state(rej, ch):
+                        matched_ch = ch
+                        break
+
+            if matched_ch is not None:
+                used_chosen_ids.add(matched_ch.intent_id)
+                records.append(
+                    DPORecord(
+                        pair_id=f"{rej.intent_id}__{matched_ch.intent_id}",
+                        prompt=rej.prompt_context
+                        or f"Fix defect on asset {asset_id}",
+                        state_before=rej.initial_state_uri,
+                        chosen=matched_ch.final_state_uri,
+                        rejected=rej.final_state_uri,
+                        asset_id=asset_id,
+                        source_intent_id=rej.intent_id,
+                        source="human" if matched_ch.source == "manual" else "self",
+                    )
+                )
 
     return records
 
