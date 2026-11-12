@@ -20,6 +20,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from synapse.errors import AssetNotFoundError, QualityGateError
+from synapse.metrics.profiles import (
+    RSI_PROMOTION,
+    GateProfileName,
+    get_profile_thresholds,
+)
 
 # -------------------------------------------------------------------
 # Quality gate thresholds
@@ -29,6 +34,9 @@ from synapse.errors import AssetNotFoundError, QualityGateError
 class LoRAGateThresholds(BaseModel):
     """Hard quality gate thresholds for LoRA promotion.
 
+    Defaults are sourced directly from ``synapse.metrics.profiles.RSI_PROMOTION``
+    (SSOT aligned with ``DESIGN_REVIEW_AND_ALIGNMENT.md`` §3.4).
+
     Attributes:
         chamfer_mm: Maximum Chamfer distance in mm.
         normal_angular_error_deg: Max normal error in degrees.
@@ -37,14 +45,33 @@ class LoRAGateThresholds(BaseModel):
             generalisation scenarios (percentage).
     """
 
-    chamfer_mm: float = Field(default=4.0, ge=0.0)
-    normal_angular_error_deg: float = Field(
-        default=12.0, ge=0.0,
+    chamfer_mm: float = Field(
+        default=float(RSI_PROMOTION["chamfer_mm"]), ge=0.0,
     )
-    border_ring_ciede2000: float = Field(default=2.0, ge=0.0)
+    normal_angular_error_deg: float = Field(
+        default=float(RSI_PROMOTION["normal_angular_error_deg"]), ge=0.0,
+    )
+    border_ring_ciede2000: float = Field(
+        default=float(RSI_PROMOTION["border_ring_ciede2000"]), ge=0.0,
+    )
     negative_regression_pct: float = Field(
         default=8.0, ge=0.0,
     )
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: GateProfileName = "rsi_promotion",
+        negative_regression_pct: float = 8.0,
+    ) -> LoRAGateThresholds:
+        """Construct thresholds from a canonical ``synapse.metrics.profiles`` profile."""
+        table = get_profile_thresholds(profile)
+        return cls(
+            chamfer_mm=table["chamfer_mm"],
+            normal_angular_error_deg=table["normal_angular_error_deg"],
+            border_ring_ciede2000=table["border_ring_ciede2000"],
+            negative_regression_pct=negative_regression_pct,
+        )
 
 
 # -------------------------------------------------------------------

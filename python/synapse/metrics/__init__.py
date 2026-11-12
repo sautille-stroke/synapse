@@ -22,12 +22,15 @@ from synapse.metrics.fgpp_fidelity import (
 )
 from synapse.metrics.profiles import (
     RSI_PROMOTION,
+    RSI_PROMOTION_TARGET,
     TRACK_A_ASSET,
     TRACK_B_VIDEO,
     GateProfileName,
     GateVerdict,
     GateViolation,
+    evaluate_gate,
     evaluate_metrics_gate,
+    get_profile_thresholds,
 )
 from synapse.metrics.roundtrip import (
     albedo_delta_e00,
@@ -57,7 +60,10 @@ __all__ = [
     "TRACK_B_VIDEO",
     "TRACK_A_ASSET",
     "RSI_PROMOTION",
+    "RSI_PROMOTION_TARGET",
+    "evaluate_gate",
     "evaluate_metrics_gate",
+    "get_profile_thresholds",
     # temporal
     "temporal_warp_error",
     "flicker_score",
