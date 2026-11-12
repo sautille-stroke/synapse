@@ -42,9 +42,9 @@
 > **`synapse` 是 DervGen 生态 Layer 2 的“3D↔神经视频互操作算法 SDK、无状态推理容器执行核（Worker Runtime）与跨模态往返基准套件（`Synapse-Bench`）”。**
 
 它只以三种形态被调用：
-1. **Python 算法库 (`import synapse`)**：供 `foundary` 上的 GPU 推理容器（`Wan 2.1`、`SAM2`、风格提取、局部修复合成）直接调用；
-2. **无状态作业执行 CLI (`synapse worker run --bundle ...`)**：由 `render-farm`（Go）下发自洽 `JobBundle` 闭包启动单次容器进程，读取输入 EXR/视频、执行张量计算、写出结果并退出；
-3. **离线评测 CLI (`synapse-bench ...`)**：在 `ubuntu24` 或 GPU 节点上执行 T1–T5 场景正向生成与逆向重建往返评测，输出 JSON 与 HTML 诊断报告。
+1. **Python 算法库 (`import synapse`)**：供 `foundary` 上的 GPU 推理容器（`Wan 2.1`、`SAM2`、风格提取、局部修复合成）与逆向重建反演管线直接调用；
+2. **无状态作业执行 CLI (`synapse worker run --bundle ...`)**：由 `render-farm`（Go）下发自洽 `JobBundle` 闭包启动单次容器进程，读取输入 EXR/视频、执行张量计算、写出结果并退出；遵循确定性退出状态码（`0 / 10 / 20 / 30 / 40 / 50`）；
+3. **离线评测 CLI (`synapse-bench ...`)**：在 `ubuntu24` 或 GPU 节点上执行 T1–T5 场景正向生成与逆向重建往返评测，输出纯 JSON 与自包含 HTML 诊断报告。
 
 ### 2.2 跨仓协同拓扑与职责切分
 
@@ -92,7 +92,7 @@ flowchart TD
 | :---: | :--- | :--- | :--- |
 | **NG-1** | ❌ **严禁将 `synapse` 写成常驻 HTTP/gRPC 业务微服务或分布式任务队列** | `narrative-rail` (Go) / `render-farm` (Go) / `foundary` (Go) | **Rule 11: Server-side Zero-Python**（服务端全面禁 Python） |
 | **NG-2** | ❌ **严禁在 `synapse` 中另起炉灶重新定义 FGPP 线格式字段或脱离 `@aether//fgpp` 演进** | `@aether//fgpp` (`fgpp_types.h`) 为唯一跨语言 Wire SSOT | **`rfc-design-governance` §5.1**（跨语言契约收敛至 Layer 0 `aether`） |
-| **NG-3** | ❌ **严禁在 Python 中手写密集几何/材质/骨骼循环**（如四边面重拓扑、Graph-Cut $\alpha$-Expansion、物理去光照核、足底零速度 IK） | `vg-core` (`vg::geometry`, `vg::material`, `vg::actor`) & `caelum-core` | **`vg-core` 铁律 1** & 跨仓去重规范 |
+| **NG-3** | ❌ **严禁在生产管线手写低效几何循环**；核心拓扑与流形闭合校验已自包含在 `synapse` 原生 C++20 核（`csrc/geometry/`，基于 `@aether//math`）与 Python Oracle（`synapse.recon.geometry`）中，确保零外部依赖即可完成全套 CI 门禁；重型四边面重拓扑由 `synapse.recon` 或 `synapse.bridge` 委托处理 | `csrc/geometry/` (自包含 Tier 0) + `synapse.recon` + 可选 `vg-core` 桥接 | **`vg-core` 铁律 1** & 零外部强依赖原则 |
 | **NG-4** | ❌ **严禁在 `synapse` 内直连 `asset-vault` 数据库/API 或硬编码存储凭证** | 通过 `JobBundle` 传入本地挂载路径或 Presigned URLs | **RFC 0039**（资产/算力解耦与自洽作业闭包） |
 | **NG-5** | ❌ **严禁在桌面客户端（`grand-studio` / `scene-forge` / `asset-forge`）内直接 `import synapse` 拉起 PyTorch** | 客户端仅组装 JSON `JobBundle` 发往远端 `render-farm` | **RFC 0044 §3.1**（桌面端零重型 Python 依赖） |
 

@@ -4,10 +4,11 @@
 - **评审日期**: 2026-11-11
 - **操作模型标识**: `[gemini4]`
 - **评审范围**:
-  - 仓内全部 7 篇架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`）及原 `IMPLEMENTATION_PLAN.md (v1.2)`；
-  - 仓内现存 `v0.1.0` 代码基线（`python/synapse/**`、`pyproject.toml`、`tests/**`）；
-  - 同级跨仓契约真值源：`/Volumes/work/dervgen/aether` (`@aether//fgpp`)、`/Volumes/work/dervgen/vg-core`、`/Volumes/work/dervgen/fulgur` 及 `/Volumes/work/dervgen/all-overview`（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058）。
-- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 共 30 个原子 PR)
+  - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`REVIEW_3D_EVAL_DELIVERY.md`、`DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` (RFC 0060)、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
+  - 仓内代码基线（`python/synapse/**`、`csrc/geometry/**`、`tools/data-inspector/**`、`pyproject.toml`、`tests/**`）；
+  - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060）。
+- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 共 30 个原子 PR 及 5 份执行子计划)
+- **关联专项复核计划**: [docs/plans/PLAN-REVIEW-PR17-PR18.md](plans/PLAN-REVIEW-PR17-PR18.md) · [docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 
 ---
 
@@ -110,6 +111,24 @@
   2. 主工作区存在未追踪的 `data/sessions/` 目录，`.gitignore` 未覆盖运行时会话与评测临时产物。
 - **对齐决议**：在 `PR-01` 中强制将 `ViewerServer` 默认绑定地址锁死为回环地址 `127.0.0.1`，并完善 `.gitignore`（忽略 `data/sessions/`, `data/datasets/`, `.pytest_tmp/`, `*.egg-info/`，仅保留 `data/scenarios/*.json` 版本化资产）。
 
+#### [RV-11 | P0] 全仓自包含双轨几何拓扑核与 RFC 0060 逆向重建闭环（解除对外部 `vg-core` 的强耦合）
+- **问题定位**：原 `RV-04` 及 `AUDIT_AND_ARCHITECTURE.md` NG-3 设定“synapse 严禁手写几何循环，所有流形/闭合检查均委托外部 `vg-core`”。然而，这导致日常 CI 必须依赖外部 C++ 仓 `vg-core` 的本地安装，造成环境断裂与循环依赖；且 RFC 0060（真实视频逆向 3D 动态数字孪生）缺乏自包含的 4D 跟踪、6-DoF 运镜解算与本征去光照算法核。
+- **对齐决议**：确立**自包含双轨几何算子体系**：
+  1. **原生算子核 (`csrc/geometry/`)**：以纯现代 C++20 编写核心几何拓扑检查（`checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections`），使用 Bazel 统一构建并仅依赖 Layer 0 `@aether//math`（`DVec3`），毫秒级完成十万面网格质检；
+  2. **Python Oracle (`synapse.recon.geometry`)**：作为零编译依赖的标准基准（Ground Truth Oracle），与 C++ 算子在 `tests/test_geometry_tier0.py` 实现 100% 互验；
+  3. **逆向反演全套管线 (`synapse.recon`)**：提供自包含的 4D 点追踪、6-DoF 运镜解算、流形闭合校验、Quad 重拓扑、足底防滑零位移 IK 与 Retinex/球谐去光照；
+  4. **桥接解耦 (`synapse.bridge.vg_bridge`)**：`vg-core` 降级为生产级重拓扑与高级 IK 的可选桥接，内建 `MockVgBackend`，脱离外部 C++ 库时全仓 765+ 项测试 100% 跑通。
+
+#### [RV-12 | P0] 确定性退出码 50、Fail-Closed 门禁硬拦截与 Stage 适配器解耦
+- **问题定位**：`PLAN-REVIEW-PR17-PR18` 审计暴露三处关键工程漏洞：
+  1. 部分尚未实现的 Stage 或 CLI 子命令以 `status: configured` 假装成功并以退出码 `0` 退出，严重违背「防静默失败三问」；
+  2. 质量门禁在指标缺失或为 NaN 时存在静默放行（Fail-Open）缺陷；
+  3. 领域模块（`training`, `rsi`, `inspect`）反向依赖 `pipeline`，破坏了无副作用纯算法库定位。
+- **对齐决议**：
+  1. 引入标准退出码 **`ExitCode.NOT_IMPLEMENTED = 50`**，未实现的命令或阶段必须抛出携带 `agent_fix_hint` 的结构化异常并以 `50` 终止；
+  2. 门禁一律执行 **Fail-Closed** 原则，缺失指标或非有限浮点数（NaN/Inf）立即判定 FAIL；
+  3. 建立 `synapse.pipeline.stages`（`inspect.py`, `rsi.py`, `training.py`），收敛全部 `@register_stage` 挂载，领域库保持绝对纯洁。
+
 ---
 
 ## 3. 全仓唯一事实源（Canonical SSOT Contracts）
@@ -129,11 +148,22 @@ synapse/
 │       ├── package.json                 # Electron 33 + @dervgen/electronkit + @dervgen/forgekit
 │       ├── electron/                    # 主进程 (SHM 读取、Bundle 管理、synapse-bench CLI 桥接)
 │       ├── renderer/                    # 5 大视图 (Source / Anim / Video+FGPP / Recon / Compare)
-│       └── native/                      # 独立 MODULE.bazel C++20 渲染进程 (依赖 @fulgur 公开目标)
+│       └── native/                      # 独立 MODULE.bazel C++20 渲染进程 (依赖 @fulgur/@aether::pal::shm)
+├── csrc/geometry/                       # [Tier 0] 现代 C++20 原生几何核 (Bazel, @aether//math, MSVC 兼容)
+│   ├── BUILD.bazel                      # 目标 :geometry_lib, :geometry_bindings (pybind11)
+│   ├── include/synapse/geometry/        # mesh_checks.h, types.h, aabb.h
+│   └── src/                             # mesh_checks.cc, bindings.cc
 ├── python/synapse/
 │   ├── py.typed                         # PEP 561 强类型标记
-│   ├── errors.py                        # SynapseError 异常族、退出码 (0/10/20/30/40)、agent_fix_hint
+│   ├── errors.py                        # SynapseError 异常族、退出码 (0/10/20/30/40/50)、agent_fix_hint
 │   ├── telemetry.py                     # W3C traceparent/tracestate 解析与 MemoryForecaster 显存预检
+│   ├── recon/                           # [RFC 0060] Video-to-3D 几何逆向重建与资产蒸馏
+│   │   ├── geometry.py                  # 2-流形/水密闭合/简并面/自相交 Python Oracle (双轨真值基准)
+│   │   ├── delight.py                   # Retinex & 球谐本征去光照
+│   │   ├── kinematics.py                # TwoBoneIK & 足底零位移防滑 IK (<0.2cm)
+│   │   ├── tracking.py                  # 4D 稠密点追踪与 6-DoF 相机位姿轨迹求解
+│   │   ├── pipeline.py                  # ReconPipeline 端到端逆向反演串联器
+│   │   └── types.py                     # MeshGeometry, CameraTrajectory, DelightResult, MocapKinematics
 │   ├── fgpp/                            # [M1] @aether//fgpp Python 官方镜像 SDK
 │   │   ├── schema.py                    # 15 标量通道规格、34B/px、Log-Depth、Coarseness Floor、Anchor
 │   │   ├── frame.py                     # CameraParams (行列主序无损互转)、FGPPFrame、FGPPSequence
@@ -158,8 +188,8 @@ synapse/
 │   │   ├── detector.py                  # 闪烁、轮廓漂移、浮空穿地自动异常区域检测
 │   │   ├── mask.py                      # M_3D ∪ M_SAM2 联合掩膜 + 光流自适应膨胀算子
 │   │   └── blend.py                     # 16px 环带 CIE LAB 直方图匹配、时域泊松融合、Cryptomatte 引导光学合成
-│   ├── bridge/                          # [M3] 跨库/跨容器薄桥接层 (严禁重写 C++ 算法)
-│   │   ├── vg_bridge.py                 # 零拷贝调用 vg-core (去光照/Graph-Cut/重拓扑/IK) + Track-B 白模反投门禁
+│   ├── bridge/                          # [M3] 跨库/跨容器薄桥接层 (可插拔 Mock 回退)
+│   │   ├── vg_bridge.py                 # 零拷贝/Mock 调用 vg-core (去光照/Graph-Cut/重拓扑/IK) + Track-B 白模反投门禁
 │   │   ├── foundary_client.py           # 调用 foundary (TRELLIS/Hunyuan3D/SAM2/GVHMR/Visual-Jev) 标准客户端
 │   │   └── hitl.py                      # RFC 0020 CommandIRRecord 五元组与 15 分钟 (900s) 熔断状态机
 │   ├── metrics/                         # [M4] 四维 16+ 项评测指标与三级门禁档位
@@ -170,7 +200,8 @@ synapse/
 │   │   └── style_consistency.py         # ciede2000, light_dir_error_deg, tone_curve_rmse, histogram_intersection
 │   ├── pipeline/                        # [M4] 无状态单步 Worker 与离线评测串联器
 │   │   ├── bench_runner.py              # BenchPipelineRunner (本地/CI 场景串联与 Bundle 导出)
-│   │   └── bundle_worker.py             # JobBundleWorker (消费 RFC 0039 bundle_manifest.json 单次执行即退出)
+│   │   ├── bundle_worker.py             # JobBundleWorker (消费 RFC 0039 bundle_manifest.json 单次执行即退出)
+│   │   └── stages/                      # 解耦的 Stage 适配器 (inspect.py, rsi.py, training.py)
 │   ├── bench/                           # [M1 & M4] Synapse-Bench 30 场景、软光栅与报告
 │   │   ├── scenarios/*.json             # T1–T5 共 30 个标准场景 JSON (打包进 wheel package-data)
 │   │   ├── scenario.py                  # Scenario 模型 (含 temporal_mode 与多级资源寻址)
@@ -184,28 +215,29 @@ synapse/
 │   │   └── report.py                    # 零外部依赖自包含离线 HTML 报告生成器
 │   ├── training/                        # [M5] 无状态 LoRA 离线特征预编码与 PEFT 训练核
 │   │   ├── feature_store.py             # 3D Causal VAE + T5 + FGPP Min-Depth 离线预编码与 WebDataset 打包
-│   │   ├── losses.py                    # Flow-Matching + Sobel 深度边缘对齐 + 法线一致性 + DPO 损失
+│   │   ├── losses.py                    # Flow-Matching + Sobel 深度边缘对齐 + 法线一致性 + 参考锚定 DPO 损失
 │   │   ├── trainer.py                   # 5 类正交 LoRA (style/identity/control/whitebox/motion) 训练器
 │   │   └── packager.py                  # Safetensors 导出、lora_manifest.json 封装与准出门禁评估
 │   ├── inspect/                         # [M6] 3D 智能质检、Visual Jev 判别与 RL 飞轮样本导出
-│   │   ├── schemas.py                   # CameraPose, DefectAnnotation3D, InspectionReport (v2.0.0)
-│   │   ├── align.py                     # Fibonacci 球面 DINOv2 粗检索 + vg.recon 6DoF 精配准
+│   │   ├── geometry_gate.py             # Tier 0 确定性几何硬防线门禁 (双轨 C++/Python validate_mesh_geometry)
+│   │   ├── schemas.py                   # CameraPose, DefectAnnotation3D, InspectionReport (v2.0.0), GeometricValidationResult
+│   │   ├── align.py                     # Fibonacci 球面 DINOv2 粗检索 + 6DoF 精配准
 │   │   ├── macro.py                     # 多通道残差热力图定位 + 虚拟微距相机 3D 反投解算
 │   │   ├── jev_critic.py                # Visual Jev 共享视觉上下文批量质检与校准 Logits 置信度提取
 │   │   ├── flywheel_exporter.py         # 对接 RFC 0020/0021 导出 IntentGroup / PRM StepAnnotation / Undo-DPO JSONL
-│   │   └── eval_report.py               # [已实施] 3D 模型拓扑/渲染评估数据模型与自包含 HTML 报告生成器 (SVG 雷达图)
+│   │   └── eval_report.py               # 3D 模型拓扑/渲染评估数据模型与自包含 HTML 报告生成器 (SVG 雷达图)
 │   ├── rsi/                             # [M7] 物理驱动递归自我提升 (RSI) 无状态阶段算子
-│   │   ├── curriculum.py                # 自博弈课程域随机化参数采样器 Ω_task(θ)
-│   │   ├── dual_verifier.py             # 融合 vg_bridge 物理硬判决 V_phys 与 Visual Jev V_prm 的双重验算器
+│   │   ├── curriculum.py                # 自博弈课程域随机化参数采样器 Ω_task(θ) (对齐 11 因子)
+│   │   ├── dual_verifier.py             # 融合物理硬判决 V_phys 与 Visual Jev V_prm 的双重验算器
 │   │   ├── pair_builder.py              # D_self / D_human 偏好对提纯与 >=20% L0 黄金锚点经验回放混洗器
 │   │   └── promotion_gate.py            # Synapse-Bench T1-T5 全量单调递增防退化准出守门器
 │   ├── viewer/                          # [保留] 本地 127.0.0.1 轻量调试预览器 (NG-1 豁免)
 │   └── cli/                             # 统一 CLI 路由层
 │       ├── __init__.py                  # `synapse` 与 `synapse-bench` 双入口分发
 │       └── ...                          # 按子域拆分的命令处理器
-├── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件
+├── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件 (765+ 测试全绿)
 └── scripts/
-    ├── evaluate_3d_models.py             # [已实施] 3D 模型评估 CLI (OBJ 扫描→拓扑检查→多视角截图→6 维指标→三级门禁→HTML 报告)
+    ├── evaluate_3d_models.py             # 3D 模型评估 CLI (OBJ 扫描→拓扑检查→多视角截图→6 维指标→三级门禁→HTML 报告)
     ├── prepare_datasets.py               # FGPP 黄金数据集准备
     ├── run_cpu_verification.py            # E1–E5 无卡 CPU 基线验证
     └── colab_runner.py                    # Google Colab 断点续跑实验执行器
@@ -213,7 +245,7 @@ synapse/
 
 ### 3.2 统一 CLI 双入口语法树（Unified CLI Grammar）
 
-所有子命令强制支持 `--json`（纯 JSON `stdout`，零杂散日志）与统一退出码（`0 / 10 / 20 / 30 / 40`）：
+所有子命令强制支持 `--json`（纯 JSON `stdout`，零杂散日志）与统一退出码（`0 / 10 / 20 / 30 / 40 / 50`）：
 
 | 顶层入口 | 子命令族 | 具体命令签名 | 归属里程碑 |
 | :--- | :--- | :--- | :---: |
@@ -225,22 +257,28 @@ synapse/
 | **`synapse`** | `generate` / `view` | `synapse generate ...`（开发合成数据集） / `synapse view <dir>`（本地 `127.0.0.1` 预览） | M1 (`PR-04`) |
 | **`synapse-bench`** | 评测基准套件 | `synapse-bench list [--tier T1..T5] [--json]`<br/>`synapse-bench export-fgpp --scenario <id> --out <dir> [--json]`<br/>`synapse-bench run [--scenario <id> \| --tier <T> \| --all] --adapter <id> [--profile <p>] [--report <html_path>] [--export-bundle <dir>] [--json]`<br/>`synapse-bench evaluate --bundle <inspection_bundle_dir> [--profile <p>] [--json]` | M1 / M4 / M8 |
 
-### 3.3 `JobBundleWorker` 八大无状态容器阶段契约（RFC 0039）
+### 3.3 `JobBundleWorker` 统一无状态容器阶段契约（RFC 0039）
 
 `render-farm`（Go）通过 `synapse worker run --bundle <dir> --json` 统一调度全部单次容器计算阶段：
 
-| `stage` 枚举值 | 核心输入载荷 (`inputs`) | 核心输出产物 (`outputs`) | 落地 PR |
+| `stage` 枚举值 | 核心输入载荷 (`inputs`) | 核心输出产物 (`outputs`) | 落地 PR / 模块 |
 | :--- | :--- | :--- | :---: |
 | `fgpp_validate` | `fgpp_dir` | 校验摘要与通道统计 (`result_manifest.json`) | `PR-14b` |
 | `neural_video_generate` | `fgpp_dir`, `prompt`, `adapter_config`, `lora_bundles[]` | `generated_video.mp4`, 逐帧 PNG, `reanchor_requests[]` | `PR-14b` / `PR-16` |
 | `style_extract_and_map` | `video_or_frames`, `fgpp_dir` (可选) | `style_profile.yaml` (RFC 0043 v2.0.0), `usd_light_overrides.json` | `PR-14b` |
 | `surgical_composite` | `base_video`, `patch_video`, `fgpp_new`, `sam2_mask`, `caelum_aov` | `composited_video.mp4`, 环带色差诊断 | `PR-14b` |
 | `lora_preencode` | `fgpp_dir`, `target_video`, `caption` | `WebDataset` 潜空间分片 (`shard-*.tar`) | `PR-17` |
-| `lora_train` | `wds_shards[]`, `lora_train_config.yaml`, `base_checkpoint` | `lora_bundle/` (`adapter_model.safetensors` + `lora_manifest.json`) | `PR-18` |
-| `asset_inspect_3d` | `mesh_glb`, `ref_image`, `rendered_gbuffer_dir` | `inspection_report.json` (`DefectAnnotation3D[]`) | `PR-22` |
+| `lora_train` | `wds_shards[]`, `lora_train_config.yaml`, `base_checkpoint` | `lora_bundle/` (`adapter_model.safetensors` + `lora_manifest.json`) | `PR-18` / PR #24 |
+| `lora_package` | `lora_train_dir`, `manifest_meta` | 签名与准出评估封装的 `lora_bundle/` | `PR-19` / PR #24 |
+| `asset_inspect_3d` | `mesh_glb`, `ref_image`, `rendered_gbuffer_dir` | `inspection_report.json` (`DefectAnnotation3D[]`) | `PR-22` / PR #24 |
+| `inspect_refine` | `mesh_glb`, `inspection_report` | `refined_mesh.glb` (L1 算法自愈修线) | `PR-23` / PR #24 |
+| `inspect_export_rl` | `journal_dir`, `format` (`dpo`\|`prm`) | `rl_dataset.jsonl` (RFC 0020/0021 训练对) | `PR-23` / PR #24 |
 | `rsi_dual_verify` | `candidate_dir`, `gt_fgpp_dir`, `l0_anchor_manifest` | `verification_verdict.json` + 提纯偏好对记录 | `PR-24` |
 
 ### 3.4 三级质量门禁统一阈值矩阵（Reconciled Quality Gate Profiles）
+
+> [!NOTE]
+> **SSOT 落地确认**：`python/synapse/metrics/profiles.py` 已于 PR #23 完全对齐下表三级门禁值，并通过 `tests/test_profiles_doc_sync.py` 自动化测试进行代码-文档双向锁死。原先更严苛的实验性远期指标独立保存在 `RSI_PROMOTION_TARGET` 档位中。
 
 | 指标名称 | 物理意义 | `track_b_video`<br/>(快速白模视频预演) | `track_a_asset`<br/>(高保真 3D 资产准出) | `rsi_promotion`<br/>(LoRA/RSI 演进硬门禁) |
 | :--- | :--- | :---: | :---: | :---: |

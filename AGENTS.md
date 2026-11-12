@@ -95,6 +95,8 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **3D 生成模型质量提升方法论、评估体系全景矩阵与训练数据工程规范**：[docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)
 - **3D 模型评估体系完整交付清单与 Review 指南**：[docs/REVIEW_3D_EVAL_DELIVERY.md](docs/REVIEW_3D_EVAL_DELIVERY.md)
 - **真实视频逆向 3D 动态数字孪生与联合反演设计规范 (RFC 0060)**：[docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
+- **算法、训练与数据流水线攻坚执行计划**：[docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md](docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)
+- **PR #17 / PR #18 联合评审与整改落地报告**：[docs/plans/PLAN-REVIEW-PR17-PR18.md](docs/plans/PLAN-REVIEW-PR17-PR18.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
@@ -105,7 +107,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 
 | Skill 名称 | 路径 | 适用场景 |
 | :--- | :--- | :--- |
-| **`synapse-overview`** | [.agents/skills/synapse-overview/SKILL.md](.agents/skills/synapse-overview/SKILL.md) | 架构全景、全模块索引（含 3D 模型评估）、跨仓协作边界、CLI 退出码契约与多机测试规范 |
+| **`synapse-overview`** | [.agents/skills/synapse-overview/SKILL.md](.agents/skills/synapse-overview/SKILL.md) | 架构全景、全模块索引（含 3D 模型评估、csrc/geometry 与 synapse.recon 逆向反演）、跨仓协作边界、CLI 确定性退出码契约（含 50）与多机测试规范 |
 | **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
 | **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
 | **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |
