@@ -360,11 +360,11 @@ class TestStageRegistration:
     ) -> None:
         """vlm_endpoint_url without vlm_transport raises BackendUnavailableError(30)."""
         from synapse.errors import BackendUnavailableError
-        from synapse.inspect.jev_critic import (
-            _handle_asset_inspect_3d,
-        )
         from synapse.pipeline.bundle_worker import (
             BundleManifest,
+        )
+        from synapse.pipeline.stages.inspect import (
+            handle_asset_inspect_3d,
         )
 
         manifest = BundleManifest(
@@ -376,5 +376,5 @@ class TestStageRegistration:
             },
         )
         with pytest.raises(BackendUnavailableError) as exc_info:
-            _handle_asset_inspect_3d(manifest)
+            handle_asset_inspect_3d(manifest)
         assert int(exc_info.value.exit_code) == 30
