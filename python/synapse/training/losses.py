@@ -3,6 +3,7 @@
 Provides:
 - ``flow_matching_loss``: Rectified flow velocity field MSE
 - ``latent_edge_alignment_loss``: Sobel-gradient edge consistency
+- ``normal_reconstruction_loss``: Cosine angular distance on normals
 - ``diffusion_dpo_loss``: Flow-matching DPO preference loss
 """
 
@@ -71,6 +72,52 @@ def latent_edge_alignment_loss(
     return float(np.mean(np.abs(grad_z - grad_d)))
 
 
+
+def normal_reconstruction_loss(
+    n_pred: np.ndarray,
+    n_gt: np.ndarray,
+) -> float:
+    """Cosine angular distance between predicted and ground-truth normals.
+
+    Computes the per-pixel normal reconstruction loss::
+
+        mean(1 - <n_pred, n_gt>)
+
+    where both inputs are expected to be unit-length normal vectors
+    from the FGPP ``WorldNormal.XYZ`` channels.
+
+    Locked hyperparameter HP-04 from PLAN-ALGO-TRAINING-DATA-PIPELINE.md.
+
+    Args:
+        n_pred: Predicted normal field, shape ``[H, W, 3]`` or
+            ``[3, H, W]``.  Will be L2-normalised internally.
+        n_gt: Ground-truth normal field from FGPP, same shape.
+
+    Returns:
+        Scalar cosine angular distance loss in ``[0, 2]``.
+    """
+    n_p = np.asarray(n_pred, dtype=np.float64)
+    n_g = np.asarray(n_gt, dtype=np.float64)
+
+    # If channel-first [3, H, W], transpose to [H, W, 3]
+    if n_p.ndim == 3 and n_p.shape[0] == 3:
+        n_p = np.transpose(n_p, (1, 2, 0))
+    if n_g.ndim == 3 and n_g.shape[0] == 3:
+        n_g = np.transpose(n_g, (1, 2, 0))
+
+    # L2-normalise to unit vectors (avoid div-by-zero)
+    eps = 1e-8
+    n_p = n_p / (np.linalg.norm(n_p, axis=-1, keepdims=True) + eps)
+    n_g = n_g / (np.linalg.norm(n_g, axis=-1, keepdims=True) + eps)
+
+    # Cosine similarity per pixel, clamp to [-1, 1]
+    cos_sim = np.sum(n_p * n_g, axis=-1)
+    cos_sim = np.clip(cos_sim, -1.0, 1.0)
+
+    # Loss = mean(1 - cos_sim)
+    return float(np.mean(1.0 - cos_sim))
+
+
 def diffusion_dpo_loss(
     v_theta_w: np.ndarray,
     v_theta_l: np.ndarray,
@@ -82,8 +129,8 @@ def diffusion_dpo_loss(
 
     Computes the diffusion-DPO objective for flow matching::
 
-        -log(sigmoid(beta * (||v_ref_w - v_theta_w||^2
-                            - ||v_ref_l - v_theta_l||^2)))
+        -log(sigmoid(beta * (||v_ref_l - v_theta_l||^2
+                            - ||v_ref_w - v_theta_w||^2)))
 
     where ``w`` = chosen (winner) and ``l`` = rejected (loser).
 
@@ -107,7 +154,7 @@ def diffusion_dpo_loss(
     err_l = float(np.mean((v_rl - v_tl) ** 2))
 
     # DPO: chosen should have lower error than rejected
-    logit = beta * (err_w - err_l)
+    logit = beta * (err_l - err_w)
 
     # -log(sigmoid(logit)) = log(1 + exp(-logit))
     # Numerically stable: softplus(-logit) equivalent

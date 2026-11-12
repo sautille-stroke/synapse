@@ -383,9 +383,26 @@ def _handle_asset_inspect_3d(
     asset_name = str(params.get("asset_name", "Unknown Asset"))
     image_uris = list(params.get("image_uris", []))
 
-    transport = MockJevTransport(
-        defect_overrides=params.get("defect_overrides"),
-    )
+    # Use real VLM transport if endpoint is provided; otherwise
+    # fall back to MockJevTransport for CI / no-GPU environments.
+    endpoint_url = params.get("vlm_endpoint_url")
+    if endpoint_url:
+        # Lazy import to avoid pulling VLM deps in CI
+        try:
+            from synapse.inspect.vlm_transport import (
+                HttpVlmTransport,
+            )
+            transport: JevTransport = HttpVlmTransport(
+                endpoint_url=endpoint_url,
+            )
+        except ImportError:
+            transport = MockJevTransport(
+                defect_overrides=params.get("defect_overrides"),
+            )
+    else:
+        transport = MockJevTransport(
+            defect_overrides=params.get("defect_overrides"),
+        )
     critic = VisualJevCritic(transport=transport)
     report = critic.evaluate(
         asset_id, asset_name, image_uris,

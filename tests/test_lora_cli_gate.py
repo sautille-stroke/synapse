@@ -53,9 +53,9 @@ class TestLoRAGateThresholds:
 
     def test_defaults(self) -> None:
         t = LoRAGateThresholds()
-        assert t.chamfer_mm == 5.0
+        assert t.chamfer_mm == 4.0
         assert t.normal_angular_error_deg == 12.0
-        assert t.border_ring_ciede2000 == 2.5
+        assert t.border_ring_ciede2000 == 2.0
         assert t.negative_regression_pct == 8.0
 
     def test_custom_values(self) -> None:

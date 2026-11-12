@@ -36,11 +36,11 @@ class LoRAGateThresholds(BaseModel):
             generalisation scenarios (percentage).
     """
 
-    chamfer_mm: float = Field(default=5.0, ge=0.0)
+    chamfer_mm: float = Field(default=4.0, ge=0.0)
     normal_angular_error_deg: float = Field(
         default=12.0, ge=0.0,
     )
-    border_ring_ciede2000: float = Field(default=2.5, ge=0.0)
+    border_ring_ciede2000: float = Field(default=2.0, ge=0.0)
     negative_regression_pct: float = Field(
         default=8.0, ge=0.0,
     )
