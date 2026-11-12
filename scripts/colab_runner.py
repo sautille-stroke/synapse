@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Turnkey Google Colab GPU Experiment Runner for Synapse (E1-E4).
 
-Designed for Colab T4 (16 GB), L4 (24 GB), and A100 (40/80 GB) runtimes:
-1. Unpacks ``synapse_colab_bundle_v1.tar.gz`` exported on ``ubuntu24``.
-2. Auto-detects GPU model, VRAM, and ``bfloat16`` support to select optimal
-   Wan 2.1 model size (`1.3B` vs `14B`), CPU offload, and LoRA rank/batch config.
-3. Saves per-experiment JSON checkpoints and LoRA `.safetensors` weights
-   directly to Google Drive (``--checkpoint-dir``) so Colab session disconnects
-   resume cleanly without losing progress.
+Follows Google Colab and Google Drive SSOT V2.0 Standards:
+1. Zero Clutter in MyDrive: Everything under /content/drive/MyDrive/dervgen/.
+2. Job Workspace Isolation: /dervgen/work/{user}/synapse/{date}/{job_id}/
+   with README.md, job.json, input/, output/, checkpoints/, logs/.
+3. Preemption Resilience: Resume-first checkpoint logic.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
+import os
 import tarfile
 import time
 from pathlib import Path
@@ -77,6 +77,123 @@ def extract_colab_bundle(bundle_path: Path, extract_dir: Path) -> Path:
     with tarfile.open(bundle_path, "r:gz") as tar:
         tar.extractall(path=extract_dir)
     return extract_dir
+
+
+def init_job_workspace(job_dir: Path, user: str, job_id: str, date_str: str) -> None:
+    """Initialize SSOT V2.0 job hierarchy under /dervgen/work/{user}/synapse/{date}/{job_id}."""
+    (job_dir / "input").mkdir(parents=True, exist_ok=True)
+    (job_dir / "output").mkdir(parents=True, exist_ok=True)
+    (job_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
+    (job_dir / "logs").mkdir(parents=True, exist_ok=True)
+
+    readme_path = job_dir / "README.md"
+    if not readme_path.exists():
+        readme_path.write_text(
+            f"""# Job: {job_id}
+
+- **所属仓库**: `synapse`
+- **执行日期**: `{date_str}`
+- **发起方**: `User: {user}`
+- **当前状态**: `RUNNING`
+- **运行环境**: Google Colab (SSOT V2.0 Standard)
+
+---
+
+## 1. 任务背景与目的 (Objective)
+Synapse Layer 2 神经视频生成适配器推理与消融实验 (E1-E4)。
+
+## 2. 关键超参与输入配置 (Configurations)
+- **数据集**: FGPP v1.0 Golden Dataset
+- **输出基准**: ACEScg / 7-ch Conditioning / Multi-LoRA
+
+## 3. 一键复现命令 (Reproduction)
+```bash
+python scripts/colab_runner.py --job-dir={job_dir} --exp all
+```
+
+## 4. 关键指标与结论 (Results & Scorecard)
+- *实验运行中...*
+""",
+            encoding="utf-8",
+        )
+
+    job_json_path = job_dir / "job.json"
+    if not job_json_path.exists():
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        job_info = {
+            "version": "1.0.0",
+            "job_id": job_id,
+            "repo": "synapse",
+            "date": date_str,
+            "initiator": user,
+            "status": "RUNNING",
+            "lifecycle": {
+                "created_at": now_iso,
+                "started_at": now_iso,
+                "finished_at": None,
+                "duration_seconds": None,
+            },
+            "hardware": detect_gpu_profile(),
+            "metrics": {},
+            "exit_code": None,
+        }
+        job_json_path.write_text(
+            json.dumps(job_info, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+
+def finalize_job_workspace(
+    job_dir: Path,
+    state: dict[str, Any],
+    duration: float,
+    status: str = "COMPLETED",
+) -> None:
+    """Finalize job.json and README.md with metrics and status."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    job_json_path = job_dir / "job.json"
+    if job_json_path.exists():
+        try:
+            job_info = json.loads(job_json_path.read_text(encoding="utf-8"))
+        except Exception:
+            job_info = {}
+        job_info["status"] = status
+        lifecycle = job_info.get("lifecycle", {})
+        lifecycle["finished_at"] = now_iso
+        lifecycle["duration_seconds"] = round(duration, 3)
+        job_info["lifecycle"] = lifecycle
+        metrics = {}
+        for exp, res in state.get("completed", {}).items():
+            metrics[f"{exp}_elapsed_sec"] = res.get("elapsed_sec")
+            metrics[f"{exp}_status"] = res.get("status")
+        job_info["metrics"] = metrics
+        job_info["exit_code"] = 0 if status == "COMPLETED" else 1
+        job_json_path.write_text(
+            json.dumps(job_info, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    # Copy output state summary into output/
+    summary_path = job_dir / "output" / "experiment_summary.json"
+    summary_path.write_text(
+        json.dumps(state, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    readme_path = job_dir / "README.md"
+    if readme_path.exists():
+        content = readme_path.read_text(encoding="utf-8")
+        conclusion_lines = [
+            f"- **总耗时**: {duration:.2f}s",
+            f"- **完成阶段**: {list(state.get('completed', {}).keys())}",
+            f"- **核心产物**: `output/experiment_summary.json`, `checkpoints/colab_experiment_state.json`",
+            f"- **最终状态**: `{status}`",
+        ]
+        scorecard = "\n".join(conclusion_lines)
+        if "## 4. 关键指标与结论 (Results & Scorecard)" in content:
+            parts = content.split("## 4. 关键指标与结论 (Results & Scorecard)")
+            new_content = parts[0] + "## 4. 关键指标与结论 (Results & Scorecard)\n" + scorecard + "\n"
+            readme_path.write_text(new_content, encoding="utf-8")
 
 
 def run_colab_suite(
@@ -152,11 +269,31 @@ def main() -> int:
         default=Path("/content/datasets/synapse"),
         help="Directory where the bundle is extracted.",
     )
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    drive_root = Path(os.environ.get("DERVGEN_DRIVE_ROOT", "/content/drive/MyDrive/dervgen"))
+    parser.add_argument(
+        "--user",
+        type=str,
+        default="yanglei",
+        help="User or Agent identity for job isolation (e.g. yanglei, gemini3.8).",
+    )
+    parser.add_argument(
+        "--job-id",
+        type=str,
+        default="e1-e4",
+        help="Job identifier (e.g. e1-e4, wan21-lora-r32).",
+    )
+    parser.add_argument(
+        "--job-dir",
+        type=Path,
+        default=None,
+        help="Full path to Google Drive job directory (SSOT V2.0: /dervgen/work/{user}/{repo}/{date}/{job_id}).",
+    )
     parser.add_argument(
         "--checkpoint-dir",
         type=Path,
-        default=Path("/content/drive/MyDrive/synapse_experiments"),
-        help="Google Drive directory for persistent checkpoints.",
+        default=None,
+        help="Custom checkpoint directory (defaults to {job_dir}/checkpoints).",
     )
     parser.add_argument(
         "--exp",
@@ -174,10 +311,35 @@ def main() -> int:
     if args.bundle.is_file():
         extract_colab_bundle(args.bundle, args.dataset_dir)
 
+    # Resolve job directory conforming to SSOT V2.0
+    if args.job_dir is not None:
+        job_dir = args.job_dir
+    else:
+        job_dir = drive_root / "work" / args.user / "synapse" / today / args.job_id
+
+    checkpoint_dir = (
+        args.checkpoint_dir if args.checkpoint_dir is not None else (job_dir / "checkpoints")
+    )
+
+    # If Drive is mounted or custom job dir specified, initialize job structure
+    is_cloud_job = "/drive/" in str(job_dir) or drive_root.exists() or args.job_dir is not None
+    if is_cloud_job:
+        init_job_workspace(job_dir, args.user, args.job_id, today)
+
+    t_start = time.time()
     exps = ["e1", "e2", "e4"] if args.exp == "all" else [args.exp]
-    state = run_colab_suite(args.dataset_dir, args.checkpoint_dir, exps)
-    print(json.dumps(state, indent=2))
-    return 0
+    try:
+        state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps)
+        t_duration = time.time() - t_start
+        if is_cloud_job:
+            finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")
+        print(json.dumps(state, indent=2))
+        return 0
+    except Exception as e:
+        t_duration = time.time() - t_start
+        if is_cloud_job:
+            finalize_job_workspace(job_dir, {}, t_duration, status="FAILED")
+        raise e
 
 
 if __name__ == "__main__":

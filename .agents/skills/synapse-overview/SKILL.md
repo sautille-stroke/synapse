@@ -45,7 +45,7 @@ description: >-
 | 环境节点 | 角色定位 | 标准执行命令 |
 | :--- | :--- | :--- |
 | **`ubuntu24` (P0 云端主力机)** | **全量单测 (`pytest`)、`ruff`/`mypy` 静态门禁、C++ 引擎无头导出、黄金数据集打包与 E1–E5 无卡基线验证** | `ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ && /root/venv-synapse/bin/mypy python/synapse"` |
-| **Google Colab / `win-dev` (P1 GPU)** | **重型视频大模型 (`Wan 2.1`) 推理与 LoRA 微调实验**<br>使用 `ubuntu24` 导出的 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/synapse_experiments --exp all` |
+| **Google Colab / win-dev (P1 GPU)** | **重型视频大模型 (Wan 2.1) 推理与 LoRA 微调实验**<br>详见 workenv/google-colab/ 一站式环境套件（含 setup_colab.sh、models.json、io_spec.md 及 Notebook），使用 ubuntu24 导出的 synapse_colab_bundle_v1.tar.gz 与 Google Drive 断点续跑 | ash workenv/google-colab/setup_colab.sh && python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/e1-e4/checkpoints --exp all |
 | **macOS 本地开发机** | **代码主控与 Git Worktree 管理**<br>严禁在本地拉起视频大模型或跑全量重型套件 | `pytest tests/test_bench.py -k "test_scenario_create" -v` |
 
 ---

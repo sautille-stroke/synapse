@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SynapseColabModelRegistry",
+  "version": "1.0.0",
+  "hardware_profiles": {
+    "colab_t4": {
+      "vram_gb": 16.0,
+      "recommended_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "dtype": "float16",
+      "cpu_offload": true,
+      "default_lora_rank": 16,
+      "max_batch_size": 1,
+      "resolution": [832, 480],
+      "max_frames_per_window": 81
+    },
+    "colab_l4": {
+      "vram_gb": 24.0,
+      "recommended_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "dtype": "bfloat16",
+      "cpu_offload": true,
+      "default_lora_rank": 32,
+      "max_batch_size": 1,
+      "resolution": [832, 480],
+      "max_frames_per_window": 97,
+      "note": "L4 VRAM (24 GB) < 35 GB threshold, so cpu_offload is enabled by colab_runner.py"
+    },
+    "colab_a100_40gb": {
+      "vram_gb": 40.0,
+      "recommended_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+      "dtype": "bfloat16",
+      "cpu_offload": false,
+      "default_lora_rank": 32,
+      "max_batch_size": 1,
+      "resolution": [832, 480],
+      "max_frames_per_window": 97
+    },
+    "colab_a100_80gb": {
+      "vram_gb": 80.0,
+      "recommended_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+      "dtype": "bfloat16",
+      "cpu_offload": false,
+      "default_lora_rank": 32,
+      "max_batch_size": 1,
+      "resolution": [832, 480],
+      "max_frames_per_window": 97,
+      "note": "1280x720 planned but untested; colab_runner.py caps lora_rank at 32 for vram >= 22 GB"
+    }
+  },
+  "required_models": [
+    {
+      "role": "video_backbone_1.3b",
+      "name": "Wan2.1-T2V-1.3B",
+      "hf_repo_id": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "target_hardware": ["colab_t4", "colab_l4"],
+      "weights_format": "safetensors",
+      "params": "1.3B",
+      "expected_size_gb": 3.2,
+      "usage": "Lightweight video diffusion backbone for E1-E4 on standard free/pro Colab T4/L4 runtimes."
+    },
+    {
+      "role": "video_backbone_14b",
+      "name": "Wan2.1-T2V-14B",
+      "hf_repo_id": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
+      "target_hardware": ["colab_a100_40gb", "colab_a100_80gb"],
+      "weights_format": "safetensors",
+      "params": "14B",
+      "expected_size_gb": 28.0,
+      "usage": "Full AAA video diffusion backbone for high-fidelity benchmark evaluation on Colab A100."
+    },
+    {
+      "role": "text_encoder",
+      "name": "UMT5-XXL",
+      "hf_repo_id": "google/umt5-xxl",
+      "weights_format": "safetensors",
+      "dtype": "bfloat16",
+      "usage": "5-part structured caption embedding (Camera, Subject, Action, Lighting, Style)."
+    },
+    {
+      "role": "vae_encoder_decoder",
+      "name": "Wan2.1 3D Causal VAE",
+      "hf_repo_id": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "subfolder": "vae",
+      "latent_channels": 16,
+      "temporal_compression": 4,
+      "spatial_compression": 8,
+      "usage": "Encodes 832x480 video into 16-ch latents; decodes fused causal sliding window latents."
+    },
+    {
+      "role": "segmentation_refinement",
+      "name": "Segment Anything 2.1 Hiera-Large",
+      "hf_repo_id": "facebook/sam2.1-hiera-large",
+      "weights_format": "pt",
+      "usage": "2D video mask refinement combined with Cryptomatte.ID for surgical inpainting (E2)."
+    }
+  ]
+}
