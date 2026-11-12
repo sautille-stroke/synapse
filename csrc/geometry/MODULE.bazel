@@ -1,0 +1,30 @@
+"""Synapse native geometry validation kernel.
+
+Standalone Bazel module for mesh topology and geometry validation.
+Depends on @aether//math for vector/AABB primitives.
+"""
+
+module(
+    name = "synapse-geometry",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.26")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "aether", version = "0.3.0")
+
+# Python + pybind11 for native bindings
+bazel_dep(name = "rules_python", version = "2.4.2")
+bazel_dep(name = "pybind11_bazel", version = "3.0.3")
+
+local_path_override(
+    module_name = "aether",
+    path = "../../../aether",
+)
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.12",
+    ignore_root_user_error = True,
+)

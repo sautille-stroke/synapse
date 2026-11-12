@@ -6,8 +6,8 @@
 /// `verts_per_face` consecutive indices describes one polygon.  For triangle
 /// meshes, `verts_per_face == 3`.
 ///
-/// All routines are purely CPU, single-threaded, and dependency-free (only
-/// C++ stdlib + the types declared in this project).
+/// All routines are purely CPU, single-threaded.  The only external dependency
+/// is @aether//math for the Vec3 (= aether::DVec3) type.
 
 #include "synapse/geometry/types.h"
 

@@ -10,7 +10,7 @@
 ///   findConnectedComponents — Union-Find with path compression + union by rank
 ///   validateMeshGeometry  — orchestrator that calls all of the above
 ///
-/// No external dependencies — pure C++ stdlib.
+/// Vec3 is aliased to aether::DVec3 from @aether//math.
 
 #include "synapse/geometry/mesh_checks.h"
 
