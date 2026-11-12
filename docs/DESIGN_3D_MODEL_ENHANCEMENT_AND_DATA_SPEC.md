@@ -10,6 +10,7 @@
   - `synapse-native`（C++20/CUDA 核心几何算子、四边面重拓扑、物理去光照与刚体 IK）
   - `aether`（底层数学库、几何类型与 `FGPP` 跨语言线格式 SSOT）
   - `grand-studio` / `scene-forge` / `asset-forge`（人机协同质检、白模编辑与 `CommandIR` 采集）
+- **交付清单与 Review 指南**: [REVIEW_3D_EVAL_DELIVERY.md](REVIEW_3D_EVAL_DELIVERY.md)
 - **关联生态规约**:
   - **RFC 0019**: `CommandIR` 序列化操作协议与离线同步机制
   - **RFC 0020**: 人机协同操作时间轴与模型训练数据闭环 (`IntentGroup`, `OperatorIdentity`)
