@@ -1,0 +1,21 @@
+# ─────────────────────────────────────────────────────────────────────
+# Synapse Data Inspector Native — Bazel Configuration
+# ─────────────────────────────────────────────────────────────────────
+
+try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
+
+common --registry=https://bcr.bazel.build
+common --enable_platform_specific_config
+
+build:macos --cxxopt=-std=c++20
+build:macos --host_cxxopt=-std=c++20
+build:linux --cxxopt=-std=c++20
+build:linux --host_cxxopt=-std=c++20
+build:windows --cxxopt=/std:c++20
+build:windows --host_cxxopt=/std:c++20
+
+build:macos --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
+build:linux --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
+build:windows --per_file_copt=^(?!.*[^/][+]/).*@/EHs-c-,/GR-,/D_HAS_EXCEPTIONS=0
+
+try-import %workspace%/.bazelrc.user

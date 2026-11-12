@@ -4,8 +4,7 @@
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const { InspectorProcessManager } = require('./native-process');
+const { InspectorProcessManager, validateNativeCommand } = require('./native-process');
 const { BundleManager } = require('./bundle-manager');
 
 let mainWindow = null;
@@ -37,7 +36,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
     show: true,
   });
@@ -100,13 +99,19 @@ ipcMain.handle('get-bundle-info', () => {
 
 // ─── Native process IPC ──────────────────────────────────────────
 ipcMain.handle('native-start', (_event, bundlePath, width, height) => {
-  return nativeProc.start(bundlePath, width, height);
+  const safeWidth = Math.max(1, Math.min(7680, Number(width) || 1280));
+  const safeHeight = Math.max(1, Math.min(4320, Number(height) || 720));
+  return nativeProc.start(bundlePath, safeWidth, safeHeight);
 });
 ipcMain.handle('native-stop', () => {
   nativeProc.stop();
 });
 ipcMain.handle('native-send-command', (_event, cmd) => {
-  nativeProc.sendCommand(cmd);
+  const check = validateNativeCommand(cmd);
+  if (!check.ok) {
+    throw new Error(`Invalid native command: ${check.error}`);
+  }
+  return nativeProc.sendCommand(check.command);
 });
 
 // Forward native process events to renderer.

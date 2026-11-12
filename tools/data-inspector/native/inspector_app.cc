@@ -4,45 +4,40 @@
 #include "inspector_app.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <io.h>
-#include <windows.h>
-#define STDIN_FILENO 0
-static bool stdinHasData() {
-  HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-  if (h == INVALID_HANDLE_VALUE) return false;
-  DWORD avail = 0;
-  if (!PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr)) return false;
-  return avail > 0;
+namespace synapse::inspector {
+
+struct StdinQueueState {
+  std::mutex mtx;
+  std::vector<std::string> lines;
+  std::atomic<bool> eof{false};
+  std::atomic<bool> stop{false};
+};
+
+namespace {
+
+[[nodiscard]] uint32_t fnv1aHash(std::string_view text) noexcept {
+  uint32_t h = 2166136261u;
+  for (unsigned char c : text) {
+    h ^= static_cast<uint32_t>(c);
+    h *= 16777619u;
+  }
+  return h;
 }
-#else
-#include <poll.h>
-#include <unistd.h>
-static bool stdinHasData() {
-  struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};
-  return poll(&pfd, 1, 0) > 0;
-}
-#endif
 
-// ---------------------------------------------------------------------------
-// Minimal JSON helpers (no external dependency).
-// Parses simple flat JSON objects for command dispatch.
-// ---------------------------------------------------------------------------
-
-static std::string jsonGetString(std::string_view json,
-                                 std::string_view key) {
+[[nodiscard]] std::string jsonGetString(std::string_view json,
+                                        std::string_view key) {
   const std::string needle = "\"" + std::string(key) + "\"";
   auto pos = json.find(needle);
   if (pos == std::string_view::npos) return {};
@@ -56,184 +51,323 @@ static std::string jsonGetString(std::string_view json,
   return std::string(json.substr(pos, end - pos));
 }
 
-static double jsonGetNumber(std::string_view json, std::string_view key,
-                            double fallback = 0.0) {
+[[nodiscard]] double jsonGetNumber(std::string_view json, std::string_view key,
+                                   double fallback = 0.0) noexcept {
   const std::string needle = "\"" + std::string(key) + "\"";
   auto pos = json.find(needle);
   if (pos == std::string_view::npos) return fallback;
   pos = json.find(':', pos + needle.size());
   if (pos == std::string_view::npos) return fallback;
   ++pos;
-  while (pos < json.size() && json[pos] == ' ') ++pos;
-  try {
-    return std::stod(std::string(json.substr(pos, 32)));
-  } catch (...) {
+  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t')) ++pos;
+  if (pos >= json.size()) return fallback;
+
+  const std::string token(json.substr(pos, 32));
+  char* endPtr = nullptr;
+  const double val = std::strtod(token.c_str(), &endPtr);
+  if (endPtr == token.c_str() || !std::isfinite(val)) {
     return fallback;
   }
+  return val;
 }
 
-static bool jsonGetBool(std::string_view json, std::string_view key,
-                        bool fallback = false) {
+[[nodiscard]] bool jsonGetBool(std::string_view json, std::string_view key,
+                               bool fallback = false) noexcept {
   const std::string needle = "\"" + std::string(key) + "\"";
   auto pos = json.find(needle);
   if (pos == std::string_view::npos) return fallback;
   pos = json.find(':', pos + needle.size());
   if (pos == std::string_view::npos) return fallback;
   ++pos;
-  while (pos < json.size() && json[pos] == ' ') ++pos;
+  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t')) ++pos;
   if (pos < json.size() && json[pos] == 't') return true;
   if (pos < json.size() && json[pos] == 'f') return false;
   return fallback;
 }
 
-// ---------------------------------------------------------------------------
-// InspectorApp
-// ---------------------------------------------------------------------------
+}  // namespace
 
 InspectorApp::InspectorApp(InspectorConfig config)
-    : m_config(std::move(config)) {}
+    : m_config(std::move(config)),
+      m_stdinState(std::make_shared<StdinQueueState>()) {}
 
-InspectorApp::~InspectorApp() { m_shm.close(); }
+InspectorApp::~InspectorApp() {
+  requestQuit();
+  if (m_stdinState) {
+    m_stdinState->stop.store(true, std::memory_order_release);
+  }
+  if (m_stdinThread.joinable()) {
+    if (m_stdinState && m_stdinState->eof.load(std::memory_order_acquire)) {
+      m_stdinThread.join();
+    } else {
+      m_stdinThread.detach();
+    }
+  }
+  m_shm.close();
+}
+
+bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
+  if (bundlePath.empty()) return false;
+  std::string manifestPath(bundlePath);
+  if (!manifestPath.empty() && manifestPath.back() != '/' &&
+      manifestPath.back() != '\\') {
+    manifestPath += '/';
+  }
+  manifestPath += "bundle.json";
+
+  std::ifstream ifs(manifestPath, std::ios::in | std::ios::binary);
+  if (!ifs.is_open()) {
+    std::cerr << "[inspector] Bundle manifest not found: " << manifestPath
+              << "\n";
+    return false;
+  }
+
+  m_config.bundlePath = std::string(bundlePath);
+  m_bundleSeed = fnv1aHash(bundlePath);
+  std::cout << "[inspector] Loaded bundle: " << m_config.bundlePath
+            << " (seed=" << m_bundleSeed << ")\n";
+  return true;
+}
 
 bool InspectorApp::init() {
-  // Open SHM region.
-  if (!m_shm.open(m_config.shmName, m_config.width, m_config.height)) {
-    std::cerr << "[inspector] Failed to open SHM region: "
-              << m_config.shmName << "\n";
+  if (!m_config.bundlePath.empty()) {
+    if (!validateAndLoadBundle(m_config.bundlePath)) {
+      return false;
+    }
+  }
+
+  if (!m_shm.open(m_config.shmName, m_config.width, m_config.height,
+                  !m_config.keepShm)) {
+    std::cerr << "[inspector] Failed to open SHM region: " << m_config.shmName
+              << "\n";
     return false;
   }
 
   std::cout << "[inspector] SHM opened: " << m_config.shmName << " ("
             << m_config.width << "x" << m_config.height << ", "
             << m_shm.totalSize() << " bytes)\n";
-  std::cout << "[inspector] RHI backend: " << m_config.rhiBackend << "\n";
+  std::cout << "[inspector] RHI backend: " << m_config.rhiBackend
+            << " (diagnostic SHM rasterizer)\n";
   std::cout << "[inspector] Headless: "
             << (m_config.headless ? "true" : "false") << "\n";
+  std::cout.flush();
 
-  if (!m_config.bundlePath.empty()) {
-    std::cout << "[inspector] Bundle: " << m_config.bundlePath << "\n";
+  auto state = m_stdinState;
+  m_stdinThread = std::thread([state]() {
+    std::string line;
+    while (!state->stop.load(std::memory_order_acquire) &&
+           std::getline(std::cin, line)) {
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
+      if (line.empty()) continue;
+      std::lock_guard<std::mutex> lock(state->mtx);
+      state->lines.push_back(std::move(line));
+    }
+    state->eof.store(true, std::memory_order_release);
+  });
+
+  if (m_config.maxFrames > 0) {
+    // Allow piped stdin commands in non-interactive tests to arrive before frame 1.
+    for (int i = 0; i < 20; ++i) {
+      if (m_stdinState->eof.load(std::memory_order_acquire)) break;
+      {
+        std::lock_guard<std::mutex> lock(m_stdinState->mtx);
+        if (!m_stdinState->lines.empty()) break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
   }
-
-  // TODO(PR-27): Initialise fulgur RHI device with the selected backend.
-  // For the initial scaffold, we render a procedural test pattern into
-  // the SHM buffer to validate the transport pipeline end-to-end.
 
   return true;
 }
 
 void InspectorApp::run() {
-  m_running = true;
+  m_running.store(true, std::memory_order_release);
 
   using Clock = std::chrono::high_resolution_clock;
   auto lastTime = Clock::now();
-  uint64_t frameCount = 0;
+  uint64_t fpsFrameCounter = 0;
+  uint64_t totalFrames = 0;
   float accumulatedTime = 0.0f;
-  float measuredFps = 0.0f;
+  float measuredFps = 60.0f;
 
   std::cout << "[inspector] Entering frame loop\n";
+  std::cout.flush();
 
-  while (m_running) {
+  while (m_running.load(std::memory_order_acquire)) {
     const auto now = Clock::now();
-    const float dt =
-        std::chrono::duration<float>(now - lastTime).count();
+    const float dt = std::chrono::duration<float>(now - lastTime).count();
     lastTime = now;
 
     accumulatedTime += dt;
-    ++frameCount;
+    ++fpsFrameCounter;
     if (accumulatedTime >= 1.0f) {
-      measuredFps = static_cast<float>(frameCount) / accumulatedTime;
-      frameCount = 0;
+      measuredFps = static_cast<float>(fpsFrameCounter) / accumulatedTime;
+      fpsFrameCounter = 0;
       accumulatedTime = 0.0f;
     }
 
-    // Poll stdin for JSON commands from the Electron host.
-    pollStdinCommands();
+    const bool hadCommands = pollStdinCommands();
+    if (!m_running.load(std::memory_order_acquire)) {
+      break;
+    }
 
-    // Render and publish.
     renderFrame(dt);
-    m_shm.publishFrame(measuredFps, dt);
+    const uint64_t readyCount = m_shm.publishFrame(
+        measuredFps, dt, static_cast<uint8_t>(m_debugView));
+    ++totalFrames;
 
-    // Target ~60 fps.
+    if (totalFrames == 1 || hadCommands || m_config.maxFrames > 0) {
+      std::cout << "{\"type\":\"frame_ready\",\"frame\":" << readyCount
+                << ",\"debug_view\":" << static_cast<int>(m_debugView) << "}\n";
+      std::cout.flush();
+    }
+
+    if (m_config.maxFrames > 0 && totalFrames >= m_config.maxFrames) {
+      requestQuit();
+      break;
+    }
+
+    if (m_stdinState->eof.load(std::memory_order_acquire) &&
+        m_config.maxFrames == 0) {
+      // Stdin closed by host process — exit cleanly after draining commands.
+      bool empty = true;
+      {
+        std::lock_guard<std::mutex> lock(m_stdinState->mtx);
+        empty = m_stdinState->lines.empty();
+      }
+      if (empty) {
+        requestQuit();
+        break;
+      }
+    }
+
     const auto frameEnd = Clock::now();
     const float elapsed =
         std::chrono::duration<float>(frameEnd - now).count();
     const float sleepTime = (1.0f / 60.0f) - elapsed;
-    if (sleepTime > 0.001f) {
-      std::this_thread::sleep_for(
-          std::chrono::duration<float>(sleepTime));
+    if (sleepTime > 0.001f && m_config.maxFrames == 0) {
+      std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
     }
   }
 
   std::cout << "[inspector] Frame loop exited\n";
+  std::cout.flush();
 }
 
-void InspectorApp::renderFrame(float deltaTime) {
+void InspectorApp::renderFrame(float /*deltaTime*/) {
   uint8_t* buf = m_shm.frontBuffer();
   if (!buf) return;
 
   const uint32_t w = m_config.width;
   const uint32_t h = m_config.height;
 
-  // Procedural test pattern: gradient + orbit-dependent highlight.
-  // This validates the full SHM pipeline before real fulgur rendering
-  // is integrated.
   const float yawNorm =
-      (std::fmod(m_orbitYaw, 6.2832f) + 6.2832f) / 6.2832f;
+      (std::fmod(m_orbitYaw, 6.2831853f) + 6.2831853f) / 6.2831853f;
+  const float pitchNorm = std::clamp((m_orbitPitch + 1.5f) / 3.0f, 0.0f, 1.0f);
+  const float zoomFactor = std::clamp(3.0f / m_orbitDistance, 0.2f, 4.0f);
+  const uint8_t bundleTint = static_cast<uint8_t>((m_bundleSeed & 0x7Fu) + 24u);
 
   for (uint32_t y = 0; y < h; ++y) {
     for (uint32_t x = 0; x < w; ++x) {
-      const size_t offset = (static_cast<size_t>(y) * w + x) * 4;
-      const float u = static_cast<float>(x) / static_cast<float>(w);
-      const float v = static_cast<float>(y) / static_cast<float>(h);
+      const size_t offset = (static_cast<size_t>(y) * w + x) * 4u;
+      const float u = std::clamp(
+          (static_cast<float>(x) / static_cast<float>(w) - 0.5f) / zoomFactor +
+              0.5f + m_panX,
+          0.0f, 1.0f);
+      const float v = std::clamp(
+          (static_cast<float>(y) / static_cast<float>(h) - 0.5f) / zoomFactor +
+              0.5f + m_panY,
+          0.0f, 1.0f);
 
-      uint8_t r = 0, g = 0, b = 0;
+      uint8_t r = 12, g = 16, b = 24;
 
-      switch (m_debugView) {
-        case DebugViewMode::kLit:
-          // Dark blue gradient with orbit-dependent warm highlight.
-          r = static_cast<uint8_t>(
-              std::clamp(u * yawNorm * 180.0f, 0.0f, 255.0f));
-          g = static_cast<uint8_t>(
-              std::clamp(v * 80.0f, 0.0f, 255.0f));
-          b = static_cast<uint8_t>(
-              std::clamp((1.0f - v) * 200.0f + 30.0f, 0.0f, 255.0f));
-          break;
-        case DebugViewMode::kWireframe:
-          // Grid pattern.
-          if ((x % 32 < 2) || (y % 32 < 2)) {
-            r = g = b = 200;
-          } else {
-            r = g = b = 20;
+      if (m_entityVisible) {
+        switch (m_debugView) {
+          case DebugViewMode::kLit:
+            r = static_cast<uint8_t>(std::clamp(
+                u * (0.35f + 0.65f * yawNorm) * 200.0f + bundleTint * 0.25f,
+                0.0f, 255.0f));
+            g = static_cast<uint8_t>(std::clamp(
+                v * (0.4f + 0.6f * pitchNorm) * 140.0f + 20.0f, 0.0f, 255.0f));
+            b = static_cast<uint8_t>(std::clamp(
+                (1.0f - v) * 200.0f + 35.0f, 0.0f, 255.0f));
+            break;
+          case DebugViewMode::kWireframe:
+            if ((x % 16u < 2u) || (y % 16u < 2u)) {
+              r = 210;
+              g = 225;
+              b = 245;
+            } else {
+              r = 18;
+              g = 22;
+              b = 30;
+            }
+            break;
+          case DebugViewMode::kNormal: {
+            const float nx = u * 2.0f - 1.0f;
+            const float ny = v * 2.0f - 1.0f;
+            const float nz =
+                std::sqrt(std::max(0.0f, 1.0f - nx * nx - ny * ny));
+            r = static_cast<uint8_t>(std::clamp((nx * 0.5f + 0.5f) * 255.0f,
+                                                0.0f, 255.0f));
+            g = static_cast<uint8_t>(std::clamp((ny * 0.5f + 0.5f) * 255.0f,
+                                                0.0f, 255.0f));
+            b = static_cast<uint8_t>(std::clamp((nz * 0.5f + 0.5f) * 255.0f,
+                                                0.0f, 255.0f));
+            break;
           }
-          break;
-        case DebugViewMode::kNormal:
-          // RGB = XYZ normal (synthetic hemisphere).
-          r = static_cast<uint8_t>(u * 255.0f);
-          g = static_cast<uint8_t>(v * 255.0f);
-          b = static_cast<uint8_t>(
-              std::clamp(
-                  std::sqrt(std::max(0.0f, 1.0f - u * u - v * v))
-                      * 255.0f,
-                  0.0f, 255.0f));
-          break;
-        case DebugViewMode::kUv:
-          // UV checker pattern.
-          r = static_cast<uint8_t>(u * 255.0f);
-          g = static_cast<uint8_t>(v * 255.0f);
-          b = 0;
-          break;
+          case DebugViewMode::kUv:
+            r = static_cast<uint8_t>(u * 255.0f);
+            g = static_cast<uint8_t>(v * 255.0f);
+            b = ((static_cast<uint32_t>(u * 8.0f) ^
+                  static_cast<uint32_t>(v * 8.0f)) &
+                 1u)
+                    ? 180u
+                    : 30u;
+            break;
+        }
       }
 
       buf[offset + 0] = r;
       buf[offset + 1] = g;
       buf[offset + 2] = b;
-      buf[offset + 3] = 255;  // Alpha.
+      buf[offset + 3] = 255u;
     }
   }
 }
 
+bool InspectorApp::exportScreenshotPpm(std::string_view outputPath) const {
+  if (outputPath.empty()) return false;
+  const uint8_t* pixels = m_shm.publishedBuffer();
+  if (!pixels) return false;
+
+  std::ofstream ofs(std::string(outputPath), std::ios::out | std::ios::binary);
+  if (!ofs.is_open()) return false;
+
+  const uint32_t w = m_config.width;
+  const uint32_t h = m_config.height;
+  ofs << "P6\n" << w << " " << h << "\n255\n";
+
+  std::vector<uint8_t> rgbRow(static_cast<size_t>(w) * 3u);
+  for (uint32_t y = 0; y < h; ++y) {
+    for (uint32_t x = 0; x < w; ++x) {
+      const size_t srcOff = (static_cast<size_t>(y) * w + x) * 4u;
+      const size_t dstOff = static_cast<size_t>(x) * 3u;
+      rgbRow[dstOff + 0] = pixels[srcOff + 0];
+      rgbRow[dstOff + 1] = pixels[srcOff + 1];
+      rgbRow[dstOff + 2] = pixels[srcOff + 2];
+    }
+    ofs.write(reinterpret_cast<const char*>(rgbRow.data()),
+              static_cast<std::streamsize>(rgbRow.size()));
+  }
+  return ofs.good();
+}
+
 void InspectorApp::handleCommand(std::string_view json) {
   const std::string type = jsonGetString(json, "type");
+  bool ok = true;
 
   if (type == "quit") {
     requestQuit();
@@ -252,6 +386,8 @@ void InspectorApp::handleCommand(std::string_view json) {
     } else if (action == "zoom") {
       m_orbitDistance *= (1.0f - static_cast<float>(dy) * 0.002f);
       m_orbitDistance = std::clamp(m_orbitDistance, 0.5f, 50.0f);
+    } else {
+      ok = false;
     }
   } else if (type == "set_debug_view") {
     const std::string mode = jsonGetString(json, "mode");
@@ -263,44 +399,42 @@ void InspectorApp::handleCommand(std::string_view json) {
       m_debugView = DebugViewMode::kNormal;
     } else if (mode == "uv") {
       m_debugView = DebugViewMode::kUv;
+    } else {
+      ok = false;
     }
   } else if (type == "load_bundle") {
     const std::string path = jsonGetString(json, "path");
-    if (!path.empty()) {
-      m_config.bundlePath = path;
-      std::cout << "[inspector] Loading bundle: " << path << "\n";
-      // TODO(PR-27): Reload model from the new bundle path.
-    }
+    ok = validateAndLoadBundle(path);
   } else if (type == "set_entity_visible") {
     const std::string name = jsonGetString(json, "name");
-    const bool visible = jsonGetBool(json, "visible", true);
+    m_entityVisible = jsonGetBool(json, "visible", true);
     std::cout << "[inspector] Entity '" << name
-              << "' visible=" << (visible ? "true" : "false") << "\n";
-    // TODO(PR-27): Update entity visibility in the scene.
+              << "' visible=" << (m_entityVisible ? "true" : "false") << "\n";
   } else if (type == "export_screenshot") {
     const std::string path = jsonGetString(json, "path");
-    std::cout << "[inspector] Export screenshot to: " << path << "\n";
-    // TODO(PR-27): Write current frame buffer to PNG at `path`.
+    ok = exportScreenshotPpm(path);
   } else {
     std::cerr << "[inspector] Unknown command type: " << type << "\n";
+    ok = false;
   }
 
-  // Emit JSON response for the command.
-  std::cout << "{\"type\":\"ack\",\"command\":\"" << type << "\"}\n";
+  std::cout << "{\"type\":\"ack\",\"command\":\"" << type
+            << "\",\"ok\":" << (ok ? "true" : "false") << "}\n";
   std::cout.flush();
 }
 
-void InspectorApp::pollStdinCommands() {
-  while (stdinHasData()) {
-    std::string line;
-    if (!std::getline(std::cin, line)) {
-      // stdin closed — Electron host disconnected.
-      requestQuit();
-      return;
+bool InspectorApp::pollStdinCommands() {
+  std::vector<std::string> pending;
+  {
+    std::lock_guard<std::mutex> lock(m_stdinState->mtx);
+    if (!m_stdinState->lines.empty()) {
+      pending.swap(m_stdinState->lines);
     }
-    if (line.empty()) continue;
-    // Strip trailing \r on Windows.
-    if (!line.empty() && line.back() == '\r') line.pop_back();
+  }
+  for (const auto& line : pending) {
     handleCommand(line);
   }
+  return !pending.empty();
 }
+
+}  // namespace synapse::inspector
