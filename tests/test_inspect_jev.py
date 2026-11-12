@@ -310,6 +310,36 @@ class TestVisualJevCriticEvaluate:
         ids = [d.defect_id for d in report.defects]
         assert len(ids) == len(set(ids))
 
+    def test_missing_logprob_tokens_raises_contract_error(
+        self,
+    ) -> None:
+        """Missing Yes/No token logprobs raises ContractValidationError(10)."""
+        from synapse.errors import ContractValidationError
+
+        class EmptyTransport:
+            def query_logprobs(
+                self, image_uris: list[str], prompt: str,
+            ) -> dict[str, float]:
+                return {"Maybe": -0.5}
+
+        critic = VisualJevCritic(EmptyTransport())
+        with pytest.raises(ContractValidationError) as exc_info:
+            critic.evaluate("a", "b", ["img.png"])
+        assert int(exc_info.value.exit_code) == 10
+
+    def test_whitespace_case_normalized_tokens(self) -> None:
+        """Tokens like ' yes ' and 'NO' are normalized properly."""
+
+        class WhitespaceTransport:
+            def query_logprobs(
+                self, image_uris: list[str], prompt: str,
+            ) -> dict[str, float]:
+                return {" yes ": -3.0, " NO\n": -0.05}
+
+        critic = VisualJevCritic(WhitespaceTransport())
+        report = critic.evaluate("a", "b", ["img.png"])
+        assert report.overall_quality_score > 0.8
+
 
 # -------------------------------------------------------------------
 # Stage registration test
@@ -328,3 +358,27 @@ class TestStageRegistration:
 
         stages = get_registered_stages()
         assert "asset_inspect_3d" in stages
+
+    def test_vlm_endpoint_missing_transport_raises_30(
+        self,
+    ) -> None:
+        """vlm_endpoint_url without vlm_transport raises BackendUnavailableError(30)."""
+        from synapse.errors import BackendUnavailableError
+        from synapse.inspect.jev_critic import (
+            _handle_asset_inspect_3d,
+        )
+        from synapse.pipeline.bundle_worker import (
+            BundleManifest,
+        )
+
+        manifest = BundleManifest(
+            job_id="job_jev_01",
+            stage="asset_inspect_3d",
+            params={
+                "asset_id": "a01",
+                "vlm_endpoint_url": "http://127.0.0.1:8000/v1",
+            },
+        )
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            _handle_asset_inspect_3d(manifest)
+        assert int(exc_info.value.exit_code) == 30

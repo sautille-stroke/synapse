@@ -288,6 +288,29 @@ class TestDualVerifierEngine:
         assert "control" in result.lora_buckets
         assert "motion" in result.lora_buckets
 
+    def test_nan_physics_metric_raises_contract_error(
+        self,
+    ) -> None:
+        """NaN or Inf physics metric raises ContractValidationError(10)."""
+        engine = DualVerifierEngine()
+        m = self._good_metrics()
+        m["silhouette_iou"] = float("nan")
+        with pytest.raises(ContractValidationError) as exc_info:
+            engine.verify_physics("s_nan", m)
+        assert int(exc_info.value.exit_code) == 10
+        assert "non-finite" in str(exc_info.value).lower()
+
+    def test_nan_prm_score_raises_contract_error(self) -> None:
+        """NaN PRM score raises ContractValidationError(10)."""
+        engine = DualVerifierEngine()
+        with pytest.raises(ContractValidationError) as exc_info:
+            engine.verify(
+                "s_nan_prm",
+                self._good_metrics(),
+                prm_score=float("nan"),
+            )
+        assert int(exc_info.value.exit_code) == 10
+
 
 # -------------------------------------------------------------------
 # PreferenceDatasetBuilder tests

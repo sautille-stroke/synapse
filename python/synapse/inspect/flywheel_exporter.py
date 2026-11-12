@@ -11,8 +11,8 @@ Heavy dependencies are lazy-imported.
 
 from __future__ import annotations
 
-import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,7 +23,6 @@ from synapse.errors import (
     QualityGateError,
 )
 
-
 # -------------------------------------------------------------------
 # Roundtrip gate thresholds
 # -------------------------------------------------------------------
@@ -33,7 +32,7 @@ class RoundtripGate(BaseModel):
     """Stage 5 roundtrip hard gate thresholds.
 
     Attributes:
-        delta_fscore_1mm: Minimum F-score improvement (must be > 0).
+        delta_fscore_1mm: Minimum F-score improvement (must be >= 0).
         volume_breathing_pct: Maximum volume change percentage.
         max_non_manifold_edges: Must be exactly 0 for production.
     """
@@ -145,6 +144,7 @@ def run_targeted_refinement(
     gate: RoundtripGate | None = None,
     auto_fix_fn: Any | None = None,
     manifold_check_fn: Any | None = None,
+    require_manifold_check: bool = False,
 ) -> dict[str, Any]:
     """Orchestrate targeted auto-fix from an InspectionReport.
 
@@ -160,6 +160,8 @@ def run_targeted_refinement(
             integrity.  Signature: () -> dict with
             ``non_manifold_edges`` (int), ``volume_change_pct``
             (float), ``fscore_delta`` (float).
+        require_manifold_check: If True, raises QualityGateError
+            when ``manifold_check_fn`` is not provided (fail-closed).
 
     Returns:
         Dict with ``status``, ``fixed_count``, ``hitl_count``,
@@ -171,10 +173,21 @@ def run_targeted_refinement(
     if gate is None:
         gate = RoundtripGate()
 
+    if require_manifold_check and manifold_check_fn is None:
+        raise QualityGateError(
+            "Manifold check is required (require_manifold_check=True), "
+            "but no manifold_check_fn was provided.",
+            agent_fix_hint=(
+                "Provide a manifold_check_fn callback from vg_bridge "
+                "to verify watertightness and volume breathing."
+            ),
+        )
+
     defects = report.get("defects", [])
     defect_actions: list[dict[str, Any]] = []
     fixed_count = 0
     hitl_count = 0
+    unfixed_auto_count = 0
 
     for defect in defects:
         action = defect.get("suggested_action", "accept")
@@ -202,8 +215,9 @@ def run_targeted_refinement(
                     result["error"] = str(exc)
                     hitl_count += 1
             else:
+                # F1 fix: do NOT increment fixed_count when no fixer is provided
                 result["status"] = "no_auto_fix_available"
-                fixed_count += 1
+                unfixed_auto_count += 1
         elif action == "manual_hitl":
             result["status"] = "requires_hitl"
             hitl_count += 1
@@ -213,14 +227,15 @@ def run_targeted_refinement(
     # Run manifold check if provided
     gate_result: dict[str, Any] = {
         "passed": True,
+        "waived": manifold_check_fn is None,
         "checks": {},
     }
 
     if manifold_check_fn is not None:
         check = manifold_check_fn()
-        nm_edges = check.get("non_manifold_edges", 0)
-        vol_pct = check.get("volume_change_pct", 0.0)
-        fs_delta = check.get("fscore_delta", 0.0)
+        nm_edges = check.get("non_manifold_edges")
+        vol_pct = check.get("volume_change_pct")
+        fs_delta = check.get("fscore_delta")
 
         gate_result["checks"] = {
             "non_manifold_edges": nm_edges,
@@ -229,18 +244,43 @@ def run_targeted_refinement(
         }
 
         failures: list[str] = []
-        if fs_delta < gate.delta_fscore_1mm:
+        if (
+            fs_delta is None
+            or not isinstance(fs_delta, (int, float))
+            or not math.isfinite(fs_delta)
+        ):
+            failures.append(
+                f"fscore_delta={fs_delta!r} is missing or non-finite"
+            )
+        elif fs_delta < gate.delta_fscore_1mm:
             failures.append(
                 f"delta_fscore_1mm={fs_delta:.4f} "
                 f"< threshold={gate.delta_fscore_1mm:.4f}"
             )
-        if vol_pct > gate.volume_breathing_pct:
+
+        if (
+            vol_pct is None
+            or not isinstance(vol_pct, (int, float))
+            or not math.isfinite(vol_pct)
+        ):
+            failures.append(
+                f"volume_change_pct={vol_pct!r} is missing or non-finite"
+            )
+        elif vol_pct > gate.volume_breathing_pct:
             failures.append(
                 f"volume_breathing_pct={vol_pct:.2f}% "
                 f"> threshold="
                 f"{gate.volume_breathing_pct:.2f}%"
             )
-        if nm_edges > gate.max_non_manifold_edges:
+
+        if (
+            nm_edges is None
+            or not isinstance(nm_edges, int)
+        ):
+            failures.append(
+                f"non_manifold_edges={nm_edges!r} is missing or non-int"
+            )
+        elif nm_edges > gate.max_non_manifold_edges:
             failures.append(
                 f"non_manifold_edges={nm_edges} "
                 f"> threshold="
@@ -254,6 +294,7 @@ def run_targeted_refinement(
     result_dict = {
         "status": "completed",
         "fixed_count": fixed_count,
+        "unfixed_auto_count": unfixed_auto_count,
         "hitl_count": hitl_count,
         "gate_result": gate_result,
         "defect_actions": defect_actions,
@@ -346,6 +387,7 @@ def export_rl_flywheel_dataset(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    records: list[DPORecord] | list[PRMRecord]
     if format == "dpo":
         records = _build_dpo_records(intent_groups)
     else:
@@ -396,21 +438,31 @@ def _build_dpo_records(
             elif g.final_passed_gate:
                 chosen_intents.append(g)
 
-        # Pair rejected with the next chosen
+        # Pair rejected with a matching chosen on the same initial state
         for rej in rejected_intents:
-            # Find a matching chosen intent for the same asset
             for ch in chosen_intents:
-                if ch.final_passed_gate:
-                    records.append(DPORecord(
-                        prompt=rej.prompt_context or (
-                            f"Fix defect on asset {asset_id}"
-                        ),
-                        state_before=rej.initial_state_uri,
-                        chosen=ch.final_state_uri,
-                        rejected=rej.final_state_uri,
-                        asset_id=asset_id,
-                        source_intent_id=rej.intent_id,
-                    ))
+                if (
+                    ch.final_passed_gate
+                    and (
+                        not rej.initial_state_uri
+                        or not ch.initial_state_uri
+                        or rej.initial_state_uri
+                        == ch.initial_state_uri
+                    )
+                ):
+                    records.append(
+                        DPORecord(
+                            prompt=rej.prompt_context
+                            or (
+                                f"Fix defect on asset {asset_id}"
+                            ),
+                            state_before=rej.initial_state_uri,
+                            chosen=ch.final_state_uri,
+                            rejected=rej.final_state_uri,
+                            asset_id=asset_id,
+                            source_intent_id=rej.intent_id,
+                        )
+                    )
                     break
 
     return records
@@ -424,15 +476,17 @@ def _build_prm_records(
 
     for g in groups:
         for step in g.steps:
-            records.append(PRMRecord(
-                intent_id=g.intent_id,
-                step_id=step.step_id,
-                action_type=step.action_type,
-                label=step.label,
-                metric_delta=step.metric_delta,
-                state_uri=step.state_uri,
-                prompt_context=g.prompt_context,
-            ))
+            records.append(
+                PRMRecord(
+                    intent_id=g.intent_id,
+                    step_id=step.step_id,
+                    action_type=step.action_type,
+                    label=step.label,
+                    metric_delta=step.metric_delta,
+                    state_uri=step.state_uri,
+                    prompt_context=g.prompt_context,
+                )
+            )
 
     return records
 

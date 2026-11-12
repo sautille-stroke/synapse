@@ -11,15 +11,27 @@ Heavy dependencies are NOT required for this module (pure math).
 
 from __future__ import annotations
 
+import datetime
 import math
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from synapse.errors import (
+    BackendUnavailableError,
+    ContractValidationError,
+)
 from synapse.inspect.schemas import (
-    CameraPose,
     DefectAnnotation3D,
     InspectionReport,
 )
 
+DefectCategory = Literal[
+    "mesh_crumple",
+    "texture_stretch",
+    "seam_tearing",
+    "floating_debris",
+    "anatomical_distortion",
+    "plastic_shading",
+]
 
 # -------------------------------------------------------------------
 # Transport protocol
@@ -53,7 +65,7 @@ class JevTransportProtocol(Protocol):
 # -------------------------------------------------------------------
 
 
-_DEFECT_CATEGORIES: list[str] = [
+_DEFECT_CATEGORIES: list[DefectCategory] = [
     "mesh_crumple",
     "texture_stretch",
     "seam_tearing",
@@ -130,6 +142,60 @@ class MockJevTransport:
 
 
 # -------------------------------------------------------------------
+# Token normalization helpers
+# -------------------------------------------------------------------
+
+_YES_TOKENS = frozenset({"yes", "y", "true"})
+_NO_TOKENS = frozenset({"no", "n", "false"})
+
+
+def _extract_yes_no_logprobs(
+    logprobs: dict[str, float],
+    category: str,
+) -> tuple[float, float]:
+    """Extract normalized Yes/No log-probabilities from VLM response.
+
+    Normalizes token keys by stripping whitespace and case-folding so
+    that variants like ``" Yes"``, ``"yes"``, ``"NO"`` are matched.
+
+    Raises:
+        ContractValidationError: If either Yes or No token logprob is
+            missing or non-finite (anti-silent-pass enforcement).
+    """
+    yes_candidates: list[float] = []
+    no_candidates: list[float] = []
+
+    for token, lp in logprobs.items():
+        if not isinstance(lp, (int, float)) or not math.isfinite(lp):
+            raise ContractValidationError(
+                f"Non-finite logprob for token {token!r} in probe "
+                f"'{category}': {lp}",
+                agent_fix_hint=(
+                    "Ensure VLM endpoint returns finite float logprobs "
+                    "for top tokens."
+                ),
+            )
+        norm = token.strip().casefold()
+        if norm in _YES_TOKENS:
+            yes_candidates.append(float(lp))
+        elif norm in _NO_TOKENS:
+            no_candidates.append(float(lp))
+
+    if not yes_candidates or not no_candidates:
+        raise ContractValidationError(
+            f"Missing Yes/No token logprobs for probe '{category}'; "
+            f"got keys {list(logprobs.keys())}. Silent fallback to "
+            "clean asset is FORBIDDEN.",
+            agent_fix_hint=(
+                "Ensure VLM query requests top_logprobs >= 5 and binary "
+                "Yes/No tokens are present in the response."
+            ),
+        )
+
+    return max(yes_candidates), max(no_candidates)
+
+
+# -------------------------------------------------------------------
 # Visual Jev Critic
 # -------------------------------------------------------------------
 
@@ -157,13 +223,13 @@ class VisualJevCritic:
             for logprob calibration (default 1.5).
     """
 
-    DEFECT_PROBES: list[str] = list(_DEFECT_CATEGORIES)
+    DEFECT_PROBES: list[DefectCategory] = list(_DEFECT_CATEGORIES)
 
     SEVERITY_HITL_THRESHOLD: float = 0.7
     SEVERITY_AUTO_THRESHOLD: float = 0.3
     SEVERITY_REPORT_THRESHOLD: float = 0.1
 
-    _PROBE_PROMPTS: dict[str, str] = {
+    _PROBE_PROMPTS: dict[DefectCategory, str] = {
         "mesh_crumple": (
             "Does this 3D rendered image show mesh crumpling, "
             "folding, or self-intersection artifacts? "
@@ -202,6 +268,12 @@ class VisualJevCritic:
         transport: JevTransportProtocol,
         calibration_temperature: float = 1.5,
     ) -> None:
+        if calibration_temperature <= 0.0 or not math.isfinite(
+            calibration_temperature
+        ):
+            raise ValueError(
+                "calibration_temperature must be a positive finite float"
+            )
         self._transport = transport
         self._tc = calibration_temperature
 
@@ -254,11 +326,12 @@ class VisualJevCritic:
         if category in ("mesh_crumple", "floating_debris"):
             return "auto_remesh"
         if category in (
-            "texture_stretch", "seam_tearing",
+            "texture_stretch",
+            "seam_tearing",
             "plastic_shading",
         ):
             return "auto_inpaint_texture"
-        # anatomical_distortion at medium → HITL
+        # anatomical_distortion at medium -> HITL
         return "manual_hitl"
 
     def evaluate(
@@ -280,9 +353,9 @@ class VisualJevCritic:
         Raises:
             BackendUnavailableError: If the transport connection
                 fails (exit code 30).
+            ContractValidationError: If logprob tokens are missing or
+                non-finite (exit code 10).
         """
-        import datetime
-
         try:
             defects: list[DefectAnnotation3D] = []
 
@@ -296,8 +369,9 @@ class VisualJevCritic:
                     image_uris, prompt,
                 )
 
-                z_yes = logprobs.get("Yes", -10.0)
-                z_no = logprobs.get("No", -0.1)
+                z_yes, z_no = _extract_yes_no_logprobs(
+                    logprobs, category,
+                )
                 severity = self.calibrated_probability(
                     z_yes, z_no,
                 )
@@ -307,18 +381,20 @@ class VisualJevCritic:
                         category, severity,
                     )
                     confidence = min(1.0, severity * 1.2)
-                    defects.append(DefectAnnotation3D(
-                        defect_id=(
-                            f"{asset_id}_defect_{i:03d}"
-                        ),
-                        category=category,
-                        severity=round(severity, 6),
-                        confidence=round(confidence, 6),
-                        center_3d=[0.0, 0.0, 0.0],
-                        bounding_radius_m=0.05,
-                        affected_vertices_count=0,
-                        suggested_action=action,
-                    ))
+                    defects.append(
+                        DefectAnnotation3D(
+                            defect_id=(
+                                f"{asset_id}_defect_{i:03d}"
+                            ),
+                            category=category,
+                            severity=round(severity, 6),
+                            confidence=round(confidence, 6),
+                            center_3d=[0.0, 0.0, 0.0],
+                            bounding_radius_m=0.05,
+                            affected_vertices_count=0,
+                            suggested_action=action,
+                        )
+                    )
 
             requires_hitl = any(
                 d.severity >= 0.8
@@ -348,8 +424,6 @@ class VisualJevCritic:
             )
 
         except ConnectionError as exc:
-            from synapse.errors import BackendUnavailableError
-
             raise BackendUnavailableError(
                 f"Jev transport connection failed: {exc}",
                 agent_fix_hint=(
@@ -375,30 +449,34 @@ def _handle_asset_inspect_3d(
     """Run 3D asset inspection using Visual Jev critic.
 
     Expects ``manifest.params`` to contain ``asset_id``,
-    ``asset_name``, and optionally ``image_uris`` and
-    ``defect_overrides``.
+    ``asset_name``, and optionally ``image_uris``,
+    ``vlm_endpoint_url``, and ``defect_overrides``.
     """
     params = dict(manifest.params)
     asset_id = str(params.get("asset_id", "unknown"))
     asset_name = str(params.get("asset_name", "Unknown Asset"))
     image_uris = list(params.get("image_uris", []))
 
-    # Use real VLM transport if endpoint is provided; otherwise
-    # fall back to MockJevTransport for CI / no-GPU environments.
     endpoint_url = params.get("vlm_endpoint_url")
     if endpoint_url:
-        # Lazy import to avoid pulling VLM deps in CI
         try:
-            from synapse.inspect.vlm_transport import (
+            from synapse.inspect.vlm_transport import (  # type: ignore[import-not-found]
                 HttpVlmTransport,
             )
-            transport: JevTransport = HttpVlmTransport(
-                endpoint_url=endpoint_url,
-            )
-        except ImportError:
-            transport = MockJevTransport(
-                defect_overrides=params.get("defect_overrides"),
-            )
+        except ImportError as exc:
+            raise BackendUnavailableError(
+                f"VLM endpoint '{endpoint_url}' was requested, "
+                "but 'synapse.inspect.vlm_transport' is not "
+                "available. Silent fallback to MockJevTransport "
+                "is FORBIDDEN.",
+                agent_fix_hint=(
+                    "Install VLM transport extra or omit "
+                    "'vlm_endpoint_url' in CI mock mode."
+                ),
+            ) from exc
+        transport: JevTransportProtocol = HttpVlmTransport(
+            endpoint_url=endpoint_url,
+        )
     else:
         transport = MockJevTransport(
             defect_overrides=params.get("defect_overrides"),

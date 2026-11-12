@@ -204,6 +204,10 @@ class TestTargetedRefinement:
 
         # auto_remesh -> no_auto_fix_available (no fn provided)
         assert actions[0]["action"] == "auto_remesh"
+        assert actions[0]["status"] == "no_auto_fix_available"
+        # F1 regression check: fixed_count must be 0 when auto_fix_fn is None
+        assert result["fixed_count"] == 0
+        assert result["unfixed_auto_count"] == 2
 
         # auto_inpaint_texture
         assert actions[1]["action"] == "auto_inpaint_texture"
@@ -211,6 +215,17 @@ class TestTargetedRefinement:
         # manual_hitl
         assert actions[2]["action"] == "manual_hitl"
         assert actions[2]["status"] == "requires_hitl"
+
+    def test_require_manifold_check_without_fn_raises_40(
+        self, clean_report: dict,
+    ) -> None:
+        """require_manifold_check=True without manifold_check_fn raises 40."""
+        with pytest.raises(QualityGateError) as exc_info:
+            run_targeted_refinement(
+                report=clean_report,
+                require_manifold_check=True,
+            )
+        assert int(exc_info.value.exit_code) == 40
 
     def test_auto_fix_callback(
         self, defective_report: dict,

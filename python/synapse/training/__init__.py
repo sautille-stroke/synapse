@@ -22,6 +22,7 @@ from synapse.training.losses import (
     diffusion_dpo_loss,
     flow_matching_loss,
     latent_edge_alignment_loss,
+    normal_reconstruction_loss,
 )
 from synapse.training.packager import (
     LoRAEvaluationReport,
@@ -43,6 +44,7 @@ __all__ = [
     "iter_feature_shards",
     "flow_matching_loss",
     "latent_edge_alignment_loss",
+    "normal_reconstruction_loss",
     "diffusion_dpo_loss",
     "LoRATrainConfig",
     "StatelessLoRATrainer",

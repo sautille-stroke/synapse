@@ -17,11 +17,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from synapse.errors import (
     AssetNotFoundError,
     ExitCode,
+    QualityGateError,
     SynapseError,
 )
 from synapse.telemetry import TraceContext
@@ -588,9 +589,19 @@ def _cmd_lora_eval(
 
     report = json.loads(eval_path.read_text(encoding="utf-8"))
     passed = report.get("passed", False)
+    waived = report.get("waived", False)
+
+    if waived and not getattr(args, "allow_waived", False):
+        raise QualityGateError(
+            "LoRA bundle evaluation was waived (skip_bench=True); "
+            "promotion rejected by fail-closed gate.",
+            agent_fix_hint=(
+                "Run full Synapse-Bench evaluation to populate "
+                "bench_metrics before promoting LoRA weights."
+            ),
+        )
 
     if not passed:
-        from synapse.errors import QualityGateError
         failures = report.get("failures", [])
         hint = report.get(
             "agent_fix_hint",
@@ -602,7 +613,7 @@ def _cmd_lora_eval(
             agent_fix_hint=hint,
         )
 
-    return {"passed": True, "report": report}
+    return {"passed": True, "waived": waived, "report": report}
 
 
 def _cmd_lora_merge(
@@ -686,7 +697,10 @@ def _cmd_inspect_export_rl_data(
 
     log_dir = Path(args.log_dir)
     output = Path(args.output)
-    fmt = getattr(args, "format", "dpo")
+    raw_fmt = str(getattr(args, "format", "dpo"))
+    fmt: Literal["prm", "dpo"] = (
+        "prm" if raw_fmt == "prm" else "dpo"
+    )
 
     result = export_rl_flywheel_dataset(
         log_dir=log_dir,

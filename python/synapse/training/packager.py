@@ -12,18 +12,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import shutil
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from synapse.errors import QualityGateError
-
+from synapse.errors import AssetNotFoundError, QualityGateError
 
 # -------------------------------------------------------------------
 # Quality gate thresholds
 # -------------------------------------------------------------------
+
 
 class LoRAGateThresholds(BaseModel):
     """Hard quality gate thresholds for LoRA promotion.
@@ -50,11 +51,13 @@ class LoRAGateThresholds(BaseModel):
 # Evaluation report
 # -------------------------------------------------------------------
 
+
 class LoRAEvaluationReport(BaseModel):
     """Evaluation report for a gated LoRA bundle.
 
     Attributes:
         passed: Whether all quality gates passed.
+        waived: Whether benchmark evaluation was explicitly skipped.
         thresholds: Gate thresholds used.
         measured: Measured metric values.
         failures: List of gate violation messages.
@@ -62,6 +65,7 @@ class LoRAEvaluationReport(BaseModel):
     """
 
     passed: bool = True
+    waived: bool = False
     thresholds: dict[str, float] = Field(default_factory=dict)
     measured: dict[str, float] = Field(default_factory=dict)
     failures: list[str] = Field(default_factory=list)
@@ -121,14 +125,18 @@ def package_and_gate_lora_bundle(
         bench_metrics: Pre-computed benchmark metrics (skips
             running BenchPipelineRunner if provided).
         thresholds: Quality gate thresholds.
-        skip_bench: If True, skip benchmark evaluation.
+        skip_bench: If True, skip benchmark evaluation and mark
+            report as waived.
 
     Returns:
         Dict with ``bundle_dir``, ``manifest_path``,
         ``evaluation_path``, ``passed``, and ``report``.
 
     Raises:
-        QualityGateError: If any hard gate threshold is violated.
+        AssetNotFoundError: If *weights_path* does not exist or is
+            empty (exit code 20).
+        QualityGateError: If any hard gate threshold is violated or
+            required metrics are missing/non-finite (exit code 40).
     """
     if thresholds is None:
         thresholds = LoRAGateThresholds()
@@ -139,18 +147,30 @@ def package_and_gate_lora_bundle(
     if negative_scenarios is None:
         negative_scenarios = []
 
+    src = Path(weights_path)
+    if not src.is_file():
+        raise AssetNotFoundError(
+            f"LoRA weights file not found: {src}",
+            agent_fix_hint=(
+                f"Ensure trained LoRA weights exist at '{src}' "
+                "before packaging."
+            ),
+        )
+    if src.stat().st_size == 0:
+        raise AssetNotFoundError(
+            f"LoRA weights file is empty (0 bytes): {src}",
+            agent_fix_hint=(
+                "Re-export non-empty LoRA safetensors checkpoint."
+            ),
+        )
+
     # Create output directory
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy weights to bundle
     adapter_dst = output_dir / "adapter_model.safetensors"
-    src = Path(weights_path)
-    if src.exists():
-        shutil.copy2(src, adapter_dst)
-    else:
-        # If source doesn't exist, create a placeholder
-        adapter_dst.touch()
+    shutil.copy2(src, adapter_dst)
 
     # Compute SHA256
     adapter_sha256 = _compute_file_sha256(adapter_dst)
@@ -181,15 +201,22 @@ def package_and_gate_lora_bundle(
 
     # Run quality gate evaluation
     if bench_metrics is None and not skip_bench:
-        # In production, would run BenchPipelineRunner here.
-        # For now, return empty metrics (bench not available).
-        bench_metrics = {}
+        raise QualityGateError(
+            "LoRA quality gate requires 'bench_metrics' when "
+            "skip_bench=False, but none were provided.",
+            agent_fix_hint=(
+                "Provide measured benchmark metrics or pass "
+                "skip_bench=True for un-gated packaging."
+            ),
+        )
     elif bench_metrics is None:
         bench_metrics = {}
 
-    # Evaluate gates
     report = _evaluate_gates(
-        bench_metrics, thresholds, negative_scenarios,
+        bench_metrics,
+        thresholds,
+        negative_scenarios,
+        skip_bench=skip_bench,
     )
 
     # Write evaluation report
@@ -204,6 +231,7 @@ def package_and_gate_lora_bundle(
         "manifest_path": str(manifest_path),
         "evaluation_path": str(eval_path),
         "passed": report.passed,
+        "waived": report.waived,
         "report": report.model_dump(),
     }
 
@@ -222,19 +250,36 @@ def _evaluate_gates(
     metrics: dict[str, float],
     thresholds: LoRAGateThresholds,
     negative_scenarios: list[str],
+    *,
+    skip_bench: bool = False,
 ) -> LoRAEvaluationReport:
     """Check measured metrics against hard gate thresholds.
 
-    Returns:
-        An evaluation report with pass/fail and failure details.
+    Enforces fail-closed validation: any non-finite value (NaN/Inf) or
+    empty metric set (when ``skip_bench=False``) fails the gate.
     """
     failures: list[str] = []
     measured: dict[str, float] = dict(metrics)
     threshold_dict = thresholds.model_dump()
 
+    if not skip_bench and not metrics:
+        failures.append(
+            "No benchmark metrics provided (fail-closed gate)"
+        )
+
+    for key, val in metrics.items():
+        if not isinstance(val, (int, float)) or not math.isfinite(val):
+            failures.append(
+                f"{key}={val!r} is non-finite (NaN/Inf)"
+            )
+
     # Check chamfer distance
     chamfer = metrics.get("chamfer_mm")
-    if chamfer is not None and chamfer > thresholds.chamfer_mm:
+    if (
+        chamfer is not None
+        and math.isfinite(chamfer)
+        and chamfer > thresholds.chamfer_mm
+    ):
         failures.append(
             f"chamfer_mm={chamfer:.2f} > "
             f"threshold={thresholds.chamfer_mm:.2f}"
@@ -242,35 +287,47 @@ def _evaluate_gates(
 
     # Check normal angular error
     nae = metrics.get("normal_angular_error_deg")
-    if nae is not None:
-        if nae > thresholds.normal_angular_error_deg:
-            failures.append(
-                f"normal_angular_error_deg={nae:.2f} > "
-                f"threshold="
-                f"{thresholds.normal_angular_error_deg:.2f}"
-            )
+    if (
+        nae is not None
+        and math.isfinite(nae)
+        and nae > thresholds.normal_angular_error_deg
+    ):
+        failures.append(
+            f"normal_angular_error_deg={nae:.2f} > "
+            f"threshold="
+            f"{thresholds.normal_angular_error_deg:.2f}"
+        )
 
     # Check border ring CIE dE2000
     ciede = metrics.get("border_ring_ciede2000")
-    if ciede is not None:
-        if ciede > thresholds.border_ring_ciede2000:
-            failures.append(
-                f"border_ring_ciede2000={ciede:.2f} > "
-                f"threshold="
-                f"{thresholds.border_ring_ciede2000:.2f}"
-            )
+    if (
+        ciede is not None
+        and math.isfinite(ciede)
+        and ciede > thresholds.border_ring_ciede2000
+    ):
+        failures.append(
+            f"border_ring_ciede2000={ciede:.2f} > "
+            f"threshold="
+            f"{thresholds.border_ring_ciede2000:.2f}"
+        )
 
     # Check negative scenario regression
     for scenario_id in negative_scenarios:
         key = f"regression_{scenario_id}_pct"
         reg = metrics.get(key)
-        if reg is not None:
-            if reg > thresholds.negative_regression_pct:
-                failures.append(
-                    f"{key}={reg:.2f}% > "
-                    f"threshold="
-                    f"{thresholds.negative_regression_pct:.2f}%"
-                )
+        if reg is None:
+            failures.append(
+                f"Missing required negative scenario metric '{key}'"
+            )
+        elif (
+            math.isfinite(reg)
+            and reg > thresholds.negative_regression_pct
+        ):
+            failures.append(
+                f"{key}={reg:.2f}% > "
+                f"threshold="
+                f"{thresholds.negative_regression_pct:.2f}%"
+            )
 
     passed = len(failures) == 0
     hint = ""
@@ -283,6 +340,7 @@ def _evaluate_gates(
 
     return LoRAEvaluationReport(
         passed=passed,
+        waived=skip_bench,
         thresholds=threshold_dict,
         measured=measured,
         failures=failures,
@@ -316,24 +374,18 @@ def _handle_lora_package(
         params.get("weights_path", "adapter_model.safetensors"),
     )
 
-    try:
-        result = package_and_gate_lora_bundle(
-            weights_path=weights_path,
-            output_dir=output_dir,
-            category=params.get("category", "style"),
-            rank=params.get("rank", 8),
-            alpha=params.get("alpha", 1.0),
-            skip_bench=True,
-        )
-        return {
-            "output_paths": {
-                "bundle": str(output_dir),
-            },
-            **result,
-        }
-    except QualityGateError as exc:
-        return {
-            "output_paths": {},
-            "error": str(exc),
-            "exit_code": int(exc.exit_code),
-        }
+    result = package_and_gate_lora_bundle(
+        weights_path=weights_path,
+        output_dir=output_dir,
+        category=params.get("category", "style"),
+        rank=params.get("rank", 8),
+        alpha=params.get("alpha", 1.0),
+        bench_metrics=params.get("bench_metrics"),
+        skip_bench=bool(params.get("skip_bench", True)),
+    )
+    return {
+        "output_paths": {
+            "bundle": str(output_dir),
+        },
+        **result,
+    }

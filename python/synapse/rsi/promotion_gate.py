@@ -12,13 +12,12 @@ may regress even if overall scores improve.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 
-from synapse.errors import QualityGateError
-
+from synapse.errors import ContractValidationError, QualityGateError
 
 # -------------------------------------------------------------------
 # Report models
@@ -106,6 +105,34 @@ class PromotionResult(BaseModel):
 # -------------------------------------------------------------------
 
 
+def _validate_finite_report(
+    report: BenchReport, label: str,
+) -> None:
+    """Ensure all aggregate and scenario scores are finite."""
+    for name in ("overall_score", "geom_score", "temporal_score"):
+        val = getattr(report, name)
+        if not math.isfinite(val):
+            raise ContractValidationError(
+                f"Non-finite {name}={val!r} in {label} BenchReport",
+                agent_fix_hint=(
+                    f"Ensure {label} benchmark evaluation produced "
+                    "finite aggregate scores."
+                ),
+            )
+    for sc in report.scenarios:
+        for name in ("overall", "geom", "temporal"):
+            val = getattr(sc, name)
+            if not math.isfinite(val):
+                raise ContractValidationError(
+                    f"Non-finite {name}={val!r} for scenario "
+                    f"'{sc.scenario_id}' in {label} BenchReport",
+                    agent_fix_hint=(
+                        f"Re-evaluate scenario '{sc.scenario_id}' to "
+                        "eliminate NaN/Inf scores."
+                    ),
+                )
+
+
 def evaluate_monotonic_promotion(
     *,
     baseline: BenchReport,
@@ -119,7 +146,8 @@ def evaluate_monotonic_promotion(
     1. OverallScore(candidate) > OverallScore(baseline) + epsilon
     2. GeomScore(candidate) >= GeomScore(baseline)
     3. TemporalScore(candidate) >= TemporalScore(baseline)
-    4. Zero per-scenario regression (within noise tolerance)
+    4. Zero per-scenario regression (within noise tolerance) across
+       identical scenario sets
 
     Args:
         baseline: Current production baseline report.
@@ -132,8 +160,29 @@ def evaluate_monotonic_promotion(
         PromotionResult with pass/fail and quarantine entries.
 
     Raises:
+        ContractValidationError: If scenario sets mismatch or contain
+            non-finite scores (exit code 10).
         QualityGateError: If any condition fails (exit code 40).
     """
+    _validate_finite_report(baseline, "baseline")
+    _validate_finite_report(candidate, "candidate")
+
+    baseline_ids = {s.scenario_id for s in baseline.scenarios}
+    candidate_ids = {s.scenario_id for s in candidate.scenarios}
+    if baseline_ids != candidate_ids:
+        missing = sorted(baseline_ids - candidate_ids)
+        extra = sorted(candidate_ids - baseline_ids)
+        raise ContractValidationError(
+            "Candidate and baseline scenario sets do not match: "
+            f"missing_in_candidate={missing}, "
+            f"extra_in_candidate={extra}. "
+            "Dropping scenarios to bypass promotion gate is FORBIDDEN.",
+            agent_fix_hint=(
+                "Evaluate candidate on the exact same scenario set "
+                "as the baseline report."
+            ),
+        )
+
     failures: list[str] = []
     conditions: dict[str, bool] = {}
     quarantine: list[QuarantineEntry] = []
@@ -181,10 +230,7 @@ def evaluate_monotonic_promotion(
     per_scenario_ok = True
 
     for cs in candidate.scenarios:
-        bs = baseline_by_id.get(cs.scenario_id)
-        if bs is None:
-            continue
-
+        bs = baseline_by_id[cs.scenario_id]
         regression = bs.overall - cs.overall
         if regression > noise_tolerance:
             per_scenario_ok = False
