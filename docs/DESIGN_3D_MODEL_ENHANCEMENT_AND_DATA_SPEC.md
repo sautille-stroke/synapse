@@ -1,8 +1,8 @@
 # 3D 生成模型质量提升方法论与高质量训练数据工程规范
 ## 3D Model Quality Enhancement & Training Data Specification Guide
 
-- **文档状态**: `Approved Technical Guide v1.0`
-- **发布日期**: 2026-11-12
+- **文档状态**: `Approved Technical Guide v2.0`
+- **发布日期**: 2026-11-12 (v2.0: 2026-11-12 评估体系完整性审计与补全)
 - **所属生态**: `sautille-stroke` / `DervGen`
 - **关联子系统**:
   - `synapse`（3D CG 渲染与神经生成互操作 SDK、无状态推理 Worker、`Synapse-Bench`）
@@ -345,3 +345,202 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 - [ ] **空间归一化**：模型底面原点对齐 $(0,0,0)$，尺度单位为真实米制；
 - [ ] **微距质量**：局部特征区域在 $2\times$ 微距特写下 LPIPS $\le 0.12$，无过度模糊；
 - [ ] **偏好闭环**：所有人工精修修复步骤均已被序列化记录为 `CommandIR` 沉淀入数据湖。
+
+
+---
+
+## 6. 3D 模型评估指标全景矩阵与实现状态 (Evaluation Metrics Matrix)
+
+> **审计基线**: 2026-11-12 v2.0。基于对 `synapse/python/synapse/metrics/`、`inspect/`、`recon/`、`rsi/`、`bench/` 全量代码与设计文档的交叉审计。
+
+### 6.1 已完整实现的门禁指标（18 个 Profile 指标 + 6 个辅助算子）
+
+#### 6.1.1 四支柱 18 门禁指标
+
+以下 18 个指标均已有完整的计算函数实现、单元测试覆盖，并纳入 4 层递进门禁 Profile（`TRACK_B_VIDEO` → `TRACK_A_ASSET` → `RSI_PROMOTION` → `RSI_PROMOTION_TARGET`）。
+
+| # | 支柱 | 指标 (Key) | 计算位置 | 检测维度 | TRACK_B | TRACK_A | RSI_PROMO | RSI_TARGET |
+|---|:---|:---|:---|:---|:---:|:---:|:---:|:---:|
+| 1 | Temporal | `temporal_warp_error` | `metrics/temporal.py` | 运动矢量时域翘曲 RMSE（含遮挡掩码） | ≤ 8.0 | ≤ 4.0 | ≤ 2.0 | ≤ 1.5 |
+| 2 | Temporal | `flicker_score` | `metrics/temporal.py` | 二阶拉普拉斯时域闪烁不稳定度 | ≤ 0.08 | ≤ 0.05 | ≤ 0.03 | ≤ 0.02 |
+| 3 | Temporal | `fvd_feature_distance` | `metrics/temporal.py` | Fréchet 时序特征距离 | ≤ 200.0 | ≤ 120.0 | ≤ 80.0 | ≤ 50.0 |
+| 4 | FGPP Fidelity | `depth_rmse_m` | `metrics/fgpp_fidelity.py` | 深度图 RMSE（绝对米制） | ≤ 0.30 | ≤ 0.15 | ≤ 0.08 | ≤ 0.05 |
+| 5 | FGPP Fidelity | `scale_invariant_depth_error` | `metrics/fgpp_fidelity.py` | Eigen 对数尺度不变深度误差 | (⚠️ 未纳入 Profile) | — | — | — |
+| 6 | FGPP Fidelity | `normal_angular_error_deg` | `metrics/fgpp_fidelity.py` | 法线角度均值偏差（度） | ≤ 25.0 | ≤ 15.0 | ≤ 10.0 | ≤ 7.0 |
+| 7 | FGPP Fidelity | `flow_endpoint_error_px` | `metrics/fgpp_fidelity.py` | 光流端点误差（像素） | ≤ 4.0 | ≤ 2.0 | ≤ 1.2 | ≤ 0.8 |
+| 8 | FGPP Fidelity | `silhouette_iou` | `metrics/fgpp_fidelity.py` | 二值化剪影交并比 | ≥ 0.85 | ≥ 0.88 | ≥ 0.90 | ≥ 0.93 |
+| 9 | Roundtrip | `chamfer_mm` | `metrics/roundtrip.py` | 双向 Chamfer 距离（mm） | ≤ 8.0 | ≤ 5.0 | ≤ 4.0 | ≤ 2.5 |
+| 10 | Roundtrip | `f_score_1mm` | `metrics/roundtrip.py` | 1mm 阈值双向 F-score | ≥ 0.70 | ≥ 0.80 | ≥ 0.85 | ≥ 0.90 |
+| 11 | Roundtrip | `volume_breathing_pct` | `metrics/roundtrip.py` | 有符号四面体体积变化百分比 | ≤ 10.0 | ≤ 5.0 | ≤ 3.0 | ≤ 2.0 |
+| 12 | Roundtrip | `foot_sliding_cm` | `metrics/roundtrip.py` | 地面接触顶点水平滑动量（cm） | ≤ 0.5 | ≤ 0.3 | ≤ 0.2 | ≤ 0.1 |
+| 13 | Roundtrip | `bone_length_drift_pct` | `metrics/roundtrip.py` | 骨骼段长度漂移百分比 | ≤ 3.0 | ≤ 2.0 | ≤ 1.0 | ≤ 0.5 |
+| 14 | Roundtrip | `albedo_delta_e00` | `metrics/roundtrip.py` | CIEDE2000 反照率色差（ACEScg） | ≤ 5.0 | ≤ 3.5 | ≤ 2.5 | ≤ 1.5 |
+| 15 | Style | `border_ring_ciede2000` | `metrics/style_consistency.py` | 形态膨胀边界环 CIEDE2000 色差 | ≤ 6.0 | ≤ 4.0 | ≤ 3.0 | ≤ 2.0 |
+| 16 | Style | `light_dir_error_deg` | `metrics/style_consistency.py` | 主光方向角度误差（度） | ≤ 20.0 | ≤ 12.0 | ≤ 8.0 | ≤ 5.0 |
+| 17 | Style | `tone_curve_rmse` | `metrics/style_consistency.py` | 色调映射曲线 RMSE | ≤ 0.08 | ≤ 0.05 | ≤ 0.03 | ≤ 0.02 |
+| 18 | Style | `histogram_intersection` | `metrics/style_consistency.py` | 颜色直方图交集相似度 | (⚠️ 未纳入 Profile) | — | — | — |
+
+#### 6.1.2 辅助质检算子（非 Profile 门禁，但有完整实现）
+
+| 算子 | 位置 | 功能 |
+|:---|:---|:---|
+| `check_manifold` | `recon/geometry.py` | 2-流形拓扑布尔验证（每条边至多 2 面共享） |
+| `check_watertight` | `recon/geometry.py` | 水密性布尔验证（零边界游离边） |
+| `compute_silhouette_iou` | `inspect/align.py` | Z-buffer 软光栅化 + IoU 对齐 |
+| `compute_isotopic_residual_heatmap` | `inspect/macro.py` | 多通道（RGB+深度+法线）异常融合热力图 |
+| `VisualJevCritic` | `inspect/jev_critic.py` | VLM Logprob 6 类缺陷校准概率检测 |
+| `DualVerifierEngine` | `rsi/dual_verifier.py` | 物理 + 神经双重验算引擎 |
+
+### 6.2 设计文档已规约但尚未实现的指标（待补全）
+
+以下指标在设计文档（`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、本文档 §2.1）中明确规定了计算方式与门禁阈值，但在 `synapse` 代码库中尚无对应的计算函数。
+
+#### 6.2.1 P0 级：渲染画质核心指标（影响 Synapse-Bench 全部 30 套场景评测）
+
+> [!CAUTION]
+> 以下 4 个指标被 Synapse-Bench 全部 30 套 T1~T5 场景的 `ExpectedMetrics` 声明引用，但计算函数不存在，导致整个基准测试的**渲染画质维度空转**。必须尽快补全。
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值（拟定） | 行业对标 |
+|:---|:---|:---|:---|:---|
+| `psnr_db` | $10 \log_{10}(\text{MAX}^2 / \text{MSE})$，峰值信噪比 | `metrics/image_quality.py` (待新建) | T1: ≥ 28 dB, T5: ≥ 25 dB | NeRF / 3DGS / InstantMesh 标配 |
+| `ssim` | Wang et al. 2004 结构相似度，$11 \times 11$ 高斯窗 | `metrics/image_quality.py` (待新建) | T1: ≥ 0.90, T5: ≥ 0.85 | 全行业渲染质量标配 |
+| `lpips` | AlexNet / VGG 深层感知距离加权和 | `metrics/image_quality.py` (待新建) | T1: ≤ 0.08, T5: ≤ 0.15 | 3D 生成论文标准评测 |
+| `ciede2000` | CIEDE2000 全局平均色差 | `metrics/image_quality.py` (待新建) | ≤ 3.0 | PBR 材质保真度验证 |
+
+#### 6.2.2 P0 级：感知与语义学习指标
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 | 行业对标 |
+|:---|:---|:---|:---|:---|
+| `dino_cosine_sim` | DINOv2 ViT-L/14 CLS Token 余弦相似度 | `metrics/perceptual.py` (待新建) | ≥ 0.85 | Zero123++, LGM, TripoSR 标配 |
+| `lpips_vgg` | LPIPS with VGG-16 骨干网络 | `metrics/perceptual.py` (待新建) | ≤ 0.15 | GSO Benchmark, DreamFusion |
+
+#### 6.2.3 P1 级：拓扑量化指标（当前仅有 Bool，需量化升级）
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
+|:---|:---|:---|:---|
+| `euler_characteristic` | $\chi = V - E + F$，验证 $\chi = 2(1-g)$ | `recon/geometry.py` (扩展) | $= 2$ (genus-0 封闭网格) |
+| `connected_components_count` | 三角面图深度优先遍历连通域计数 | `recon/geometry.py` (扩展) | $= 1$ (单一主体) |
+| `floating_islands_ratio` | 非最大连通域体积之和 / 最大连通域体积 | `recon/geometry.py` (扩展) | $< 0.005$ |
+| `degenerate_faces_count` | 面积 $< 10^{-8}$ 或外接高宽比 $> 100:1$ 的面数量 | `recon/geometry.py` (扩展) | $= 0$ |
+| `non_manifold_edges_count` | 共享面 $\neq 2$ 的有向边数量（量化版，替代 bool） | `recon/geometry.py` (扩展) | $= 0$ |
+
+#### 6.2.4 P1 级：UV 与贴图质量指标
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
+|:---|:---|:---|:---|
+| `uv_area_distortion_ratio` | UV 面积 vs 3D 面积的 $\max / \min$ 比率 | `recon/geometry.py` (扩展) | $\le 1.5$ |
+| `seam_discontinuity_deg` | UV 接缝两侧法线夹角跳跃均值 | `recon/geometry.py` (扩展) | $\le 5.0°$ |
+| `texel_density_variance` | 纹素密度 (px/m) 的全局变异系数 (CV) | `recon/geometry.py` (扩展) | $\le 0.3$ |
+
+#### 6.2.5 P1 级：微观曲面与表面质量指标
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
+|:---|:---|:---|:---|
+| `discrete_mean_curvature_variance` | Cotangent-weight 离散平均曲率方差 | `recon/geometry.py` (扩展) | $\le 0.08$ |
+| `surface_roughness_var` | 局部微表面曲率方差梯度 | `recon/geometry.py` (扩展) | $\le 0.08$ |
+| `patch_lpips` | 512×512 局部特写切片 LPIPS | `inspect/macro.py` (扩展) | $\le 0.12$ |
+
+#### 6.2.6 P2 级：姿态估计与对齐指标
+
+| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
+|:---|:---|:---|:---|
+| `add_s_norm` | 归一化平均点距离（对称性） | `inspect/align.py` (扩展) | $\le 0.05 \cdot d_{\text{obj}}$ |
+| `reprojection_error_px` | 2D 关节重投影 RMSE（像素） | `inspect/align.py` (扩展) | $\le 4.0$ px |
+
+### 6.3 Synapse-Bench 场景指标名称映射表
+
+> [!WARNING]
+> T4 场景 JSON 中引用的指标名称与实现中的函数名不完全匹配。以下映射表为规范桥接定义，代码实现中必须增设名称转发（alias）。
+
+| 场景 JSON 引用名 | 实现函数名 | 状态 |
+|:---|:---|:---:|
+| `style_color_de` | `border_ring_ciede2000` | ⚠️ 需增设 alias |
+| `style_light_error_deg` | `light_dir_error_deg` | ⚠️ 需增设 alias |
+| `psnr_db` | — | 🔴 待实现 |
+| `ssim` | — | 🔴 待实现 |
+| `lpips` | — | 🔴 待实现 |
+| `ciede2000` | — | 🔴 待实现 |
+
+---
+
+## 7. 推荐外部 3D 评测数据集接入规范
+
+当前 Synapse-Bench 全部 30 套场景 100% 使用程序化几何（`AssetSource.PROCEDURAL`）。代码中已定义 `AssetSource.OBJAVERSE` 与 `AssetSource.KHRONOS` 枚举但从未使用。为覆盖真实世界长尾分布，应逐步引入以下外部数据集。
+
+### 7.1 推荐数据集清单
+
+| 数据集 | 规模 | 核心特征 | 评测价值 | 接入优先级 |
+|:---|:---|:---|:---|:---:|
+| **Google Scanned Objects (GSO)** | 1,030 扫描物体 | 高质量扫描 + HDRI 渲染，学术标准评测集 | 3D 生成论文标准对标（TripoSR, LGM, InstantMesh 均使用） | **P0** |
+| **Objaverse-XL** | 10M+ 3D 资产 | 最大开源 3D 资产库，覆盖长尾品类 | 多样性与泛化能力测试 | **P0** |
+| **ABO (Amazon Berkeley Objects)** | 8,222 产品 | 电商真实 3D + PBR 材质 + 参考照片 | 工业级 PBR 材质保真度验证 | **P1** |
+| **OmniObject3D** | 6,000 扫描对象 | 190 类别标签 + 多视角渲染 + 点云 | 类别覆盖与分类鲁棒性 | **P1** |
+| **Thingi10K** | 10,000 CAD 模型 | 极端拓扑挑战（镂空、薄壁、高亏格） | 拓扑门禁的压力测试 | **P1** |
+| **Tanks and Temples** | 21 大场景 | MVS 重建标准基准 | 大场景几何重建精度 | **P2** |
+| **CO3D (Common Objects 3D)** | 19K 视频序列 | 多视角视频 + SfM 重建 | 视频到 3D 管线端到端评测 | **P2** |
+| **Stanford 3D Scanning** | Dragon, Bunny 等经典 | 超高密度点云扫描 | 高精度几何对比基准 | **P2** |
+
+### 7.2 外部数据集接入契约
+
+外部 3D 资产接入 Synapse-Bench 评测场景时，必须遵循以下统一预处理契约：
+
+1. **坐标系归一化**：统一右手系 Y-up，模型底面中心对齐原点 $(0, 0, 0)$；
+2. **尺度标准化**：资产包围球半径归一化至 $[0.8, 1.2]$ 范围或保留原始米制尺度（通过 `metadata.json` 中 `physical_scale_m` 字段标记）；
+3. **拓扑预过滤**：入库前必须通过 Stage 0 几何硬门禁（2-manifold、watertight、零退化面），不合格资产不得作为 Ground Truth；
+4. **材质约束**：必须具备独立 PBR 贴图（至少 Albedo + Normal），不接受仅有顶点色或烘焙光照的资产；
+5. **许可证合规**：仅接入 CC-BY 4.0、CC0、Apache 2.0 或同等宽松许可证的资产。
+
+### 7.3 场景 JSON 扩展格式示例
+
+```json
+{
+  "id": "t1_gso_shoe_orbit",
+  "tier": "T1",
+  "description": "GSO high-quality scanned shoe, 360° orbit, neutral lighting",
+  "asset": {
+    "source": "gso",
+    "gso_id": "Shoe_fccb813e",
+    "fallback_procedural": "sphere"
+  },
+  "camera_params": {
+    "trajectory": "orbit",
+    "num_frames": 17,
+    "elevation_deg": 15.0,
+    "fov_deg": 50.0
+  },
+  "expected_metrics": {
+    "psnr_db": 28.0,
+    "ssim": 0.90,
+    "lpips": 0.08,
+    "silhouette_iou": 0.92,
+    "depth_rmse_m": 0.05,
+    "normal_angular_error_deg": 8.0,
+    "dino_cosine_sim": 0.88
+  }
+}
+```
+
+> [!NOTE]
+> `fallback_procedural` 字段确保在无法获取外部资产（如 CI 环境无网络）时，场景自动降级为对应的程序化几何体，保证测试不会因网络依赖而中断。
+
+---
+
+## 8. 评估体系补全实施路线图
+
+### 8.1 修复优先级与工时估算
+
+| 阶段 | 要做什么 | 预期工时 | 产出 |
+|:---|:---|:---|:---|
+| **P0-Sprint** | 实现 `psnr_db` / `ssim` / `lpips` / `ciede2000` 计算函数（`metrics/image_quality.py`）；实现 `dino_cosine_sim` / `lpips_vgg`（`metrics/perceptual.py`，可选依赖 `torch`/`timm`）；修复场景指标名称映射（增设 alias） | **1~3 天** | 30 套基准场景的渲染画质与感知语义维度能跑通评分；可与行业论文对标 |
+| **P1-Topo** | 实现 `euler_characteristic`、`connected_components_count`、`floating_islands_ratio`、`degenerate_faces_count`、`non_manifold_edges_count` | **2~3 天** | 3D 网格入库门禁从 bool 升级为量化打分；Stage 0 拓扑硬门禁完整落地 |
+| **P1-UV** | 实现 `uv_area_distortion_ratio`、`seam_discontinuity_deg`、`texel_density_variance` | **2~3 天** | 材质贴图质量首次有自动化评测 |
+| **P1-Curvature** | 实现 `discrete_mean_curvature_variance`、`surface_roughness_var`、`patch_lpips` | **2~3 天** | 微观表面缺陷检测（阶梯网格、凹坑、过平滑）可量化定位 |
+| **P1-Data** | 集成 GSO + Objaverse 外部 3D 资产，新增 6~10 套 T1/T2 外部数据场景 | **3~5 天** | 评测从纯程序化几何扩展到真实长尾资产 |
+| **P2-Misc** | 纳入 `scale_invariant_depth_error`、`histogram_intersection` 到 Profile；实现 `add_s_norm`、`reprojection_error_px` | **1~2 天** | 消除已实现但被忽略的指标盲区 |
+
+### 8.2 各阶段完成验收标准
+
+- **P0 完成**：运行 `pytest tests/test_bench_runner.py -v` 全部 30 套场景能输出所有声明指标的数值（无 `N/A`），HTML 报告雷达图画质轴非空白；
+- **P1-Topo 完成**：运行 `pytest tests/test_recon.py -v` 覆盖新增的量化拓扑指标，`check_manifold` 与 `check_watertight` 的布尔判定与新增量化版本逻辑一致；
+- **P1-Data 完成**：Synapse-Bench 场景列表扩展至 36~40 套，其中至少 6 套使用 `AssetSource.OBJAVERSE` 或 `AssetSource.GSO`；
+- **全部完成**：`evaluate_metrics_gate(results, "rsi_promotion")` 覆盖全部本文档声明的指标，不遗漏任何设计文档规定的评估维度。
