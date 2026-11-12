@@ -177,7 +177,7 @@
 | D4 | P0 | **整条帧链路是空的**：`main.js:124` 监听 `nativeProc.on('frame')`，但 `native-process.js` 从来不 emit `'frame'`；`shm-reader.js` 的 `open()` 恒返回 false；native 端的 RHI 初始化、模型加载、截图全是 `TODO(PR-27)`；`config.headless = … \|\| true` 恒为真 | 在 README 和 UI 上明确标注「脚手架，没有渲染」；BUILD 里先不要依赖 `@fulgur//engine/renderer` 等重量级目标（现在是白拖一整套编译依赖）。 |
 | D5 | P1 | 安全：`sandbox:false`；`innerHTML` 拼接 manifest 里的不可信字段（`bundle_id`、文件名），有 XSS 风险；`native-send-command` 把任意对象原样透传到 native 进程的 stdin；`onNative*` 注册的监听器没法注销 | 打开 `sandbox:true`；用 `textContent` 渲染不可信字段；IPC 命令做白名单 + schema 校验；preload 返回 unsubscribe 函数。 |
 | D6 | P1 | stdout 按数据块 `split('\n')` 解析，JSON 行跨块时会被截断 | 加行缓冲（`readline` 或累积缓冲区）。 |
-| D7 | P1 | 选型和定位：没有用 `@dervgen/electronkit` / `forgekit`；`electron ^33` 是浮动版本，没有 pnpm lock；C++ 代码不在任何命名空间里 | 按 `electron-desktop-dev` 和 `forge-ui-design` skill 对齐。**更根本的问题是**：这个桌面工具应该放在 `synapse`（Layer 2 纯 SDK + 无状态 worker）里，还是放到 `grand-studio` 或单独的 harness 仓库里？建议回到 PLAN-M8 做一次边界决议（见 §3.6）。 |
+| D7 | P1 | 选型和工程规范：没有用 `@dervgen/electronkit` / `forgekit`；`electron ^33` 是浮动版本，没有 pnpm lock；C++ 代码不在任何命名空间里（应放在 `namespace synapse::inspector`） | 按 `electron-desktop-dev` 和 `forge-ui-design` skill 对齐；作为 `synapse` 内部自用诊断工具保留在 `tools/data-inspector/`，先把 `InspectionBundle`、IPC 与 SHM 渲染协议做成高内聚的自洽模块，便于后续按需抽离或贡献到上层工作台（见 §3.6）。 |
 
 ### 2.6 文档
 
@@ -235,11 +235,17 @@ flowchart LR
 
 新增 `NotImplementedStageError`（退出码 50），作为 CLI 子命令、stage、Electron 功能的统一出口。CI 加一条规则：`grep -E '"status": *"(configured|merged|aligned|prepared)"'` 匹配到就失败。
 
-### 3.6 仓库边界
+### 3.6 `tools/data-inspector` 定位与模块化设计（已决议：作为 `synapse` 内部工具保留开发）
 
-`tools/data-inspector` 里有一个独立的 Bazel 模块、一个 Electron 应用、对 fulgur renderer 的依赖。这些放在一个「纯 SDK + 无状态 worker」定位的 Layer 2 仓库里，和 `AGENTS.md` 里「桌面端…」那一节的分工原则相冲突。建议出一份小型 RFC/Design，二选一：
-- (a) 迁到 `grand-studio`，作为一个面板或子应用；
-- (b) 保留在 synapse，但只放 Python 侧的 bundle 生成和校验 CLI，可视化交给外部工具。
+> **架构决议**：`tools/data-inspector` 明确作为 `synapse` 仓库自身的训练与评测数据可视化诊断工具继续开发（对应 `PLAN-M8` 的 `PR-26` ~ `PR-29`），暂不外迁；待功能成熟稳定后，再决定是否将通用组件贡献到 `@dervgen/forgekit` 或 `grand-studio`。
+
+为保证其在 `synapse` 内部健康演进且未来易于复出/贡献，需遵守以下模块化与工程边界：
+1. **与 Python 核心包零耦合**：保持独立子目录 `tools/data-inspector/`（独立 `package.json` 与 `native/MODULE.bazel`），绝不反向污染 `python/synapse` 的轻量依赖；所有评测重算与 EXR 降级转换均通过标准 CLI（`synapse-bench evaluate --bundle`、`synapse fgpp inspect`）子进程交互。
+2. **全面收敛 OS 原语至 `@aether//pal`**：删除 `inspector_shm_server.cc` / `inspector_app.cc` 中手写的 `<windows.h>` / `<unistd.h>` / `shm_open` / `CreateFileMappingA` 代码，统一复用 `@aether//pal` 的共享内存与平台抽象，C++ 源码统一纳入 `namespace synapse::inspector` 并严格遵守 `-fno-exceptions`。
+3. **打通端到端真渲染闭环（分步消解 `TODO(PR-27)`）**：
+   - 先在 `TOOL-1` 中修复 `BUILD.bazel` / `MODULE.bazel` 构建问题，接入 `@fulgur//engine/rhi`（支持 `--rhi=null --headless` 在 `ubuntu24` 上跑通 CI 冒烟，以及 `--rhi=metal/vulkan/d3d12` 本地真机渲染），打通 `InspectorShmServer` → Electron `shm-reader` / IPC 帧传输全链路；
+   - 再按 `PLAN-M8` 推进 `PR-28`（骨骼动画播放 + FGPP 多通道悬停读值 + 统一时间轴）与 `PR-29`（BVH 距离热力图 + 4 模式对比 + 指标仪表盘）。
+4. **安全与协议自洽**：开启 Electron `sandbox: true`、修复 DOM `innerHTML` 注入、为 stdin/stdout JSON-RPC 增加行缓冲与命令 Schema 白名单校验，使协议层具备未来直接迁移至 `electronkit` 的干净接口。
 
 ---
 
@@ -253,7 +259,7 @@ flowchart LR
 | **ARCH-2** Stage 适配层 | pipeline | §3.4；领域模块里不再出现 `E402` 导入 | 加一个 import-linter 规则：`synapse.{training,rsi,inspect}` 禁止导入 `synapse.pipeline`。 |
 | **ALGO-1** Trainer 正确性 | training | T1~T8、L1~L3；adapter 声明 flow 约定；按样本采样 t；参考模型 DPO；PEFT 格式导出 | 在 ubuntu24 的 venv 里加装 CPU 版 `torch`（作为 `[gpu]` 可选依赖的 CPU 变体），**消除那 6 个 skip**。新增测试：①DPO 方向测试（chosen 误差降低 → loss 降低）；②参考模型等于策略模型时 loss = ln2；③numpy oracle 和 torch 实现一致；④在小型 MLP 上过拟合 toy 偏好对，偏好准确率 > 0.95；⑤在 GPU 节点上验证 device/dtype 跟随 `orig`。 |
 | **DATA-1** 偏好数据契约 | inspect / rsi / training | §3.3：`PreferenceRecord v1`、F4 条件对齐配对、B1~B3、C1~C5 | 跑通端到端：intent 日志 → JSONL → 潜变量分片 → 1 步 DPO 训练，产出非空 checkpoint，`LoRAManifest` 校验通过。 |
-| **TOOL-1** Inspector 定位与构建 | tools/data-inspector | 先做 §3.6 的决议；如果保留，则修 D1~D7 | `bazel build //:data-inspector-native` 在 ubuntu24 上变绿；`npm test` 通过；安全检查清单（sandbox、CSP、textContent、IPC 白名单）全部勾选。 |
+| **TOOL-1** Inspector 构建修复、安全加固与渲染打通 | tools/data-inspector | 修复 D1~D7：修好 `MODULE.bazel` / `BUILD.bazel` 与 `-fno-exceptions`；改用 `@aether//pal` SHM；打通 `--rhi=null` 无头帧输出与 Electron 端帧接收显示；落实 D5/D6 安全与行缓冲修复 | `bazel build //:data-inspector-native` 在 `ubuntu24` 上零告警编译通过；`--rhi=null --headless` 下发送 `load_bundle` + `camera` 指令能产出非空 SHM 帧并被 Node 测试验真；`npm test` 全绿；安全检查清单（sandbox、CSP、textContent、IPC 白名单）全部通过。 |
 
 **并行关系**：FIX-1 和 FIX-2 可以并行；ARCH-1 和 ARCH-2 依赖 FIX-1；ALGO-1 和 DATA-1 依赖 ARCH-1；TOOL-1 和其他 PR 互不依赖。
 
