@@ -133,6 +133,15 @@ class ResultManifest(BaseModel):
 # ---------------------------------------------------------------------------
 
 _STAGE_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {}
+_STAGE_ADAPTERS_LOADED: bool = False
+
+
+def _ensure_stage_adapters_loaded() -> None:
+    """Import ``synapse.pipeline.stages`` once to register all stage adapters."""
+    global _STAGE_ADAPTERS_LOADED
+    if not _STAGE_ADAPTERS_LOADED:
+        _STAGE_ADAPTERS_LOADED = True
+        import synapse.pipeline.stages  # noqa: F401
 
 
 def register_stage(
@@ -169,6 +178,7 @@ def register_stage(
 
 def get_registered_stages() -> list[str]:
     """Return sorted list of registered stage names."""
+    _ensure_stage_adapters_loaded()
     return sorted(_STAGE_HANDLERS.keys())
 
 
@@ -625,6 +635,7 @@ class JobBundleWorker:
             timing information.
         """
         t_start = time.monotonic()
+        _ensure_stage_adapters_loaded()
 
         handler = _STAGE_HANDLERS.get(manifest.stage)
         if handler is None:
