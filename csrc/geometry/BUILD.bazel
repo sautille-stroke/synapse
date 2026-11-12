@@ -4,6 +4,8 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 COMMON_COPTS = select({
     "@platforms//os:windows": [
         "/std:c++20",
+        "/Zc:__cplusplus",
+        "/utf-8",
         "/W4",
     ],
     "//conditions:default": [
