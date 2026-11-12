@@ -38,8 +38,12 @@
 | **macOS 本地开发机** | 本机 (`/Volumes/work/dervgen/synapse`) | **主控代码与文档编辑环境**。仅限单文件极速轻量语法/单测冒烟，**严禁在本地 Mac 拉起数十 GB 视频大模型或跑全量重型基准套件** |
 
 ```bash
-# 推荐首选：在云端主力机 ubuntu24 运行全套校验与单元测试
-ssh ubuntu24 "cd ~/work/dervgen/synapse && pytest tests/ -v && ruff check python/ tests/ && mypy python/synapse"
+# 推荐首选：在云端主力机 ubuntu24 运行全套校验、黄金数据集生成与 E1-E5 无卡基线验证
+ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ && /root/venv-synapse/bin/mypy python/synapse"
+ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts/prepare_datasets.py && /root/venv-synapse/bin/python scripts/run_cpu_verification.py"
+
+# Google Colab GPU 节点：解压 ubuntu24 数据包并带 Google Drive 断点续跑执行重型实验
+python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/synapse_experiments --exp all
 
 # 本地极轻量单点冒烟（仅限纯 CPU 毫秒级单测）
 pytest tests/test_bench.py -k "test_scenario_create" -v
@@ -85,3 +89,14 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **训练数据可视化检查器方案**：[docs/DESIGN_DATA_INSPECTOR.md](docs/DESIGN_DATA_INSPECTOR.md)
 - **3D 建模智能质检与精修数据飞轮设计规范**：[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
+
+---
+
+## 6. 内置 Agent Skills 导航（`.agents/skills/`）
+
+| Skill 名称 | 路径 | 适用场景 |
+| :--- | :--- | :--- |
+| **`synapse-overview`** | [.agents/skills/synapse-overview/SKILL.md](.agents/skills/synapse-overview/SKILL.md) | 架构全景、全模块索引、跨仓协作边界、CLI 退出码契约与多机测试规范 |
+| **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
+| **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
+| **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |
