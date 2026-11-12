@@ -574,6 +574,39 @@ class TestPreloadedGroups:
         # No valid chosen state -> no pairs
         assert result["record_count"] == 0
 
+    def test_dpo_does_not_cross_pair_different_initial_states(
+        self, tmp_path: Path,
+    ) -> None:
+        """Intents with different initial_state_uri on the same asset do not cross-pair."""
+        groups = [
+            IntentGroup(
+                intent_id="rej_state1",
+                asset_id="ax",
+                undo_triggered=True,
+                final_passed_gate=False,
+                initial_state_uri="file:///state_1.glb",
+                final_state_uri="file:///bad_1.glb",
+            ),
+            IntentGroup(
+                intent_id="good_state2",
+                asset_id="ax",
+                undo_triggered=False,
+                final_passed_gate=True,
+                initial_state_uri="file:///state_2.glb",
+                final_state_uri="file:///good_2.glb",
+            ),
+        ]
+        out = tmp_path / "dpo_mismatch.jsonl"
+        log_dir = tmp_path / "dummy_logs"
+        log_dir.mkdir()
+        result = export_rl_flywheel_dataset(
+            log_dir=log_dir,
+            output_path=out,
+            format="dpo",
+            intent_groups=groups,
+        )
+        assert result["record_count"] == 0
+
 
 # -------------------------------------------------------------------
 # CLI tests

@@ -61,20 +61,40 @@ class TestCurriculumSampler:
     def test_analyse_weaknesses_all_strong(self) -> None:
         """All strong factors get weight 1.0."""
         sampler = CurriculumSampler()
-        # Provide scores for ALL factors to avoid default 0.5
         scores = {
             "F01_viewpoint": 0.9,
-            "F02_distance": 0.9,
             "F03_lighting": 0.9,
-            "F04_material": 0.9,
-            "F05_animation": 0.9,
             "F06_occlusion": 0.9,
-            "F07_background": 0.9,
-            "F08_resolution": 0.9,
         }
         weights = sampler.analyse_weaknesses(scores)
-        for f in scores:
-            assert weights[f] == 1.0
+        for f, w in weights.items():
+            assert w == 1.0, f"Factor {f} should have weight 1.0"
+
+    def test_curriculum_uses_all_11_canonical_factors(self) -> None:
+        """CurriculumSampler covers all 11 RENDERING_CONDITION_FACTORS."""
+        from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
+
+        sampler = CurriculumSampler()
+        weights = sampler.analyse_weaknesses({})
+        assert set(weights.keys()) == set(RENDERING_CONDITION_FACTORS.keys())
+        assert len(weights) == 11
+        # Unspecified factors are not falsely boosted as weak (0.5)
+        for w in weights.values():
+            assert w == 1.0
+
+    def test_weakness_weight_is_continuous_at_threshold(self) -> None:
+        """Weight approaches 1.0 smoothly as score -> weakness_threshold."""
+        sampler = CurriculumSampler(
+            CurriculumConfig(weakness_threshold=0.7, boost_factor=2.0)
+        )
+        w_just_below = sampler.analyse_weaknesses({"F01_viewpoint": 0.699})[
+            "F01_viewpoint"
+        ]
+        w_at_thresh = sampler.analyse_weaknesses({"F01_viewpoint": 0.700})[
+            "F01_viewpoint"
+        ]
+        assert w_at_thresh == 1.0
+        assert 1.0 < w_just_below < 1.01
 
     def test_sample_scenarios_count(self) -> None:
         """Sampler produces requested number of scenarios."""
@@ -438,6 +458,54 @@ class TestPreferenceDatasetBuilder:
             p.pair_id == "human_001" for p in pairs
         )
         assert human_found
+
+    def test_max_oversample_factor_enforced(self) -> None:
+        """Exceeding max_oversample_factor raises ContractValidationError(10)."""
+        builder = PreferenceDatasetBuilder(
+            auto_oversample=True,
+            max_oversample_factor=5,
+        )
+        builder.add_golden_pairs(self._golden_pairs(1))
+        builder.add_self_pairs(self._self_pairs(100))
+        with pytest.raises(ContractValidationError) as exc_info:
+            builder.build_pairs()
+        assert int(exc_info.value.exit_code) == 10
+        assert "max_oversample_factor" in str(exc_info.value)
+
+    def test_invalid_min_golden_ratio_rejected(self) -> None:
+        """min_golden_ratio < 0.20 or >= 1.0 raises ContractValidationError(10)."""
+        with pytest.raises(ContractValidationError):
+            PreferenceDatasetBuilder(min_golden_ratio=0.05)
+        with pytest.raises(ContractValidationError):
+            PreferenceDatasetBuilder(min_golden_ratio=1.0)
+
+    def test_identical_chosen_rejected_rejected(self) -> None:
+        """PreferencePair with chosen_uri == rejected_uri raises ValueError."""
+        with pytest.raises(ValueError, match="identical"):
+            PreferencePair(
+                pair_id="bad_pair",
+                chosen_uri="file:///same.glb",
+                rejected_uri="file:///same.glb",
+            )
+
+    def test_dpo_record_roundtrip_to_preference_pair(self) -> None:
+        """DPORecord from flywheel_exporter converts losslessly to PreferencePair."""
+        from synapse.inspect.flywheel_exporter import DPORecord
+
+        rec = DPORecord(
+            pair_id="pair_01",
+            prompt="Fix hand topology",
+            state_before="file:///init.glb",
+            chosen="file:///good.glb",
+            rejected="file:///bad.glb",
+            asset_id="hero_mesh",
+            source_intent_id="intent_01",
+        )
+        pair = rec.to_preference_pair()
+        assert pair.chosen_uri == "file:///good.glb"
+        assert pair.rejected_uri == "file:///bad.glb"
+        assert pair.condition_key == "file:///init.glb"
+        assert pair.asset_id == "hero_mesh"
 
 
 # -------------------------------------------------------------------
