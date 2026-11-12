@@ -11,7 +11,6 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -109,7 +108,7 @@ class CameraParams:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "CameraParams":
+    def from_dict(cls, d: dict) -> CameraParams:
         """Deserialise from dict."""
         return cls(
             fx=d["fx"],
@@ -156,12 +155,12 @@ class FGPPFrame:
     depth: np.ndarray  # [H, W] float32
 
     # Optional channels (None = not available)
-    direct_radiance: Optional[np.ndarray] = None  # [H, W, 3] float16
-    world_normal: Optional[np.ndarray] = None  # [H, W, 3] float16
-    motion_vector: Optional[np.ndarray] = None  # [H, W, 2] float16
-    base_color: Optional[np.ndarray] = None  # [H, W, 3] float16
-    roughness_metallic: Optional[np.ndarray] = None  # [H, W, 2] float16
-    cryptomatte_id: Optional[np.ndarray] = None  # [H, W] uint32
+    direct_radiance: np.ndarray | None = None  # [H, W, 3] float16
+    world_normal: np.ndarray | None = None  # [H, W, 3] float16
+    motion_vector: np.ndarray | None = None  # [H, W, 2] float16
+    base_color: np.ndarray | None = None  # [H, W, 3] float16
+    roughness_metallic: np.ndarray | None = None  # [H, W, 2] float16
+    cryptomatte_id: np.ndarray | None = None  # [H, W] uint32
 
     # Frame index within the sequence
     frame_index: int = 0
@@ -266,7 +265,7 @@ class FGPPSequence:
         return path
 
     @classmethod
-    def load_metadata(cls, input_dir: str | Path) -> "FGPPSequence":
+    def load_metadata(cls, input_dir: str | Path) -> FGPPSequence:
         """Load an ``FGPPSequence`` from a ``metadata.json`` file.
 
         Converts ``_col_major`` 16-element arrays back to row-major

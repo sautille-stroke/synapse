@@ -20,7 +20,7 @@ import hashlib
 import io
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -36,7 +36,6 @@ from synapse.adapters.base import (
 from synapse.errors import BackendUnavailableError
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
-    is_physical_anchor_frame,
 )
 from synapse.style.aces_color import acescg_to_linear_srgb, linear_to_srgb
 
@@ -444,7 +443,7 @@ class MockCloudTransport(CloudApiTransport):
     """
 
     @property
-    def provider_name(self) -> str:  # noqa: D102
+    def provider_name(self) -> str:
         return "mock_cloud"
 
     def submit_segment(
@@ -487,7 +486,7 @@ class MockCloudTransport(CloudApiTransport):
             dtype=np.uint8,
         )
 
-    def is_available(self) -> bool:  # noqa: D102
+    def is_available(self) -> bool:
         return True
 
 
@@ -542,7 +541,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
         ...
 
     @property
-    def tier(self) -> AdapterTier:  # noqa: D102
+    def tier(self) -> AdapterTier:
         return "blackbox"
 
     def _ensure_transport(self) -> CloudApiTransport:
@@ -699,7 +698,7 @@ class SeedanceAdapter(_BaseCloudAdapter):
     """
 
     @property
-    def adapter_id(self) -> str:  # noqa: D102
+    def adapter_id(self) -> str:
         return "seedance2.5"
 
     @property
@@ -733,7 +732,7 @@ class KlingAdapter(_BaseCloudAdapter):
     """
 
     @property
-    def adapter_id(self) -> str:  # noqa: D102
+    def adapter_id(self) -> str:
         return "kling1.5"
 
     @property
@@ -767,7 +766,7 @@ class VeoAdapter(_BaseCloudAdapter):
     """
 
     @property
-    def adapter_id(self) -> str:  # noqa: D102
+    def adapter_id(self) -> str:
         return "veo"
 
     @property

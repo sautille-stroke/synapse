@@ -7,10 +7,11 @@ pixel-perfect evaluation without external asset dependencies.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import numpy as np
 
@@ -32,7 +33,7 @@ class ProceduralMesh:
     vertices: np.ndarray
     faces: np.ndarray
     normals: np.ndarray
-    uvs: Optional[np.ndarray] = None
+    uvs: np.ndarray | None = None
     mesh_type: str = "unknown"
 
     @property
@@ -87,13 +88,13 @@ class ProceduralMesh:
         return path
 
 
-def _generate_cube(size: float = 1.0, **kwargs) -> ProceduralMesh:
+def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     """Unit cube centered at origin."""
     s = size / 2.0
-    vertices = []
-    normals = []
-    uvs = []
-    faces = []
+    vertices: list[tuple[float, float, float]] = []
+    normals: list[list[int]] = []
+    uvs: list[tuple[int, int]] = []
+    faces: list[list[int]] = []
 
     face_defs = [
         ([0, 0, 1], [(-s, -s, s), (s, -s, s), (s, s, s), (-s, s, s)]),
@@ -343,7 +344,7 @@ def _generate_plane(
     )
 
 
-_GENERATORS = {
+_GENERATORS: dict[ProceduralMeshType, Callable[..., ProceduralMesh]] = {
     ProceduralMeshType.CUBE: _generate_cube,
     ProceduralMeshType.SPHERE: _generate_sphere,
     ProceduralMeshType.CYLINDER: _generate_cylinder,
@@ -354,7 +355,7 @@ _GENERATORS = {
 
 def generate_procedural_mesh(
     mesh_type: ProceduralMeshType | str,
-    **params,
+    **params: Any,
 ) -> ProceduralMesh:
     """Generate a procedural mesh of the given type."""
     if isinstance(mesh_type, str):

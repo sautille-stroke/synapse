@@ -12,7 +12,6 @@ import numpy as np
 
 from synapse.fgpp.frame import CameraParams, FGPPFrame
 
-
 # Channel fields that carry image data
 _IMAGE_FIELDS = (
     "depth",
@@ -95,7 +94,6 @@ def tensors_to_frame(
     -------
     FGPPFrame
     """
-    import torch  # type: ignore[import-untyped]
 
     kwargs: dict[str, Any] = {
         "camera": camera,

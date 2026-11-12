@@ -29,10 +29,10 @@ class TestProfiles:
     def test_profile_strictness_ordering(self) -> None:
         """RSI thresholds must be equal or stricter than Track-A."""
         from synapse.metrics.profiles import (
+            _METRIC_DIRECTIONS,
             RSI_PROMOTION,
             TRACK_A_ASSET,
             TRACK_B_VIDEO,
-            _METRIC_DIRECTIONS,
         )
 
         for name in TRACK_B_VIDEO:

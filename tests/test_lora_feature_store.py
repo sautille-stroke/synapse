@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.errors import ContractValidationError
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
@@ -21,7 +20,6 @@ from synapse.training.feature_store import (
     format_structured_caption,
     iter_feature_shards,
 )
-
 
 # ===================================================================
 # TestStructuredCaption

@@ -11,13 +11,11 @@ from typing import Any
 
 import numpy as np
 
-from synapse.recon.delight import decompose_intrinsic, delight
-from synapse.recon.geometry import check_manifold, compute_normals, quad_remesh, refine_pose_6dof
+from synapse.recon.delight import decompose_intrinsic
+from synapse.recon.geometry import check_manifold, compute_normals, quad_remesh
 from synapse.recon.kinematics import solve_zero_slip_ik
 from synapse.recon.tracking import solve_camera_trajectory, solve_point_tracks
 from synapse.recon.types import (
-    CameraTrajectory,
-    DelightResult,
     MeshGeometry,
     MocapKinematics,
     ReconResult,

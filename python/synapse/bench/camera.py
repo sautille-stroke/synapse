@@ -17,12 +17,16 @@ Supported trajectories:
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams
+
+if TYPE_CHECKING:
+    from synapse.bench.scenario import Scenario
 
 
 class CameraTrajectoryType(str, Enum):
@@ -124,7 +128,7 @@ def _generate_orbit(
     elevation_deg: float = 15.0,
     azimuth_start_deg: float = 0.0,
     azimuth_range_deg: float = 360.0,
-    target: Optional[list[float]] = None,
+    target: list[float] | None = None,
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
@@ -173,9 +177,9 @@ def _generate_orbit(
 
 def _generate_tracking(
     num_frames: int = 120,
-    start: Optional[list[float]] = None,
-    end: Optional[list[float]] = None,
-    target: Optional[list[float]] = None,
+    start: list[float] | None = None,
+    end: list[float] | None = None,
+    target: list[float] | None = None,
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
@@ -203,7 +207,7 @@ def _generate_dolly(
     end_distance: float = 1.5,
     elevation_deg: float = 15.0,
     azimuth_deg: float = 0.0,
-    target: Optional[list[float]] = None,
+    target: list[float] | None = None,
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
@@ -234,8 +238,8 @@ def _generate_dolly(
 
 def _generate_static(
     num_frames: int = 120,
-    position: Optional[list[float]] = None,
-    target: Optional[list[float]] = None,
+    position: list[float] | None = None,
+    target: list[float] | None = None,
     drift_amplitude: float = 0.0,
     width: int = 1024,
     height: int = 1024,
@@ -268,7 +272,7 @@ def _generate_arc(
     azimuth_deg: float = 0.0,
     elevation_start_deg: float = -15.0,
     elevation_end_deg: float = 75.0,
-    target: Optional[list[float]] = None,
+    target: list[float] | None = None,
     width: int = 1024,
     height: int = 1024,
     fov_deg: float = 60.0,
@@ -298,7 +302,7 @@ def _generate_arc(
 
 def _generate_pan(
     num_frames: int = 120,
-    position: Optional[list[float]] = None,
+    position: list[float] | None = None,
     pan_start_deg: float = -30.0,
     pan_end_deg: float = 30.0,
     width: int = 1024,
@@ -327,7 +331,7 @@ def _generate_pan(
     return cameras
 
 
-_GENERATORS = {
+_GENERATORS: dict[CameraTrajectoryType, Callable[..., list[CameraParams]]] = {
     CameraTrajectoryType.ORBIT: _generate_orbit,
     CameraTrajectoryType.TRACKING: _generate_tracking,
     CameraTrajectoryType.DOLLY: _generate_dolly,
@@ -338,8 +342,8 @@ _GENERATORS = {
 
 
 def generate_cameras(
-    scenario_or_type: "Scenario | CameraTrajectoryType | str",
-    **override_params: object,
+    scenario_or_type: Scenario | CameraTrajectoryType | str,
+    **override_params: Any,
 ) -> list[CameraParams]:
     """Generate camera trajectory for a scenario or trajectory type."""
     if isinstance(scenario_or_type, str):

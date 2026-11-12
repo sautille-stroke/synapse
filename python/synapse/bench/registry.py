@@ -10,22 +10,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
-import numpy as np
 
 from synapse.bench.procedural import (
-    ProceduralMeshType,
     generate_procedural_mesh,
 )
 from synapse.bench.scenario import (
     Scenario,
-    ScenarioTier,
-    _scenarios_dir,
+)
+from synapse.bench.scenario import (
     list_scenarios as _list_scenarios,
-    load_scenario as _load_scenario,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,7 +154,7 @@ class AssetRegistry:
             verts, faces, _ = generate_humanoid_proxy()
             # Write simple OBJ
             lines = [
-                f"# Synapse-Bench humanoid_53 proxy",
+                "# Synapse-Bench humanoid_53 proxy",
                 f"# Vertices: {len(verts)}, Faces: {len(faces)}",
             ]
             for v in verts:

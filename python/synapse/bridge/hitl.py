@@ -13,7 +13,6 @@ from typing import Any, Literal
 
 from synapse.errors import CircuitBreakerError
 
-
 # -----------------------------------------------------------------------
 # Operator identity
 # -----------------------------------------------------------------------

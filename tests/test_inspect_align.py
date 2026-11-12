@@ -6,7 +6,6 @@ import math
 
 import numpy as np
 import pytest
-
 from synapse.bench.procedural import (
     generate_humanoid_proxy,
     generate_procedural_mesh,
@@ -17,15 +16,12 @@ from synapse.inspect.align import (
     compute_silhouette,
     compute_silhouette_iou,
     generate_fibonacci_sphere_cameras,
-    _camera_pose_to_view_matrix,
-    _view_matrix_to_camera_pose,
 )
 from synapse.inspect.schemas import (
     CameraPose,
     DefectAnnotation3D,
     InspectionReport,
 )
-
 
 # ===================================================================
 # TestInspectionSchemas

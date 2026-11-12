@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
 
 
-def colorize_depth(depth: np.ndarray, mask: np.ndarray, colormap: int = cv2.COLORMAP_TURBO) -> np.ndarray:
+def colorize_depth(depth: np.ndarray, mask: np.ndarray, colormap: int | None = None) -> np.ndarray:
     """Map single-channel float depth into a vibrant RGB colormap.
 
     Background pixels (where mask == 0) are kept dark.
     """
+    import cv2  # lazy: heavy native dependency, not needed at import time
+
+    if colormap is None:
+        colormap = cv2.COLORMAP_TURBO
+
     h, w = depth.shape
     fg_mask = mask > 0
 
@@ -47,6 +51,8 @@ def colorize_normal(normal: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
 def colorize_flow(flow: np.ndarray, mask: np.ndarray, max_flow: float = 10.0) -> np.ndarray:
     """Map 2D optical flow (dx, dy) to an HSV color wheel representation."""
+    import cv2  # lazy: heavy native dependency, not needed at import time
+
     h, w, _ = flow.shape
     fg_mask = mask > 0
 
@@ -88,6 +94,8 @@ def make_contact_sheet(
     sheet = np.concatenate(channels, axis=1)
 
     if label:
+        import cv2  # lazy: heavy native dependency, not needed at import time
+
         # Overlay subtle title
         cv2.putText(
             sheet,

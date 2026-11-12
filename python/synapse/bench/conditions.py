@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ConditionLevel(str, Enum):
@@ -345,17 +345,17 @@ _VALID_FACTOR_KEYS = frozenset(RENDERING_CONDITION_FACTORS.keys())
 class Conditions:
     """Rendering condition configuration for a scenario."""
 
-    F01_viewpoint: Optional[ConditionLevel] = None
-    F02_background: Optional[ConditionLevel] = None
-    F03_lighting: Optional[ConditionLevel] = None
-    F04_material: Optional[ConditionLevel] = None
-    F05_geometry: Optional[ConditionLevel] = None
-    F06_animation: Optional[ConditionLevel] = None
-    F07_occlusion: Optional[ConditionLevel] = None
-    F08_scale: Optional[ConditionLevel] = None
-    F09_dof: Optional[ConditionLevel] = None
-    F10_motion_blur: Optional[ConditionLevel] = None
-    F11_postprocess: Optional[ConditionLevel] = None
+    F01_viewpoint: ConditionLevel | None = None
+    F02_background: ConditionLevel | None = None
+    F03_lighting: ConditionLevel | None = None
+    F04_material: ConditionLevel | None = None
+    F05_geometry: ConditionLevel | None = None
+    F06_animation: ConditionLevel | None = None
+    F07_occlusion: ConditionLevel | None = None
+    F08_scale: ConditionLevel | None = None
+    F09_dof: ConditionLevel | None = None
+    F10_motion_blur: ConditionLevel | None = None
+    F11_postprocess: ConditionLevel | None = None
 
     def to_dict(self) -> dict[str, str]:
         """Return non-None factors as ``{factor_id: level}``."""
@@ -367,7 +367,7 @@ class Conditions:
         return result
 
     @classmethod
-    def from_dict(cls, d: dict[str, str]) -> "Conditions":
+    def from_dict(cls, d: dict[str, str]) -> Conditions:
         """Construct from ``{factor_id: level_str}``.
 
         Raises

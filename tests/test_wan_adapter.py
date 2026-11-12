@@ -11,11 +11,9 @@ Covers:
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import numpy as np
 import pytest
-
 from synapse.adapters.base import (
     PreparedConditionPayload,
     VideoGenerationConfig,
@@ -26,13 +24,10 @@ from synapse.adapters.wan import (
     FoundaryHttpTransport,
     LocalCallableBackend,
     WanAdapter,
-    WanBackendTransport,
-    _build_control_tensor,
     _world_normal_to_camera,
 )
 from synapse.errors import BackendUnavailableError
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-
 
 # ---------------------------------------------------------------------------
 # Helpers

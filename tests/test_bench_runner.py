@@ -8,7 +8,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-
 from synapse.adapters.base import (
     PreparedConditionPayload,
     VideoGenerationConfig,
@@ -21,7 +20,6 @@ from synapse.pipeline.bench_runner import (
     ScenarioRunReport,
     evaluate_bundle,
 )
-
 
 # -------------------------------------------------------------------
 # Helpers

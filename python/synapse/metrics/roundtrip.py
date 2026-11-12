@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 # ── Geometry metrics ─────────────────────────────────────────────────
 
 def chamfer_mm(
@@ -191,7 +190,7 @@ def bone_length_drift_pct(
     # Guard against zero-length bones
     safe_mean = np.where(mean_per_bone < 1e-12, 1.0, mean_per_bone)
     drift = np.abs(bl - mean_per_bone) / safe_mean * 100.0
-    return float(drift.max())
+    return float(np.max(drift))
 
 
 # ── Appearance metrics ───────────────────────────────────────────────

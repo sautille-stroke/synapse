@@ -10,7 +10,7 @@ No GPU or heavy dependencies are required — only NumPy.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -143,11 +143,11 @@ class MockVideoAdapter(VideoModelAdapter):
     # -- properties ----------------------------------------------------------
 
     @property
-    def adapter_id(self) -> str:  # noqa: D102
+    def adapter_id(self) -> str:
         return "mock"
 
     @property
-    def tier(self) -> AdapterTier:  # noqa: D102
+    def tier(self) -> AdapterTier:
         return "mock"
 
     # -- public interface ----------------------------------------------------

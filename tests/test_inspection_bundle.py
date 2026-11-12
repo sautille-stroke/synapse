@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from synapse.bench.bundle_exporter import (
     INSPECTION_SCHEMA_VERSION,
     InspectionBundleManifest,
@@ -22,7 +21,6 @@ from synapse.bench.bundle_exporter import (
     validate_inspection_bundle,
 )
 from synapse.errors import ContractValidationError
-
 
 # ===================================================================
 # Fixtures

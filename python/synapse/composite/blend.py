@@ -770,7 +770,7 @@ def _cryptomatte_boundary_guide(cid: np.ndarray) -> np.ndarray:
 
     # Normalised grayscale from IDs.
     cid_f = cid.astype(np.float64)
-    max_id = cid_f.max()
+    max_id = float(np.max(cid_f))
     if max_id > 0:
         guide = cid_f / max_id
     else:

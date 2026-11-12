@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.bridge.foundary_client import (
     FoundaryRequest,
     FoundaryResponse,
@@ -27,7 +26,6 @@ from synapse.errors import (
     CircuitBreakerError,
     ContractValidationError,
 )
-
 
 # ===================================================================
 # TestVgBridge

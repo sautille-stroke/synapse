@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
-from PIL import Image
 
 from synapse.bench.camera import CameraTrajectoryType, generate_cameras
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
@@ -52,7 +51,7 @@ def _generate_spiral_cameras(
     rotations: float = 2.0,
 ) -> list[CameraParams]:
     """Generate a rising spiral camera trajectory around target."""
-    from synapse.bench.camera import _look_at, _make_camera
+    from synapse.bench.camera import _make_camera
 
     cameras = []
     target = np.array([0.0, 0.0, 0.0])
@@ -70,8 +69,44 @@ def _generate_spiral_cameras(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
         eye = np.array([x, y, z])
 
-        view = _look_at(eye, target)
-        cam = _make_camera(view, width, height, fov_degrees)
+        cam = _make_camera(eye, target, width, height, fov_degrees)
+        cameras.append(cam)
+
+    return cameras
+
+
+def _generate_hemisphere_cameras(
+    num_frames: int,
+    radius: float,
+    width: int,
+    height: int,
+    fov_degrees: float,
+    min_elev: float = 10.0,
+    max_elev: float = 80.0,
+    rings: int = 3,
+) -> list[CameraParams]:
+    """Generate a multi-ring upper-hemisphere camera trajectory around target."""
+    from synapse.bench.camera import _make_camera
+
+    cameras: list[CameraParams] = []
+    target = np.array([0.0, 0.0, 0.0])
+
+    for i in range(num_frames):
+        t = i / max(1, num_frames - 1)
+        ring_idx = min(rings - 1, int(t * rings))
+        ring_t = (t * rings) - ring_idx
+        elev = min_elev + (ring_idx / max(1, rings - 1)) * (max_elev - min_elev)
+        azimuth = ring_t * 360.0
+
+        az_rad = math.radians(azimuth)
+        el_rad = math.radians(elev)
+
+        x = radius * math.cos(el_rad) * math.sin(az_rad)
+        y = radius * math.sin(el_rad)
+        z = radius * math.cos(el_rad) * math.cos(az_rad)
+        eye = np.array([x, y, z])
+
+        cam = _make_camera(eye, target, width, height, fov_degrees)
         cameras.append(cam)
 
     return cameras
@@ -85,7 +120,7 @@ class DatasetGenerator:
         self.output_dir = Path(config.output_dir)
         self.rasterizer = SoftwareRasterizer(config.width, config.height)
 
-    def generate(self, model: Optional[ModelAsset] = None) -> Path:
+    def generate(self, model: ModelAsset | None = None) -> Path:
         """Run the full generation pipeline and export all artifacts."""
         cfg = self.config
         out_dir = self.output_dir
@@ -110,6 +145,14 @@ class DatasetGenerator:
                 height=cfg.height,
                 fov_degrees=cfg.fov_degrees,
             )
+        elif cfg.trajectory_type == "hemisphere":
+            cameras = _generate_hemisphere_cameras(
+                num_frames=cfg.num_frames,
+                radius=cfg.radius,
+                width=cfg.width,
+                height=cfg.height,
+                fov_degrees=cfg.fov_degrees,
+            )
         else:
             traj_enum = CameraTrajectoryType(cfg.trajectory_type)
             cameras = generate_cameras(
@@ -118,7 +161,7 @@ class DatasetGenerator:
                 radius=cfg.radius,
                 width=cfg.width,
                 height=cfg.height,
-                fov_degrees=cfg.fov_degrees,
+                fov_deg=cfg.fov_degrees,
             )
 
         # 3. Partition train / val split
@@ -137,8 +180,9 @@ class DatasetGenerator:
         frame_records: list[dict[str, Any]] = []
 
         import cv2  # lazy: heavy native dependency, not needed at import time
+        from PIL import Image  # lazy: optional image extra
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
         video_path = out_dir / "video_all.mp4"
         train_video_path = out_dir / "video_train.mp4"
         val_video_path = out_dir / "video_val.mp4"

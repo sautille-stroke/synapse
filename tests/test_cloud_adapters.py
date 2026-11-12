@@ -9,18 +9,14 @@ Tests cover:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import pytest
-
 from synapse.adapters.base import (
     VideoGenerationConfig,
     create_adapter,
     list_adapters,
 )
 from synapse.adapters.cloud import (
-    CloudApiTransport,
     DegradedSegment,
     KlingAdapter,
     MockCloudTransport,
@@ -30,7 +26,6 @@ from synapse.adapters.cloud import (
     degrade_fgpp_for_blackbox,
 )
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

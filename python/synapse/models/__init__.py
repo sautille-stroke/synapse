@@ -11,7 +11,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from synapse.models.loader import list_builtin_models, load_model
 
 
-def __getattr__(name: str):  # noqa: N807
+def __getattr__(name: str):
     if name in ("load_model", "list_builtin_models"):
         mod = importlib.import_module("synapse.models.loader")
         return getattr(mod, name)
@@ -20,6 +20,6 @@ def __getattr__(name: str):  # noqa: N807
 
 __all__ = [
     "ModelAsset",
-    "load_model",
     "list_builtin_models",
+    "load_model",
 ]

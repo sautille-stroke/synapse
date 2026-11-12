@@ -11,7 +11,6 @@ methods to keep the base package lightweight.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any, Literal
 
@@ -99,7 +98,7 @@ class StatelessLoRATrainer:
             RuntimeError: If more than 3% of parameters remain
                 trainable after freezing.
         """
-        import torch  # noqa: F811 — lazy
+        import torch
 
         if not isinstance(module, torch.nn.Module):
             raise TypeError("module must be a torch.nn.Module")
@@ -145,7 +144,7 @@ class StatelessLoRATrainer:
         Returns:
             Number of layers injected.
         """
-        import torch  # noqa: F811 — lazy
+        import torch
 
         injected = 0
         replacements: list[tuple[str, str, Any]] = []
@@ -197,7 +196,7 @@ class StatelessLoRATrainer:
         Returns:
             Dict with ``"loss"`` and ``"step"`` values.
         """
-        import torch  # noqa: F811 — lazy
+        import torch
 
         # Lazy-create optimizer on first call
         if self._optimizer is None:
@@ -242,7 +241,6 @@ class StatelessLoRATrainer:
         Returns:
             Absolute path to the saved checkpoint.
         """
-        import torch  # noqa: F811 — lazy
         from safetensors.torch import save_file
 
         lora_state: dict[str, Any] = {}
@@ -267,7 +265,7 @@ class StatelessLoRATrainer:
     @staticmethod
     def _sft_step(module: Any, batch: dict[str, Any]) -> Any:
         """Compute flow-matching SFT loss."""
-        import torch  # noqa: F811 — lazy
+        import torch
 
         x_1 = batch["latent"]
         x_0 = batch["noise"]
@@ -291,7 +289,7 @@ class StatelessLoRATrainer:
     @staticmethod
     def _dpo_step(module: Any, batch: dict[str, Any]) -> Any:
         """Compute diffusion DPO loss."""
-        import torch  # noqa: F811 — lazy
+        import torch
 
         chosen = batch["chosen"]
         rejected = batch["rejected"]
@@ -332,7 +330,6 @@ class _LoRALinear:
     """
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
-        import torch  # noqa: F811 — lazy
         inst = super().__new__(cls)
         return inst
 
@@ -342,7 +339,7 @@ class _LoRALinear:
         rank: int,
         alpha: float,
     ) -> None:
-        import torch  # noqa: F811 — lazy
+        import torch
 
         torch.nn.Module.__init__(self)
 
@@ -375,7 +372,7 @@ class _LoRALinear:
 
 def _make_lora_linear_class() -> type:
     """Build _LoRALinear as a proper nn.Module subclass at runtime."""
-    import torch  # noqa: F811 — lazy
+    import torch
 
     class _LoRALinearImpl(torch.nn.Module):
         """Drop-in nn.Linear replacement with LoRA adapters."""
@@ -427,7 +424,7 @@ def _get_lora_linear_class() -> type:
 
 
 # Override the placeholder _LoRALinear with the real factory
-_LoRALinear = None  # type: ignore[assignment]
+_LoRALinear = None  # type: ignore[misc,assignment]
 
 
 def _create_lora_linear(

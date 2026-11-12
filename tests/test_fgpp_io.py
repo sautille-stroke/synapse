@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import copy
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.io import (
     resize_fgpp_frame,
     sanitize_fgpp_frame,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

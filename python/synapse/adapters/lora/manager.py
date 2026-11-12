@@ -36,7 +36,7 @@ class MultiLoRAManager:
         lora_bundles: list[tuple[LoRAManifest, float]],
     ) -> None:
         self._bundles = lora_bundles
-        self._original_weights: dict[str, Any] = {}
+        self._original_weights: dict[int, tuple[Any, Any]] = {}
 
     # -- public API ----------------------------------------------------------
 
@@ -94,7 +94,6 @@ class MultiLoRAManager:
             RuntimeError: If max element-wise restoration error
                 exceeds ``1e-7``.
         """
-        import torch  # lazy
 
         for key, (submodule, original_w) in self._original_weights.items():
             submodule.weight.data.copy_(original_w)

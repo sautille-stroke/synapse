@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
+from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
     FGPP_BYTES_PER_PIXEL,
@@ -33,8 +33,6 @@ from synapse.fgpp.schema import (
     log_normalized_to_linear_depth,
     validate_whitebox_coarseness_floor,
 )
-from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-
 
 # =========================================================================
 # Schema constants

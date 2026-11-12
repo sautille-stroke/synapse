@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import http.server
-import os
 import socketserver
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Optional
 
 from synapse.viewer.static_html import VIEWER_HTML_TEMPLATE
 
@@ -49,17 +47,18 @@ class ViewerServer:
         self.dataset_dir = Path(dataset_dir).resolve()
         self.port = port
         self.host = host
-        self.httpd: Optional[socketserver.TCPServer] = None
-        self._thread: Optional[threading.Thread] = None
+        self.httpd: socketserver.TCPServer | None = None
+        self._thread: threading.Thread | None = None
 
     def start(self, open_browser: bool = False) -> str:
         """Start server in background thread and return access URL."""
         if not self.dataset_dir.exists():
             raise FileNotFoundError(f"Dataset directory not found: {self.dataset_dir}")
 
-        handler_cls = lambda *args, **kwargs: _DatasetHTTPRequestHandler(
-            *args, directory=str(self.dataset_dir), **kwargs
-        )
+        def handler_cls(*args, **kwargs):
+            return _DatasetHTTPRequestHandler(
+                *args, directory=str(self.dataset_dir), **kwargs
+            )
 
         # Allow port reuse
         socketserver.TCPServer.allow_reuse_address = True

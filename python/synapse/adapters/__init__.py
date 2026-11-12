@@ -20,17 +20,6 @@ from synapse.adapters.base import (
     register_adapter,
 )
 
-# Import mock module to trigger @register_adapter side-effect.
-from synapse.adapters.mock import DefectInjectionConfig, MockVideoAdapter
-
-# Import wan module to trigger @register_adapter side-effect.
-from synapse.adapters.wan import (
-    FoundaryHttpTransport,
-    LocalCallableBackend,
-    WanAdapter,
-    WanBackendTransport,
-)
-
 # Import cloud module to trigger @register_adapter side-effects.
 from synapse.adapters.cloud import (
     CloudApiTransport,
@@ -41,6 +30,17 @@ from synapse.adapters.cloud import (
     VeoAdapter,
     degrade_fgpp_for_blackbox,
 )
+
+# Import lora subpackage for LoRA manifest, manager and patcher.
+from synapse.adapters.lora import (
+    LoRAManifest,
+    LoRAPatchHook,
+    MultiLoRAManager,
+    patch_wan_adapter_with_lora,
+)
+
+# Import mock module to trigger @register_adapter side-effect.
+from synapse.adapters.mock import DefectInjectionConfig, MockVideoAdapter
 from synapse.adapters.scheduler import (
     CausalWindowPlan,
     ConditionScheduler,
@@ -52,35 +52,32 @@ from synapse.adapters.scheduler import (
     fuse_overlapping_latents,
 )
 
-# Import lora subpackage for LoRA manifest, manager and patcher.
-from synapse.adapters.lora import (
-    LoRAManifest,
-    LoRAPatchHook,
-    MultiLoRAManager,
-    patch_wan_adapter_with_lora,
+# Import wan module to trigger @register_adapter side-effect.
+from synapse.adapters.wan import (
+    FoundaryHttpTransport,
+    LocalCallableBackend,
+    WanAdapter,
+    WanBackendTransport,
 )
 
 __all__ = [
     "AdapterTier",
     "CausalWindowPlan",
     "CloudApiTransport",
-    "compute_latent_flow_operator",
     "ConditionScheduler",
-    "create_adapter",
     "DefectInjectionConfig",
     "DegradedSegment",
-    "degrade_fgpp_for_blackbox",
     "DiscontinuityDetector",
     "FoundaryHttpTransport",
-    "fuse_overlapping_latents",
     "KlingAdapter",
-    "list_adapters",
+    "LoRAManifest",
+    "LoRAPatchHook",
     "LocalCallableBackend",
     "MockCloudTransport",
     "MockVideoAdapter",
+    "MultiLoRAManager",
     "PreparedConditionPayload",
     "ReanchorRequest",
-    "register_adapter",
     "ScheduledWindow",
     "SeedanceAdapter",
     "VeoAdapter",
@@ -90,8 +87,11 @@ __all__ = [
     "WanAdapter",
     "WanBackendTransport",
     "WindowSlice",
-    "LoRAManifest",
-    "LoRAPatchHook",
-    "MultiLoRAManager",
+    "compute_latent_flow_operator",
+    "create_adapter",
+    "degrade_fgpp_for_blackbox",
+    "fuse_overlapping_latents",
+    "list_adapters",
     "patch_wan_adapter_with_lora",
+    "register_adapter",
 ]

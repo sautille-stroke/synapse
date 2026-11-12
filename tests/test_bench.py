@@ -1,17 +1,13 @@
 """Tests for synapse.bench — Synapse-Bench evaluation dataset."""
 
 import json
-import math
-from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.bench import (
     CROSS_CONDITIONS,
     RENDERING_CONDITION_FACTORS,
     SINGLE_FACTOR_CONDITIONS,
-    CameraTrajectoryType,
     ConditionLevel,
     Conditions,
     ExpectedMetrics,
@@ -23,11 +19,9 @@ from synapse.bench import (
 )
 from synapse.bench.procedural import (
     ProceduralMesh,
-    ProceduralMeshType,
     generate_procedural_mesh,
 )
 from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence
-
 
 # =========================================================================
 # Scenario

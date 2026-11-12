@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -18,15 +17,15 @@ class ModelAsset:
     vertices: np.ndarray  # [N, 3] float32
     faces: np.ndarray  # [M, 3] int32
     normals: np.ndarray  # [N, 3] float32
-    uvs: Optional[np.ndarray] = None  # [N, 2] float32
-    vertex_colors: Optional[np.ndarray] = None  # [N, 3] or [N, 4] float32
+    uvs: np.ndarray | None = None  # [N, 2] float32
+    vertex_colors: np.ndarray | None = None  # [N, 3] or [N, 4] float32
 
     # PBR Textures (optional uint8 RGB/RGBA arrays)
-    base_color_texture: Optional[np.ndarray] = None  # [H, W, 3] uint8
-    normal_texture: Optional[np.ndarray] = None  # [H, W, 3] uint8
-    metallic_roughness_texture: Optional[np.ndarray] = None  # [H, W, 3] uint8
-    emissive_texture: Optional[np.ndarray] = None  # [H, W, 3] uint8
-    occlusion_texture: Optional[np.ndarray] = None  # [H, W, 3] uint8
+    base_color_texture: np.ndarray | None = None  # [H, W, 3] uint8
+    normal_texture: np.ndarray | None = None  # [H, W, 3] uint8
+    metallic_roughness_texture: np.ndarray | None = None  # [H, W, 3] uint8
+    emissive_texture: np.ndarray | None = None  # [H, W, 3] uint8
+    occlusion_texture: np.ndarray | None = None  # [H, W, 3] uint8
 
     # Base PBR material factors
     base_color_factor: np.ndarray = field(default_factory=lambda: np.array([0.8, 0.8, 0.8], dtype=np.float32))
@@ -60,7 +59,7 @@ class ModelAsset:
         dists = np.linalg.norm(self.vertices - center, axis=1)
         return center, float(np.max(dists))
 
-    def normalize(self, target_radius: float = 1.0) -> "ModelAsset":
+    def normalize(self, target_radius: float = 1.0) -> ModelAsset:
         """Center the mesh at origin and scale so its bounding sphere radius equals target_radius."""
         center, radius = self.bounding_sphere()
         if radius <= 1e-8:
@@ -86,7 +85,7 @@ class ModelAsset:
             roughness_factor=self.roughness_factor,
         )
 
-    def compute_normals(self) -> "ModelAsset":
+    def compute_normals(self) -> ModelAsset:
         """Compute vertex normals via area-weighted face normals."""
         v = self.vertices
         f = self.faces

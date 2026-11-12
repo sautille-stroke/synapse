@@ -17,8 +17,6 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import pytest
-
 
 # ===================================================================
 # TestScenarioRegistry
@@ -230,8 +228,8 @@ class TestAssetRegistry:
 
     def test_resolve_humanoid(self) -> None:
         """Humanoid asset resolves to a valid OBJ file."""
-        from synapse.bench.registry import AssetRegistry
         import synapse.bench.registry as reg_mod
+        from synapse.bench.registry import AssetRegistry
 
         # Use a temp dir for the cache
         with tempfile.TemporaryDirectory() as tmpdir:
