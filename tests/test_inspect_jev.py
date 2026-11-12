@@ -12,15 +12,11 @@ Covers:
 
 from __future__ import annotations
 
-import math
-
 import pytest
-
 from synapse.inspect.jev_critic import (
     MockJevTransport,
     VisualJevCritic,
 )
-
 
 # -------------------------------------------------------------------
 # MockJevTransport tests

@@ -12,22 +12,17 @@ Validates:
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
-
+from synapse.errors import QualityGateError
 from synapse.inspect.flywheel_exporter import (
-    DPORecord,
     IntentGroup,
-    PRMRecord,
     RoundtripGate,
     StepAnnotation,
     export_rl_flywheel_dataset,
     run_targeted_refinement,
 )
-from synapse.errors import QualityGateError
-
 
 # -------------------------------------------------------------------
 # Fixtures
@@ -599,6 +594,7 @@ class TestInspectCLI:
         """synapse inspect eval --json produces JSON output."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -623,6 +619,7 @@ class TestInspectCLI:
         """synapse inspect export-rl-data --json works."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         out = tmp_path / "export.jsonl"
@@ -643,3 +640,41 @@ class TestInspectCLI:
         parsed = json.loads(output)
         assert parsed["status"] == "ok"
         assert parsed["record_count"] == 2
+
+    def test_inspect_align_not_implemented_exits_50(self) -> None:
+        """synapse inspect align --json exits 50."""
+        import io
+        import sys
+
+        from synapse.cli import main_synapse
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "inspect", "align",
+                "--mesh", "m.glb",
+                "--image", "i.png",
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 50
+
+    def test_inspect_refine_missing_report_exits_20(self) -> None:
+        """synapse inspect refine without valid --report exits 20."""
+        import io
+        import sys
+
+        from synapse.cli import main_synapse
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "inspect", "refine",
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 20

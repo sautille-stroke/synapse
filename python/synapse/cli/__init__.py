@@ -21,7 +21,9 @@ from typing import Any, Literal
 
 from synapse.errors import (
     AssetNotFoundError,
+    ContractValidationError,
     ExitCode,
+    NotImplementedStageError,
     QualityGateError,
     SynapseError,
 )
@@ -548,28 +550,64 @@ def _cmd_lora_prepare_data(
     """Prepare training data for LoRA fine-tuning."""
     input_dir = Path(getattr(args, "input", "."))
     output_dir = Path(getattr(args, "output", "."))
-    return {
-        "input_dir": str(input_dir),
-        "output_dir": str(output_dir),
-        "stage": "prepared",
-    }
+    raise NotImplementedStageError(
+        "CLI 'synapse lora prepare-data' is not yet wired to "
+        "FeatureStoreBuilder; refusing to emit silent success.",
+        agent_fix_hint=(
+            "Use 'synapse.training.FeatureStoreBuilder' API directly "
+            "to encode WebDataset shards."
+        ),
+        details={
+            "input_dir": str(input_dir),
+            "output_dir": str(output_dir),
+        },
+    )
 
 
 def _cmd_lora_train(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     """Run LoRA training from CLI config."""
+    from synapse.training.trainer import LoRATrainConfig
+
     config_str = getattr(args, "config", "{}")
     try:
         config_dict = json.loads(config_str)
-    except json.JSONDecodeError:
-        config_dict = {}
-    if "category" not in config_dict:
-        config_dict["category"] = "style"
-    return {
-        "config": config_dict,
-        "stage": "configured",
-    }
+    except json.JSONDecodeError as exc:
+        raise ContractValidationError(
+            f"Invalid JSON passed to --config: {exc}",
+            agent_fix_hint=(
+                "Pass a valid JSON object string to --config, e.g. "
+                '\'{"category": "style", "rank": 8}\'.'
+            ),
+        ) from exc
+
+    if not isinstance(config_dict, dict) or "category" not in config_dict:
+        raise ContractValidationError(
+            "LoRA train --config JSON must include explicit 'category'.",
+            agent_fix_hint=(
+                "Specify 'category' in --config (one of: style, "
+                "identity, control, whitebox, motion)."
+            ),
+        )
+
+    try:
+        validated = LoRATrainConfig(**config_dict)
+    except Exception as exc:
+        raise ContractValidationError(
+            f"LoRATrainConfig validation failed: {exc}",
+            agent_fix_hint="Fix --config fields per LoRATrainConfig schema.",
+        ) from exc
+
+    raise NotImplementedStageError(
+        "CLI 'synapse lora train' standalone backbone execution is "
+        "not yet implemented; refusing to emit silent success.",
+        agent_fix_hint=(
+            "Use 'synapse.training.StatelessLoRATrainer' in Python "
+            "with an injected DiT model."
+        ),
+        details={"validated_config": validated.model_dump()},
+    )
 
 
 def _cmd_lora_eval(
@@ -622,11 +660,18 @@ def _cmd_lora_merge(
     """Merge LoRA weights into base model."""
     bundle_dir = Path(args.bundle)
     output_dir = Path(args.output)
-    return {
-        "bundle_dir": str(bundle_dir),
-        "output_dir": str(output_dir),
-        "stage": "merged",
-    }
+    raise NotImplementedStageError(
+        "CLI 'synapse lora merge' is not yet wired to a base model "
+        "checkpoint; refusing to emit silent success.",
+        agent_fix_hint=(
+            "Use 'synapse.adapters.lora.MultiLoRAManager' to merge "
+            "and apply LoRA adapters onto a loaded model."
+        ),
+        details={
+            "bundle_dir": str(bundle_dir),
+            "output_dir": str(output_dir),
+        },
+    )
 
 
 # -------------------------------------------------------------------
@@ -638,11 +683,18 @@ def _cmd_inspect_align(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     """Align reference image to mesh."""
-    return {
-        "mesh": getattr(args, "mesh", ""),
-        "image": getattr(args, "image", ""),
-        "status": "aligned",
-    }
+    mesh_path = getattr(args, "mesh", "")
+    image_path = getattr(args, "image", "")
+    raise NotImplementedStageError(
+        "CLI 'synapse inspect align' standalone file pipeline is not "
+        "yet implemented; refusing to emit silent success.",
+        agent_fix_hint=(
+            "Use 'synapse.inspect.align' functions "
+            "(generate_fibonacci_sphere_cameras, compute_silhouette_iou) "
+            "directly in Python."
+        ),
+        details={"mesh": mesh_path, "image": image_path},
+    )
 
 
 def _cmd_inspect_eval(
@@ -664,6 +716,7 @@ def _cmd_inspect_eval(
     return {
         "report": report.model_dump(),
         "overall_quality": report.overall_quality_score,
+        "transport_kind": "mock",
     }
 
 
@@ -676,12 +729,25 @@ def _cmd_inspect_refine(
     )
 
     report_path = getattr(args, "report", None)
-    if report_path and Path(report_path).is_file():
+    if not report_path or not Path(report_path).is_file():
+        raise AssetNotFoundError(
+            f"InspectionReport file not found: {report_path!r}. "
+            "Refusing to run refinement on an empty defect list.",
+            agent_fix_hint=(
+                "Pass a valid InspectionReport JSON file via "
+                "'--report <path>'."
+            ),
+        )
+
+    try:
         report = json.loads(
             Path(report_path).read_text(encoding="utf-8")
         )
-    else:
-        report = {"defects": []}
+    except json.JSONDecodeError as exc:
+        raise ContractValidationError(
+            f"Invalid JSON in InspectionReport '{report_path}': {exc}",
+            agent_fix_hint="Ensure --report points to a valid JSON file.",
+        ) from exc
 
     result = run_targeted_refinement(report=report)
     return result
@@ -745,19 +811,40 @@ def _cmd_rsi_verify(
     from synapse.rsi.dual_verifier import DualVerifierEngine
 
     sample_id = getattr(args, "sample_id", "unknown")
+    metrics_raw = getattr(args, "physics_metrics", None)
+    if not metrics_raw:
+        raise ContractValidationError(
+            "CLI 'synapse rsi verify' requires '--physics-metrics' "
+            "(JSON string or path to JSON file). Hardcoded passing "
+            "metrics are FORBIDDEN.",
+            agent_fix_hint=(
+                "Pass '--physics-metrics '{\"silhouette_iou\": 0.95, "
+                "\"depth_rmse_m\": 0.01, "
+                "\"normal_angular_error_deg\": 5.0}'' or a JSON file path."
+            ),
+        )
 
-    # Default passing metrics for CLI smoke test
-    physics_metrics = {
-        "silhouette_iou": 0.95,
-        "depth_rmse_m": 0.01,
-        "normal_angular_error_deg": 5.0,
-    }
+    metrics_path = Path(metrics_raw)
+    try:
+        if metrics_path.is_file():
+            physics_metrics = json.loads(
+                metrics_path.read_text(encoding="utf-8")
+            )
+        else:
+            physics_metrics = json.loads(metrics_raw)
+    except json.JSONDecodeError as exc:
+        raise ContractValidationError(
+            f"Invalid JSON in --physics-metrics: {exc}",
+            agent_fix_hint="Provide valid JSON for --physics-metrics.",
+        ) from exc
+
+    prm_score = float(getattr(args, "prm_score", 0.5))
 
     engine = DualVerifierEngine()
     verdict = engine.verify(
         sample_id=sample_id,
         physics_metrics=physics_metrics,
-        prm_score=0.8,
+        prm_score=prm_score,
     )
     return {"verdict": verdict.model_dump()}
 
@@ -771,16 +858,45 @@ def _cmd_rsi_build_pairs(
         PreferencePair,
     )
 
+    golden_file = getattr(args, "golden_file", None)
+    if not golden_file or not Path(golden_file).is_file():
+        raise AssetNotFoundError(
+            f"Golden pairs file not found: {golden_file!r}. "
+            "Hardcoded CLI golden pairs are FORBIDDEN.",
+            agent_fix_hint=(
+                "Pass '--golden-file <path>' pointing to a JSON/JSONL "
+                "file of L0 golden PreferencePair records."
+            ),
+        )
+
+    raw_text = Path(golden_file).read_text(encoding="utf-8").strip()
+    if raw_text.startswith("["):
+        items = json.loads(raw_text)
+    else:
+        items = [
+            json.loads(line)
+            for line in raw_text.splitlines()
+            if line.strip()
+        ]
+
     builder = PreferenceDatasetBuilder()
-    # Add a minimal golden pair for CLI testing
-    builder.add_golden_pairs([
-        PreferencePair(
-            pair_id="cli_golden_001",
-            prompt="CLI test golden pair",
-            source="golden",
-            is_golden=True,
-        ),
-    ])
+    builder.add_golden_pairs([PreferencePair(**item) for item in items])
+
+    self_file = getattr(args, "self_file", None)
+    if self_file and Path(self_file).is_file():
+        self_text = Path(self_file).read_text(encoding="utf-8").strip()
+        self_items = (
+            json.loads(self_text)
+            if self_text.startswith("[")
+            else [
+                json.loads(line)
+                for line in self_text.splitlines()
+                if line.strip()
+            ]
+        )
+        builder.add_self_pairs(
+            [PreferencePair(**item) for item in self_items]
+        )
 
     pairs = builder.build_pairs()
     return {
@@ -1057,10 +1173,26 @@ def main_synapse(args: list[str] | None = None) -> int:
         "--sample-id", default="unknown",
         help="Sample identifier (default: unknown)",
     )
+    rsi_verify.add_argument(
+        "--physics-metrics", default=None,
+        help="JSON string or file path with measured physics metrics",
+    )
+    rsi_verify.add_argument(
+        "--prm-score", type=float, default=0.8,
+        help="PRM neural score in [0, 1] (default: 0.8)",
+    )
 
-    rsi_sub.add_parser(
+    rsi_build = rsi_sub.add_parser(
         "build-pairs",
         help="Build preference pairs for RSI training",
+    )
+    rsi_build.add_argument(
+        "--golden-file", default=None,
+        help="Path to JSON/JSONL file with L0 golden preference pairs",
+    )
+    rsi_build.add_argument(
+        "--self-file", default=None,
+        help="Optional path to JSON/JSONL file with self-play pairs",
     )
 
     rsi_gate = rsi_sub.add_parser(

@@ -10,19 +10,14 @@ Validates:
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
-
+from synapse.errors import AssetNotFoundError, QualityGateError
 from synapse.training.packager import (
-    LoRAEvaluationReport,
     LoRAGateThresholds,
     package_and_gate_lora_bundle,
 )
-from synapse.errors import AssetNotFoundError, QualityGateError
-
 
 # -------------------------------------------------------------------
 # Fixtures
@@ -338,9 +333,10 @@ class TestLoRACLI:
         assert exc.value.code == 0
 
     def test_lora_prepare_data_json(self) -> None:
-        """synapse lora prepare-data --json produces JSON output."""
+        """synapse lora prepare-data --json fails honestly with exit code 50 until wired."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -355,10 +351,11 @@ class TestLoRACLI:
             sys.stdout = old
 
         output = buf.getvalue()
-        assert code == 0
+        assert code == 50
         parsed = json.loads(output)
-        assert parsed["status"] == "ok"
-        assert "input_dir" in parsed
+        assert parsed["status"] == "error"
+        assert parsed["exit_code"] == 50
+        assert "agent_fix_hint" in parsed
 
     def test_lora_eval_pass_json(
         self, fake_weights: Path, tmp_path: Path,
@@ -366,6 +363,7 @@ class TestLoRACLI:
         """synapse lora eval --json with passing bundle."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         # Create a passing bundle first (with real bench_metrics, not waived)
@@ -399,6 +397,7 @@ class TestLoRACLI:
         """synapse lora eval rejects waived bundle (skip_bench=True)."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         bundle_dir = tmp_path / "waived_bundle"
@@ -429,6 +428,7 @@ class TestLoRACLI:
         """synapse lora eval --json with failing metrics."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         # Create bundle dir with bad evaluation
@@ -482,9 +482,54 @@ class TestLoRACLI:
         assert "agent_fix_hint" in parsed
 
     def test_lora_train_json(self) -> None:
-        """synapse lora train --json produces JSON output."""
+        """synapse lora train --json with valid config fails honestly with exit code 50."""
         import io
         import sys
+
+        from synapse.cli import main_synapse
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "lora", "train",
+                "--config", '{"category": "style"}',
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 50
+        output = buf.getvalue()
+        parsed = json.loads(output)
+        assert parsed["status"] == "error"
+        assert parsed["exit_code"] == 50
+
+    def test_lora_train_invalid_json_exits_10(self) -> None:
+        """synapse lora train --json with malformed JSON exits with code 10."""
+        import io
+        import sys
+
+        from synapse.cli import main_synapse
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "lora", "train",
+                "--config", "{not-valid-json",
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 10
+        parsed = json.loads(buf.getvalue())
+        assert parsed["exit_code"] == 10
+
+    def test_lora_train_missing_category_exits_10(self) -> None:
+        """synapse lora train --json without explicit category exits with code 10."""
+        import io
+        import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -497,16 +542,15 @@ class TestLoRACLI:
         finally:
             sys.stdout = old
 
-        assert code == 0
-        output = buf.getvalue()
-        parsed = json.loads(output)
-        assert parsed["status"] == "ok"
-        assert "config" in parsed
+        assert code == 10
+        parsed = json.loads(buf.getvalue())
+        assert parsed["exit_code"] == 10
 
     def test_lora_merge_json(self) -> None:
-        """synapse lora merge --json produces JSON output."""
+        """synapse lora merge --json fails honestly with exit code 50."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -520,8 +564,17 @@ class TestLoRACLI:
         finally:
             sys.stdout = old
 
-        assert code == 0
+        assert code == 50
         output = buf.getvalue()
         parsed = json.loads(output)
-        assert parsed["status"] == "ok"
-        assert "bundle_dir" in parsed
+        assert parsed["status"] == "error"
+        assert parsed["exit_code"] == 50
+
+    def test_no_fake_stub_statuses_in_cli_or_trainer(self) -> None:
+        """Ensure fake success stub strings are purged from cli and trainer."""
+        repo_root = Path(__file__).resolve().parent.parent
+        cli_src = (repo_root / "python/synapse/cli/__init__.py").read_text(encoding="utf-8")
+        trainer_src = (repo_root / "python/synapse/training/trainer.py").read_text(encoding="utf-8")
+        for forbidden in ("configured_for_execution", "align_configured", '"status": "configured"'):
+            assert forbidden not in cli_src
+            assert forbidden not in trainer_src

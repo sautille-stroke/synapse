@@ -21,7 +21,6 @@ from pydantic import BaseModel
 
 from synapse.errors import ContractValidationError
 
-
 # -------------------------------------------------------------------
 # Data models
 # -------------------------------------------------------------------

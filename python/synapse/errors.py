@@ -11,6 +11,7 @@ Exit code mapping::
     20 — Missing scene, asset, or EXR file
     30 — GPU OOM or inference backend unreachable
     40 — HITL 15-min circuit breaker or quality gate not met
+    50 — Stage or CLI subcommand not yet implemented
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ class ExitCode(IntEnum):
     RESOURCE_MISSING = 20
     BACKEND_UNAVAILABLE = 30
     CIRCUIT_BREAKER = 40
+    NOT_IMPLEMENTED = 50
 
 
 class SynapseError(Exception):
@@ -167,3 +169,26 @@ class QualityGateError(SynapseError):
             agent_fix_hint=agent_fix_hint,
             details=details,
         )
+
+
+class NotImplementedStageError(SynapseError):
+    """Stage or CLI subcommand not yet implemented (exit_code=50).
+
+    Raised when a CLI command or bundle worker stage is only a
+    scaffold and has no real execution implementation, preventing
+    silent success reports.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        agent_fix_hint: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            exit_code=ExitCode.NOT_IMPLEMENTED,
+            agent_fix_hint=agent_fix_hint,
+            details=details,
+        )
+
