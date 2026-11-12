@@ -30,9 +30,9 @@ namespace {
 
 /// Interpret a contiguous (N, 3) float64 numpy array as a span of Vec3.
 ///
-/// Vec3 has 3 consecutive doubles with standard layout, so reinterpret_cast
-/// is safe as long as sizeof(Vec3) == 3 * sizeof(double) and the array is
-/// C-contiguous.
+/// Vec3 (= aether::DVec3) has 3 consecutive doubles with standard layout,
+/// so reinterpret_cast is safe as long as sizeof(Vec3) == 3 * sizeof(double)
+/// and the array is C-contiguous.
 std::span<const Vec3> verticesFromNumpy(const py::array_t<double>& arr) {
   static_assert(sizeof(Vec3) == 3 * sizeof(double),
                 "Vec3 must be tightly packed (no padding).");

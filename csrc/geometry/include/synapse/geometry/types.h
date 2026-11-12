@@ -2,15 +2,16 @@
 /// @file types.h
 /// @brief Core geometric types for the synapse native geometry kernel.
 ///
-/// Provides lightweight math primitives (Vec3, AABB) and the aggregate
-/// GeometricValidationResult structure returned by the full Tier-0
-/// mesh validation pipeline.  No external dependencies beyond the
-/// C++ standard library — intentionally header-only for the struct
-/// definitions so that downstream translation units can include this
-/// without additional link-time cost.
+/// Vec3 is a type alias for aether::DVec3 (double-precision 3D vector from
+/// @aether//math).  AABB is a lightweight axis-aligned bounding box built
+/// on top of Vec3.  GeometricValidationResult is the aggregate output of
+/// the full Tier-0 mesh validation pipeline.
 
-#include <cmath>
+#include <aether/math/dvec.h>  // aether::DVec3
+
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,28 +19,15 @@
 namespace synapse::geometry {
 
 // ---------------------------------------------------------------------------
-// Vec3 — minimal 3-component double-precision vector
+// Vec3 — alias for aether's double-precision 3D vector
 // ---------------------------------------------------------------------------
 
-struct Vec3 {
-  double x, y, z;
-
-  Vec3() : x(0), y(0), z(0) {}
-  Vec3(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
-
-  Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
-  Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
-  Vec3 operator*(double s) const { return {x * s, y * s, z * s}; }
-
-  double dot(const Vec3& o) const { return x * o.x + y * o.y + z * o.z; }
-
-  Vec3 cross(const Vec3& o) const {
-    return {y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x};
-  }
-
-  double length_sq() const { return dot(*this); }
-  double length() const { return std::sqrt(length_sq()); }
-};
+/// Use aether's double-precision 3D vector throughout the geometry module.
+/// All existing code that references `synapse::geometry::Vec3` continues to
+/// work unchanged — aether::DVec3 exposes the same .x/.y/.z members, the
+/// same arithmetic operators, and the same .dot()/.cross()/.length()/.length_sq()
+/// member functions.
+using Vec3 = aether::DVec3;
 
 // ---------------------------------------------------------------------------
 // AABB — axis-aligned bounding box
