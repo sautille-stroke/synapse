@@ -1,9 +1,11 @@
-"""3D asset inspection — schemas, Fibonacci pose alignment, and defect reports.
+"""3D asset inspection --- schemas, alignment, defect reports, and flywheel.
 
 Submodules:
-    schemas     InspectionReport v2.0, DefectAnnotation3D, CameraPose
-    align       Fibonacci-sphere camera generation and silhouette-IoU alignment
-    macro       Multi-channel residual heatmap and macro camera planning
+    schemas           InspectionReport v2.0, DefectAnnotation3D, CameraPose
+    align             Fibonacci-sphere camera generation and silhouette-IoU
+    macro             Multi-channel residual heatmap and macro camera planning
+    jev_critic        Visual Jev calibrated logits critic for defect detection
+    flywheel_exporter Refinement roundtrip orchestrator and RL data exporter
 """
 
 from __future__ import annotations
@@ -13,6 +15,19 @@ from synapse.inspect.align import (
     compute_silhouette,
     compute_silhouette_iou,
     generate_fibonacci_sphere_cameras,
+)
+from synapse.inspect.flywheel_exporter import (
+    DPORecord,
+    IntentGroup,
+    PRMRecord,
+    RoundtripGate,
+    StepAnnotation,
+    export_rl_flywheel_dataset,
+    run_targeted_refinement,
+)
+from synapse.inspect.jev_critic import (
+    MockJevTransport,
+    VisualJevCritic,
 )
 from synapse.inspect.macro import (
     compute_isotopic_residual_heatmap,
@@ -34,4 +49,13 @@ __all__ = [
     "compute_silhouette_iou",
     "generate_fibonacci_sphere_cameras",
     "plan_macro_camera_for_roi",
+    "MockJevTransport",
+    "VisualJevCritic",
+    "DPORecord",
+    "IntentGroup",
+    "PRMRecord",
+    "RoundtripGate",
+    "StepAnnotation",
+    "export_rl_flywheel_dataset",
+    "run_targeted_refinement",
 ]

@@ -1,0 +1,32 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "data-inspector-native",
+    srcs = [
+        "main.cc",
+        "inspector_app.cc",
+        "inspector_shm_server.cc",
+    ],
+    hdrs = [
+        "inspector_app.h",
+        "inspector_shm_server.h",
+    ],
+    copts = select({
+        "@platforms//os:windows": ["/std:c++20", "/W4"],
+        "//conditions:default": ["-std=c++20", "-Wall", "-Wextra"],
+    }),
+    linkopts = select({
+        "@platforms//os:windows": [],
+        "@platforms//os:macos": ["-framework", "Foundation"],
+        "//conditions:default": ["-lpthread", "-lrt"],
+    }),
+    deps = [
+        "@aether//core",
+        "@aether//pal",
+        "@fulgur//engine/rhi",
+        "@fulgur//engine/asset",
+        "@fulgur//engine/resource",
+        "@fulgur//engine/renderer",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -84,6 +84,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
   - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)
 - **架构审查与跨仓边界定界**：[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)
 - **行业成熟流水线对比差距与代偿设计规范**：[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
+- **行业前沿技术追踪、演进趋势与架构启示录**：[docs/INDUSTRY_TRACKING_AND_TRENDS.md](docs/INDUSTRY_TRACKING_AND_TRENDS.md)
 - **全系统工程设计增强规范**：[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)
 - **LoRA & PEFT 微调流水线设计规范**：[docs/DESIGN_LORA_PIPELINE.md](docs/DESIGN_LORA_PIPELINE.md)
 - **训练数据可视化检查器方案**：[docs/DESIGN_DATA_INSPECTOR.md](docs/DESIGN_DATA_INSPECTOR.md)
