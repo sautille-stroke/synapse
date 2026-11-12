@@ -544,3 +544,52 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 - **P1-Topo 完成**：运行 `pytest tests/test_recon.py -v` 覆盖新增的量化拓扑指标，`check_manifold` 与 `check_watertight` 的布尔判定与新增量化版本逻辑一致；
 - **P1-Data 完成**：Synapse-Bench 场景列表扩展至 36~40 套，其中至少 6 套使用 `AssetSource.OBJAVERSE` 或 `AssetSource.GSO`；
 - **全部完成**：`evaluate_metrics_gate(results, "rsi_promotion")` 覆盖全部本文档声明的指标，不遗漏任何设计文档规定的评估维度。
+
+### 8.3 评估脚本与报告模板（已实施 ✅）
+
+> **实施状态**: 已完成并通过 24 项自动化测试。
+
+#### 评估脚本
+
+- **路径**: [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py)
+- **功能**: 对输入目录中的 3D 模型文件（`.obj`, `.glb`, `.ply` 等）执行拓扑检查、多视角截图渲染与指标计算
+- **CLI 接口**:
+  ```bash
+  python scripts/evaluate_3d_models.py \
+    --input-dir ./models/ \
+    --output-dir ./eval_output/ \
+    --reference-dir ./reference_models/  \  # 可选: 参考网格用于计算 Chamfer 距离
+    --profile TRACK_A_ASSET \               # 门禁配置
+    --resolution 256 \                      # 截图渲染分辨率
+    --num-views 8 \                         # 多视角截图数量
+    --json                                   # 输出纯 JSON 到 stdout
+  ```
+- **退出码**: `0`=成功, `10`=参数校验失败, `20`=输入缺失, `40`=门禁未通过
+- **门禁配置**: `TRACK_A_ASSET`（默认, 严格拓扑+精度）, `TRACK_B_VIDEO`（宽松）, `RSI_PROMOTION`（最严格）
+
+#### HTML 报告模板
+
+- **路径**: [`python/synapse/inspect/eval_report.py`](../python/synapse/inspect/eval_report.py)
+- **特性**:
+  - 自包含 HTML（零外部依赖，内联 CSS/SVG）
+  - 概要仪表盘（总量/通过/失败统计）
+  - 聚合雷达图（SVG）展示跨模型平均质量得分
+  - 逐模型详情卡片:
+    - **多视角截图画廊**（base64 内联 PNG，无 GPU 纯 NumPy 软件光栅化渲染）
+    - **拓扑摘要表**（流形/水密/顶点数/面数/边界边/退化面）
+    - **指标表**（指标值 + PASS/FAIL 徽章）
+    - **逐模型雷达图**
+
+#### 已实现的评估维度
+
+| 评估维度 | 指标 | 实现状态 |
+|:---|:---|:---|
+| **拓扑完整性** | `is_manifold`, `is_watertight`, `connected_components`, `boundary_edges`, `num_degenerate_faces` | ✅ 已实现 |
+| **几何精度** | `chamfer_mm`（需提供参考网格） | ✅ 已实现 |
+| **视觉检查** | 8 视角软件光栅化截图（Front/Right/Back/Left 等） | ✅ 已实现 |
+| **门禁配置** | `TRACK_A_ASSET`, `TRACK_B_VIDEO`, `RSI_PROMOTION` | ✅ 已实现 |
+
+#### 测试覆盖
+
+- **路径**: [`tests/test_eval_report.py`](../tests/test_eval_report.py)
+- **覆盖**: 24 项测试（数据模型、HTML 报告生成、拓扑检查、指标归一化、CLI 集成冒烟测试）
