@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.training.losses import (
     diffusion_dpo_loss,
     flow_matching_loss,
     latent_edge_alignment_loss,
     normal_reconstruction_loss,
 )
-
 
 # -------------------------------------------------------------------
 # Loss function tests (numpy-only, no torch needed)
@@ -249,7 +247,6 @@ class TestStatelessLoRATrainer:
     def test_inject_lora_identity_at_step0(self) -> None:
         """B=0 ensures output unchanged at step 0."""
         import torch
-
         from synapse.training.trainer import (
             LoRATrainConfig,
             StatelessLoRATrainer,
@@ -310,7 +307,6 @@ class TestStatelessLoRATrainer:
     def test_train_step_loss_decreases(self) -> None:
         """SFT training should decrease loss significantly."""
         import torch
-
         from synapse.training.trainer import (
             LoRATrainConfig,
             StatelessLoRATrainer,
@@ -353,7 +349,6 @@ class TestStatelessLoRATrainer:
     def test_frozen_weights_unchanged(self) -> None:
         """Base weights should be bitwise identical after training."""
         import torch
-
         from synapse.training.trainer import (
             LoRATrainConfig,
             StatelessLoRATrainer,
@@ -409,8 +404,6 @@ class TestStatelessLoRATrainer:
     def test_export_checkpoint(self, tmp_path) -> None:
         """Export should create a safetensors file."""
         safetensors = pytest.importorskip("safetensors")
-
-        import torch
 
         from synapse.training.trainer import (
             LoRATrainConfig,

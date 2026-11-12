@@ -64,6 +64,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
      - `20`：输入场景、资产或 EXR 文件缺失 / SHA256 校验不匹配；
      - `30`：GPU 显存不足或下游推理后端不可达；
      - `40`：触发 HITL 15 分钟超时工程熔断或质量门禁未达标；
+     - `50`：命令或 Stage 尚未实现（严禁未实现桩代码以 `0` 退出）；
    - 报错 JSON 必须包含 `"agent_fix_hint"` 字段，给出可直接执行的修复动作建议。
 
 ---

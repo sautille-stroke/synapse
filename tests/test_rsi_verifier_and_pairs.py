@@ -13,28 +13,22 @@ Validates:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
-
 from synapse.errors import ContractValidationError
 from synapse.rsi.curriculum import (
-    ChallengeScenario,
     CurriculumConfig,
     CurriculumSampler,
 )
 from synapse.rsi.dual_verifier import (
     DualVerifierEngine,
-    PhysicsCheckResult,
     PhysicsThresholds,
-    VerificationVerdict,
 )
 from synapse.rsi.pair_builder import (
     PreferenceDatasetBuilder,
     PreferencePair,
 )
-
 
 # -------------------------------------------------------------------
 # CurriculumSampler tests
@@ -455,9 +449,9 @@ class TestStageRegistration:
     """Test that rsi_dual_verify stage is registered."""
 
     def test_stage_registered(self) -> None:
+        # Importing rsi.pair_builder triggers registration
+        import synapse.rsi.pair_builder  # noqa: F401
         from synapse.pipeline.bundle_worker import (
             _STAGE_HANDLERS,
         )
-        # Importing rsi.pair_builder triggers registration
-        import synapse.rsi.pair_builder  # noqa: F401
         assert "rsi_dual_verify" in _STAGE_HANDLERS

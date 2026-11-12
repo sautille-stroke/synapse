@@ -15,7 +15,6 @@ import random
 
 from pydantic import BaseModel, Field
 
-
 # -------------------------------------------------------------------
 # Factor definitions (matching Synapse-Bench condition factors)
 # -------------------------------------------------------------------

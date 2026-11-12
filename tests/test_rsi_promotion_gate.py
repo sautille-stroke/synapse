@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from synapse.errors import ContractValidationError, QualityGateError
 from synapse.rsi.promotion_gate import (
     BenchReport,
@@ -24,7 +23,6 @@ from synapse.rsi.promotion_gate import (
     evaluate_monotonic_promotion,
     write_quarantine_manifest,
 )
-
 
 # -------------------------------------------------------------------
 # Fixtures
@@ -366,6 +364,7 @@ class TestRSICLI:
         """synapse rsi sample-curriculum --json works."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -384,9 +383,44 @@ class TestRSICLI:
         assert "scenarios" in parsed
 
     def test_rsi_verify_json(self) -> None:
-        """synapse rsi verify --json works."""
+        """synapse rsi verify --json works with explicit physics metrics."""
         import io
         import sys
+
+        from synapse.cli import main_synapse
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "rsi", "verify",
+                "--sample-id", "test_001",
+                "--physics-metrics",
+                json.dumps({
+                    "chamfer_mm": 1.5,
+                    "normal_angular_error_deg": 4.0,
+                    "silhouette_iou": 0.96,
+                    "depth_rmse_m": 0.01,
+                    "foot_slide_velocity_ms": 0.005,
+                    "volume_breathing_pct": 1.0,
+                    "border_ring_ciede2000": 1.2,
+                }),
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 0
+        output = buf.getvalue()
+        parsed = json.loads(output)
+        assert parsed["status"] == "ok"
+        assert parsed["verdict"]["physics_passed"] is True
+        assert parsed["verdict"]["verdict"] in ("ACCEPT", "HARD_NEGATIVE")
+
+    def test_rsi_verify_missing_metrics_exits_10(self) -> None:
+        """synapse rsi verify without --physics-metrics exits with code 10."""
+        import io
+        import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -399,15 +433,15 @@ class TestRSICLI:
         finally:
             sys.stdout = old
 
-        assert code == 0
-        output = buf.getvalue()
-        parsed = json.loads(output)
-        assert parsed["status"] == "ok"
+        assert code == 10
+        parsed = json.loads(buf.getvalue())
+        assert parsed["exit_code"] == 10
 
     def test_rsi_gate_promote_pass_json(self) -> None:
         """synapse rsi gate-promote --json with passing data."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
@@ -431,6 +465,7 @@ class TestRSICLI:
         """synapse rsi gate-promote --json with failing data."""
         import io
         import sys
+
         from synapse.cli import main_synapse
 
         old = sys.stdout
