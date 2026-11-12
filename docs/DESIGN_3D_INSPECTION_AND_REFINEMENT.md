@@ -1,6 +1,6 @@
 # Synapse 3D 建模智能质检、多尺度对齐与精修数据飞轮设计规范 (3D Quality Inspection, Multi-scale Alignment & Refinement Flywheel Specification)
 
-- **文档状态**: `Draft v1.0`
+- **文档状态**: `Approved Technical Spec v1.1`
 - **关联仓库**: `synapse`（执行核心、CLI 与评测 SDK）、`fulgur`（C++20 AAA 渲染引擎与离屏 FGPP 提取器）、`aether`（底层类型、数学库与 FGPP SSOT）、`forgekit` / `tecton`（3D 编辑器交互、TimeWarp 与数据采集）、`foundary`（GPU 训练与容器调度）
 - **关联生态规约**:
   - **RFC 0019**: `CommandIR` 序列化操作协议与离线同步机制
@@ -41,14 +41,53 @@
 
 ---
 
-## 2. 端到端五阶质检与精修管线架构
+## 2. 自包含双轨几何算子体系与端到端六阶质检架构
 
-整个流水线划分为 5 个串行阶段，每个阶段均包含严格的输入契约、处理算子与输出量化门禁。
+### 2.1 架构设计原则：全仓自包含与双轨互验 (Dual-Track Architecture)
+
+为杜绝对外仓 `vg-core` 的强耦合，`synapse` 采取**全仓自包含（Self-Contained）**设计：
+* **Track B: C++ Native Kernels (`csrc/geometry/`)**：作为生产级高性能执行核心。以现代 C++20 编写，包含轻量 AABB/BVH 空间树、无分支简并面与连通并查集，直接编译为极轻量的 C 扩展或纯 C-ABI 动态链接库，确保十万面级网格检查在 50ms 内完成；
+* **Track A: Python Oracle (`synapse.recon.geometry`)**：作为算法正确性验证的标准基准（Ground Truth Oracle）。代码数学公式透明、零编译黑盒，便于开发期快速推导与单步调试；
+* **Parity 跨语言黄金测试 (`tests/test_geometry_oracle_parity.py`)**：在自动化 CI 中，随机生成及人工构造破损 Mesh，严格断言 Python 与 C++ 算子输出的异常面索引、穿插对与拓扑状态 100% 吻合。
 
 ```
- [输入: 参考图 + 3D Mesh]
+                            [3D 资产输入 (Mesh / 点云)]
+                                        │
+                 ┌──────────────────────┴──────────────────────┐
+                 ▼                                             ▼
+       【Track A: Python Oracle】                     【Track B: C++ Native】
+    synapse.recon.geometry (NumPy)                  csrc/geometry/ (Modern C++20)
+  ┌──────────────────────────────┐              ┌──────────────────────────────┐
+  │ • 数学定义清晰，便于调试与推导 │              │ • SIMD / 多线程 / AABB 树加速  │
+  │ • 零编译依赖，作为 CI 正确性真值│              │ • 毫秒级处理百万级三角面      │
+  │ • 充当单测 Oracle (Ground Truth)│              │ • 生产环境默认高性能后端      │
+  └──────────────┬───────────────┘              └──────────────┬───────────────┘
+                 │                                             │
+                 └──────────────────────┬──────────────────────┘
+                                        ▼
+                      【Parity Gate 跨语言黄金一致性测试】
+                tests/test_geometry_oracle_parity.py (100% 吻合)
+                                        │
+                                        ▼
+                   【Tier 0: 几何硬防线门禁 (Pass / Reject)】
+```
+
+### 2.2 端到端六阶质检管线
+
+整个流水线划分为 6 个串行阶段（包含 Tier 0 前置硬防线），每个阶段均包含严格的输入契约、处理算子与输出量化门禁。
+
+```
+ [输入: 3D Mesh / 点云 + 参考图]
        │
        ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Stage 0: 几何拓扑硬防线门禁 (Tier 0 Deterministic Geometric Gates)    │
+│ - 引擎: 自包含 csrc/geometry/ 原生算子 (Python Oracle 作验证基准)      │
+│ - 检查: 2-Manifold 流形、AABB+MT 自穿插检测、退化面/针状面、浮空废渣   │
+│ - 耗时: 纯 CPU < 50ms (十万面网格)                                     │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ [Gate 0]: 100% 流形且零退化面/自穿插 (不达标直接熔断)
+                                   ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Stage 1: 姿态解算与视锥逆向对齐 (Camera Inversion & Alignment)         │
 │ - 算子: DINOv2 球面粗检索 (32~64 视角) + FoundationPose / Nvdiffrast 微调  │
@@ -91,6 +130,18 @@
 ## 3. 分阶段评价机制与量化指标库 (Quantitative Metrics Suite)
 
 流水线的每一个流转节点均受量化指标约束，禁止通过模糊经验放行。
+
+### 3.0 Stage 0：几何拓扑硬门禁指标（Tier 0 零容忍物理红线）
+
+在任何高开销渲染与神经网络介入之前，必须在 Stage 0 毫秒级拦截底层几何破损：
+
+| 指标字段 (Key) | 数学定义 / 算法 | 目标及格阈值 | 物理与业务意义 |
+|:---|:---|:---:|:---|
+| `is_2manifold` | 严格 2-流形：每条边至多被 2 面共享；每个顶点邻接面单连通 | `= True` (强制) | 破坏流形将导致法线无法定义、阴影粉碎、物理引擎崩溃 |
+| `is_watertight` | 严格水密：有向边对偶闭合，零边界游离边（针对实心资产） | `= True` (角色/封闭道具) | 保证体积计算有效，防止 3D 打印或次表面散射漏光 |
+| `degenerate_faces_count` | 简并面数量：面积 $< 10^{-8}$ 或最大外接高宽比 $> 100:1$ | `= 0` | 消除细长针状面（Needle triangles），防止光栅化浮点溢出与 BVH 树退化 |
+| `self_intersecting_pairs` | 自穿插相交面片对数：AABB 空间粗筛 + Möller-Trumbore 判定 | `= 0` | 杜绝模型内部自己与自己穿模导致的自发遮挡与阴影暗斑 |
+| `floating_islands_ratio` | 孤立非连通碎片体积占主连通体体积比例 | $< 0.005$ | 剥离重建点云中常见的“浮空废渣云”，保持资产干净 |
 
 ### 3.1 Stage 1：姿态对齐度指标（评价机位是否严密对齐）
 

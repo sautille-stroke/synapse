@@ -13,7 +13,7 @@
 ## 1. PR-20：3D 质检数据契约 (`InspectionReport v2.0`) 与单图逆向相机位姿对齐 (`align.py`)
 
 - **建议标题**: `feat(inspect): add InspectionReport v2.0 schema and Fibonacci coarse-to-fine pose alignment [model-tag]`
-- **前置依赖**: `PR-12` (`vg_bridge`), `PR-13` (`metrics`)
+- **前置依赖**: `PR-12` (`recon.geometry`), `PR-13` (`metrics`)
 - **代码净增预算**: `~480` 行
 - **涉及文件清单**:
   - 新增：`python/synapse/inspect/__init__.py`, `python/synapse/inspect/schemas.py`, `python/synapse/inspect/align.py`, `tests/test_inspect_align.py`
