@@ -449,9 +449,8 @@ class TestStageRegistration:
     """Test that rsi_dual_verify stage is registered."""
 
     def test_stage_registered(self) -> None:
-        # Importing rsi.pair_builder triggers registration
-        import synapse.rsi.pair_builder  # noqa: F401
         from synapse.pipeline.bundle_worker import (
-            _STAGE_HANDLERS,
+            get_registered_stages,
         )
-        assert "rsi_dual_verify" in _STAGE_HANDLERS
+
+        assert "rsi_dual_verify" in get_registered_stages()
