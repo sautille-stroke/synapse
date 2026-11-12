@@ -180,36 +180,38 @@ flowchart TD
 
 纯 RGB 图像存在严重的光照-几何单义歧义性（Illumination Ambiguity）。用于现代 3D 生成、条件对齐与精修模型训练的数据集，**必须具备像素级绝对对齐的多通道物理缓冲层**。
 
-系统统一遵循 **FGPP v1.0**（Fulgur GBuffer Post-Processing）15 通道规范：
+系统统一遵循 **FGPP v1.0**（`@aether//fgpp` SSOT）15 标量通道规范（`34 B/px`）：
 
 ```
-FGPP 15 通道 OpenEXR 标准布局 (34 B/px, IEEE 754):
+FGPP 15 通道 OpenEXR 标准布局 (34 B/px, IEEE 754, 与 @aether//fgpp 100% 对齐):
 ┌───────────────────────────┬──────────────┬───────────────┬───────────────────────────────────────┐
 │ 通道名称 (ASCII 排序)      │ 数据类型     │ 字节数        │ 物理含义与技术约束                    │
 ├───────────────────────────┼──────────────┼───────────────┼───────────────────────────────────────┤
-│ BaseColor.R / G / B       │ HALF (fp16)  │ 6 B           │ 物理去光照的真实漫反射反照率 (Albedo) │
+│ BaseColor.R / G / B       │ HALF (fp16)  │ 6 B (3×2 B)   │ 物理去光照的真实漫反射反照率 (Albedo) │
 │ CameraLinearDepth.Z       │ FLOAT (fp32) │ 4 B           │ 绝对米制相机空间线性深度 (严禁插值)   │
-│ CameraNormal.X / Y / Z    │ HALF (fp16)  │ 6 B           │ 相机空间归一化法线向量 [-1, 1]        │
-│ Cryptomatte.ID            │ UINT32       │ 4 B           │ 实体/材质独立整型索引 (最近邻采样)    │
-│ MetallicRoughness.R / G   │ HALF (fp16)  │ 4 B           │ 金属度 (Metallic) 与 感知粗糙度       │
-│ MotionVector.X / Y        │ HALF (fp16)  │ 4 B           │ 像素级屏幕空间前向运动矢量            │
-│ OcclusionWireframe.R / G  │ HALF (fp16)  │ 4 B           │ 环境光遮蔽 (AO) 与 拓扑边框密度       │
-│ WorldNormal.X / Y / Z     │ HALF (fp16)  │ 6 B           │ 世界空间归一化表面曲率与朝向向量      │
+│ Cryptomatte.ID            │ UINT32       │ 4 B           │ 实体/材质独立整型索引 (严禁插值滤波)  │
+│ DirectRadiance.R / G / B  │ HALF (fp16)  │ 6 B (3×2 B)   │ 直接光照线性辐射亮度 (ACEScg)         │
+│ MotionVector.X / Y        │ HALF (fp16)  │ 4 B (2×2 B)   │ 像素级屏幕空间前向运动矢量            │
+│ Roughness                 │ HALF (fp16)  │ 2 B           │ 感知粗糙度 [0, 1]                     │
+│ Specular                  │ HALF (fp16)  │ 2 B           │ 电介质镜面反射率 F0 缩放              │
+│ WorldNormal.X / Y / Z     │ HALF (fp16)  │ 6 B (3×2 B)   │ 世界空间归一化表面朝向向量 [-1, 1]    │
+├───────────────────────────┼──────────────┼───────────────┼───────────────────────────────────────┤
+│ 合计: 15 个标量通道        │ —            │ 34 B / px     │ Metallic 等扩展属性由资产 PBR 贴图承载 │
 └───────────────────────────┴──────────────┴───────────────┴───────────────────────────────────────┘
 ```
 
 #### 各通道的核心作用与训练价值：
 1. **米制线性深度 (`CameraLinearDepth.Z`)**：
-   - 必须为绝对米制单位（float32），而非归一化非线性屏幕空间深度；
+   - 必须为绝对米制单位（`float32`），而非归一化非线性屏幕空间深度；
    - 价值：消除多视角尺度不一致，给模型提供不可动摇的绝对距离基准，彻底消除透视塌陷。
-2. **表面法线 (`WorldNormal` / `CameraNormal`)**：
-   - 归一化向量，表征微表面朝向与微分几何特征；
+2. **表面法线 (`WorldNormal.XYZ`)**：
+   - 世界空间归一化向量（相机空间法线由 `metadata.json` 列主序外参矩阵无损变换可得，无需冗余存储），表征微表面朝向与微分几何特征；
    - 价值：让模型直接感知高频凹凸细节，约束几何法线不可反转、五官凹凸结构不可坍塌。
-3. **物理去光照漫反射反照率 (`BaseColor`)**：
-   - 必须剥离方向光、点光源高光与投射阴影；
+3. **物理去光照漫反射反照率 (`BaseColor.RGB`) 与直接辐射度 (`DirectRadiance.RGB`)**：
+   - `BaseColor` 彻底剥离方向光、点光源高光与投射阴影，与 `DirectRadiance`、`Roughness`、`Specular` 组成能量自洽的内蕴分解监督对；
    - 价值：防止模型把阴影误学生长成黑斑，把高光误学成浮雕突起。
 4. **实体掩码 (`Cryptomatte.ID`)**：
-   - 无滤波的无符号整型 ID，区分不同材质与独立骨骼部件（如头发、衣服、皮肤、手部）；
+   - 无滤波的无符号整型 ID（`UINT32`），区分不同材质与独立骨骼部件（如头发、衣服、皮肤、手部）；
    - 价值：作为注意力掩码（Spatial Attention Mask），防止跨资产语义粘连（如衣服与肢体融合）。
 
 ---
@@ -352,80 +354,72 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 
 ## 6. 3D 模型评估指标全景矩阵与实现状态 (Evaluation Metrics Matrix)
 
-> **审计基线**: 2026-11-12 v2.0。基于对 `synapse/python/synapse/metrics/`、`inspect/`、`recon/`、`rsi/`、`bench/` 全量代码与设计文档的交叉审计。
+> **审计基线**: 2026-11-13 v2.1。基于对 `synapse/python/synapse/metrics/`、`inspect/`、`recon/`、`rsi/`、`bench/` 与 `csrc/geometry/` 全量代码及 `profiles.py` 门禁 SSOT 的交叉校验。
 
-### 6.1 已完整实现的门禁指标（18 个 Profile 指标 + 6 个辅助算子）
+### 6.1 已完整实现的门禁指标（16 个核心 Profile 指标 + 4 个 P0 渲染画质指标 + 10 个辅助质检算子）
 
-#### 6.1.1 四支柱 18 门禁指标
+#### 6.1.1 四支柱 16 核心 Profile 门禁指标（与 `metrics/profiles.py` 100% 对齐）
 
-以下 18 个指标均已有完整的计算函数实现、单元测试覆盖，并纳入 4 层递进门禁 Profile（`TRACK_B_VIDEO` → `TRACK_A_ASSET` → `RSI_PROMOTION` → `RSI_PROMOTION_TARGET`）。
+以下 16 个核心指标均已有完整的计算函数实现、单元测试覆盖，并严格锁死在 4 层递进门禁 Profile（`TRACK_B_VIDEO` → `TRACK_A_ASSET` → `RSI_PROMOTION` → `RSI_PROMOTION_TARGET`）中。
 
 | # | 支柱 | 指标 (Key) | 计算位置 | 检测维度 | TRACK_B | TRACK_A | RSI_PROMO | RSI_TARGET |
 |---|:---|:---|:---|:---|:---:|:---:|:---:|:---:|
-| 1 | Temporal | `temporal_warp_error` | `metrics/temporal.py` | 运动矢量时域翘曲 RMSE（含遮挡掩码） | ≤ 8.0 | ≤ 4.0 | ≤ 2.0 | ≤ 1.5 |
-| 2 | Temporal | `flicker_score` | `metrics/temporal.py` | 二阶拉普拉斯时域闪烁不稳定度 | ≤ 0.08 | ≤ 0.05 | ≤ 0.03 | ≤ 0.02 |
-| 3 | Temporal | `fvd_feature_distance` | `metrics/temporal.py` | Fréchet 时序特征距离 | ≤ 200.0 | ≤ 120.0 | ≤ 80.0 | ≤ 50.0 |
-| 4 | FGPP Fidelity | `depth_rmse_m` | `metrics/fgpp_fidelity.py` | 深度图 RMSE（绝对米制） | ≤ 0.30 | ≤ 0.15 | ≤ 0.08 | ≤ 0.05 |
-| 5 | FGPP Fidelity | `scale_invariant_depth_error` | `metrics/fgpp_fidelity.py` | Eigen 对数尺度不变深度误差 | (⚠️ 未纳入 Profile) | — | — | — |
-| 6 | FGPP Fidelity | `normal_angular_error_deg` | `metrics/fgpp_fidelity.py` | 法线角度均值偏差（度） | ≤ 25.0 | ≤ 15.0 | ≤ 10.0 | ≤ 7.0 |
-| 7 | FGPP Fidelity | `flow_endpoint_error_px` | `metrics/fgpp_fidelity.py` | 光流端点误差（像素） | ≤ 4.0 | ≤ 2.0 | ≤ 1.2 | ≤ 0.8 |
-| 8 | FGPP Fidelity | `silhouette_iou` | `metrics/fgpp_fidelity.py` | 二值化剪影交并比 | ≥ 0.85 | ≥ 0.88 | ≥ 0.90 | ≥ 0.93 |
-| 9 | Roundtrip | `chamfer_mm` | `metrics/roundtrip.py` | 双向 Chamfer 距离（mm） | ≤ 8.0 | ≤ 5.0 | ≤ 4.0 | ≤ 2.5 |
-| 10 | Roundtrip | `f_score_1mm` | `metrics/roundtrip.py` | 1mm 阈值双向 F-score | ≥ 0.70 | ≥ 0.80 | ≥ 0.85 | ≥ 0.90 |
-| 11 | Roundtrip | `volume_breathing_pct` | `metrics/roundtrip.py` | 有符号四面体体积变化百分比 | ≤ 10.0 | ≤ 5.0 | ≤ 3.0 | ≤ 2.0 |
+| 1 | Temporal | `temporal_warp_error` | `metrics/temporal.py` | 运动矢量时域翘曲 RMSE（含遮挡掩码） | ≤ 8.0 | ≤ 4.0 | ≤ 2.0 | ≤ 2.0 |
+| 2 | Temporal | `flicker_score` | `metrics/temporal.py` | 二阶拉普拉斯时域闪烁不稳定度 | ≤ 0.025 | ≤ 0.020 | ≤ 0.018 | ≤ 0.008 |
+| 3 | Temporal | `fvd` | `metrics/temporal.py` | Fréchet 时序特征距离 (`fvd_feature_distance`) | ≤ 300.0 | ≤ 150.0 | ≤ 50.0 | ≤ 50.0 |
+| 4 | FGPP Fidelity | `depth_rmse_m` | `metrics/fgpp_fidelity.py` | 深度图 RMSE（绝对米制） | ≤ 0.05 | ≤ 0.04 | ≤ 0.03 | ≤ 0.02 |
+| 5 | FGPP Fidelity | `scale_invariant_depth_error` | `metrics/fgpp_fidelity.py` | Eigen 对数尺度不变深度误差 | ≤ 0.30 | ≤ 0.10 | ≤ 0.05 | ≤ 0.05 |
+| 6 | FGPP Fidelity | `normal_angular_error_deg` | `metrics/fgpp_fidelity.py` | 法线角度均值偏差（度） | ≤ 15.0 | ≤ 12.0 | ≤ 12.0 | ≤ 5.0 |
+| 7 | FGPP Fidelity | `flow_endpoint_error_px` | `metrics/fgpp_fidelity.py` | 光流端点误差（像素） | ≤ 4.0 | ≤ 2.0 | ≤ 1.0 | ≤ 1.0 |
+| 8 | FGPP Fidelity | `silhouette_iou` | `metrics/fgpp_fidelity.py` | 二值化剪影交并比 | ≥ 0.85 | ≥ 0.88 | ≥ 0.90 | ≥ 0.97 |
+| 9 | Roundtrip | `chamfer_mm` | `metrics/roundtrip.py` | 双向 Chamfer 距离（mm） | ≤ 8.0 | ≤ 5.0 | ≤ 4.0 | ≤ 1.0 |
+| 10 | Roundtrip | `f_score_1mm` | `metrics/roundtrip.py` | 1mm 阈值双向 F-score | ≥ 0.40 | ≥ 0.70 | ≥ 0.90 | ≥ 0.90 |
+| 11 | Roundtrip | `volume_breathing_pct` | `metrics/roundtrip.py` | 有符号四面体体积变化百分比 | ≤ 5.0 | ≤ 3.0 | ≤ 2.5 | ≤ 1.5 |
 | 12 | Roundtrip | `foot_sliding_cm` | `metrics/roundtrip.py` | 地面接触顶点水平滑动量（cm） | ≤ 0.5 | ≤ 0.3 | ≤ 0.2 | ≤ 0.1 |
-| 13 | Roundtrip | `bone_length_drift_pct` | `metrics/roundtrip.py` | 骨骼段长度漂移百分比 | ≤ 3.0 | ≤ 2.0 | ≤ 1.0 | ≤ 0.5 |
-| 14 | Roundtrip | `albedo_delta_e00` | `metrics/roundtrip.py` | CIEDE2000 反照率色差（ACEScg） | ≤ 5.0 | ≤ 3.5 | ≤ 2.5 | ≤ 1.5 |
-| 15 | Style | `border_ring_ciede2000` | `metrics/style_consistency.py` | 形态膨胀边界环 CIEDE2000 色差 | ≤ 6.0 | ≤ 4.0 | ≤ 3.0 | ≤ 2.0 |
-| 16 | Style | `light_dir_error_deg` | `metrics/style_consistency.py` | 主光方向角度误差（度） | ≤ 20.0 | ≤ 12.0 | ≤ 8.0 | ≤ 5.0 |
-| 17 | Style | `tone_curve_rmse` | `metrics/style_consistency.py` | 色调映射曲线 RMSE | ≤ 0.08 | ≤ 0.05 | ≤ 0.03 | ≤ 0.02 |
-| 18 | Style | `histogram_intersection` | `metrics/style_consistency.py` | 颜色直方图交集相似度 | (⚠️ 未纳入 Profile) | — | — | — |
+| 13 | Roundtrip | `bone_length_drift_pct` | `metrics/roundtrip.py` | 骨骼段长度漂移百分比 | ≤ 5.0 | ≤ 2.0 | ≤ 0.5 | ≤ 0.5 |
+| 14 | Roundtrip | `albedo_delta_e00` | `metrics/roundtrip.py` | CIEDE2000 反照率色差（ACEScg） | ≤ 5.0 | ≤ 2.5 | ≤ 2.5 | ≤ 2.0 |
+| 15 | Style | `border_ring_ciede2000` | `metrics/style_consistency.py` | 形态膨胀边界环 CIEDE2000 色差 | ≤ 3.0 | ≤ 2.5 | ≤ 2.0 | ≤ 1.5 |
+| 16 | Style | `light_dir_error_deg` | `metrics/style_consistency.py` | 主光方向角度误差（度） | ≤ 20.0 | ≤ 10.0 | ≤ 5.0 | ≤ 5.0 |
 
-#### 6.1.2 辅助质检算子（非 Profile 门禁，但有完整实现）
+#### 6.1.2 P0 渲染画质核心指标与辅助质检算子（均已完整实现 ✅）
 
-| 算子 | 位置 | 功能 |
+| 算子 / 指标 | 位置 | 功能与场景门禁支持 |
 |:---|:---|:---|
-| `check_manifold` | `recon/geometry.py` | 2-流形拓扑布尔验证（每条边至多 2 面共享） |
-| `check_watertight` | `recon/geometry.py` | 水密性布尔验证（零边界游离边） |
+| `psnr_db` | `metrics/image_quality.py` | 峰值信噪比 $10 \log_{10}(\text{MAX}^2 / \text{MSE})$，支持 `Synapse-Bench` `scenario_overrides` 与 3D 多视角评估 |
+| `ssim` | `metrics/image_quality.py` | Wang et al. 2004 结构相似度（$11 \times 11$ 高斯窗），支持全部 T1–T5 场景门禁 |
+| `ciede2000` | `metrics/image_quality.py` | 全图/掩码区域像素级精确 CIEDE2000 感知色差均值 |
+| `lpips` | `metrics/image_quality.py` | 多尺度感知结构/色度块距离（零重型依赖确定性 CPU 实现，支持 T1–T5 门禁） |
+| `tone_curve_rmse` | `metrics/style_consistency.py` | 亮度分位数色调映射曲线 RMSE |
+| `histogram_intersection` | `metrics/style_consistency.py` | 归一化颜色直方图交集相似度 |
+| `validate_mesh_geometry` | `inspect/geometry_gate.py` + `csrc/geometry/` | Tier 0 双轨几何硬门禁：2-流形（含扇面单伞连通检测）、水密性、退化/针状面索引、共面 2D SAT + Möller–Trumbore 自穿插对、连通分量与浮空碎块过滤 |
 | `compute_silhouette_iou` | `inspect/align.py` | Z-buffer 软光栅化 + IoU 对齐 |
 | `compute_isotopic_residual_heatmap` | `inspect/macro.py` | 多通道（RGB+深度+法线）异常融合热力图 |
 | `VisualJevCritic` | `inspect/jev_critic.py` | VLM Logprob 6 类缺陷校准概率检测 |
 | `DualVerifierEngine` | `rsi/dual_verifier.py` | 物理 + 神经双重验算引擎 |
 
-### 6.2 设计文档已规约但尚未实现的指标（待补全）
+### 6.2 设计文档已规约、后续演进待扩展的指标（P1/P2 Backlog）
 
-以下指标在设计文档（`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、本文档 §2.1）中明确规定了计算方式与门禁阈值，但在 `synapse` 代码库中尚无对应的计算函数。
+以下指标已完成设计规约，排入后续迭代路线图（其中 P0 图像画质指标与 Tier 0 自包含双轨几何核已在 v2.1 落地）：
 
-#### 6.2.1 P0 级：渲染画质核心指标（影响 Synapse-Bench 全部 30 套场景评测）
-
-> [!CAUTION]
-> 以下 4 个指标被 Synapse-Bench 全部 30 套 T1~T5 场景的 `ExpectedMetrics` 声明引用，但计算函数不存在，导致整个基准测试的**渲染画质维度空转**。必须尽快补全。
-
-| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值（拟定） | 行业对标 |
-|:---|:---|:---|:---|:---|
-| `psnr_db` | $10 \log_{10}(\text{MAX}^2 / \text{MSE})$，峰值信噪比 | `metrics/image_quality.py` (待新建) | T1: ≥ 28 dB, T5: ≥ 25 dB | NeRF / 3DGS / InstantMesh 标配 |
-| `ssim` | Wang et al. 2004 结构相似度，$11 \times 11$ 高斯窗 | `metrics/image_quality.py` (待新建) | T1: ≥ 0.90, T5: ≥ 0.85 | 全行业渲染质量标配 |
-| `lpips` | AlexNet / VGG 深层感知距离加权和 | `metrics/image_quality.py` (待新建) | T1: ≤ 0.08, T5: ≤ 0.15 | 3D 生成论文标准评测 |
-| `ciede2000` | CIEDE2000 全局平均色差 | `metrics/image_quality.py` (待新建) | ≤ 3.0 | PBR 材质保真度验证 |
-
-#### 6.2.2 P0 级：感知与语义学习指标
+#### 6.2.1 感知与预训练骨干语义指标（需可选 GPU 权重）
 
 | 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 | 行业对标 |
 |:---|:---|:---|:---|:---|
 | `dino_cosine_sim` | DINOv2 ViT-L/14 CLS Token 余弦相似度 | `metrics/perceptual.py` (待新建) | ≥ 0.85 | Zero123++, LGM, TripoSR 标配 |
-| `lpips_vgg` | LPIPS with VGG-16 骨干网络 | `metrics/perceptual.py` (待新建) | ≤ 0.15 | GSO Benchmark, DreamFusion |
+| `lpips_vgg` | 预训练 VGG-16 特征骨干 LPIPS（补充现有轻量确定性 `lpips`） | `metrics/perceptual.py` (待新建) | ≤ 0.15 | GSO Benchmark, DreamFusion |
 
-#### 6.2.3 P1 级：拓扑量化指标（当前仅有 Bool，需量化升级）
+#### 6.2.2 P1 级：拓扑量化指标（已实现连通域/退化面/自穿插计数，待补欧拉特征与非流形边计数导出）
 
-| 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
+| 指标 (Key) | 算法规格 | 实现位置与状态 | 门禁阈值 |
 |:---|:---|:---|:---|
-| `euler_characteristic` | $\chi = V - E + F$，验证 $\chi = 2(1-g)$ | `recon/geometry.py` (扩展) | $= 2$ (genus-0 封闭网格) |
-| `connected_components_count` | 三角面图深度优先遍历连通域计数 | `recon/geometry.py` (扩展) | $= 1$ (单一主体) |
-| `floating_islands_ratio` | 非最大连通域体积之和 / 最大连通域体积 | `recon/geometry.py` (扩展) | $< 0.005$ |
-| `degenerate_faces_count` | 面积 $< 10^{-8}$ 或外接高宽比 $> 100:1$ 的面数量 | `recon/geometry.py` (扩展) | $= 0$ |
-| `non_manifold_edges_count` | 共享面 $\neq 2$ 的有向边数量（量化版，替代 bool） | `recon/geometry.py` (扩展) | $= 0$ |
+| `connected_components_count` | 共享边面图并查集连通域计数 | ✅ `csrc/geometry` & `recon/geometry.py` (`find_connected_components`) | $= 1$ (单一主体) |
+| `floating_islands_ratio` | 浮空碎块面占比阈值判定 | ✅ `csrc/geometry` & `recon/geometry.py` (`detect_floating_islands`) | $< 0.005$ |
+| `degenerate_faces_count` | 面积 $< 10^{-8}$ 或高宽比 $> 100:1$ 的面数量 | ✅ `csrc/geometry` & `recon/geometry.py` (`check_degenerate_faces`) | $= 0$ |
+| `self_intersecting_pairs` | AABB 树 + 共面 2D SAT + Möller–Trumbore 非邻接穿插对 | ✅ `csrc/geometry` & `recon/geometry.py` (`check_self_intersections`) | $= 0$ |
+| `euler_characteristic` | $\chi = V - E + F$，验证 $\chi = 2(1-g)$ | 🟡 待扩展 (`recon/geometry.py`) | $= 2$ (genus-0 封闭网格) |
+| `non_manifold_edges_count` | 共享面 $> 2$ 或扇面非单伞的精确计数导出 | 🟡 待扩展（布尔判定 `check_manifold` 已实现） | $= 0$ |
 
-#### 6.2.4 P1 级：UV 与贴图质量指标
+#### 6.2.3 P1 级：UV 与贴图质量指标
 
 | 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
 |:---|:---|:---|:---|
@@ -433,7 +427,7 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 | `seam_discontinuity_deg` | UV 接缝两侧法线夹角跳跃均值 | `recon/geometry.py` (扩展) | $\le 5.0°$ |
 | `texel_density_variance` | 纹素密度 (px/m) 的全局变异系数 (CV) | `recon/geometry.py` (扩展) | $\le 0.3$ |
 
-#### 6.2.5 P1 级：微观曲面与表面质量指标
+#### 6.2.4 P1 级：微观曲面与表面质量指标
 
 | 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
 |:---|:---|:---|:---|
@@ -441,26 +435,26 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 | `surface_roughness_var` | 局部微表面曲率方差梯度 | `recon/geometry.py` (扩展) | $\le 0.08$ |
 | `patch_lpips` | 512×512 局部特写切片 LPIPS | `inspect/macro.py` (扩展) | $\le 0.12$ |
 
-#### 6.2.6 P2 级：姿态估计与对齐指标
+#### 6.2.5 P2 级：姿态估计与对齐指标
 
 | 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
 |:---|:---|:---|:---|
 | `add_s_norm` | 归一化平均点距离（对称性） | `inspect/align.py` (扩展) | $\le 0.05 \cdot d_{\text{obj}}$ |
 | `reprojection_error_px` | 2D 关节重投影 RMSE（像素） | `inspect/align.py` (扩展) | $\le 4.0$ px |
 
-### 6.3 Synapse-Bench 场景指标名称映射表
+### 6.3 Synapse-Bench 场景指标名称映射表（已全部打通 ✅）
 
-> [!WARNING]
-> T4 场景 JSON 中引用的指标名称与实现中的函数名不完全匹配。以下映射表为规范桥接定义，代码实现中必须增设名称转发（alias）。
+> [!NOTE]
+> T1–T5 场景 JSON 中引用的渲染画质指标与风格指标别名均已在 `metrics/image_quality.py`、`metrics/profiles.py`（`METRIC_ALIASES`）与 `pipeline/bench_runner.py` 中完整实现并接入自动门禁判定。
 
-| 场景 JSON 引用名 | 实现函数名 | 状态 |
+| 场景 JSON 引用名 | 实现函数 / 规范指标名 | 状态 |
 |:---|:---|:---:|
-| `style_color_de` | `border_ring_ciede2000` | ⚠️ 需增设 alias |
-| `style_light_error_deg` | `light_dir_error_deg` | ⚠️ 需增设 alias |
-| `psnr_db` | — | 🔴 待实现 |
-| `ssim` | — | 🔴 待实现 |
-| `lpips` | — | 🔴 待实现 |
-| `ciede2000` | — | 🔴 待实现 |
+| `style_color_de` | `METRIC_ALIASES` $\to$ `border_ring_ciede2000` | ✅ 已桥接 |
+| `style_light_error_deg` | `METRIC_ALIASES` $\to$ `light_dir_error_deg` | ✅ 已桥接 |
+| `psnr_db` | `synapse.metrics.psnr_db` (`image_quality.py`) | ✅ 已实现 |
+| `ssim` | `synapse.metrics.ssim` (`image_quality.py`) | ✅ 已实现 |
+| `lpips` | `synapse.metrics.lpips` (`image_quality.py`) | ✅ 已实现 |
+| `ciede2000` | `synapse.metrics.ciede2000` (`image_quality.py`) | ✅ 已实现 |
 
 ---
 
@@ -530,43 +524,45 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 
 ### 8.1 修复优先级与工时估算
 
-| 阶段 | 要做什么 | 预期工时 | 产出 |
+| 阶段 | 要做什么 | 状态 / 工时 | 产出 |
 |:---|:---|:---|:---|
-| **P0-Sprint** | 实现 `psnr_db` / `ssim` / `lpips` / `ciede2000` 计算函数（`metrics/image_quality.py`）；实现 `dino_cosine_sim` / `lpips_vgg`（`metrics/perceptual.py`，可选依赖 `torch`/`timm`）；修复场景指标名称映射（增设 alias） | **1~3 天** | 30 套基准场景的渲染画质与感知语义维度能跑通评分；可与行业论文对标 |
-| **P1-Topo** | 实现 `euler_characteristic`、`connected_components_count`、`floating_islands_ratio`、`degenerate_faces_count`、`non_manifold_edges_count` | **2~3 天** | 3D 网格入库门禁从 bool 升级为量化打分；Stage 0 拓扑硬门禁完整落地 |
+| **P0-Image & Alias** | 实现 `psnr_db` / `ssim` / `lpips` / `ciede2000` 计算函数（`metrics/image_quality.py`）；在 `metrics/profiles.py` 中增设 `METRIC_ALIASES`（`style_color_de`, `style_light_error_deg`）并接入 `bench_runner.py` 与 `model_evaluator.py` | **✅ 已完成** | 30 套基准场景的渲染画质指标与 T4 风格别名全部打通 |
+| **P0-Perceptual** | 实现预训练骨干感知语义指标 `dino_cosine_sim` / `lpips_vgg`（`metrics/perceptual.py`，可选依赖 `torch`/`timm`） | **1~2 天** | 高层视觉语义嵌入距离对标行业论文 |
+| **P1-Topo** | 基于已落地的 `csrc/geometry/` C++20 + `recon/geometry.py` 双轨几何核（已实现连通域、退化面、共面+MT 自穿插、浮空碎块），补充导出 `euler_characteristic` 与 `non_manifold_edges_count` | **1~2 天** | 3D 网格入库门禁全部量化指标完备 |
 | **P1-UV** | 实现 `uv_area_distortion_ratio`、`seam_discontinuity_deg`、`texel_density_variance` | **2~3 天** | 材质贴图质量首次有自动化评测 |
 | **P1-Curvature** | 实现 `discrete_mean_curvature_variance`、`surface_roughness_var`、`patch_lpips` | **2~3 天** | 微观表面缺陷检测（阶梯网格、凹坑、过平滑）可量化定位 |
 | **P1-Data** | 集成 GSO + Objaverse 外部 3D 资产，新增 6~10 套 T1/T2 外部数据场景 | **3~5 天** | 评测从纯程序化几何扩展到真实长尾资产 |
-| **P2-Misc** | 纳入 `scale_invariant_depth_error`、`histogram_intersection` 到 Profile；实现 `add_s_norm`、`reprojection_error_px` | **1~2 天** | 消除已实现但被忽略的指标盲区 |
+| **P2-Misc** | 补充 `histogram_intersection` 门禁阈值；实现 `add_s_norm`、`reprojection_error_px` | **1~2 天** | 消除姿态与直方图分布评估盲区 |
 
 ### 8.2 各阶段完成验收标准
 
-- **P0 完成**：运行 `pytest tests/test_bench_runner.py -v` 全部 30 套场景能输出所有声明指标的数值（无 `N/A`），HTML 报告雷达图画质轴非空白；
-- **P1-Topo 完成**：运行 `pytest tests/test_recon.py -v` 覆盖新增的量化拓扑指标，`check_manifold` 与 `check_watertight` 的布尔判定与新增量化版本逻辑一致；
+- **P0-Image & Alias 完成（✅ 已达成）**：运行 `pytest tests/test_metrics_image_quality.py tests/test_bench_runner.py -v` 产出 `psnr_db`、`ssim`、`ciede2000`、`lpips` 真实数值且 `METRIC_ALIASES` 自动映射通过；
+- **P1-Topo 完成**：运行 `pytest tests/test_geometry_oracle_parity.py tests/test_geometry_tier0.py -v` 断言 C++20 原生扩展 `synapse._c_geometry` 与 Python Oracle 100% 一致；
 - **P1-Data 完成**：Synapse-Bench 场景列表扩展至 36~40 套，其中至少 6 套使用 `AssetSource.OBJAVERSE` 或 `AssetSource.GSO`；
 - **全部完成**：`evaluate_metrics_gate(results, "rsi_promotion")` 覆盖全部本文档声明的指标，不遗漏任何设计文档规定的评估维度。
 
-### 8.3 评估脚本与报告模板（已实施 ✅）
+### 8.3 3D 模型评估模块、CLI 与报告模板（已实施 ✅）
 
-> **实施状态**: 已完成并通过 24 项自动化测试。
+> **实施状态**: 已收敛至核心库 `synapse.inspect.model_evaluator` + `synapse.inspect.eval_report`，同时支持主 CLI `synapse inspect evaluate` 与脚本包装器 `scripts/evaluate_3d_models.py`。
 
-#### 评估脚本
+#### 评估入口（统一 CLI 与脚本）
 
-- **路径**: [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py)
-- **功能**: 对输入目录中的 3D 模型文件（`.obj`, `.glb`, `.ply` 等）执行拓扑检查、多视角截图渲染与指标计算
+- **核心模块**: [`python/synapse/inspect/model_evaluator.py`](../python/synapse/inspect/model_evaluator.py) · **脚本入口**: [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py)
+- **功能**: 对输入目录中的 3D 模型文件（`.obj`, `.glb`, `.ply` 等）执行 Tier 0 双轨拓扑/自穿插/浮空碎块检查、多视角截图渲染、参考网格几何精度与多视角渲染画质比对
 - **CLI 接口**:
   ```bash
-  python scripts/evaluate_3d_models.py \
+  synapse inspect evaluate \
     --input-dir ./models/ \
     --output-dir ./eval_output/ \
-    --reference-dir ./reference_models/  \  # 可选: 参考网格用于计算 Chamfer 距离
-    --profile TRACK_A_ASSET \               # 门禁配置
-    --resolution 256 \                      # 截图渲染分辨率
-    --num-views 8 \                         # 多视角截图数量
-    --json                                   # 输出纯 JSON 到 stdout
+    --reference-dir ./reference_models/ \
+    --profile TRACK_A_ASSET \
+    --resolution 256 \
+    --num-views 8 \
+    --json
   ```
-- **退出码**: `0`=成功, `10`=参数校验失败, `20`=输入缺失, `40`=门禁未通过
-- **门禁配置**: `TRACK_A_ASSET`（默认, 严格拓扑+精度）, `TRACK_B_VIDEO`（宽松）, `RSI_PROMOTION`（最严格）
+  > 兼容别名：`--gate-profile` 等价于 `--profile`，`--views` 等价于 `--num-views`；非法档位名严格按 Fail-Closed 返回退出码 `10`。
+- **退出码**: `0`=全部通过, `10`=参数/档位校验失败, `20`=输入缺失, `40`=门禁未通过（`"status": "gate_failed"`，HTML/JSON 报告仍完整生成）
+- **门禁配置（与 `metrics/profiles.py` 对齐）**: `TRACK_A_ASSET`（默认，`chamfer_mm <= 5.0`）、`TRACK_B_VIDEO`（宽松，`chamfer_mm <= 8.0`）、`RSI_PROMOTION`（严苛，`chamfer_mm <= 4.0`）
 
 #### HTML 报告模板
 
@@ -574,10 +570,10 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 - **特性**:
   - 自包含 HTML（零外部依赖，内联 CSS/SVG）
   - 概要仪表盘（总量/通过/失败统计）
-  - 聚合雷达图（SVG）展示跨模型平均质量得分
+  - 聚合雷达图（SVG）展示跨模型平均质量得分（所有缺陷计数型指标严格按“越小越优 $\to 1.0$”正向归一化，剔除原始顶点/面数规模干扰）
   - 逐模型详情卡片:
     - **多视角截图画廊**（base64 内联 PNG，无 GPU 纯 NumPy 软件光栅化渲染）
-    - **拓扑摘要表**（流形/水密/顶点数/面数/边界边/退化面）
+    - **拓扑摘要表**（流形/水密/顶点数/面数/边界边/退化面/自穿插对）
     - **指标表**（指标值 + PASS/FAIL 徽章）
     - **逐模型雷达图**
 
@@ -585,12 +581,13 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 
 | 评估维度 | 指标 | 实现状态 |
 |:---|:---|:---|
-| **拓扑完整性** | `is_manifold`, `is_watertight`, `connected_components`, `boundary_edges`, `num_degenerate_faces` | ✅ 已实现 |
-| **几何精度** | `chamfer_mm`（需提供参考网格） | ✅ 已实现 |
+| **Tier 0 拓扑与自穿插** | `is_manifold`, `is_watertight`, `connected_components`, `boundary_edges`, `num_degenerate_faces`, `self_intersecting_pairs`, `floating_island_faces` | ✅ 已实现（C++20 + Python 双轨互验） |
+| **几何精度（含参考网格）** | `chamfer_mm`, `f_score_1mm` | ✅ 已实现（复用 `metrics/roundtrip.py`） |
+| **多视角渲染画质（含参考网格）** | `psnr_db`, `ssim`, `ciede2000`, `lpips` | ✅ 已实现（复用 `metrics/image_quality.py`） |
 | **视觉检查** | 8 视角软件光栅化截图（Front/Right/Back/Left 等） | ✅ 已实现 |
-| **门禁配置** | `TRACK_A_ASSET`, `TRACK_B_VIDEO`, `RSI_PROMOTION` | ✅ 已实现 |
+| **门禁配置** | `TRACK_A_ASSET` (`≤5mm`), `TRACK_B_VIDEO` (`≤8mm`), `RSI_PROMOTION` (`≤4mm`) | ✅ 已实现 |
 
 #### 测试覆盖
 
-- **路径**: [`tests/test_eval_report.py`](../tests/test_eval_report.py)
-- **覆盖**: 24 项测试（数据模型、HTML 报告生成、拓扑检查、指标归一化、CLI 集成冒烟测试）
+- **路径**: [`tests/test_eval_report.py`](../tests/test_eval_report.py) · [`tests/test_geometry_oracle_parity.py`](../tests/test_geometry_oracle_parity.py) · [`tests/test_metrics_image_quality.py`](../tests/test_metrics_image_quality.py)
+- **覆盖**: 数据模型、HTML 报告生成、雷达图正向归一化、双轨 C++/Python 几何一致性、参考网格几何+画质评估及 CLI 退出码契约测试

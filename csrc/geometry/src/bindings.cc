@@ -2,12 +2,8 @@
 /// @brief pybind11 bindings for the synapse native geometry validation kernel.
 ///
 /// Exposes the `_c_geometry` Python module with numpy-based entry points.
-/// Vertices are passed as (N, 3) float64 arrays; faces as flat int64 arrays.
-///
-/// Main entry point:
-///   validate_mesh_geometry(vertices, faces, verts_per_face, ...) -> dict
-///
-/// Individual check functions are also exposed for fine-grained use.
+/// Vertices are passed as (N, 3) float arrays; faces may be passed as either
+/// 2-D (F, K) integer arrays or 1-D flat index buffers of length (F * K).
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -17,6 +13,8 @@
 
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace py = pybind11;
@@ -24,125 +22,170 @@ namespace py = pybind11;
 namespace synapse::geometry {
 namespace {
 
+using DoubleArray = py::array_t<double, py::array::c_style | py::array::forcecast>;
+using Int64Array = py::array_t<int64_t, py::array::c_style | py::array::forcecast>;
+
 // ---------------------------------------------------------------------------
 // Helpers: numpy array → span conversions
 // ---------------------------------------------------------------------------
 
-/// Interpret a contiguous (N, 3) float64 numpy array as a span of Vec3.
-///
-/// Vec3 (= aether::DVec3) has 3 consecutive doubles with standard layout,
-/// so reinterpret_cast is safe as long as sizeof(Vec3) == 3 * sizeof(double)
-/// and the array is C-contiguous.
-std::span<const Vec3> verticesFromNumpy(const py::array_t<double>& arr) {
+/// Interpret a C-contiguous (N, 3) float64 numpy array as a span of Vec3.
+std::span<const Vec3> verticesFromNumpy(const DoubleArray& arr) {
   static_assert(sizeof(Vec3) == 3 * sizeof(double),
                 "Vec3 must be tightly packed (no padding).");
 
   auto buf = arr.request();
   if (buf.ndim != 2 || buf.shape[1] != 3) {
     throw std::invalid_argument(
-        "vertices array must have shape (N, 3), got (" +
-        std::to_string(buf.shape[0]) + ", " +
-        std::to_string(buf.ndim > 1 ? buf.shape[1] : 0) + ").");
+        "vertices array must have shape (N, 3), got ndim=" +
+        std::to_string(buf.ndim) + ".");
   }
-
-  // Ensure C-contiguous layout.
-  if (buf.strides[0] != 3 * static_cast<py::ssize_t>(sizeof(double)) ||
-      buf.strides[1] != static_cast<py::ssize_t>(sizeof(double))) {
-    throw std::invalid_argument(
-        "vertices array must be C-contiguous (row-major, no padding).");
+  if (buf.shape[0] == 0) {
+    return {};
   }
 
   const auto* ptr = reinterpret_cast<const Vec3*>(buf.ptr);
   return {ptr, static_cast<size_t>(buf.shape[0])};
 }
 
-/// Interpret a flat int64 numpy array as a span of int64_t.
-std::span<const int64_t> facesFromNumpy(const py::array_t<int64_t>& arr) {
+struct ParsedFaces {
+  std::span<const int64_t> span;
+  int verts_per_face;
+};
+
+/// Accept either a 2-D (F, K) integer array or a 1-D flat index buffer.
+ParsedFaces facesFromNumpy(const Int64Array& arr, int default_vpf) {
   auto buf = arr.request();
-  if (buf.ndim != 1) {
-    throw std::invalid_argument(
-        "faces array must be 1-D (flat index buffer), got ndim=" +
-        std::to_string(buf.ndim) + ".");
+  if (buf.ndim == 2) {
+    const int inferred_vpf = static_cast<int>(buf.shape[1]);
+    if (inferred_vpf < 3) {
+      throw std::invalid_argument(
+          "2-D faces array must have shape (F, K) with K >= 3, got K=" +
+          std::to_string(inferred_vpf) + ".");
+    }
+    const size_t total =
+        static_cast<size_t>(buf.shape[0]) * static_cast<size_t>(buf.shape[1]);
+    if (total == 0) {
+      return {{}, inferred_vpf};
+    }
+    const auto* ptr = static_cast<const int64_t*>(buf.ptr);
+    return {{ptr, total}, inferred_vpf};
   }
-  const auto* ptr = static_cast<const int64_t*>(buf.ptr);
-  return {ptr, static_cast<size_t>(buf.shape[0])};
+
+  if (buf.ndim == 1) {
+    if (default_vpf < 3) {
+      throw std::invalid_argument(
+          "verts_per_face must be >= 3 for 1-D faces buffer, got " +
+          std::to_string(default_vpf) + ".");
+    }
+    if (buf.shape[0] == 0) {
+      return {{}, default_vpf};
+    }
+    if (buf.shape[0] % default_vpf != 0) {
+      throw std::invalid_argument(
+          "1-D faces buffer length (" + std::to_string(buf.shape[0]) +
+          ") must be divisible by verts_per_face (" +
+          std::to_string(default_vpf) + ").");
+    }
+    const auto* ptr = static_cast<const int64_t*>(buf.ptr);
+    return {{ptr, static_cast<size_t>(buf.shape[0])}, default_vpf};
+  }
+
+  throw std::invalid_argument(
+      "faces array must be 1-D (flat) or 2-D (F, K), got ndim=" +
+      std::to_string(buf.ndim) + ".");
 }
 
 // ---------------------------------------------------------------------------
 // Wrapped Python-facing functions
 // ---------------------------------------------------------------------------
 
-/// Python wrapper for checkManifold.
-bool pyCheckManifold(const py::array_t<double>& vertices,
-                     const py::array_t<int64_t>& faces,
+bool pyCheckManifold(const DoubleArray& vertices,
+                     const Int64Array& faces,
                      int verts_per_face) {
+  auto parsed = facesFromNumpy(faces, verts_per_face);
   return checkManifold(verticesFromNumpy(vertices),
-                       facesFromNumpy(faces),
-                       verts_per_face);
+                       parsed.span,
+                       parsed.verts_per_face);
 }
 
-/// Python wrapper for checkWatertight.
-bool pyCheckWatertight(const py::array_t<double>& vertices,
-                       const py::array_t<int64_t>& faces,
+bool pyCheckWatertight(const DoubleArray& vertices,
+                       const Int64Array& faces,
                        int verts_per_face) {
+  auto parsed = facesFromNumpy(faces, verts_per_face);
   return checkWatertight(verticesFromNumpy(vertices),
-                         facesFromNumpy(faces),
-                         verts_per_face);
+                         parsed.span,
+                         parsed.verts_per_face);
 }
 
-/// Python wrapper for checkDegenerateFaces.
-std::vector<int64_t> pyCheckDegenerateFaces(
-    const py::array_t<double>& vertices,
-    const py::array_t<int64_t>& faces,
+py::array_t<int64_t> pyCheckDegenerateFaces(
+    const DoubleArray& vertices,
+    const Int64Array& faces,
     int verts_per_face,
     double min_area,
     double max_aspect_ratio) {
-  return checkDegenerateFaces(verticesFromNumpy(vertices),
-                              facesFromNumpy(faces),
-                              verts_per_face,
-                              min_area,
-                              max_aspect_ratio);
+  auto parsed = facesFromNumpy(faces, verts_per_face);
+  auto vec = checkDegenerateFaces(verticesFromNumpy(vertices),
+                                  parsed.span,
+                                  parsed.verts_per_face,
+                                  min_area,
+                                  max_aspect_ratio);
+  py::array_t<int64_t> out(static_cast<py::ssize_t>(vec.size()));
+  if (!vec.empty()) {
+    auto out_buf = out.request();
+    auto* dst = static_cast<int64_t*>(out_buf.ptr);
+    std::copy(vec.begin(), vec.end(), dst);
+  }
+  return out;
 }
 
-/// Python wrapper for checkSelfIntersections.
 std::vector<std::pair<int64_t, int64_t>> pyCheckSelfIntersections(
-    const py::array_t<double>& vertices,
-    const py::array_t<int64_t>& faces,
+    const DoubleArray& vertices,
+    const Int64Array& faces,
     int verts_per_face) {
+  auto parsed = facesFromNumpy(faces, verts_per_face);
   return checkSelfIntersections(verticesFromNumpy(vertices),
-                                facesFromNumpy(faces),
-                                verts_per_face);
+                                parsed.span,
+                                parsed.verts_per_face);
 }
 
-/// Python wrapper for findConnectedComponents.
-std::vector<std::vector<int64_t>> pyFindConnectedComponents(
-    const py::array_t<int64_t>& faces,
+py::list pyFindConnectedComponents(
+    const Int64Array& faces,
     int verts_per_face,
     int64_t num_vertices) {
-  return findConnectedComponents(facesFromNumpy(faces),
-                                 verts_per_face,
-                                 num_vertices);
+  auto parsed = facesFromNumpy(faces, verts_per_face);
+  auto comps = findConnectedComponents(parsed.span,
+                                       parsed.verts_per_face,
+                                       num_vertices);
+  py::list out;
+  for (const auto& comp : comps) {
+    py::array_t<int64_t> arr(static_cast<py::ssize_t>(comp.size()));
+    if (!comp.empty()) {
+      auto buf = arr.request();
+      std::copy(comp.begin(), comp.end(), static_cast<int64_t*>(buf.ptr));
+    }
+    out.append(std::move(arr));
+  }
+  return out;
 }
 
-/// Python wrapper for validateMeshGeometry — returns a dict matching the
-/// GeometricValidationResult fields.
 py::dict pyValidateMeshGeometry(
-    const py::array_t<double>& vertices,
-    const py::array_t<int64_t>& faces,
+    const DoubleArray& vertices,
+    const Int64Array& faces,
     int verts_per_face,
     bool require_watertight,
     double min_area,
     double max_aspect_ratio,
     double min_face_ratio) {
+  auto parsed = facesFromNumpy(faces, verts_per_face);
   auto r = validateMeshGeometry(verticesFromNumpy(vertices),
-                                facesFromNumpy(faces),
-                                verts_per_face,
+                                parsed.span,
+                                parsed.verts_per_face,
                                 require_watertight,
                                 min_area,
                                 max_aspect_ratio,
                                 min_face_ratio);
 
-  // Convert self_intersecting_pairs to a list of (i, j) tuples.
   py::list si_pairs;
   for (const auto& [a, b] : r.self_intersecting_pairs) {
     si_pairs.append(py::make_tuple(a, b));
@@ -171,71 +214,42 @@ py::dict pyValidateMeshGeometry(
 
 PYBIND11_MODULE(_c_geometry, m) {
   m.doc() = R"pbdoc(
-    synapse._c_geometry — native C++ geometry validation kernel.
+    synapse._c_geometry — native C++20 geometry validation kernel.
 
     Provides high-performance mesh topology and geometry checks:
       - 2-manifold validation
       - watertight (closed manifold) validation
       - degenerate face detection (area / aspect ratio)
-      - self-intersection detection (AABB broad phase + Möller–Trumbore)
-      - connected component analysis (Union-Find)
+      - self-intersection detection (AABB broad phase + coplanar SAT / Möller–Trumbore)
+      - connected component analysis (edge-sharing Union-Find)
 
-    All functions accept numpy arrays directly.
     Vertices: float64 array of shape (N, 3).
-    Faces:    int64 flat index buffer of length (F * verts_per_face).
+    Faces:    int64 2-D array of shape (F, K) or 1-D flat buffer of length (F * K).
   )pbdoc";
 
   using namespace synapse::geometry;
 
-  // ---- Individual check functions ----
-
   m.def("check_manifold", &pyCheckManifold,
         py::arg("vertices"), py::arg("faces"), py::arg("verts_per_face") = 3,
-        R"pbdoc(
-          Check if the mesh is a valid 2-manifold.
-
-          Returns True if every edge has at most 2 incident faces and each
-          vertex umbrella is topologically connected.
-        )pbdoc");
+        "Check if the mesh is a valid 2-manifold.");
 
   m.def("check_watertight", &pyCheckWatertight,
         py::arg("vertices"), py::arg("faces"), py::arg("verts_per_face") = 3,
-        R"pbdoc(
-          Check if the mesh is watertight (closed 2-manifold).
-
-          Returns True if the mesh is manifold and every edge has exactly 2
-          faces with opposite winding.
-        )pbdoc");
+        "Check if the mesh is watertight (closed 2-manifold).");
 
   m.def("check_degenerate_faces", &pyCheckDegenerateFaces,
         py::arg("vertices"), py::arg("faces"), py::arg("verts_per_face") = 3,
         py::arg("min_area") = 1e-8, py::arg("max_aspect_ratio") = 100.0,
-        R"pbdoc(
-          Find degenerate faces (near-zero area or extreme aspect ratio).
-
-          Returns a list of face indices.
-        )pbdoc");
+        "Find degenerate faces (near-zero area or extreme aspect ratio).");
 
   m.def("check_self_intersections", &pyCheckSelfIntersections,
         py::arg("vertices"), py::arg("faces"), py::arg("verts_per_face") = 3,
-        R"pbdoc(
-          Find self-intersecting face pairs.
-
-          Uses AABB broad-phase + Möller–Trumbore narrow-phase.
-          Returns a sorted list of (i, j) tuples where i < j.
-        )pbdoc");
+        "Find self-intersecting face pairs (sorted (i, j) tuples with i < j).");
 
   m.def("find_connected_components", &pyFindConnectedComponents,
         py::arg("faces"), py::arg("verts_per_face") = 3,
         py::arg("num_vertices") = 0,
-        R"pbdoc(
-          Find connected components via Union-Find.
-
-          Returns a list of lists; each inner list contains the face indices
-          belonging to one connected component.
-        )pbdoc");
-
-  // ---- Full validation entry point ----
+        "Find edge-connected components sorted largest-first.");
 
   m.def("validate_mesh_geometry", &pyValidateMeshGeometry,
         py::arg("vertices"), py::arg("faces"), py::arg("verts_per_face") = 3,
@@ -243,14 +257,5 @@ PYBIND11_MODULE(_c_geometry, m) {
         py::arg("min_area") = 1e-8,
         py::arg("max_aspect_ratio") = 100.0,
         py::arg("min_face_ratio") = 0.01,
-        R"pbdoc(
-          Full Tier-0 geometric mesh validation.
-
-          Runs manifold, watertight, degenerate-face, self-intersection, and
-          connected-component checks.  Returns a dict with fields:
-            is_manifold, is_watertight, num_vertices, num_faces,
-            degenerate_face_indices, self_intersecting_pairs,
-            num_connected_components, floating_island_face_indices,
-            passed, failure_reasons.
-        )pbdoc");
+        "Full Tier-0 geometric mesh validation.");
 }

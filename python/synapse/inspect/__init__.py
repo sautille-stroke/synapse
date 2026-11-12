@@ -19,6 +19,12 @@ from synapse.inspect.align import (
     compute_silhouette_iou,
     generate_fibonacci_sphere_cameras,
 )
+from synapse.inspect.eval_report import (
+    EvalReportData,
+    ModelEvalResult,
+    TopologyResult,
+    generate_eval_html_report,
+)
 from synapse.inspect.flywheel_exporter import (
     DPORecord,
     IntentGroup,
@@ -39,17 +45,17 @@ from synapse.inspect.macro import (
     compute_isotopic_residual_heatmap,
     plan_macro_camera_for_roi,
 )
+from synapse.inspect.model_evaluator import (
+    GATE_PROFILES,
+    evaluate_3d_models_directory,
+    evaluate_single_model,
+    normalize_eval_profile,
+)
 from synapse.inspect.schemas import (
     CameraPose,
     DefectAnnotation3D,
     GeometricValidationResult,
     InspectionReport,
-)
-from synapse.inspect.eval_report import (
-    EvalReportData,
-    ModelEvalResult,
-    TopologyResult,
-    generate_eval_html_report,
 )
 
 __all__ = [
@@ -77,4 +83,8 @@ __all__ = [
     "ModelEvalResult",
     "TopologyResult",
     "generate_eval_html_report",
+    "GATE_PROFILES",
+    "evaluate_3d_models_directory",
+    "evaluate_single_model",
+    "normalize_eval_profile",
 ]

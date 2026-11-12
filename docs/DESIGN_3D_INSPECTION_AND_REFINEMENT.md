@@ -260,86 +260,113 @@
 
 所有接口与序列化格式严格使用类型安全模型定义。
 
-### 5.1 缺陷检测报告数据契约 (`InspectionReport`)
+### 5.1 缺陷检测与几何验证数据契约 (`schemas.py` SSOT)
+
+> 与 [`python/synapse/inspect/schemas.py`](../python/synapse/inspect/schemas.py) 100% 对齐：
 
 ```python
-from typing import List, Literal, Optional, Tuple
+from typing import Literal
 from pydantic import BaseModel, Field
 
 class CameraPose(BaseModel):
-    eye: Tuple[float, float, float]
-    target: Tuple[float, float, float]
-    up: Tuple[float, float, float] = (0.0, 1.0, 0.0)
-    fov_deg: float = 45.0
+    position: list[float] = Field(..., min_length=3, max_length=3, description="世界空间相机位置 [x, y, z]")
+    rotation: list[float] = Field(..., min_length=4, max_length=9, description="列主序 3x3 旋转矩阵(9)或四元数 [x, y, z, w](4)")
+    fov_deg: float = Field(..., gt=0.0, le=180.0)
+    resolution: tuple[int, int] = (512, 512)
 
 class DefectAnnotation3D(BaseModel):
-    defect_id: str = Field(..., description="唯一缺陷 ID，格式 DEF-{seq}")
+    defect_id: str
     category: Literal[
-        "non_manifold",
         "mesh_crumple",
         "texture_stretch",
         "seam_tearing",
         "floating_debris",
-        "anatomical_distortion"
+        "anatomical_distortion",
+        "plastic_shading",
     ]
-    severity: float = Field(..., ge=0.0, le=1.0, description="严重程度，0 为轻微，1 为阻断")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Jev 校准置信度")
-    center_3d: Tuple[float, float, float] = Field(..., description="三维空间中心锚点")
-    bounding_radius_m: float = Field(..., gt=0.0, description="三维缺陷包围球半径(米)")
-    affected_vertices_count: int = Field(..., ge=1)
-    macro_camera: CameraPose = Field(..., description="微距特写机位参数")
-    macro_crop_uri: str = Field(..., description="局部微距渲染切片路径")
-    suggested_action: Literal["auto_remesh", "auto_inpaint_texture", "manual_hitl"]
+    severity: float = Field(..., ge=0.0, le=1.0)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    center_3d: list[float] = Field(..., min_length=3, max_length=3)
+    bounding_radius_m: float = Field(..., ge=0.0)
+    affected_vertices_count: int = Field(..., ge=0)
+    macro_camera: CameraPose | None = None
+    macro_crop_uri: str | None = None
+    suggested_action: Literal[
+        "auto_remesh", "auto_inpaint_texture", "manual_hitl", "accept"
+    ] = "accept"
 
 class InspectionReport(BaseModel):
     schema_version: str = "2.0.0"
     asset_id: str
-    timestamp_utc: int
-    alignment_metrics: dict = Field(..., description="包含 silhouette_iou, reprojection_error 等")
-    global_metrics: dict = Field(..., description="包含 dino_cosine_sim, lpips, normal_angular_error 等")
-    defects: List[DefectAnnotation3D] = Field(default_factory=list)
-    overall_passed: bool
+    asset_name: str
+    inspection_timestamp: str
+    overall_quality_score: float = Field(..., ge=0.0, le=1.0)
+    defects: list[DefectAnnotation3D] = Field(default_factory=list)
     requires_hitl: bool = False
+    camera_poses_evaluated: list[CameraPose] = Field(default_factory=list)
+    metrics_summary: dict[str, float] = Field(default_factory=dict)
+
+class GeometricValidationResult(BaseModel):
+    is_manifold: bool
+    is_watertight: bool
+    num_vertices: int = Field(..., ge=0)
+    num_faces: int = Field(..., ge=0)
+    degenerate_face_indices: list[int] = Field(default_factory=list)
+    self_intersecting_pairs: list[tuple[int, int]] = Field(default_factory=list)
+    num_connected_components: int = Field(default=1, ge=0)
+    floating_island_face_indices: list[int] = Field(default_factory=list)
+    passed: bool
+    failure_reasons: list[str] = Field(default_factory=list)
 ```
 
 ---
 
 ## 6. CLI 命令行与容器执行规范 (Stateless CLI Specification)
 
-遵循 `synapse` 无服务端铁律，质检与修复作为无状态 CLI 命令运行在容器内。
+遵循 `synapse` 无服务端铁律，质检与修复作为无状态 CLI 命令运行在容器内，参数名严格对齐 [`python/synapse/cli/__init__.py`](../python/synapse/cli/__init__.py)。
 
 ### 6.1 常用命令清单
 
 ```bash
-# 1. 单图相机位姿对齐与视锥反求
+# 0. Tier 0 确定性几何拓扑硬门禁检查（支持 auto / native C++20 / python Oracle 后端）
+synapse inspect mesh assets/model.obj \
+  --backend auto \
+  --require-watertight \
+  --report run/geometry_validation.json \
+  --json
+
+# 1. 批量 3D 模型多维评估与自包含 HTML 雷达图报告生成
+synapse inspect evaluate \
+  --input-dir assets/models/ \
+  --output-dir run/eval_output/ \
+  --reference-dir assets/reference_models/ \
+  --profile TRACK_A_ASSET \
+  --resolution 256 \
+  --num-views 8 \
+  --json
+
+# 2. 单图相机位姿对齐与视锥反求
 synapse inspect align \
-  --ref-image assets/concept_art.png \
   --mesh assets/model.glb \
-  --out-pose run/aligned_camera.json \
+  --image assets/concept_art.png \
   --json
 
-# 2. 同机位离屏多通道渲染与多级比对
+# 3. Visual Jev 共享视觉上下文判别评估
 synapse inspect eval \
-  --ref-image assets/concept_art.png \
-  --mesh assets/model.glb \
-  --camera run/aligned_camera.json \
-  --jev-model autotrust/JEV-27B-VL \
-  --out-report run/inspection_report.json \
+  --asset-id hero_001 \
+  --asset-name "Armored Knight" \
   --json
 
-# 3. 根据质检报告自动执行微距精修
+# 4. 根据质检报告自动执行目标精修路由
 synapse inspect refine \
-  --mesh assets/model.glb \
   --report run/inspection_report.json \
-  --refine-backend trellis-refine \
-  --out-mesh assets/model_refined.glb \
   --json
 
-# 4. 从历史编辑器操作日志导出强化学习 (DPO/PRM) 训练数据集
+# 5. 从历史编辑器操作日志导出强化学习 (DPO/PRM) 训练数据集
 synapse inspect export-rl-data \
-  --journal-dir /data/journals/ \
+  --log-dir /data/journals/ \
+  --output train_dpo_pairs.jsonl \
   --format dpo \
-  --out-dataset train_dpo_pairs.jsonl \
   --json
 ```
 
@@ -348,19 +375,20 @@ synapse inspect export-rl-data \
 | 退出码 | 状态含义 | 触发场景 | `agent_fix_hint` 处理指引 |
 |:---:|:---|:---|:---|
 | **`0`** | 执行成功 | 质检通过，或缺陷已由精修模块成功自动修复并通过往返验证 | 无需干预，直接流入下游资产库 |
-| **`10`** | 契约/参数校验失败 | 输入的 Mesh 格式损坏，或相机内参缺失 | 检查 glTF/OBJ 文件完整性与 JSON 参数格式 |
-| **`20`** | 输入文件缺失 | 参考图路径不存在，或 VFS 资产哈希校验失败 | 确认输入资产已挂载并在 VFS 中建立索引 |
+| **`10`** | 契约/参数校验失败 | 输入的 Mesh 格式损坏、非法 `--profile` 档位或参数缺失 | 检查 glTF/OBJ 文件完整性与 CLI 参数格式 |
+| **`20`** | 输入文件缺失 | 参考图/网格路径不存在，或 VFS 资产哈希校验失败 | 确认输入资产已挂载并在 VFS 中建立索引 |
 | **`30`** | GPU 算力故障 | 姿态估计显存不足 (OOM)，或 Jev 推理后端离线 | 降低批量视角切片尺寸，或检查 vLLM 实例健康度 |
-| **`40`** | 质检熔断 / HITL 降级 | 存在重度结构缺陷且无法自动修复；或人工精修超 15 分钟 | 唤起 3D 编辑器微距机位卡片，分配技术美术手工精修 |
+| **`40`** | 质检门禁未达标 / HITL 熔断 | Tier 0 拓扑/穿插硬门禁未通过、存在重度结构缺陷，或人工精修超 15 分钟 | 执行拓扑清洗自愈，或唤起 3D 编辑器微距机位卡片手工精修 |
 
 ---
 
-## 7. 跨仓边界澄清与主计划映射 (Phase M6: `PR-20` ~ `PR-23`)
+## 7. 自包含双轨几何核与外部工具链边界澄清 (Phase M6: `PR-20` ~ `PR-23`)
 
 > [!IMPORTANT]
-> **与 `vg-core`（NG-3）及 `RFC 0053`（Agentic 3D Repair Harness）的去重边界**：
-> - 密集几何拓扑校验（非流形边、半边流形度、BVH 距离、四边面重拓扑、足底零滑移 IK）严格委托 **`vg-core` C++20/CUDA** 经 `synapse.bridge.vg_bridge` 执行，严禁在 `synapse.inspect` 中用 Python 重写几何网格循环；
-> - 交互式 MCP 修复沙箱（`RepairSandbox`）与 8 机位摄影棚评测归属 `forgekit` / `grand-studio` / `asset-forge`（RFC 0053）；`synapse.inspect` 聚焦于 **DINOv2 姿态反求包装、微距视锥规划、Visual Jev 校准 Logits 强类型裁决、以及 RFC 0020/0021 DPO/PRM 训练数据导出**。
+> **与 §2.1 双轨几何架构、`vg-core` 及 `RFC 0053`（Agentic 3D Repair Harness）的精确边界（已消除历史文档脑裂）**：
+> - **Tier 0 几何拓扑硬门禁全仓自包含**：2-流形（含顶点扇单伞连通性）、水密性、退化/针状面、AABB 树 + 共面 2D SAT + Möller–Trumbore 自穿插检测、连通域并查集与浮空碎块识别，已完全内聚于本仓 **`csrc/geometry/`（C++20 原生算子，`synapse._c_geometry`）+ `synapse.recon.geometry`（Python Oracle）**，通过 `tests/test_geometry_oracle_parity.py` 锁死 100% 一致，脱离对外部 `vg-core` 的编译依赖；
+> - **重型网格重拓扑与骨骼逆运动学算子**：高算力四边面重拓扑（QuadWild）、关节刚体骨长 IK 求解与 Graph-Cut 多视角去光照缝合，在生产容器内通过 `synapse.bridge.vg_bridge` 调度 C++20/CUDA 重型算子执行；
+> - **交互式 MCP 修复沙箱**：`RepairSandbox` 与 8 机位摄影棚交互评测归属 `forgekit` / `grand-studio` / `asset-forge`（RFC 0053）；`synapse.inspect` 聚焦于 **Tier 0 自包含几何门禁、多维模型评估报告（`model_evaluator` / `eval_report`）、DINOv2 姿态反求、微距视锥规划、Visual Jev 校准 Logits 裁决以及 RFC 0020/0021 DPO/PRM 训练数据导出**。
 > - 详细工程拆解见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
 
 | 原子 PR | 交付模块 | 核心成果 | 依赖项 | 预估工时 |

@@ -29,10 +29,10 @@
 
 | 文件 | 变更 | 说明 |
 |:-----|:-----|:-----|
-| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | **新建** (+347) | 3D 生成模型质量提升方法论与训练数据工程规范 |
-| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | 修改 (+59/-4) | 新增 Tier 0 确定性几何门禁、脱耦自包含架构边界 |
-| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](file:///h:/dervgen/synapse/docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 修改 (+1/-1) | 更新自包含架构引用 |
-| [`AGENTS.md`](file:///h:/dervgen/synapse/AGENTS.md) | 修改 (+1/-1) | 添加文档导航条目 |
+| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | **新建** (+347) | 3D 生成模型质量提升方法论与训练数据工程规范 |
+| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | 修改 (+59/-4) | 新增 Tier 0 确定性几何门禁、脱耦自包含架构边界 |
+| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 修改 (+1/-1) | 更新自包含架构引用 |
+| [`AGENTS.md`](../AGENTS.md) | 修改 (+1/-1) | 添加文档导航条目 |
 
 ### 核心内容
 
@@ -60,9 +60,9 @@
 
 | 文件 | 变更 | 说明 |
 |:-----|:-----|:-----|
-| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | 修改 (+203) | 升级至 v2.0，新增 3 个核心章节 |
-| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | 修改 (+5/-3) | 添加跨文档对齐说明 |
-| [`AGENTS.md`](file:///h:/dervgen/synapse/AGENTS.md) | 修改 (+1) | 更新导航标题 |
+| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | 修改 (+203) | 升级至 v2.0，新增 3 个核心章节 |
+| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | 修改 (+5/-3) | 添加跨文档对齐说明 |
+| [`AGENTS.md`](../AGENTS.md) | 修改 (+1) | 更新导航标题 |
 
 ### 核心内容 — v2.0 新增 3 个章节
 
@@ -111,14 +111,14 @@
 
 | 文件 | 行数 | 变更 | 说明 |
 |:-----|:-----|:-----|:-----|
-| [`python/synapse/inspect/eval_report.py`](file:///h:/dervgen/synapse/python/synapse/inspect/eval_report.py) | 533 | **新建** | HTML 报告生成器 |
-| [`scripts/evaluate_3d_models.py`](file:///h:/dervgen/synapse/scripts/evaluate_3d_models.py) | 625 | **新建** | CLI 评估脚本 |
-| [`tests/test_eval_report.py`](file:///h:/dervgen/synapse/tests/test_eval_report.py) | 396 | **新建** | 24 项自动化测试 |
-| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | +49 | 修改 | 新增 §8.3 评估脚本文档 |
+| [`python/synapse/inspect/eval_report.py`](../python/synapse/inspect/eval_report.py) | 533 | **新建** | HTML 报告生成器 |
+| [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py) | 625 | **新建** | CLI 评估脚本 |
+| [`tests/test_eval_report.py`](../tests/test_eval_report.py) | 396 | **新建** | 24 项自动化测试 |
+| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | +49 | 修改 | 新增 §8.3 评估脚本文档 |
 
 ---
 
-### 4.1 评估脚本 [`scripts/evaluate_3d_models.py`](file:///h:/dervgen/synapse/scripts/evaluate_3d_models.py)
+### 4.1 评估脚本 [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py)
 
 #### CLI 接口
 
@@ -185,7 +185,7 @@ flowchart TD
 
 ---
 
-### 4.2 HTML 报告生成器 [`python/synapse/inspect/eval_report.py`](file:///h:/dervgen/synapse/python/synapse/inspect/eval_report.py)
+### 4.2 HTML 报告生成器 [`python/synapse/inspect/eval_report.py`](../python/synapse/inspect/eval_report.py)
 
 #### 数据模型
 
@@ -248,7 +248,7 @@ class EvalReportData:
 
 ---
 
-### 4.3 测试覆盖 [`tests/test_eval_report.py`](file:///h:/dervgen/synapse/tests/test_eval_report.py)
+### 4.3 测试覆盖 [`tests/test_eval_report.py`](../tests/test_eval_report.py)
 
 #### 测试清单 (24 项全部通过)
 
@@ -306,32 +306,50 @@ Result:   739 passed, 2 skipped, 0 failures ✅
 
 | 文件 | 行数 | 用途 |
 |:-----|:-----|:-----|
-| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | 595 | 设计规范 v2.0 (方法论 + 指标矩阵 + 数据集 + 路线图) |
-| [`python/synapse/inspect/eval_report.py`](file:///h:/dervgen/synapse/python/synapse/inspect/eval_report.py) | 533 | HTML 报告生成器 |
-| [`scripts/evaluate_3d_models.py`](file:///h:/dervgen/synapse/scripts/evaluate_3d_models.py) | 625 | CLI 评估脚本 |
-| [`tests/test_eval_report.py`](file:///h:/dervgen/synapse/tests/test_eval_report.py) | 396 | 24 项自动化测试 |
+| [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | 595+ | 设计规范 v2.1 (方法论 + 指标矩阵 + 数据集 + 路线图) |
+| [`python/synapse/inspect/model_evaluator.py`](../python/synapse/inspect/model_evaluator.py) | 360+ | 核心库 3D 模型评估引擎（统一服务 CLI 与脚本） |
+| [`python/synapse/inspect/eval_report.py`](../python/synapse/inspect/eval_report.py) | 550+ | HTML 报告生成器（含雷达图正向归一化） |
+| [`python/synapse/metrics/image_quality.py`](../python/synapse/metrics/image_quality.py) | 280+ | P0 渲染画质指标（`psnr_db`, `ssim`, `ciede2000`, `lpips`） |
+| [`scripts/evaluate_3d_models.py`](../scripts/evaluate_3d_models.py) | 120+ | CLI 评估脚本（委托 `model_evaluator.py`） |
+| [`tests/test_eval_report.py`](../tests/test_eval_report.py) | 450+ | HTML 报告、归一化与 CLI 自动化测试 |
+| [`tests/test_geometry_oracle_parity.py`](../tests/test_geometry_oracle_parity.py) | 240+ | C++20 `csrc/geometry` 与 Python Oracle 双轨 100% 一致性黄金测试 |
 
 ### 修改文件
 
 | 文件 | 变更摘要 |
 |:-----|:---------|
-| [`AGENTS.md`](file:///h:/dervgen/synapse/AGENTS.md) | 添加文档导航条目 |
-| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](file:///h:/dervgen/synapse/docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | Tier 0 门禁 + 跨文档对齐说明 |
-| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](file:///h:/dervgen/synapse/docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 架构引用更新 |
+| [`AGENTS.md`](../AGENTS.md) | 添加文档导航条目 |
+| [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | Tier 0 门禁、Pydantic 契约、CLI 参数与跨仓边界对齐 |
+| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 架构引用与双轨几何核说明更新 |
 
 ---
 
 ## 七、后续 TODO（未在本次实施范围内）
 
-> 以下均来自 §8 路线图，按优先级排列：
+> 以下均来自 §8 路线图（P0 图像指标、场景别名与双轨几何核一致性已完成并移入第八节）：
 
 | 优先级 | 项目 | 预期工时 | 依赖 |
 |:-------|:-----|:---------|:-----|
-| 🔴 P0 | 实现 `psnr_db`/`ssim`/`lpips`/`ciede2000` 计算函数 | 1-3 天 | `metrics/image_quality.py` (新建) |
-| 🔴 P0 | 实现 `dino_cosine_sim`/`lpips_vgg` 感知指标 | 1-2 天 | 可选依赖 `torch`/`timm` |
-| 🔴 P0 | 修复场景指标名称映射 (alias) | 0.5 天 | `metrics/profiles.py` |
-| 🟡 P1 | 量化拓扑指标 (euler, components, non-manifold edges) | 2-3 天 | `recon/geometry.py` |
-| 🟡 P1 | UV 质量指标 (面积畸变, 接缝不连续) | 2-3 天 | 新建模块 |
+| 🔴 P0 | 实现 `dino_cosine_sim`/`lpips_vgg` 预训练骨干感知指标 | 1-2 天 | 可选依赖 `torch`/`timm` |
+| 🟡 P1 | 补充导出 `euler_characteristic` 与 `non_manifold_edges_count` | 1-2 天 | `recon/geometry.py` |
+| 🟡 P1 | UV 质量指标 (面积畸变, 接缝不连续) | 2-3 天 | `recon/geometry.py` |
 | 🟡 P1 | 集成 GSO + Objaverse 外部数据集 | 3-5 天 | 网络 + 存储 |
 | 🟢 P2 | 报告增加参考网格对比截图 (side-by-side) | 1 天 | `eval_report.py` |
 | 🟢 P2 | 增加 `--compare-mode` 差分热力图 | 1-2 天 | `eval_report.py` |
+
+---
+
+## 八、Review 后深度审计修复与增强记录 (2026-11-13, `gemini4`)
+
+1. **修复 `csrc/geometry` ↔ `geometry_gate.py` 原生扩展调用崩溃与双轨语义分叉（P0）**：
+   - 修复 C++ pybind11 绑定仅接受 1D 扁平数组而 Python 传入 2D `(F, K)` 数组导致原生路径一启用即抛 `RuntimeError` 的阻断缺陷；
+   - 统一 C++ 与 Python Oracle 的越界/NaN 防护、顶点扇单伞流形校验、共享边连通分量并查集（含确定性排序）及 `min_face_ratio * num_faces` 浮空碎块公式，并补齐 `csrc/geometry/.bazelversion`、`test_geometry.cc` 与 `tests/test_geometry_oracle_parity.py`。
+2. **修复共面三角形自穿插误判率 100% 的数学 Bug（P0）**：
+   - 将 Python Oracle 中存在轴退化的 11 轴 OBB SAT 替换为与 C++ 完全一致的精确有向平面距离裁剪 + 共面 2D SAT + Möller–Trumbore 算法，消除平面细分网格误报。
+3. **修复 HTML 雷达图指标反向归一化与 CLI 契约不一致（P1）**：
+   - 修复 `eval_report.py` 中 `num_degenerate_faces=0`、`boundary_edges=0` 映射到 `0.0` 分（越干净分越低）及 `vertex_count`/`face_count` 污染质量雷达图的问题；
+   - 收敛评估核至 `synapse.inspect.model_evaluator`，挂载 `synapse inspect evaluate` 子命令，对齐 `chamfer_mm` 门禁阈值（`8.0 / 5.0 / 4.0 mm`），非法 `--profile` 严格按退出码 `10` Fail-Closed，门禁未过输出 `"status": "gate_failed"`（退出码 `40`）。
+4. **补齐 P0 渲染画质核心指标与场景别名映射（P0）**：
+   - 新增 `synapse/metrics/image_quality.py`（`psnr_db`、`ssim`、`ciede2000`、`lpips`），在 `profiles.py` 增设 `METRIC_ALIASES`（`style_color_de`、`style_light_error_deg`），全面打通 `bench_runner.py` 与 3D 参考模型多视角比对。
+5. **消除跨文档与 Agent Skills 的 SSOT 漂移**：
+   - 修正 `DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md` §4.1 臆造的 17 通道 `38 B/px` 表格回 `@aether//fgpp` 15 通道 `34 B/px` SSOT，对齐全部 16 项 Profile 门禁数值，并清理本文档硬编码的 Windows 盘符链接。

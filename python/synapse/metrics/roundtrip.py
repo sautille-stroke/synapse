@@ -11,6 +11,40 @@ import numpy as np
 
 # ── Geometry metrics ─────────────────────────────────────────────────
 
+def _nearest_neighbor_distances(
+    src: np.ndarray,
+    tgt: np.ndarray,
+    chunk_size: int = 512,
+) -> np.ndarray:
+    """Compute exact Euclidean nearest-neighbour distance from each *src* point to *tgt*.
+
+    Uses ``scipy.spatial.cKDTree`` when available, falling back to a memory-safe
+    chunked pure-NumPy implementation (avoiding O(N*M*3) memory blowup).
+    """
+    if len(src) == 0 or len(tgt) == 0:
+        return np.zeros(len(src), dtype=np.float64)
+
+    try:
+        from scipy.spatial import cKDTree  # lazy import
+
+        tree = cKDTree(tgt)
+        dists, _ = tree.query(src, k=1)
+        return np.asarray(dists, dtype=np.float64)
+    except ImportError:
+        tgt_sq = np.sum(tgt * tgt, axis=1)  # [M]
+        min_dists = np.empty(len(src), dtype=np.float64)
+        for start in range(0, len(src), chunk_size):
+            end = min(start + chunk_size, len(src))
+            chunk = src[start:end]  # [C, 3]
+            chunk_sq = np.sum(chunk * chunk, axis=1, keepdims=True)  # [C, 1]
+            # Exact refinement on nearest candidates to avoid cancellation drift
+            approx_d2 = np.maximum(chunk_sq + tgt_sq[np.newaxis, :] - 2.0 * (chunk @ tgt.T), 0.0)
+            nn_idx = np.argmin(approx_d2, axis=1)
+            diff = chunk - tgt[nn_idx]
+            min_dists[start:end] = np.linalg.norm(diff, axis=1)
+        return min_dists
+
+
 def chamfer_mm(
     points_a: np.ndarray,
     points_b: np.ndarray,
@@ -23,20 +57,14 @@ def chamfer_mm(
 
     Returns:
         Symmetric Chamfer distance in **millimetres** (scalar float).
-
-    Note:
-        Requires ``scipy`` (lazy-imported).
     """
-    from scipy.spatial import cKDTree  # lazy import
-
     a = np.asarray(points_a, dtype=np.float64)
     b = np.asarray(points_b, dtype=np.float64)
+    if len(a) == 0 or len(b) == 0:
+        return 0.0
 
-    tree_a = cKDTree(a)
-    tree_b = cKDTree(b)
-
-    d_a2b, _ = tree_b.query(a, k=1)
-    d_b2a, _ = tree_a.query(b, k=1)
+    d_a2b = _nearest_neighbor_distances(a, b)
+    d_b2a = _nearest_neighbor_distances(b, a)
 
     chamfer_m = float(d_a2b.mean() + d_b2a.mean()) / 2.0
     return chamfer_m * 1000.0  # metres → mm
@@ -56,21 +84,16 @@ def f_score_1mm(
 
     Returns:
         F-score in [0, 1] (harmonic mean of precision and recall).
-
-    Note:
-        Requires ``scipy`` (lazy-imported).
     """
-    from scipy.spatial import cKDTree  # lazy import
-
     a = np.asarray(points_a, dtype=np.float64)
     b = np.asarray(points_b, dtype=np.float64)
+    if len(a) == 0 or len(b) == 0:
+        return 0.0
+
     thresh_m = threshold_mm / 1000.0
 
-    tree_a = cKDTree(a)
-    tree_b = cKDTree(b)
-
-    d_a2b, _ = tree_b.query(a, k=1)
-    d_b2a, _ = tree_a.query(b, k=1)
+    d_a2b = _nearest_neighbor_distances(a, b)
+    d_b2a = _nearest_neighbor_distances(b, a)
 
     precision = float(np.mean(d_a2b <= thresh_m))
     recall = float(np.mean(d_b2a <= thresh_m))

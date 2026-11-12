@@ -698,22 +698,34 @@ def _cmd_inspect_mesh(
             ),
         )
 
-    # Lazy import trimesh for loading (optional dependency)
+    # Load mesh via trimesh when installed, falling back to built-in OBJ loader
     try:
         import trimesh
+
+        mesh_obj: Any = trimesh.load(str(mesh_path), force="mesh")
+        vertices = np.asarray(mesh_obj.vertices, dtype=np.float64)
+        faces = np.asarray(mesh_obj.faces, dtype=np.int64)
     except ImportError:
-        raise ContractValidationError(
-            "trimesh is required for mesh file loading. "
-            "Install with: pip install 'synapse[mesh]'",
-            agent_fix_hint="pip install trimesh>=4.0.0",
-        )
+        if mesh_path.suffix.lower() == ".obj":
+            from synapse.bench.model_loader import load_mesh
 
-    mesh = trimesh.load(str(mesh_path), force="mesh")
-    vertices = np.asarray(mesh.vertices, dtype=np.float64)
-    faces = np.asarray(mesh.faces, dtype=np.int64)
+            loaded = load_mesh(str(mesh_path), normalize=False)
+            vertices = np.asarray(loaded.vertices, dtype=np.float64)
+            faces = np.asarray(loaded.faces, dtype=np.int64)
+        else:
+            raise ContractValidationError(
+                f"trimesh is required for loading {mesh_path.suffix!r} files. "
+                "Install with: pip install 'synapse[mesh]'",
+                agent_fix_hint="pip install trimesh>=4.0.0",
+            )
 
-    backend = getattr(args, "backend", "auto")
-    require_wt = getattr(args, "require_watertight", False)
+    raw_backend = str(getattr(args, "backend", "auto"))
+    backend: Literal["auto", "python", "native"] = (
+        "python"
+        if raw_backend == "python"
+        else ("native" if raw_backend == "native" else "auto")
+    )
+    require_wt = bool(getattr(args, "require_watertight", False))
 
     result = validate_mesh_geometry(
         vertices,
@@ -809,6 +821,46 @@ def _cmd_inspect_eval(
         "overall_quality": report.overall_quality_score,
         "transport_kind": "mock",
     }
+
+
+def _cmd_inspect_evaluate(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Batch-evaluate 3D models (Tier-0 topology + multi-view + HTML/JSON)."""
+    from synapse.inspect.model_evaluator import evaluate_3d_models_directory
+
+    json_mode = bool(getattr(args, "json", False))
+
+    def _log(msg: str) -> None:
+        if not json_mode:
+            print(msg)
+
+    ref_raw = getattr(args, "reference_dir", None)
+    data = evaluate_3d_models_directory(
+        input_dir=Path(args.input_dir),
+        output_dir=Path(args.output_dir),
+        reference_dir=Path(ref_raw) if ref_raw else None,
+        profile_name=str(getattr(args, "profile", "TRACK_A_ASSET")),
+        resolution=int(getattr(args, "resolution", 256)),
+        num_views=int(getattr(args, "num_views", 8)),
+        log_fn=None if json_mode else _log,
+    )
+
+    if int(data["exit_code"]) == int(ExitCode.CIRCUIT_BREAKER):
+        raise QualityGateError(
+            f"3D model evaluation gate failed ({data['summary']['failed']}/"
+            f"{data['summary']['total']} models failed profile "
+            f"{data['profile']!r}).",
+            agent_fix_hint=str(data["agent_fix_hint"]),
+            details={
+                "profile": data["profile"],
+                "summary": data["summary"],
+                "report_path": data["report_path"],
+                "results_json_path": data["results_json_path"],
+            },
+        )
+
+    return data
 
 
 def _cmd_inspect_refine(
@@ -1229,6 +1281,39 @@ def main_synapse(args: list[str] | None = None) -> int:
         help="Human-readable asset name",
     )
 
+    insp_evaluate = inspect_sub.add_parser(
+        "evaluate",
+        help="Batch-evaluate 3D models and generate HTML/JSON reports",
+    )
+    insp_evaluate.add_argument(
+        "--input-dir", required=True,
+        help="Directory containing .obj/.glb/.ply model files",
+    )
+    insp_evaluate.add_argument(
+        "--output-dir", required=True,
+        help="Output directory for eval_report.html and eval_results.json",
+    )
+    insp_evaluate.add_argument(
+        "--reference-dir", default=None,
+        help="Optional directory with reference meshes",
+    )
+    insp_evaluate.add_argument(
+        "--profile", "--gate-profile",
+        dest="profile",
+        default="TRACK_A_ASSET",
+        help="Gate profile (TRACK_A_ASSET, TRACK_B_VIDEO, RSI_PROMOTION)",
+    )
+    insp_evaluate.add_argument(
+        "--resolution", type=int, default=256,
+        help="Multi-view render resolution (default: 256)",
+    )
+    insp_evaluate.add_argument(
+        "--num-views", "--views",
+        dest="num_views",
+        type=int, default=8,
+        help="Number of multi-view orbit screenshots (default: 8)",
+    )
+
     insp_refine = inspect_sub.add_parser(
         "refine",
         help="Run targeted refinement from InspectionReport",
@@ -1483,6 +1568,12 @@ def main_synapse(args: list[str] | None = None) -> int:
                 _cmd_inspect_eval, parsed,
                 json_mode, trace_ctx,
             )
+        elif insp_cmd == "evaluate":
+            parsed.json = json_mode
+            return _run_with_json_mode(
+                _cmd_inspect_evaluate, parsed,
+                json_mode, trace_ctx,
+            )
         elif insp_cmd == "refine":
             return _run_with_json_mode(
                 _cmd_inspect_refine, parsed,
@@ -1497,7 +1588,7 @@ def main_synapse(args: list[str] | None = None) -> int:
             if json_mode:
                 err = SynapseError(
                     "Missing inspect sub-command "
-                    "(align|eval|refine|export-rl-data)",
+                    "(mesh|align|eval|evaluate|refine|export-rl-data)",
                     ExitCode.CONTRACT_ERROR,
                     "Use 'synapse inspect <sub-command> --help'.",
                 )

@@ -3,12 +3,13 @@
 ///
 /// Algorithm summary
 /// -----------------
-///   checkManifold         — edge-count map + per-vertex umbrella BFS
-///   checkWatertight       — manifold + directed half-edge pairing
-///   checkDegenerateFaces  — cross-product area + aspect-ratio heuristic
-///   checkSelfIntersections— SpatialGrid broad phase + Möller–Trumbore narrow
-///   findConnectedComponents — Union-Find with path compression + union by rank
-///   validateMeshGeometry  — orchestrator that calls all of the above
+///   checkManifold           — bounds/finite check + edge-count map + umbrella BFS
+///   checkWatertight         — manifold + directed half-edge pairing
+///   checkDegenerateFaces    — cross-product area + aspect-ratio heuristic
+///   checkSelfIntersections  — SpatialGrid broad phase + coplanar 2D SAT /
+///                             Möller–Trumbore narrow phase
+///   findConnectedComponents — face-level Union-Find over shared undirected edges
+///   validateMeshGeometry    — orchestrator that calls all of the above
 ///
 /// Vec3 is aliased to aether::DVec3 from @aether//math.
 
@@ -17,6 +18,7 @@
 #include "synapse/geometry/aabb.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <queue>
@@ -41,7 +43,6 @@ struct EdgeKey {
 
 struct EdgeKeyHash {
   size_t operator()(const EdgeKey& e) const {
-    // Combine two int64 hashes using a simple mixing scheme.
     auto h1 = std::hash<int64_t>{}(e.v0);
     auto h2 = std::hash<int64_t>{}(e.v1);
     return h1 ^ (h2 * 0x9e3779b97f4a7c15ULL + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
@@ -65,8 +66,34 @@ struct HalfEdgeHash {
   }
 };
 
+inline bool isFiniteVec3(const Vec3& v) {
+  return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+inline bool hasValidVertices(std::span<const Vec3> vertices) {
+  if (vertices.empty()) return false;
+  for (const auto& v : vertices) {
+    if (!isFiniteVec3(v)) return false;
+  }
+  return true;
+}
+
+inline bool hasValidFaceBuffer(std::span<const int64_t> faces, int vpf) {
+  return vpf >= 3 && !faces.empty() &&
+         (faces.size() % static_cast<size_t>(vpf) == 0);
+}
+
+inline bool faceIndicesInBounds(std::span<const int64_t> faces,
+                                int64_t num_verts) {
+  for (int64_t idx : faces) {
+    if (idx < 0 || idx >= num_verts) return false;
+  }
+  return true;
+}
+
 /// Compute the number of faces from the flat index buffer.
 inline int64_t numFaces(std::span<const int64_t> faces, int vpf) {
+  if (vpf <= 0) return 0;
   return static_cast<int64_t>(faces.size()) / vpf;
 }
 
@@ -77,50 +104,131 @@ inline int64_t faceVertex(std::span<const int64_t> faces, int vpf,
 }
 
 // -------------------------------------------------------------------------
-// Möller–Trumbore ray–triangle intersection
+// Exact Coplanar + Non-Coplanar Triangle–Triangle Intersection
 // -------------------------------------------------------------------------
 
-/// Intersect ray(origin, dir) with triangle (v0, v1, v2).
-/// Returns true if an intersection exists with t ∈ [0, 1] (segment test).
-/// Uses the classic Möller–Trumbore algorithm.
-bool rayTriangleIntersect(const Vec3& origin, const Vec3& dir,
-                          const Vec3& v0, const Vec3& v1, const Vec3& v2) {
-  constexpr double kEps = 1e-12;
+/// Intersect segment [origin, origin + dir] with triangle (v0, v1, v2)
+/// using Möller–Trumbore with boundary tolerance.
+bool segmentPiercesTriangle(const Vec3& origin, const Vec3& dir,
+                            const Vec3& v0, const Vec3& v1, const Vec3& v2) {
+  constexpr double kParallelEps = 1e-12;
+  constexpr double kBaryEps = 1e-9;
+
   const Vec3 e1 = v1 - v0;
   const Vec3 e2 = v2 - v0;
   const Vec3 h = dir.cross(e2);
   const double a = e1.dot(h);
-  if (std::abs(a) < kEps) return false;  // Ray parallel to triangle.
+  if (std::abs(a) < kParallelEps) return false;
 
-  const double f = 1.0 / a;
+  const double inv_a = 1.0 / a;
   const Vec3 s = origin - v0;
-  const double u = f * s.dot(h);
-  if (u < 0.0 || u > 1.0) return false;
+  const double u = inv_a * s.dot(h);
+  if (u < -kBaryEps || u > 1.0 + kBaryEps) return false;
 
   const Vec3 q = s.cross(e1);
-  const double v = f * dir.dot(q);
-  if (v < 0.0 || u + v > 1.0) return false;
+  const double v = inv_a * dir.dot(q);
+  if (v < -kBaryEps || u + v > 1.0 + kBaryEps) return false;
 
-  const double t = f * e2.dot(q);
-  // We test a segment, so t must be in [0, 1].
-  return t >= 0.0 && t <= 1.0;
+  const double t = inv_a * e2.dot(q);
+  return t >= -kBaryEps && t <= 1.0 + kBaryEps;
 }
 
-/// Test whether two triangles intersect.
+/// Test whether two triangles are separated along an in-plane axis.
+bool separatedAlongAxis(const Vec3& axis,
+                        const std::array<Vec3, 3>& tri_a,
+                        const std::array<Vec3, 3>& tri_b,
+                        double eps) {
+  const double len = axis.length();
+  if (len < 1e-12) return false;
+  const Vec3 unit = axis * (1.0 / len);
+
+  double min_a = unit.dot(tri_a[0]);
+  double max_a = min_a;
+  for (int i = 1; i < 3; ++i) {
+    const double p = unit.dot(tri_a[static_cast<size_t>(i)]);
+    min_a = std::min(min_a, p);
+    max_a = std::max(max_a, p);
+  }
+
+  double min_b = unit.dot(tri_b[0]);
+  double max_b = min_b;
+  for (int i = 1; i < 3; ++i) {
+    const double p = unit.dot(tri_b[static_cast<size_t>(i)]);
+    min_b = std::min(min_b, p);
+    max_b = std::max(max_b, p);
+  }
+
+  return max_a < min_b - eps || max_b < min_a - eps;
+}
+
+/// Test whether two non-adjacent triangles intersect in 3D space.
 ///
-/// Strategy: test each edge of triangle A against the plane of triangle B
-/// (and vice versa) using Möller–Trumbore.  Two triangles intersect iff
-/// any edge of one pierces the interior of the other.
+/// Handles:
+///   1. Plane-distance early rejection (parallel non-coplanar planes rejected).
+///   2. Coplanar triangles via exact 2D Separating Axis Theorem on the 6
+///      in-plane edge normals.
+///   3. Non-coplanar triangles via bidirectional segment–triangle piercing.
 bool trianglesIntersect(const Vec3& a0, const Vec3& a1, const Vec3& a2,
                         const Vec3& b0, const Vec3& b1, const Vec3& b2) {
-  // Test edges of A against triangle B.
-  if (rayTriangleIntersect(a0, a1 - a0, b0, b1, b2)) return true;
-  if (rayTriangleIntersect(a1, a2 - a1, b0, b1, b2)) return true;
-  if (rayTriangleIntersect(a2, a0 - a2, b0, b1, b2)) return true;
-  // Test edges of B against triangle A.
-  if (rayTriangleIntersect(b0, b1 - b0, a0, a1, a2)) return true;
-  if (rayTriangleIntersect(b1, b2 - b1, a0, a1, a2)) return true;
-  if (rayTriangleIntersect(b2, b0 - b2, a0, a1, a2)) return true;
+  constexpr double kAreaEps = 1e-12;
+  constexpr double kPlaneEps = 1e-9;
+
+  const Vec3 n_a = (a1 - a0).cross(a2 - a0);
+  const double len_a = n_a.length();
+  const Vec3 n_b = (b1 - b0).cross(b2 - b0);
+  const double len_b = n_b.length();
+  if (len_a < kAreaEps || len_b < kAreaEps) return false;
+
+  const Vec3 unit_a = n_a * (1.0 / len_a);
+  const Vec3 unit_b = n_b * (1.0 / len_b);
+
+  const std::array<Vec3, 3> tri_a = {a0, a1, a2};
+  const std::array<Vec3, 3> tri_b = {b0, b1, b2};
+
+  // Signed distances of B's vertices to A's plane.
+  const double db0 = unit_a.dot(b0 - a0);
+  const double db1 = unit_a.dot(b1 - a0);
+  const double db2 = unit_a.dot(b2 - a0);
+  if (std::min({db0, db1, db2}) > kPlaneEps ||
+      std::max({db0, db1, db2}) < -kPlaneEps) {
+    return false;
+  }
+
+  // Signed distances of A's vertices to B's plane.
+  const double da0 = unit_b.dot(a0 - b0);
+  const double da1 = unit_b.dot(a1 - b0);
+  const double da2 = unit_b.dot(a2 - b0);
+  if (std::min({da0, da1, da2}) > kPlaneEps ||
+      std::max({da0, da1, da2}) < -kPlaneEps) {
+    return false;
+  }
+
+  // Coplanar case: all vertices of both triangles lie within kPlaneEps of the
+  // shared plane. Run 2D SAT on all 6 in-plane edge normals.
+  const double max_abs_db =
+      std::max({std::abs(db0), std::abs(db1), std::abs(db2)});
+  const double max_abs_da =
+      std::max({std::abs(da0), std::abs(da1), std::abs(da2)});
+  if (max_abs_db <= kPlaneEps && max_abs_da <= kPlaneEps) {
+    const std::array<Vec3, 6> edges = {
+        a1 - a0, a2 - a1, a0 - a2,
+        b1 - b0, b2 - b1, b0 - b2,
+    };
+    for (const auto& edge : edges) {
+      if (separatedAlongAxis(unit_a.cross(edge), tri_a, tri_b, kPlaneEps)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Non-coplanar case: test edges of A against B and edges of B against A.
+  if (segmentPiercesTriangle(a0, a1 - a0, b0, b1, b2)) return true;
+  if (segmentPiercesTriangle(a1, a2 - a1, b0, b1, b2)) return true;
+  if (segmentPiercesTriangle(a2, a0 - a2, b0, b1, b2)) return true;
+  if (segmentPiercesTriangle(b0, b1 - b0, a0, a1, a2)) return true;
+  if (segmentPiercesTriangle(b1, b2 - b1, a0, a1, a2)) return true;
+  if (segmentPiercesTriangle(b2, b0 - b2, a0, a1, a2)) return true;
   return false;
 }
 
@@ -149,7 +257,6 @@ class UnionFind {
   }
 
   int64_t find(int64_t x) {
-    // Path compression.
     while (m_parent[static_cast<size_t>(x)] != x) {
       m_parent[static_cast<size_t>(x)] =
           m_parent[static_cast<size_t>(m_parent[static_cast<size_t>(x)])];
@@ -162,7 +269,6 @@ class UnionFind {
     a = find(a);
     b = find(b);
     if (a == b) return;
-    // Union by rank.
     if (m_rank[static_cast<size_t>(a)] < m_rank[static_cast<size_t>(b)])
       std::swap(a, b);
     m_parent[static_cast<size_t>(b)] = a;
@@ -184,14 +290,19 @@ class UnionFind {
 // ---------------------------------------------------------------------------
 // checkManifold
 // ---------------------------------------------------------------------------
-bool checkManifold(std::span<const Vec3> /*vertices*/,
+bool checkManifold(std::span<const Vec3> vertices,
                    std::span<const int64_t> faces,
                    int verts_per_face) {
-  const int64_t nf = numFaces(faces, verts_per_face);
-  if (nf == 0) return true;  // Vacuously true.
+  if (!hasValidVertices(vertices) ||
+      !hasValidFaceBuffer(faces, verts_per_face) ||
+      !faceIndicesInBounds(faces, static_cast<int64_t>(vertices.size()))) {
+    return false;
+  }
 
-  // ------ Step 1: edge-count check (each edge shared by at most 2 faces) ------
-  // Also build per-vertex adjacency (face indices) for the umbrella check.
+  const int64_t nf = numFaces(faces, verts_per_face);
+  if (nf == 0) return false;
+
+  // ------ Step 1: edge-count check & no duplicate vertices within a face ------
   std::unordered_map<EdgeKey, int, EdgeKeyHash> edge_count;
   std::unordered_map<int64_t, std::vector<int64_t>> vertex_faces;
 
@@ -200,31 +311,31 @@ bool checkManifold(std::span<const Vec3> /*vertices*/,
       const int64_t v0 = faceVertex(faces, verts_per_face, f, k);
       const int64_t v1 = faceVertex(faces, verts_per_face, f,
                                     (k + 1) % verts_per_face);
+      // Reject duplicate / self-pinching vertices within the same polygon.
+      for (int j = k + 1; j < verts_per_face; ++j) {
+        if (v0 == faceVertex(faces, verts_per_face, f, j)) {
+          return false;
+        }
+      }
+
       EdgeKey ek(v0, v1);
       auto& cnt = edge_count[ek];
       ++cnt;
-      if (cnt > 2) return false;  // Non-manifold edge.
+      if (cnt > 2) return false;  // Non-manifold edge (>2 incident faces).
 
       vertex_faces[v0].push_back(f);
     }
   }
 
   // ------ Step 2: vertex umbrella connectivity ------
-  // For each vertex, the set of incident faces must form a single connected
-  // component when faces are linked via shared edges around that vertex.
   for (const auto& [vid, inc_faces] : vertex_faces) {
     if (inc_faces.size() <= 1) continue;
 
-    // Build a local adjacency among incident faces: two faces are adjacent
-    // iff they share an edge that includes this vertex.
     std::unordered_map<int64_t, std::unordered_set<int64_t>> local_adj;
-    for (int64_t fi : inc_faces) local_adj[fi];  // ensure entry
+    for (int64_t fi : inc_faces) local_adj[fi];
 
-    // For each face, find which other incident faces share an edge through
-    // this vertex.
     for (size_t i = 0; i < inc_faces.size(); ++i) {
       const int64_t fi = inc_faces[i];
-      // Collect edges of fi that include vid.
       std::vector<EdgeKey> fi_edges;
       for (int k = 0; k < verts_per_face; ++k) {
         const int64_t a = faceVertex(faces, verts_per_face, fi, k);
@@ -252,7 +363,6 @@ bool checkManifold(std::span<const Vec3> /*vertices*/,
       }
     }
 
-    // BFS to check single component.
     std::unordered_set<int64_t> visited;
     std::queue<int64_t> bfs_queue;
     bfs_queue.push(inc_faces[0]);
@@ -278,16 +388,10 @@ bool checkManifold(std::span<const Vec3> /*vertices*/,
 bool checkWatertight(std::span<const Vec3> vertices,
                      std::span<const int64_t> faces,
                      int verts_per_face) {
-  // A watertight mesh must first be manifold.
   if (!checkManifold(vertices, faces, verts_per_face)) return false;
 
   const int64_t nf = numFaces(faces, verts_per_face);
-  if (nf == 0) return true;
 
-  // Count directed half-edges.  For a watertight mesh, every directed
-  // half-edge (a→b) must have a matching opposite half-edge (b→a),
-  // meaning every undirected edge has exactly 2 incident faces with
-  // opposite winding.
   std::unordered_map<EdgeKey, int, EdgeKeyHash> edge_face_count;
   std::unordered_map<HalfEdge, int, HalfEdgeHash> half_edge_count;
 
@@ -301,16 +405,14 @@ bool checkWatertight(std::span<const Vec3> vertices,
     }
   }
 
-  // Every edge must be shared by exactly 2 faces.
   for (const auto& [edge, count] : edge_face_count) {
     if (count != 2) return false;
   }
 
-  // Opposite half-edges must pair up: for every (a→b) there must be (b→a).
   for (const auto& [he, count] : half_edge_count) {
+    if (count != 1) return false;
     auto it = half_edge_count.find(HalfEdge(he.to, he.from));
-    if (it == half_edge_count.end()) return false;
-    if (it->second != count) return false;
+    if (it == half_edge_count.end() || it->second != 1) return false;
   }
 
   return true;
@@ -326,39 +428,48 @@ std::vector<int64_t> checkDegenerateFaces(
     double min_area,
     double max_aspect_ratio) {
   std::vector<int64_t> result;
+  if (vertices.empty() || !hasValidFaceBuffer(faces, verts_per_face)) {
+    return result;
+  }
+
+  const auto num_verts = static_cast<int64_t>(vertices.size());
   const int64_t nf = numFaces(faces, verts_per_face);
 
   for (int64_t f = 0; f < nf; ++f) {
-    // Only implemented for triangles; for higher polygons we'd need
-    // triangulation — but the spec targets triangle meshes.
-    if (verts_per_face < 3) continue;
+    const int64_t i0 = faceVertex(faces, verts_per_face, f, 0);
+    const int64_t i1 = faceVertex(faces, verts_per_face, f, 1);
+    const int64_t i2 = faceVertex(faces, verts_per_face, f, 2);
+    if (i0 < 0 || i0 >= num_verts || i1 < 0 || i1 >= num_verts ||
+        i2 < 0 || i2 >= num_verts) {
+      result.push_back(f);
+      continue;
+    }
 
-    const Vec3& v0 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, f, 0))];
-    const Vec3& v1 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, f, 1))];
-    const Vec3& v2 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, f, 2))];
+    const Vec3& v0 = vertices[static_cast<size_t>(i0)];
+    const Vec3& v1 = vertices[static_cast<size_t>(i1)];
+    const Vec3& v2 = vertices[static_cast<size_t>(i2)];
+    if (!isFiniteVec3(v0) || !isFiniteVec3(v1) || !isFiniteVec3(v2)) {
+      result.push_back(f);
+      continue;
+    }
 
     const Vec3 e0 = v1 - v0;
     const Vec3 e1 = v2 - v0;
     const Vec3 e2 = v2 - v1;
 
-    // Area = 0.5 * |cross(e0, e1)|.
     const Vec3 cross_vec = e0.cross(e1);
     const double area = 0.5 * cross_vec.length();
 
-    // Check area threshold.
-    if (area < min_area) {
+    if (!std::isfinite(area) || area < min_area) {
       result.push_back(f);
       continue;
     }
 
-    // Aspect ratio heuristic: longest_edge^2 / (2 * area).
-    // For an equilateral triangle this ≈ 1.15; for slivers it grows
-    // unboundedly.
     const double longest_sq = std::max({e0.length_sq(),
                                         e1.length_sq(),
                                         e2.length_sq()});
     const double aspect = longest_sq / (2.0 * area);
-    if (aspect > max_aspect_ratio) {
+    if (!std::isfinite(aspect) || aspect > max_aspect_ratio) {
       result.push_back(f);
     }
   }
@@ -373,49 +484,84 @@ std::vector<std::pair<int64_t, int64_t>> checkSelfIntersections(
     std::span<const Vec3> vertices,
     std::span<const int64_t> faces,
     int verts_per_face) {
+  if (vertices.empty() || !hasValidFaceBuffer(faces, verts_per_face)) {
+    return {};
+  }
+
+  const auto num_verts = static_cast<int64_t>(vertices.size());
   const int64_t nf = numFaces(faces, verts_per_face);
   if (nf <= 1) return {};
 
-  // ------ Build per-triangle AABBs ------
+  // ------ Validate per-face indices & build AABBs ------
   std::vector<AABB> boxes(static_cast<size_t>(nf));
+  std::vector<bool> valid_face(static_cast<size_t>(nf), true);
+
   for (int64_t f = 0; f < nf; ++f) {
     AABB& box = boxes[static_cast<size_t>(f)];
     for (int k = 0; k < verts_per_face; ++k) {
-      box.expand(vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, f, k))]);
+      const int64_t idx = faceVertex(faces, verts_per_face, f, k);
+      if (idx < 0 || idx >= num_verts ||
+          !isFiniteVec3(vertices[static_cast<size_t>(idx)])) {
+        valid_face[static_cast<size_t>(f)] = false;
+        break;
+      }
+      box.expand(vertices[static_cast<size_t>(idx)]);
+    }
+    if (!valid_face[static_cast<size_t>(f)]) {
+      box.lo = Vec3(0.0, 0.0, 0.0);
+      box.hi = Vec3(0.0, 0.0, 0.0);
     }
   }
 
   // ------ Broad phase: spatial grid ------
   SpatialGrid grid(boxes);
 
-  // ------ Narrow phase: Möller–Trumbore triangle–triangle ------
-  // Use a set to collect unique sorted pairs.
+  // ------ Narrow phase ------
   std::set<std::pair<int64_t, int64_t>> hit_pairs;
 
   for (int64_t fi = 0; fi < nf; ++fi) {
-    const auto candidates = grid.queryOverlapping(boxes[static_cast<size_t>(fi)], fi);
+    if (!valid_face[static_cast<size_t>(fi)]) continue;
+    const auto candidates =
+        grid.queryOverlapping(boxes[static_cast<size_t>(fi)], fi);
     for (int64_t fj : candidates) {
-      // Canonical ordering to avoid duplicate work.
-      if (fj <= fi) continue;
+      if (fj <= fi || !valid_face[static_cast<size_t>(fj)]) continue;
 
-      // Skip pairs that are topologically adjacent (share a vertex).
       if (sharesVertex(faces, verts_per_face, fi, fj)) continue;
 
-      // AABB overlap check (the grid gives cell-level candidates, not
-      // exact AABB overlaps — double-check).
       if (!boxes[static_cast<size_t>(fi)].overlaps(
               boxes[static_cast<size_t>(fj)])) {
         continue;
       }
 
-      // Narrow-phase intersection test.
-      const Vec3& a0 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fi, 0))];
-      const Vec3& a1 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fi, 1))];
-      const Vec3& a2 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fi, 2))];
-      const Vec3& b0 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fj, 0))];
-      const Vec3& b1 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fj, 1))];
-      const Vec3& b2 = vertices[static_cast<size_t>(faceVertex(faces, verts_per_face, fj, 2))];
+      const Vec3& a0 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fi, 0))];
+      const Vec3& a1 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fi, 1))];
+      const Vec3& a2 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fi, 2))];
+      const Vec3& b0 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fj, 0))];
+      const Vec3& b1 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fj, 1))];
+      const Vec3& b2 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fj, 2))];
+
+      // Skip UV / hard-normal split-vertex seam neighbors (1 or 2 coincident
+      // 3D corners, while still flagging 3-vertex duplicate z-fighting faces).
+      constexpr double kSeamEpsSq = 1e-18;
+      int shared_pos = 0;
+      const Vec3 tri_a[3] = {a0, a1, a2};
+      const Vec3 tri_b[3] = {b0, b1, b2};
+      for (int pa = 0; pa < 3; ++pa) {
+        for (int pb = 0; pb < 3; ++pb) {
+          const Vec3 diff = tri_a[pa] - tri_b[pb];
+          if (diff.dot(diff) <= kSeamEpsSq) {
+            ++shared_pos;
+            break;
+          }
+        }
+      }
+      if (shared_pos == 1 || shared_pos == 2) continue;
 
       if (trianglesIntersect(a0, a1, a2, b0, b1, b2)) {
         hit_pairs.emplace(fi, fj);
@@ -432,25 +578,33 @@ std::vector<std::pair<int64_t, int64_t>> checkSelfIntersections(
 std::vector<std::vector<int64_t>> findConnectedComponents(
     std::span<const int64_t> faces,
     int verts_per_face,
-    int64_t num_vertices) {
+    int64_t /*num_vertices*/) {
+  if (!hasValidFaceBuffer(faces, verts_per_face)) return {};
+
   const int64_t nf = numFaces(faces, verts_per_face);
   if (nf == 0) return {};
 
-  // Union-Find on vertex indices: faces sharing a vertex are connected.
-  UnionFind uf(num_vertices);
+  // Union-Find keyed on face indices [0, nf): faces sharing an undirected
+  // polygon edge belong to the same connected surface component.
+  UnionFind uf(nf);
+  std::unordered_map<EdgeKey, int64_t, EdgeKeyHash> edge_to_face;
+  edge_to_face.reserve(static_cast<size_t>(nf * verts_per_face));
 
   for (int64_t f = 0; f < nf; ++f) {
-    const int64_t v0 = faceVertex(faces, verts_per_face, f, 0);
-    for (int k = 1; k < verts_per_face; ++k) {
-      uf.unite(v0, faceVertex(faces, verts_per_face, f, k));
+    for (int k = 0; k < verts_per_face; ++k) {
+      const int64_t u = faceVertex(faces, verts_per_face, f, k);
+      const int64_t w =
+          faceVertex(faces, verts_per_face, f, (k + 1) % verts_per_face);
+      auto [it, inserted] = edge_to_face.emplace(EdgeKey(u, w), f);
+      if (!inserted) {
+        uf.unite(f, it->second);
+      }
     }
   }
 
-  // Group faces by component root.
   std::unordered_map<int64_t, std::vector<int64_t>> comp_map;
   for (int64_t f = 0; f < nf; ++f) {
-    const int64_t root = uf.find(faceVertex(faces, verts_per_face, f, 0));
-    comp_map[root].push_back(f);
+    comp_map[uf.find(f)].push_back(f);
   }
 
   std::vector<std::vector<int64_t>> components;
@@ -459,9 +613,12 @@ std::vector<std::vector<int64_t>> findConnectedComponents(
     components.push_back(std::move(face_list));
   }
 
-  // Sort components by first face index for deterministic output.
+  // Largest component first; deterministic tie-break on smallest face index.
   std::sort(components.begin(), components.end(),
-            [](const auto& a, const auto& b) { return a.front() < b.front(); });
+            [](const auto& a, const auto& b) {
+              if (a.size() != b.size()) return a.size() > b.size();
+              return a.front() < b.front();
+            });
 
   return components;
 }
@@ -479,18 +636,32 @@ GeometricValidationResult validateMeshGeometry(
     double min_face_ratio) {
   GeometricValidationResult result;
   result.num_vertices = static_cast<int64_t>(vertices.size());
-  result.num_faces = numFaces(faces, verts_per_face);
+  result.num_faces =
+      hasValidFaceBuffer(faces, verts_per_face) ? numFaces(faces, verts_per_face) : 0;
+
+  if (vertices.empty() || !hasValidFaceBuffer(faces, verts_per_face)) {
+    result.is_manifold = false;
+    result.is_watertight = false;
+    result.passed = false;
+    result.failure_reasons.emplace_back("Mesh is not a valid 2-manifold.");
+    if (require_watertight) {
+      result.failure_reasons.emplace_back(
+          "Mesh is not watertight (has boundary edges).");
+    }
+    return result;
+  }
 
   // --- Manifold check ---
   result.is_manifold = checkManifold(vertices, faces, verts_per_face);
   if (!result.is_manifold) {
-    result.failure_reasons.emplace_back("Mesh is not 2-manifold.");
+    result.failure_reasons.emplace_back("Mesh is not a valid 2-manifold.");
   }
 
   // --- Watertight check ---
   result.is_watertight = checkWatertight(vertices, faces, verts_per_face);
   if (require_watertight && !result.is_watertight) {
-    result.failure_reasons.emplace_back("Mesh is not watertight (required).");
+    result.failure_reasons.emplace_back(
+        "Mesh is not watertight (has boundary edges).");
   }
 
   // --- Degenerate faces ---
@@ -499,9 +670,8 @@ GeometricValidationResult validateMeshGeometry(
                            min_area, max_aspect_ratio);
   if (!result.degenerate_face_indices.empty()) {
     result.failure_reasons.emplace_back(
-        "Mesh contains " +
         std::to_string(result.degenerate_face_indices.size()) +
-        " degenerate face(s).");
+        " degenerate face(s) detected.");
   }
 
   // --- Self-intersections ---
@@ -509,38 +679,33 @@ GeometricValidationResult validateMeshGeometry(
       checkSelfIntersections(vertices, faces, verts_per_face);
   if (!result.self_intersecting_pairs.empty()) {
     result.failure_reasons.emplace_back(
-        "Mesh contains " +
         std::to_string(result.self_intersecting_pairs.size()) +
-        " self-intersecting face pair(s).");
+        " self-intersecting face pair(s) detected.");
   }
 
   // --- Connected components & floating islands ---
-  auto components = findConnectedComponents(
-      faces, verts_per_face, static_cast<int64_t>(vertices.size()));
+  auto components = findConnectedComponents(faces, verts_per_face);
   result.num_connected_components = static_cast<int64_t>(components.size());
 
-  // Identify floating islands: components with fewer faces than the
-  // threshold (min_face_ratio * total faces).
-  const auto island_threshold =
-      static_cast<int64_t>(std::ceil(min_face_ratio *
-                                     static_cast<double>(result.num_faces)));
+  const double island_threshold =
+      min_face_ratio * static_cast<double>(result.num_faces);
   for (const auto& comp : components) {
-    if (static_cast<int64_t>(comp.size()) < island_threshold) {
+    if (static_cast<double>(comp.size()) < island_threshold) {
       result.floating_island_face_indices.insert(
           result.floating_island_face_indices.end(),
           comp.begin(), comp.end());
     }
   }
+  std::sort(result.floating_island_face_indices.begin(),
+            result.floating_island_face_indices.end());
+
   if (!result.floating_island_face_indices.empty()) {
     result.failure_reasons.emplace_back(
-        "Mesh contains " +
         std::to_string(result.floating_island_face_indices.size()) +
-        " face(s) in floating island component(s).");
+        " face(s) belong to floating islands.");
   }
 
-  // --- Overall verdict ---
   result.passed = result.failure_reasons.empty();
-
   return result;
 }
 

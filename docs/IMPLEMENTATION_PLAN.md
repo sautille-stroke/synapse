@@ -189,10 +189,14 @@ flowchart LR
 
 | 交付项目 | 合入时间 / Commit | 核心交付摘要 | 涉及模块与文件 | 验收状态 |
 | :--- | :---: | :--- | :--- | :---: |
-| **Tier 0 确定性几何拓扑门禁** | 2026-11-13 (`3abf20a`, `819d38c`, `01440f8`) | 自包含现代 C++20 几何算子核（Bazel 构建，使用 `@aether//math` DVec3，兼容 MSVC）与 Python Oracle 双轨架构，毫秒级流形/闭合/简并/自交校验 | `csrc/geometry/`, `synapse.recon.geometry`, `synapse.inspect.geometry_gate`, `tests/test_geometry_tier0.py` | ✅ 已合入 (100% 互验) |
-| **3D 模型评估系统** | 2026-11-12 (`PR #31`, `90043a0`) | 零外部依赖确定性 3D 模型评估：CLI 扫描→拓扑检查→多视角截图→6 维指标→三级门禁→自包含 HTML 报告 (SVG 雷达图) | `scripts/evaluate_3d_models.py`, `synapse.inspect.eval_report`, `tests/test_eval_report.py` | ✅ 已合入 (24 项单测全绿) |
+| **Tier 0 确定性几何拓扑门禁与双轨一致性加固** | 2026-11-13 (`3abf20a`, `819d38c`, `01440f8`, `PR #35`) | 自包含现代 C++20 几何算子核（Bazel 构建，使用 `@aether//math` DVec3，兼容 MSVC）与 Python Oracle 双轨架构，毫秒级流形/闭合/简并/共面 2D SAT+Möller–Trumbore 自交校验及 UV 接缝分裂顶点兼容 | `csrc/geometry/`, `synapse.recon.geometry`, `synapse.inspect.geometry_gate`, `tests/test_geometry_tier0.py`, `tests/test_geometry_oracle_parity.py` | ✅ 已合入 (100% 双轨互验) |
+| **3D 模型评估系统与 P0 渲染画质指标补齐** | 2026-11-12/13 (`PR #31`, `PR #35`) | 零外部依赖确定性 3D 模型评估与 CLI 统一挂载（`synapse inspect evaluate`）：扫描→拓扑检查→多视角截图→几何/画质多维指标（含 `psnr_db`, `ssim`, `ciede2000`, `lpips`）→三级门禁→自包含 HTML 正向归一化 SVG 雷达图报告 | `synapse.inspect.model_evaluator`, `synapse.inspect.eval_report`, `synapse.metrics.image_quality`, `scripts/evaluate_3d_models.py`, `tests/test_eval_report.py`, `tests/test_metrics_image_quality.py` | ✅ 已合入 (全绿) |
 | **真实视频逆向 3D 联合反演 (RFC 0060)** | 2026-11-12 (`PR #25`, `6c744a4`) | Video-to-3D 动态数字孪生与反演 SDK：4D 点追踪、6-DoF 运镜解算、流形闭合、Quad 重拓扑、足底防滑零位移 IK 与本征去光照 | `python/synapse/recon/`, `tests/test_recon.py`, `docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` | ✅ 已合入 |
 | **退出码 50 与 Fail-Closed 门禁加固** | 2026-11-12 (`PR #21`~`PR #24`) | 补齐 `ExitCode.NOT_IMPLEMENTED = 50` 彻底消除桩代码假成功隐患；门禁指标缺失时严格 fail-closed；解耦 `pipeline.stages` 适配器 | `synapse.errors`, `synapse.pipeline.stages`, `synapse.cli`, `tests/test_cli.py`, `tests/test_pipeline_stage_adapters.py` | ✅ 已合入 |
-| **门禁阈值 SSOT 完全对齐** | 2026-11-12 (`PR #23`, `dfd04f2`) | `profiles.py` 完全对齐 `DESIGN_REVIEW_AND_ALIGNMENT.md §3.4`，远期指标保存在 `RSI_PROMOTION_TARGET` | `synapse.metrics.profiles`, `tests/test_profiles_doc_sync.py` | ✅ 已合入 (双向断言全绿) |
+| **门禁阈值 SSOT 完全对齐** | 2026-11-12 (`PR #23`, `dfd04f2`) | `profiles.py` 完全对齐 `DESIGN_REVIEW_AND_ALIGNMENT.md §3.4`（含场景别名 `METRIC_ALIASES`），远期指标保存在 `RSI_PROMOTION_TARGET` | `synapse.metrics.profiles`, `tests/test_profiles_doc_sync.py` | ✅ 已合入 (双向断言全绿) |
 | **参考锚定 Diffusion-DPO** | 2026-11-12 (`PR #27`, `5dcb8c1`) | 修复 DPO 符号与参考模型项，实现严格 Diffusion-DPO 闭式公式 | `synapse.training.losses`, `synapse.training.trainer`, `tests/test_lora_trainer.py` | ✅ 已合入 |
 | **Data Inspector SHM 加固** | 2026-11-12 (`PR #30`, `1202fae`) | 迁移至 `@aether//pal:shm`，修复 Bazel 跨仓依赖，强化 IPC/DOM 安全沙箱 | `tools/data-inspector/native/`, `electron/` | ✅ 已合入 |
+
+**影响的计划条目**：
+- `PR-20~23`（M6：3D 质检与精修飞轮）中的模型评估核心功能与自包含双轨 Tier 0 几何门禁（`csrc/geometry/` C++20 + `synapse.inspect.geometry_gate` + `synapse.inspect.model_evaluator`）已提前交付并统一挂载至 `synapse inspect evaluate`。
+- `PR-13`（M4：四维指标与三级门禁档位）中的 3D 网格评估、P0 渲染画质指标（`metrics/image_quality.py`: `psnr_db`, `ssim`, `ciede2000`, `lpips`）及场景别名映射（`METRIC_ALIASES`）已与 `synapse.metrics` 全面打通复用。

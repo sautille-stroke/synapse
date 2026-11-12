@@ -79,6 +79,9 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
     v = np.asarray(vertices)
     f = np.asarray(faces)
 
+    if v.ndim != 2 or v.shape[1] != 3 or f.ndim != 2 or f.shape[1] < 3:
+        return False
+
     if len(v) == 0 or len(f) == 0:
         return False
 
@@ -88,38 +91,43 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
     if np.min(f) < 0 or np.max(f) >= len(v):
         return False
 
-    # Check non-manifold edges
+    # Check non-manifold edges & per-face vertex uniqueness
     edge_counts: dict[tuple[int, int], int] = defaultdict(int)
     vertex_faces: dict[int, list[int]] = defaultdict(list)
+    face_incident_edges: list[dict[int, list[tuple[int, int]]]] = [
+        defaultdict(list) for _ in range(len(f))
+    ]
 
     num_faces = len(f)
     num_verts_per_face = f.shape[1]
 
     for face_idx in range(num_faces):
-        poly = f[face_idx]
+        poly = [int(x) for x in f[face_idx]]
+        if len(set(poly)) != num_verts_per_face:
+            return False  # Duplicate / self-pinching vertex within polygon
         for k in range(num_verts_per_face):
-            u, w = int(poly[k]), int(poly[(k + 1) % num_verts_per_face])
-            if u == w:
-                return False  # Degenerate zero-length edge
+            u, w = poly[k], poly[(k + 1) % num_verts_per_face]
             edge_key = (min(u, w), max(u, w))
             edge_counts[edge_key] += 1
             if edge_counts[edge_key] > 2:
                 # Non-manifold edge shared by >= 3 faces
                 return False
             vertex_faces[u].append(face_idx)
+            face_incident_edges[face_idx][u].append(edge_key)
+            face_incident_edges[face_idx][w].append(edge_key)
 
     # Check vertex manifoldness: face umbrella connectedness around each vertex
     for vert_idx, incident_faces in vertex_faces.items():
         if len(incident_faces) <= 1:
             continue
-        # Build adjacency graph of incident faces sharing an edge
+        # Two incident faces are linked iff they share an undirected polygon
+        # edge incident to vert_idx.
         adj: dict[int, set[int]] = defaultdict(set)
         for i, f1 in enumerate(incident_faces):
-            p1 = set(f[f1])
-            for f2 in incident_faces[i + 1:]:
-                p2 = set(f[f2])
-                # If they share an edge containing vert_idx
-                if len(p1.intersection(p2)) >= 2:
+            edges1 = set(face_incident_edges[f1][vert_idx])
+            for f2 in incident_faces[i + 1 :]:
+                edges2 = set(face_incident_edges[f2][vert_idx])
+                if edges1 & edges2:
                     adj[f1].add(f2)
                     adj[f2].add(f1)
 
@@ -405,12 +413,28 @@ def check_degenerate_faces(
     v = np.asarray(vertices, dtype=np.float64)
     f = np.asarray(faces, dtype=np.int64)
 
-    if len(v) == 0 or len(f) == 0:
+    if (
+        v.ndim != 2
+        or v.shape[1] != 3
+        or f.ndim != 2
+        or f.shape[1] < 3
+        or len(v) == 0
+        or len(f) == 0
+    ):
         return np.array([], dtype=np.intp)
 
-    v0 = v[f[:, 0]]
-    v1 = v[f[:, 1]]
-    v2 = v[f[:, 2]]
+    tri = f[:, :3]
+    oob_mask = np.any((tri < 0) | (tri >= len(v)), axis=1)
+    safe_tri = np.where(oob_mask[:, None], 0, tri)
+
+    v0 = v[safe_tri[:, 0]]
+    v1 = v[safe_tri[:, 1]]
+    v2 = v[safe_tri[:, 2]]
+    nonfinite_mask = (
+        ~np.all(np.isfinite(v0), axis=1)
+        | ~np.all(np.isfinite(v1), axis=1)
+        | ~np.all(np.isfinite(v2), axis=1)
+    )
 
     e1 = v1 - v0
     e2 = v2 - v0
@@ -432,7 +456,14 @@ def check_degenerate_faces(
     # If area is zero the aspect is infinite → always degenerate
     aspect = np.where(area > 0.0, aspect, np.inf)
 
-    mask = (area < min_area) | (aspect > max_aspect_ratio)
+    mask = (
+        oob_mask
+        | nonfinite_mask
+        | ~np.isfinite(area)
+        | (area < min_area)
+        | ~np.isfinite(aspect)
+        | (aspect > max_aspect_ratio)
+    )
     return np.nonzero(mask)[0].astype(np.intp)
 
 
@@ -442,9 +473,10 @@ def check_self_intersections(
 ) -> list[tuple[int, int]]:
     """Find all pairs of non-adjacent triangles that geometrically intersect.
 
-    Uses spatial hashing (uniform voxel grid) as a broad-phase filter and a
-    Möller–Trumbore separating-axis triangle–triangle intersection test for
-    the narrow phase.  Adjacent face pairs (sharing ≥ 1 vertex) are skipped.
+    Uses spatial hashing (uniform voxel grid) as a broad-phase filter and an
+    exact plane-distance + coplanar 2D SAT + Möller–Trumbore segment-piercing
+    narrow phase matching ``csrc/geometry/src/mesh_checks.cc`` 100%.
+    Adjacent face pairs (sharing ≥ 1 vertex) are skipped.
 
     This is the **Python Oracle** reference implementation — correctness over
     speed.
@@ -460,75 +492,154 @@ def check_self_intersections(
     v = np.asarray(vertices, dtype=np.float64)
     f = np.asarray(faces, dtype=np.int64)
 
-    if len(v) == 0 or len(f) == 0:
+    if (
+        v.ndim != 2
+        or v.shape[1] != 3
+        or f.ndim != 2
+        or f.shape[1] < 3
+        or len(v) == 0
+        or len(f) <= 1
+    ):
         return []
 
     num_faces = len(f)
+    num_verts = len(v)
 
-    # ------------------------------------------------------------------
-    # Helper: Möller-style triangle-triangle intersection test
-    # ------------------------------------------------------------------
-    def _tri_tri_intersect(
-        t1: np.ndarray, t2: np.ndarray,
+    def _segment_pierces_triangle(
+        origin: np.ndarray,
+        direction: np.ndarray,
+        v0: np.ndarray,
+        v1: np.ndarray,
+        v2: np.ndarray,
     ) -> bool:
-        """Test whether two triangles intersect using separating axes.
+        parallel_eps = 1e-12
+        bary_eps = 1e-9
 
-        *t1* and *t2* are (3, 3) arrays of triangle vertices.
-        """
-
-        def _project(axis: np.ndarray, pts: np.ndarray) -> tuple[float, float]:
-            d = pts @ axis
-            return float(d.min()), float(d.max())
-
-        def _separated(axis: np.ndarray) -> bool:
-            length_sq = float(axis @ axis)
-            if length_sq < 1e-30:
-                return False  # degenerate axis, skip
-            min1, max1 = _project(axis, t1)
-            min2, max2 = _project(axis, t2)
-            return max1 < min2 - 1e-12 or max2 < min1 - 1e-12
-
-        edges1 = [t1[1] - t1[0], t1[2] - t1[1], t1[0] - t1[2]]
-        edges2 = [t2[1] - t2[0], t2[2] - t2[1], t2[0] - t2[2]]
-
-        n1 = np.cross(edges1[0], edges1[1])
-        n2 = np.cross(edges2[0], edges2[1])
-
-        # Face normals
-        if _separated(n1):
-            return False
-        if _separated(n2):
+        e1 = v1 - v0
+        e2 = v2 - v0
+        h = np.cross(direction, e2)
+        a = float(np.dot(e1, h))
+        if abs(a) < parallel_eps:
             return False
 
-        # Edge-edge cross products
-        for e1 in edges1:
-            for e2 in edges2:
-                axis = np.cross(e1, e2)
-                if _separated(axis):
+        inv_a = 1.0 / a
+        s = origin - v0
+        u = inv_a * float(np.dot(s, h))
+        if u < -bary_eps or u > 1.0 + bary_eps:
+            return False
+
+        q = np.cross(s, e1)
+        bary_v = inv_a * float(np.dot(direction, q))
+        if bary_v < -bary_eps or u + bary_v > 1.0 + bary_eps:
+            return False
+
+        t = inv_a * float(np.dot(e2, q))
+        return -bary_eps <= t <= 1.0 + bary_eps
+
+    def _tri_tri_intersect(
+        t1: np.ndarray,
+        t2: np.ndarray,
+    ) -> bool:
+        """Test whether two non-adjacent triangles intersect in 3D space."""
+        area_eps = 1e-12
+        plane_eps = 1e-9
+
+        n1 = np.cross(t1[1] - t1[0], t1[2] - t1[0])
+        len1 = float(np.linalg.norm(n1))
+        n2 = np.cross(t2[1] - t2[0], t2[2] - t2[0])
+        len2 = float(np.linalg.norm(n2))
+        if len1 < area_eps or len2 < area_eps:
+            return False
+
+        unit1 = n1 / len1
+        unit2 = n2 / len2
+
+        # Signed distances of t2 vertices to t1's plane
+        db = (t2 - t1[0]) @ unit1
+        if float(db.min()) > plane_eps or float(db.max()) < -plane_eps:
+            return False
+
+        # Signed distances of t1 vertices to t2's plane
+        da = (t1 - t2[0]) @ unit2
+        if float(da.min()) > plane_eps or float(da.max()) < -plane_eps:
+            return False
+
+        # Coplanar case: 2D SAT on the 6 in-plane edge normals
+        if (
+            float(np.max(np.abs(db))) <= plane_eps
+            and float(np.max(np.abs(da))) <= plane_eps
+        ):
+            edges = (
+                t1[1] - t1[0],
+                t1[2] - t1[1],
+                t1[0] - t1[2],
+                t2[1] - t2[0],
+                t2[2] - t2[1],
+                t2[0] - t2[2],
+            )
+            for edge in edges:
+                axis = np.cross(unit1, edge)
+                axis_len = float(np.linalg.norm(axis))
+                if axis_len < area_eps:
+                    continue
+                unit_axis = axis / axis_len
+                p1 = t1 @ unit_axis
+                p2 = t2 @ unit_axis
+                if (
+                    float(np.max(p1)) < float(np.min(p2)) - plane_eps
+                    or float(np.max(p2)) < float(np.min(p1)) - plane_eps
+                ):
                     return False
+            return True
 
-        return True
+        # Non-coplanar case: bidirectional segment-triangle piercing
+        a0, a1, a2 = t1[0], t1[1], t1[2]
+        b0, b1, b2 = t2[0], t2[1], t2[2]
+        return (
+            _segment_pierces_triangle(a0, a1 - a0, b0, b1, b2)
+            or _segment_pierces_triangle(a1, a2 - a1, b0, b1, b2)
+            or _segment_pierces_triangle(a2, a0 - a2, b0, b1, b2)
+            or _segment_pierces_triangle(b0, b1 - b0, a0, a1, a2)
+            or _segment_pierces_triangle(b1, b2 - b1, a0, a1, a2)
+            or _segment_pierces_triangle(b2, b0 - b2, a0, a1, a2)
+        )
 
     # ------------------------------------------------------------------
-    # Broad phase: spatial hashing
+    # Validate per-face indices & build broad-phase spatial hash
     # ------------------------------------------------------------------
-    tri_verts = v[f]  # (F, 3, 3)
-    tri_min = tri_verts.min(axis=1)  # (F, 3)
-    tri_max = tri_verts.max(axis=1)  # (F, 3)
+    tri_indices = f[:, :3]
+    valid_face = ~np.any((tri_indices < 0) | (tri_indices >= num_verts), axis=1)
+    safe_indices = np.where(valid_face[:, None], tri_indices, 0)
+    tri_verts = v[safe_indices]  # (F, 3, 3)
+    valid_face &= np.all(np.isfinite(tri_verts), axis=(1, 2))
 
-    global_min = tri_min.min(axis=0)
-    global_max = tri_max.max(axis=0)
-    extent = global_max - global_min
-    extent = np.maximum(extent, 1e-12)
+    valid_ids = np.nonzero(valid_face)[0]
+    if len(valid_ids) <= 1:
+        return []
 
-    # Choose cell size as ~10% of extent
-    num_cells = max(int(num_faces ** (1.0 / 3.0)), 4)
+    tri_min = tri_verts.min(axis=1)
+    tri_max = tri_verts.max(axis=1)
+
+    global_min = tri_min[valid_ids].min(axis=0) - 1e-6
+    global_max = tri_max[valid_ids].max(axis=0) + 1e-6
+    extent = np.maximum(global_max - global_min, 1e-6)
+
+    num_cells = max(min(int(round(len(valid_ids) ** (1.0 / 3.0))), 256), 4)
     cell_size = extent / num_cells
 
     grid: dict[tuple[int, int, int], list[int]] = defaultdict(list)
-    for fi in range(num_faces):
-        lo = np.floor((tri_min[fi] - global_min) / cell_size).astype(int)
-        hi = np.floor((tri_max[fi] - global_min) / cell_size).astype(int)
+    for fi_np in valid_ids:
+        fi = int(fi_np)
+        lo = np.clip(
+            np.floor((tri_min[fi] - global_min) / cell_size).astype(int),
+            0,
+            num_cells - 1,
+        )
+        hi = np.clip(
+            np.floor((tri_max[fi] - global_min) / cell_size).astype(int),
+            0,
+            num_cells - 1,
+        )
         for ix in range(int(lo[0]), int(hi[0]) + 1):
             for iy in range(int(lo[1]), int(hi[1]) + 1):
                 for iz in range(int(lo[2]), int(hi[2]) + 1):
@@ -537,9 +648,10 @@ def check_self_intersections(
     # ------------------------------------------------------------------
     # Narrow phase
     # ------------------------------------------------------------------
-    face_vertex_sets = [set(f[i]) for i in range(num_faces)]
+    face_vertex_sets = [set(int(x) for x in f[i]) for i in range(num_faces)]
     tested: set[tuple[int, int]] = set()
     result: list[tuple[int, int]] = []
+    aabb_eps = 1e-9
 
     for cell_faces in grid.values():
         for a_idx in range(len(cell_faces)):
@@ -553,6 +665,23 @@ def check_self_intersections(
 
                 # Skip adjacent faces (sharing ≥ 1 vertex)
                 if face_vertex_sets[fi] & face_vertex_sets[fj]:
+                    continue
+
+                # Exact AABB overlap pre-filter
+                if np.any(tri_min[fi] > tri_max[fj] + aabb_eps) or np.any(
+                    tri_max[fi] + aabb_eps < tri_min[fj]
+                ):
+                    continue
+
+                # Skip UV / hard-normal split-vertex seam neighbors (1 or 2
+                # coincident 3D corners, while still catching 3-vertex duplicate
+                # z-fighting faces).
+                diff_sq = np.sum(
+                    (tri_verts[fi][:, None, :] - tri_verts[fj][None, :, :]) ** 2,
+                    axis=2,
+                )
+                shared_pos = int(np.count_nonzero(np.any(diff_sq <= 1e-18, axis=1)))
+                if shared_pos in (1, 2):
                     continue
 
                 if _tri_tri_intersect(tri_verts[fi], tri_verts[fj]):
@@ -622,11 +751,10 @@ def find_connected_components(
     for fi in range(num_faces):
         components[_find(fi)].append(fi)
 
-    # Sort: largest component first, each component sorted internally
+    # Sort: largest component first, tie-break on smallest face index
     result = sorted(
         (np.array(indices, dtype=np.intp) for indices in components.values()),
-        key=lambda arr: len(arr),
-        reverse=True,
+        key=lambda arr: (-len(arr), int(arr[0])),
     )
     return result
 
