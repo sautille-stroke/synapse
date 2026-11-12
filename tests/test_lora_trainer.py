@@ -16,6 +16,7 @@ from synapse.training.losses import (
     diffusion_dpo_loss,
     flow_matching_loss,
     latent_edge_alignment_loss,
+    normal_reconstruction_loss,
 )
 
 
@@ -79,6 +80,49 @@ class TestLatentEdgeAlignmentLoss:
         loss = latent_edge_alignment_loss(pattern, pattern)
         assert loss == pytest.approx(0.0, abs=1e-10)
 
+
+
+
+class TestNormalReconstructionLoss:
+    """Unit tests for normal_reconstruction_loss (HP-04)."""
+
+    def test_identical_normals_zero(self) -> None:
+        """Identical predicted and GT normals should give ~0 loss."""
+        n = np.array([[[0, 0, 1], [0, 1, 0]], [[1, 0, 0], [0, 0, 1]]],
+                     dtype=np.float64)
+        loss = normal_reconstruction_loss(n, n)
+        assert loss == pytest.approx(0.0, abs=1e-6)
+
+    def test_opposite_normals_two(self) -> None:
+        """Opposite normals should give loss close to 2."""
+        n_pred = np.array([[[0, 0, 1]]], dtype=np.float64)
+        n_gt = np.array([[[0, 0, -1]]], dtype=np.float64)
+        loss = normal_reconstruction_loss(n_pred, n_gt)
+        assert loss == pytest.approx(2.0, abs=1e-6)
+
+    def test_perpendicular_normals_one(self) -> None:
+        """Perpendicular normals should give loss of 1."""
+        n_pred = np.array([[[1, 0, 0]]], dtype=np.float64)
+        n_gt = np.array([[[0, 1, 0]]], dtype=np.float64)
+        loss = normal_reconstruction_loss(n_pred, n_gt)
+        assert loss == pytest.approx(1.0, abs=1e-10)
+
+    def test_channel_first_format(self) -> None:
+        """[3, H, W] format should produce same result as [H, W, 3]."""
+        n_hwc = np.random.randn(4, 4, 3)
+        n_chw = np.transpose(n_hwc, (2, 0, 1))
+        gt = np.random.randn(4, 4, 3)
+        gt_chw = np.transpose(gt, (2, 0, 1))
+        loss_hwc = normal_reconstruction_loss(n_hwc, gt)
+        loss_chw = normal_reconstruction_loss(n_chw, gt_chw)
+        assert loss_hwc == pytest.approx(loss_chw, abs=1e-10)
+
+    def test_unnormalised_inputs(self) -> None:
+        """Non-unit-length inputs should still work (internal L2 norm)."""
+        n_pred = np.array([[[10, 0, 0]]], dtype=np.float64)
+        n_gt = np.array([[[5, 0, 0]]], dtype=np.float64)
+        loss = normal_reconstruction_loss(n_pred, n_gt)
+        assert loss == pytest.approx(0.0, abs=1e-6)
 
 class TestDiffusionDPOLoss:
     """Tests for diffusion_dpo_loss."""

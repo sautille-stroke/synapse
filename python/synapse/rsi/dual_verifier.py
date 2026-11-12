@@ -42,7 +42,7 @@ class PhysicsThresholds(BaseModel):
     foot_slide_velocity_ms: float = Field(
         default=0.02, ge=0.0,
     )
-    silhouette_iou: float = Field(default=0.88, ge=0.0, le=1.0)
+    silhouette_iou: float = Field(default=0.90, ge=0.0, le=1.0)
     depth_rmse_m: float = Field(default=0.03, ge=0.0)
     normal_angular_error_deg: float = Field(
         default=12.0, ge=0.0,
@@ -65,6 +65,7 @@ _FAILURE_TO_LORA_BUCKET: dict[str, str] = {
     "TEXTURE_ARTIFACT": "style",
     "IDENTITY_LOSS": "identity",
     "WHITEBOX_MISMATCH": "whitebox",
+    "NON_MANIFOLD": "control",
 }
 
 
