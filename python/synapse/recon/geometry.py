@@ -377,3 +377,317 @@ def quad_remesh(
         new_faces = f
 
     return v, new_faces
+
+
+def check_degenerate_faces(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    min_area: float = 1e-8,
+    max_aspect_ratio: float = 100.0,
+) -> np.ndarray:
+    """Detect degenerate (near-zero-area or poorly-shaped) triangle faces.
+
+    A face is considered degenerate if its area falls below *min_area* or its
+    aspect ratio (longest-edge² / (2 · area), a circumradius-to-inradius
+    approximation) exceeds *max_aspect_ratio*.
+
+    The implementation is fully vectorized over faces — no Python loops.
+
+    Args:
+        vertices: Vertex positions, shape ``(V, 3)``.
+        faces: Triangle indices, shape ``(F, 3)``.
+        min_area: Minimum triangle area threshold.
+        max_aspect_ratio: Maximum permissible aspect ratio.
+
+    Returns:
+        Sorted 1-D integer array of face indices flagged as degenerate.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+
+    if len(v) == 0 or len(f) == 0:
+        return np.array([], dtype=np.intp)
+
+    v0 = v[f[:, 0]]
+    v1 = v[f[:, 1]]
+    v2 = v[f[:, 2]]
+
+    e1 = v1 - v0
+    e2 = v2 - v0
+    cross = np.cross(e1, e2)
+
+    # Area = 0.5 * |cross(e1, e2)|
+    area = 0.5 * np.linalg.norm(cross, axis=1)
+
+    # Edge lengths squared
+    e3 = v2 - v1
+    len_sq_e1 = np.sum(e1 * e1, axis=1)
+    len_sq_e2 = np.sum(e2 * e2, axis=1)
+    len_sq_e3 = np.sum(e3 * e3, axis=1)
+    longest_edge_sq = np.maximum(np.maximum(len_sq_e1, len_sq_e2), len_sq_e3)
+
+    # Aspect ratio ≈ longest_edge² / (2 * area)
+    safe_area = np.where(area > 0.0, area, 1.0)
+    aspect = longest_edge_sq / (2.0 * safe_area)
+    # If area is zero the aspect is infinite → always degenerate
+    aspect = np.where(area > 0.0, aspect, np.inf)
+
+    mask = (area < min_area) | (aspect > max_aspect_ratio)
+    return np.nonzero(mask)[0].astype(np.intp)
+
+
+def check_self_intersections(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> list[tuple[int, int]]:
+    """Find all pairs of non-adjacent triangles that geometrically intersect.
+
+    Uses spatial hashing (uniform voxel grid) as a broad-phase filter and a
+    Möller–Trumbore separating-axis triangle–triangle intersection test for
+    the narrow phase.  Adjacent face pairs (sharing ≥ 1 vertex) are skipped.
+
+    This is the **Python Oracle** reference implementation — correctness over
+    speed.
+
+    Args:
+        vertices: Vertex positions, shape ``(V, 3)``.
+        faces: Triangle indices, shape ``(F, 3)``.
+
+    Returns:
+        Sorted list of ``(face_i, face_j)`` pairs (``face_i < face_j``)
+        that geometrically intersect.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+
+    if len(v) == 0 or len(f) == 0:
+        return []
+
+    num_faces = len(f)
+
+    # ------------------------------------------------------------------
+    # Helper: Möller-style triangle-triangle intersection test
+    # ------------------------------------------------------------------
+    def _tri_tri_intersect(
+        t1: np.ndarray, t2: np.ndarray,
+    ) -> bool:
+        """Test whether two triangles intersect using separating axes.
+
+        *t1* and *t2* are (3, 3) arrays of triangle vertices.
+        """
+
+        def _project(axis: np.ndarray, pts: np.ndarray) -> tuple[float, float]:
+            d = pts @ axis
+            return float(d.min()), float(d.max())
+
+        def _separated(axis: np.ndarray) -> bool:
+            length_sq = float(axis @ axis)
+            if length_sq < 1e-30:
+                return False  # degenerate axis, skip
+            min1, max1 = _project(axis, t1)
+            min2, max2 = _project(axis, t2)
+            return max1 < min2 - 1e-12 or max2 < min1 - 1e-12
+
+        edges1 = [t1[1] - t1[0], t1[2] - t1[1], t1[0] - t1[2]]
+        edges2 = [t2[1] - t2[0], t2[2] - t2[1], t2[0] - t2[2]]
+
+        n1 = np.cross(edges1[0], edges1[1])
+        n2 = np.cross(edges2[0], edges2[1])
+
+        # Face normals
+        if _separated(n1):
+            return False
+        if _separated(n2):
+            return False
+
+        # Edge-edge cross products
+        for e1 in edges1:
+            for e2 in edges2:
+                axis = np.cross(e1, e2)
+                if _separated(axis):
+                    return False
+
+        return True
+
+    # ------------------------------------------------------------------
+    # Broad phase: spatial hashing
+    # ------------------------------------------------------------------
+    tri_verts = v[f]  # (F, 3, 3)
+    tri_min = tri_verts.min(axis=1)  # (F, 3)
+    tri_max = tri_verts.max(axis=1)  # (F, 3)
+
+    global_min = tri_min.min(axis=0)
+    global_max = tri_max.max(axis=0)
+    extent = global_max - global_min
+    extent = np.maximum(extent, 1e-12)
+
+    # Choose cell size as ~10% of extent
+    num_cells = max(int(num_faces ** (1.0 / 3.0)), 4)
+    cell_size = extent / num_cells
+
+    grid: dict[tuple[int, int, int], list[int]] = defaultdict(list)
+    for fi in range(num_faces):
+        lo = np.floor((tri_min[fi] - global_min) / cell_size).astype(int)
+        hi = np.floor((tri_max[fi] - global_min) / cell_size).astype(int)
+        for ix in range(int(lo[0]), int(hi[0]) + 1):
+            for iy in range(int(lo[1]), int(hi[1]) + 1):
+                for iz in range(int(lo[2]), int(hi[2]) + 1):
+                    grid[(ix, iy, iz)].append(fi)
+
+    # ------------------------------------------------------------------
+    # Narrow phase
+    # ------------------------------------------------------------------
+    face_vertex_sets = [set(f[i]) for i in range(num_faces)]
+    tested: set[tuple[int, int]] = set()
+    result: list[tuple[int, int]] = []
+
+    for cell_faces in grid.values():
+        for a_idx in range(len(cell_faces)):
+            for b_idx in range(a_idx + 1, len(cell_faces)):
+                fi = cell_faces[a_idx]
+                fj = cell_faces[b_idx]
+                pair = (min(fi, fj), max(fi, fj))
+                if pair in tested:
+                    continue
+                tested.add(pair)
+
+                # Skip adjacent faces (sharing ≥ 1 vertex)
+                if face_vertex_sets[fi] & face_vertex_sets[fj]:
+                    continue
+
+                if _tri_tri_intersect(tri_verts[fi], tri_verts[fj]):
+                    result.append(pair)
+
+    result.sort()
+    return result
+
+
+def find_connected_components(
+    faces: np.ndarray,
+) -> list[np.ndarray]:
+    """Partition mesh faces into connected components via shared edges.
+
+    Uses a Union-Find (disjoint-set) data structure keyed on face indices
+    where edges provide the union relation.
+
+    Args:
+        faces: Triangle (or quad) indices, shape ``(F, K)``.
+
+    Returns:
+        List of 1-D arrays, each containing the sorted face indices of one
+        connected component.  Components are ordered largest-first.
+    """
+    f = np.asarray(faces, dtype=np.int64)
+
+    if len(f) == 0:
+        return []
+
+    num_faces = len(f)
+
+    # Union-Find with path compression and union by rank
+    parent = list(range(num_faces))
+    rank = [0] * num_faces
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a: int, b: int) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            ra, rb = rb, ra
+        parent[rb] = ra
+        if rank[ra] == rank[rb]:
+            rank[ra] += 1
+
+    # Build edge → face mapping, then union faces sharing an edge
+    edge_to_face: dict[tuple[int, int], int] = {}
+    num_verts_per_face = f.shape[1]
+    for fi in range(num_faces):
+        poly = f[fi]
+        for k in range(num_verts_per_face):
+            u, w = int(poly[k]), int(poly[(k + 1) % num_verts_per_face])
+            edge_key = (min(u, w), max(u, w))
+            if edge_key in edge_to_face:
+                _union(fi, edge_to_face[edge_key])
+            else:
+                edge_to_face[edge_key] = fi
+
+    # Collect components
+    components: dict[int, list[int]] = defaultdict(list)
+    for fi in range(num_faces):
+        components[_find(fi)].append(fi)
+
+    # Sort: largest component first, each component sorted internally
+    result = sorted(
+        (np.array(indices, dtype=np.intp) for indices in components.values()),
+        key=lambda arr: len(arr),
+        reverse=True,
+    )
+    return result
+
+
+def prune_floating_islands(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    min_face_ratio: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Remove small disconnected mesh islands.
+
+    Connected components whose face count is strictly less than
+    ``min_face_ratio * total_faces`` are removed.  Vertex indices in
+    the returned face array are compacted so that only referenced
+    vertices remain.
+
+    Args:
+        vertices: Vertex positions, shape ``(V, 3)``.
+        faces: Face indices, shape ``(F, K)``.
+        min_face_ratio: Minimum fraction of total faces a component must
+            have to be kept.
+
+    Returns:
+        Tuple of ``(cleaned_vertices, cleaned_faces, kept_face_mask)``.
+
+        - *cleaned_vertices*: shape ``(V', 3)`` — only referenced vertices.
+        - *cleaned_faces*: shape ``(F', K)`` — remapped face indices.
+        - *kept_face_mask*: boolean array, shape ``(F,)`` — ``True`` for
+          faces that were kept.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+
+    if len(v) == 0 or len(f) == 0:
+        return (
+            np.empty((0, 3), dtype=v.dtype),
+            np.empty((0, f.shape[1] if len(f) else 3), dtype=f.dtype),
+            np.zeros(len(f), dtype=bool),
+        )
+
+    components = find_connected_components(f)
+    total_faces = len(f)
+    threshold = min_face_ratio * total_faces
+
+    kept_face_mask = np.zeros(total_faces, dtype=bool)
+    for comp in components:
+        if len(comp) >= threshold:
+            kept_face_mask[comp] = True
+
+    kept_faces = f[kept_face_mask]
+
+    if len(kept_faces) == 0:
+        return (
+            np.empty((0, 3), dtype=v.dtype),
+            np.empty((0, f.shape[1]), dtype=f.dtype),
+            kept_face_mask,
+        )
+
+    # Remap vertices: compact to only those referenced by kept faces
+    unique_verts, inverse = np.unique(kept_faces.ravel(), return_inverse=True)
+    cleaned_vertices = v[unique_verts]
+    cleaned_faces = inverse.reshape(kept_faces.shape)
+
+    return cleaned_vertices, cleaned_faces, kept_face_mask
