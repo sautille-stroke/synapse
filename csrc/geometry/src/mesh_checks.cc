@@ -184,7 +184,7 @@ class UnionFind {
 // ---------------------------------------------------------------------------
 // checkManifold
 // ---------------------------------------------------------------------------
-bool checkManifold(std::span<const Vec3> vertices,
+bool checkManifold(std::span<const Vec3> /*vertices*/,
                    std::span<const int64_t> faces,
                    int verts_per_face) {
   const int64_t nf = numFaces(faces, verts_per_face);

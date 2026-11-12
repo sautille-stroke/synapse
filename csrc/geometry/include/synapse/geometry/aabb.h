@@ -21,6 +21,12 @@
 
 namespace synapse::geometry {
 
+/// Inclusive low/high cell-index range along each axis.
+struct CellRange {
+  int lo[3];
+  int hi[3];
+};
+
 /// A flat uniform spatial grid for broad-phase triangle-pair overlap queries.
 class SpatialGrid {
  public:
@@ -58,7 +64,7 @@ class SpatialGrid {
         (m_world.hi.y - m_world.lo.y) / m_resolution,
         (m_world.hi.z - m_world.lo.z) / m_resolution);
 
-    // Guard against degenerate (flat) meshes — ensure cell_size > 0.
+    // Guard against degenerate (flat) meshes -- ensure cell_size > 0.
     if (m_cell_size.x <= 0) m_cell_size.x = 1.0;
     if (m_cell_size.y <= 0) m_cell_size.y = 1.0;
     if (m_cell_size.z <= 0) m_cell_size.z = 1.0;
@@ -69,10 +75,10 @@ class SpatialGrid {
     m_cells.resize(static_cast<size_t>(total_cells));
 
     for (int64_t i = 0; i < num_triangles; ++i) {
-      auto [lo_cell, hi_cell] = cellRange(boxes[static_cast<size_t>(i)]);
-      for (int iz = lo_cell[2]; iz <= hi_cell[2]; ++iz) {
-        for (int iy = lo_cell[1]; iy <= hi_cell[1]; ++iy) {
-          for (int ix = lo_cell[0]; ix <= hi_cell[0]; ++ix) {
+      CellRange cr = cellRange(boxes[static_cast<size_t>(i)]);
+      for (int iz = cr.lo[2]; iz <= cr.hi[2]; ++iz) {
+        for (int iy = cr.lo[1]; iy <= cr.hi[1]; ++iy) {
+          for (int ix = cr.lo[0]; ix <= cr.hi[0]; ++ix) {
             m_cells[static_cast<size_t>(cellIndex(ix, iy, iz))].push_back(i);
           }
         }
@@ -89,10 +95,10 @@ class SpatialGrid {
   [[nodiscard]] std::vector<int64_t> queryOverlapping(const AABB& box,
                                                       int64_t face_idx) const {
     std::unordered_set<int64_t> seen;
-    auto [lo_cell, hi_cell] = cellRange(box);
-    for (int iz = lo_cell[2]; iz <= hi_cell[2]; ++iz) {
-      for (int iy = lo_cell[1]; iy <= hi_cell[1]; ++iy) {
-        for (int ix = lo_cell[0]; ix <= hi_cell[0]; ++ix) {
+    CellRange cr = cellRange(box);
+    for (int iz = cr.lo[2]; iz <= cr.hi[2]; ++iz) {
+      for (int iy = cr.lo[1]; iy <= cr.hi[1]; ++iy) {
+        for (int ix = cr.lo[0]; ix <= cr.hi[0]; ++ix) {
           const auto& cell =
               m_cells[static_cast<size_t>(cellIndex(ix, iy, iz))];
           for (int64_t idx : cell) {
@@ -114,20 +120,18 @@ class SpatialGrid {
   }
 
   /// Return the inclusive [lo, hi] cell-index range for an AABB.
-  [[nodiscard]] std::pair<std::array<int, 3>, std::array<int, 3>> cellRange(
-      const AABB& box) const {
+  [[nodiscard]] CellRange cellRange(const AABB& box) const {
     const double inv_x = 1.0 / m_cell_size.x;
     const double inv_y = 1.0 / m_cell_size.y;
     const double inv_z = 1.0 / m_cell_size.z;
-    std::array<int, 3> lo_cell = {
-        toCell(box.lo.x, m_world.lo.x, inv_x),
-        toCell(box.lo.y, m_world.lo.y, inv_y),
-        toCell(box.lo.z, m_world.lo.z, inv_z)};
-    std::array<int, 3> hi_cell = {
-        toCell(box.hi.x, m_world.lo.x, inv_x),
-        toCell(box.hi.y, m_world.lo.y, inv_y),
-        toCell(box.hi.z, m_world.lo.z, inv_z)};
-    return {lo_cell, hi_cell};
+    CellRange cr;
+    cr.lo[0] = toCell(box.lo.x, m_world.lo.x, inv_x);
+    cr.lo[1] = toCell(box.lo.y, m_world.lo.y, inv_y);
+    cr.lo[2] = toCell(box.lo.z, m_world.lo.z, inv_z);
+    cr.hi[0] = toCell(box.hi.x, m_world.lo.x, inv_x);
+    cr.hi[1] = toCell(box.hi.y, m_world.lo.y, inv_y);
+    cr.hi[2] = toCell(box.hi.z, m_world.lo.z, inv_z);
+    return cr;
   }
 
   /// Linearise a 3-D cell coordinate to a flat index.
