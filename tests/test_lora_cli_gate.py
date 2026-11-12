@@ -21,7 +21,7 @@ from synapse.training.packager import (
     LoRAGateThresholds,
     package_and_gate_lora_bundle,
 )
-from synapse.errors import QualityGateError
+from synapse.errors import AssetNotFoundError, QualityGateError
 
 
 # -------------------------------------------------------------------
@@ -236,20 +236,69 @@ class TestPackager:
         )
         assert result["passed"] is True
 
-    def test_missing_weights_creates_placeholder(
+    def test_missing_weights_raises_asset_not_found(
         self, tmp_path: Path, tmp_bundle_dir: Path,
     ) -> None:
-        """Non-existent weights file creates placeholder."""
+        """Non-existent weights file raises AssetNotFoundError(20)."""
         fake = tmp_path / "nonexistent.safetensors"
-        result = package_and_gate_lora_bundle(
-            weights_path=fake,
-            output_dir=tmp_bundle_dir,
-            skip_bench=True,
-        )
-        assert result["passed"] is True
-        assert (
+        with pytest.raises(AssetNotFoundError) as exc_info:
+            package_and_gate_lora_bundle(
+                weights_path=fake,
+                output_dir=tmp_bundle_dir,
+                skip_bench=True,
+            )
+        assert int(exc_info.value.exit_code) == 20
+        assert not (
             tmp_bundle_dir / "adapter_model.safetensors"
         ).exists()
+
+    def test_empty_metrics_without_skip_bench_fails_gate(
+        self, fake_weights: Path, tmp_bundle_dir: Path,
+    ) -> None:
+        """Missing or empty bench_metrics fails gate when skip_bench=False."""
+        with pytest.raises(QualityGateError) as exc_info:
+            package_and_gate_lora_bundle(
+                weights_path=fake_weights,
+                output_dir=tmp_bundle_dir,
+                skip_bench=False,
+            )
+        assert int(exc_info.value.exit_code) == 40
+
+        with pytest.raises(QualityGateError):
+            package_and_gate_lora_bundle(
+                weights_path=fake_weights,
+                output_dir=tmp_bundle_dir,
+                bench_metrics={},
+                skip_bench=False,
+            )
+
+    def test_nan_metric_fails_gate(
+        self, fake_weights: Path, tmp_bundle_dir: Path,
+    ) -> None:
+        """NaN metric is caught by fail-closed gate."""
+        with pytest.raises(QualityGateError) as exc_info:
+            package_and_gate_lora_bundle(
+                weights_path=fake_weights,
+                output_dir=tmp_bundle_dir,
+                bench_metrics={"chamfer_mm": float("nan")},
+            )
+        assert int(exc_info.value.exit_code) == 40
+        assert "non-finite" in str(exc_info.value)
+
+    def test_missing_negative_scenario_metric_fails_gate(
+        self, fake_weights: Path, tmp_bundle_dir: Path,
+    ) -> None:
+        """Missing required negative scenario metric fails gate."""
+        with pytest.raises(QualityGateError) as exc_info:
+            package_and_gate_lora_bundle(
+                weights_path=fake_weights,
+                output_dir=tmp_bundle_dir,
+                negative_scenarios=["color_shift_test"],
+                bench_metrics={"chamfer_mm": 1.0},
+            )
+        assert "Missing required negative scenario" in str(
+            exc_info.value,
+        )
 
     def test_evaluation_report_content(
         self, fake_weights: Path, tmp_bundle_dir: Path,
@@ -319,12 +368,13 @@ class TestLoRACLI:
         import sys
         from synapse.cli import main_synapse
 
-        # Create a passing bundle first
+        # Create a passing bundle first (with real bench_metrics, not waived)
         bundle_dir = tmp_path / "bundle"
         package_and_gate_lora_bundle(
             weights_path=fake_weights,
             output_dir=bundle_dir,
-            skip_bench=True,
+            bench_metrics={"chamfer_mm": 2.0},
+            skip_bench=False,
         )
 
         old = sys.stdout
@@ -342,6 +392,36 @@ class TestLoRACLI:
         parsed = json.loads(output)
         assert parsed["status"] == "ok"
         assert parsed["passed"] is True
+
+    def test_lora_eval_waived_rejected_json(
+        self, fake_weights: Path, tmp_path: Path,
+    ) -> None:
+        """synapse lora eval rejects waived bundle (skip_bench=True)."""
+        import io
+        import sys
+        from synapse.cli import main_synapse
+
+        bundle_dir = tmp_path / "waived_bundle"
+        package_and_gate_lora_bundle(
+            weights_path=fake_weights,
+            output_dir=bundle_dir,
+            skip_bench=True,
+        )
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse([
+                "--json", "lora", "eval",
+                "--bundle", str(bundle_dir),
+            ])
+        finally:
+            sys.stdout = old
+
+        assert code == 40
+        parsed = json.loads(buf.getvalue())
+        assert parsed["exit_code"] == 40
+        assert "waived" in parsed["message"]
 
     def test_lora_eval_fail_json(
         self, fake_weights: Path, tmp_path: Path,

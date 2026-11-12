@@ -310,11 +310,13 @@ class StatelessLoRATrainer:
 
         for name, child in module.named_modules():
             if isinstance(child, LoRALinear):
+                lora_a: Any = getattr(child, "lora_A")
+                lora_b: Any = getattr(child, "lora_B")
                 lora_state[f"{name}.lora_A"] = (
-                    child.lora_A.data.clone()
+                    lora_a.data.clone()
                 )
                 lora_state[f"{name}.lora_B"] = (
-                    child.lora_B.data.clone()
+                    lora_b.data.clone()
                 )
 
         out = Path(path)

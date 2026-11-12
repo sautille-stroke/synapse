@@ -12,12 +12,12 @@ self-evaluation as sole judge is STRICTLY FORBIDDEN.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from synapse.errors import ContractValidationError
-
 
 # -------------------------------------------------------------------
 # Physical check thresholds
@@ -166,8 +166,8 @@ class DualVerifierEngine:
         """Run deterministic physics verification.
 
         This check is MANDATORY and must run BEFORE any neural
-        evaluation. Missing required metrics causes an immediate
-        ``ContractValidationError(10)``.
+        evaluation. Missing or non-finite required metrics cause an
+        immediate ``ContractValidationError(10)``.
 
         Args:
             sample_id: Candidate sample identifier.
@@ -183,8 +183,8 @@ class DualVerifierEngine:
 
         Raises:
             ContractValidationError: If required physics metrics
-                are missing (exit code 10). This enforces the
-                anti echo-chamber redline.
+                are missing or non-finite (exit code 10). This enforces
+                the anti echo-chamber redline.
         """
         required_keys = [
             "silhouette_iou",
@@ -209,6 +209,21 @@ class DualVerifierEngine:
                 ),
             )
 
+        # R1 fix: reject NaN / Inf values across all physics metrics
+        for key, val in physics_metrics.items():
+            if not isinstance(val, (int, float)) or not math.isfinite(
+                float(val)
+            ):
+                raise ContractValidationError(
+                    f"Non-finite physics metric '{key}'={val!r} for "
+                    f"sample '{sample_id}'. NaN/Inf values are "
+                    "FORBIDDEN in physical verification.",
+                    agent_fix_hint=(
+                        f"Check geometry/depth computation for '{key}' "
+                        "to eliminate NaN/Inf."
+                    ),
+                )
+
         t = self._thresholds
         checks: dict[str, Any] = {}
         failures: list[str] = []
@@ -217,7 +232,8 @@ class DualVerifierEngine:
         # Silhouette IoU
         sil = physics_metrics["silhouette_iou"]
         checks["silhouette_iou"] = {
-            "value": sil, "threshold": t.silhouette_iou,
+            "value": sil,
+            "threshold": t.silhouette_iou,
             "passed": sil >= t.silhouette_iou,
         }
         if sil < t.silhouette_iou:
@@ -226,7 +242,8 @@ class DualVerifierEngine:
         # Depth RMSE
         depth = physics_metrics["depth_rmse_m"]
         checks["depth_rmse_m"] = {
-            "value": depth, "threshold": t.depth_rmse_m,
+            "value": depth,
+            "threshold": t.depth_rmse_m,
             "passed": depth <= t.depth_rmse_m,
         }
         if depth > t.depth_rmse_m:
@@ -270,7 +287,8 @@ class DualVerifierEngine:
         wt = physics_metrics.get("is_manifold_watertight")
         if wt is not None and t.manifold_watertight:
             checks["is_manifold_watertight"] = {
-                "value": wt, "required": True,
+                "value": wt,
+                "required": True,
                 "passed": bool(wt),
             }
             if not wt:
@@ -309,6 +327,13 @@ class DualVerifierEngine:
         Returns:
             Combined verification verdict.
         """
+        if not math.isfinite(prm_score) or not (0.0 <= prm_score <= 1.0):
+            raise ContractValidationError(
+                f"Invalid prm_score={prm_score!r} for sample "
+                f"'{sample_id}'; must be finite in [0, 1].",
+                agent_fix_hint="Provide a finite PRM score in [0, 1].",
+            )
+
         physics = self.verify_physics(
             sample_id, physics_metrics,
         )
@@ -326,6 +351,7 @@ class DualVerifierEngine:
             )
 
         # Physics passed: use PRM score for final verdict
+        verdict: Literal["ACCEPT", "HARD_NEGATIVE", "REJECT"]
         if prm_score >= self._prm_accept:
             verdict = "ACCEPT"
         elif prm_score < self._prm_reject:

@@ -11,9 +11,7 @@ harder condition levels (L3/L4) on those factors.
 
 from __future__ import annotations
 
-import math
 import random
-from typing import Any
 
 from pydantic import BaseModel, Field
 

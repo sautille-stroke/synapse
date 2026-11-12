@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from synapse.errors import QualityGateError
+from synapse.errors import ContractValidationError, QualityGateError
 from synapse.rsi.promotion_gate import (
     BenchReport,
     BenchScenarioScore,
@@ -282,6 +282,30 @@ class TestPerScenarioRegression:
         quarantine = details["quarantine"]
         scenario_ids = [q["scenario_id"] for q in quarantine]
         assert "t1_rigid_sphere_orbit" in scenario_ids
+
+    def test_candidate_dropping_scenario_raises_contract_error(
+        self,
+    ) -> None:
+        """Dropping a scenario from candidate raises ContractValidationError(10)."""
+        baseline = _make_baseline(30)
+        candidate = _make_improved_candidate(29)
+        with pytest.raises(ContractValidationError) as exc_info:
+            evaluate_monotonic_promotion(
+                baseline=baseline, candidate=candidate,
+            )
+        assert int(exc_info.value.exit_code) == 10
+        assert "missing_in_candidate" in str(exc_info.value)
+
+    def test_nan_score_raises_contract_error(self) -> None:
+        """NaN score in candidate report raises ContractValidationError(10)."""
+        baseline = _make_baseline(5)
+        candidate = _make_improved_candidate(5)
+        candidate.scenarios[0].overall = float("nan")
+        with pytest.raises(ContractValidationError) as exc_info:
+            evaluate_monotonic_promotion(
+                baseline=baseline, candidate=candidate,
+            )
+        assert int(exc_info.value.exit_code) == 10
 
 
 # -------------------------------------------------------------------
