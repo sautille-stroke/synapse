@@ -18,6 +18,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from synapse.errors import ContractValidationError
+from synapse.metrics.profiles import (
+    RSI_PROMOTION,
+    GateProfileName,
+    get_profile_thresholds,
+)
 
 # -------------------------------------------------------------------
 # Physical check thresholds
@@ -27,9 +32,13 @@ from synapse.errors import ContractValidationError
 class PhysicsThresholds(BaseModel):
     """Deterministic physical verification thresholds.
 
+    Defaults are sourced directly from ``synapse.metrics.profiles.RSI_PROMOTION``
+    (SSOT aligned with ``DESIGN_REVIEW_AND_ALIGNMENT.md`` §3.4).
+
     Attributes:
         interpenetration_volume_ratio: Max interpenetration volume.
-        foot_slide_velocity_ms: Max foot sliding speed (m/s).
+        foot_sliding_cm: Max foot horizontal displacement during stance (cm).
+        foot_slide_velocity_ms: Legacy max foot sliding speed (m/s).
         silhouette_iou: Minimum silhouette IoU.
         depth_rmse_m: Maximum depth RMSE in metres.
         normal_angular_error_deg: Maximum normal error in degrees.
@@ -39,15 +48,36 @@ class PhysicsThresholds(BaseModel):
     interpenetration_volume_ratio: float = Field(
         default=0.001, ge=0.0,
     )
+    foot_sliding_cm: float = Field(
+        default=float(RSI_PROMOTION["foot_sliding_cm"]), ge=0.0,
+    )
     foot_slide_velocity_ms: float = Field(
         default=0.02, ge=0.0,
     )
-    silhouette_iou: float = Field(default=0.90, ge=0.0, le=1.0)
-    depth_rmse_m: float = Field(default=0.03, ge=0.0)
+    silhouette_iou: float = Field(
+        default=float(RSI_PROMOTION["silhouette_iou"]), ge=0.0, le=1.0,
+    )
+    depth_rmse_m: float = Field(
+        default=float(RSI_PROMOTION["depth_rmse_m"]), ge=0.0,
+    )
     normal_angular_error_deg: float = Field(
-        default=12.0, ge=0.0,
+        default=float(RSI_PROMOTION["normal_angular_error_deg"]), ge=0.0,
     )
     manifold_watertight: bool = True
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: GateProfileName = "rsi_promotion",
+    ) -> PhysicsThresholds:
+        """Construct thresholds from a canonical ``synapse.metrics.profiles`` profile."""
+        table = get_profile_thresholds(profile)
+        return cls(
+            foot_sliding_cm=table["foot_sliding_cm"],
+            silhouette_iou=table["silhouette_iou"],
+            depth_rmse_m=table["depth_rmse_m"],
+            normal_angular_error_deg=table["normal_angular_error_deg"],
+        )
 
 
 # -------------------------------------------------------------------
@@ -272,7 +302,17 @@ class DualVerifierEngine:
             if interp > t.interpenetration_volume_ratio:
                 failures.append("INTERPENETRATION")
 
-        # Optional: foot sliding
+        # Optional: foot sliding (canonical foot_sliding_cm + legacy foot_slide_velocity_ms)
+        fs_cm = physics_metrics.get("foot_sliding_cm")
+        if fs_cm is not None:
+            checks["foot_sliding_cm"] = {
+                "value": fs_cm,
+                "threshold": t.foot_sliding_cm,
+                "passed": fs_cm <= t.foot_sliding_cm,
+            }
+            if fs_cm > t.foot_sliding_cm and "FOOT_SLIPPING" not in failures:
+                failures.append("FOOT_SLIPPING")
+
         fs = physics_metrics.get("foot_slide_velocity_ms")
         if fs is not None:
             checks["foot_slide_velocity_ms"] = {
@@ -280,7 +320,7 @@ class DualVerifierEngine:
                 "threshold": t.foot_slide_velocity_ms,
                 "passed": fs <= t.foot_slide_velocity_ms,
             }
-            if fs > t.foot_slide_velocity_ms:
+            if fs > t.foot_slide_velocity_ms and "FOOT_SLIPPING" not in failures:
                 failures.append("FOOT_SLIPPING")
 
         # Optional: manifold watertight

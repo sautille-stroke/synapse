@@ -22,6 +22,11 @@ from synapse.errors import (
     ContractValidationError,
     QualityGateError,
 )
+from synapse.metrics.profiles import (
+    TRACK_A_ASSET,
+    GateProfileName,
+    get_profile_thresholds,
+)
 
 # -------------------------------------------------------------------
 # Roundtrip gate thresholds
@@ -31,6 +36,9 @@ from synapse.errors import (
 class RoundtripGate(BaseModel):
     """Stage 5 roundtrip hard gate thresholds.
 
+    Defaults are sourced from ``synapse.metrics.profiles.TRACK_A_ASSET``
+    (SSOT aligned with ``DESIGN_REVIEW_AND_ALIGNMENT.md`` §3.4).
+
     Attributes:
         delta_fscore_1mm: Minimum F-score improvement (must be >= 0).
         volume_breathing_pct: Maximum volume change percentage.
@@ -38,8 +46,25 @@ class RoundtripGate(BaseModel):
     """
 
     delta_fscore_1mm: float = Field(default=0.0, ge=0.0)
-    volume_breathing_pct: float = Field(default=3.0, ge=0.0)
+    volume_breathing_pct: float = Field(
+        default=float(TRACK_A_ASSET["volume_breathing_pct"]), ge=0.0,
+    )
     max_non_manifold_edges: int = Field(default=0, ge=0)
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: GateProfileName = "track_a_asset",
+        delta_fscore_1mm: float = 0.0,
+        max_non_manifold_edges: int = 0,
+    ) -> RoundtripGate:
+        """Construct roundtrip gate from a canonical ``synapse.metrics.profiles`` profile."""
+        table = get_profile_thresholds(profile)
+        return cls(
+            delta_fscore_1mm=delta_fscore_1mm,
+            volume_breathing_pct=table["volume_breathing_pct"],
+            max_non_manifold_edges=max_non_manifold_edges,
+        )
 
 
 # -------------------------------------------------------------------
