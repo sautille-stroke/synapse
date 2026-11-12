@@ -192,7 +192,8 @@ synapse/
 │   │   ├── align.py                     # Fibonacci 球面 DINOv2 粗检索 + vg.recon 6DoF 精配准
 │   │   ├── macro.py                     # 多通道残差热力图定位 + 虚拟微距相机 3D 反投解算
 │   │   ├── jev_critic.py                # Visual Jev 共享视觉上下文批量质检与校准 Logits 置信度提取
-│   │   └── flywheel_exporter.py         # 对接 RFC 0020/0021 导出 IntentGroup / PRM StepAnnotation / Undo-DPO JSONL
+│   │   ├── flywheel_exporter.py         # 对接 RFC 0020/0021 导出 IntentGroup / PRM StepAnnotation / Undo-DPO JSONL
+│   │   └── eval_report.py               # [已实施] 3D 模型拓扑/渲染评估数据模型与自包含 HTML 报告生成器 (SVG 雷达图)
 │   ├── rsi/                             # [M7] 物理驱动递归自我提升 (RSI) 无状态阶段算子
 │   │   ├── curriculum.py                # 自博弈课程域随机化参数采样器 Ω_task(θ)
 │   │   ├── dual_verifier.py             # 融合 vg_bridge 物理硬判决 V_phys 与 Visual Jev V_prm 的双重验算器
@@ -202,7 +203,12 @@ synapse/
 │   └── cli/                             # 统一 CLI 路由层
 │       ├── __init__.py                  # `synapse` 与 `synapse-bench` 双入口分发
 │       └── ...                          # 按子域拆分的命令处理器
-└── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件
+├── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件
+└── scripts/
+    ├── evaluate_3d_models.py             # [已实施] 3D 模型评估 CLI (OBJ 扫描→拓扑检查→多视角截图→6 维指标→三级门禁→HTML 报告)
+    ├── prepare_datasets.py               # FGPP 黄金数据集准备
+    ├── run_cpu_verification.py            # E1–E5 无卡 CPU 基线验证
+    └── colab_runner.py                    # Google Colab 断点续跑实验执行器
 ```
 
 ### 3.2 统一 CLI 双入口语法树（Unified CLI Grammar）
@@ -214,7 +220,7 @@ synapse/
 | **`synapse`** | `fgpp` | `synapse fgpp validate <dir> [--json]`<br/>`synapse fgpp inspect <dir> [--export-vis <out>] [--json]` | M1 (`PR-04`) |
 | **`synapse`** | `worker` | `synapse worker run --bundle <manifest_or_dir> [--json]` | M4 (`PR-14b`) |
 | **`synapse`** | `lora` | `synapse lora prepare-data --input <dir> --out-wds <path> [--json]`<br/>`synapse lora train --config <yaml> --dataset <wds> --out <dir> [--json]`<br/>`synapse lora eval --lora-bundle <dir> --scenario <id> [--json]`<br/>`synapse lora merge --base <ckpt> --lora <dir:scale>... --out <ckpt> [--json]` | M5 (`PR-16~19`) |
-| **`synapse`** | `inspect` | `synapse inspect align --ref-image <img> --mesh <glb> --out <pose.json> [--json]`<br/>`synapse inspect eval --ref-image <img> --mesh <glb> --camera <pose.json> [--json]`<br/>`synapse inspect refine --mesh <glb> --report <rep.json> --out <glb> [--json]`<br/>`synapse inspect export-rl-data --journal-dir <dir> --format dpo\|prm --out <jsonl> [--json]` | M6 (`PR-20~23`) |
+| **`synapse`** | `inspect` | `synapse inspect align --ref-image <img> --mesh <glb> --out <pose.json> [--json]`<br/>`synapse inspect eval --ref-image <img> --mesh <glb> --camera <pose.json> [--json]`<br/>`synapse inspect refine --mesh <glb> --report <rep.json> --out <glb> [--json]`<br/>`synapse inspect export-rl-data --journal-dir <dir> --format dpo\|prm --out <jsonl> [--json]`<br/>`synapse inspect evaluate --input-dir <dir> --output-dir <dir> --gate-profile <p> [--views N] [--resolution N] [--json]` ✅ | M6 (`PR-20~23`) |
 | **`synapse`** | `rsi` | `synapse rsi sample-curriculum --round <t> --count <n> --out <dir> [--json]`<br/>`synapse rsi verify --candidate-dir <dir> --fgpp-dir <dir> [--json]`<br/>`synapse rsi build-pairs --verified-dir <dir> --l0-golden <dir> --out <dir> [--json]`<br/>`synapse rsi gate-promote --baseline <json> --candidate <json> [--json]` | M7 (`PR-24~25`) |
 | **`synapse`** | `generate` / `view` | `synapse generate ...`（开发合成数据集） / `synapse view <dir>`（本地 `127.0.0.1` 预览） | M1 (`PR-04`) |
 | **`synapse-bench`** | 评测基准套件 | `synapse-bench list [--tier T1..T5] [--json]`<br/>`synapse-bench export-fgpp --scenario <id> --out <dir> [--json]`<br/>`synapse-bench run [--scenario <id> \| --tier <T> \| --all] --adapter <id> [--profile <p>] [--report <html_path>] [--export-bundle <dir>] [--json]`<br/>`synapse-bench evaluate --bundle <inspection_bundle_dir> [--profile <p>] [--json]` | M1 / M4 / M8 |

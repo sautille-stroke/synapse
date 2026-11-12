@@ -177,3 +177,17 @@ flowchart LR
 | **RK-04** | 多 LoRA 叠加导致角色面部被风格滤镜偏色或参数冲突崩坏 | M5 (`PR-16`) | `MultiLoRAManager` 利用 `Cryptomatte.ID` 在潜空间做前景角色与背景风格掩膜隔离，并实施正交投影去冲突 |
 | **RK-05** | 自生成数据自训引发回音室效应与灾难性遗忘（Model Collapse） | M7 (`PR-24/25`) | 强制要求通过 `vg-core`/`fulgur` 闭式物理验算方可入池，强制混入 $\ge 20\%$ 人类专家 L0 黄金样本，且 30 场景单调递增零退化才允许晋升 |
 | **RK-06** | `tools/data-inspector` 跨仓引用 `fulgur` 私有目标导致构建断裂 | M8 (`PR-27`) | 独立 `native/MODULE.bazel` 仅依赖 `@fulgur//engine/{rhi,renderer,asset,animation,physics}` 公开 Umbrella 目标（`RV-03`） |
+
+---
+
+## 6. 计划外已交付增量 (Out-of-Band Delivered Increments)
+
+> 以下交付在正式 30-PR 计划之外独立完成并已合入 `main`，对应计划中 M6（`PR-20~23`）的评估子系统提前落地。
+
+| PR | 合入日期 | 核心交付摘要 | 净增规模 | 验收状态 |
+| :--- | :---: | :--- | :---: | :---: |
+| **[PR #31](https://github.com/sautille-stroke/synapse/pull/31)** | 2026-11-12 | 3D 模型评估系统：`scripts/evaluate_3d_models.py` CLI（625 行）+ `python/synapse/inspect/eval_report.py` HTML 报告生成器（533 行）+ `tests/test_eval_report.py`（24 项测试，396 行）+ `docs/REVIEW_3D_EVAL_DELIVERY.md` 交付清单 + `docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md` v2.0 更新 | +2,148 行 | ✅ 739 tests passed |
+
+**影响的计划条目**：
+- `PR-20~23`（M6：3D 质检与精修飞轮）中的模型评估核心功能已提前交付，后续仅需补充 DINOv2 配准、Visual Jev 判别与 RL 飞轮导出。
+- `PR-13`（M4：四维指标与三级门禁档位）中的 3D 网格维度指标部分已在 `eval_report.py` 中独立实现，后续合入时需对齐复用。
