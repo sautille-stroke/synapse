@@ -40,7 +40,9 @@ def _discover_fulgur_export_dir() -> Path | None:
         candidates.append(Path(env_dir))
     candidates.extend(
         [
+            Path("/tmp/fgpp_102_crypto"),
             Path("/tmp/fgpp_102"),
+            Path("/root/work/datasets/synapse/track_b_fulgur/course_102_pbr_17f"),
             Path("data/golden/fgpp/course_102_pbr"),
         ]
     )
@@ -317,8 +319,10 @@ class TestFgppFulgurRealGpuExport:
                 "/tmp/fgpp_102, or data/golden/fgpp/course_102_pbr"
             )
         seq = _assert_fgpp_package_valid(fulgur_dir)
-        # Verify real rendered scene has non-trivial foreground geometry and lighting
+        # Verify real rendered scene has non-trivial foreground geometry, lighting, and Cryptomatte IDs
         f0 = seq.frames[0]
         assert f0.direct_radiance is not None
         assert float(np.max(f0.direct_radiance.astype(np.float32))) > 0.01
         assert float(np.std(f0.depth)) > 0.05
+        assert f0.cryptomatte_id is not None
+        assert len(np.unique(f0.cryptomatte_id)) >= 2
