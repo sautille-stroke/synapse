@@ -127,3 +127,47 @@ class InspectionReport(BaseModel):
         default_factory=list,
     )
     metrics_summary: dict[str, float] = Field(default_factory=dict)
+
+
+class GeometricValidationResult(BaseModel):
+    """Tier 0 geometric topology validation result.
+
+    Produced by ``validate_mesh_geometry()`` as the first-pass
+    deterministic gate before any neural or rendering evaluation.
+
+    Attributes
+    ----------
+    is_manifold:
+        Whether mesh is a valid 2-manifold.
+    is_watertight:
+        Whether mesh is strictly watertight (closed).
+    num_vertices:
+        Total vertex count.
+    num_faces:
+        Total face count.
+    degenerate_face_indices:
+        Indices of faces flagged as degenerate.
+    self_intersecting_pairs:
+        Pairs of non-adjacent face indices that geometrically intersect.
+    num_connected_components:
+        Number of connected components in the mesh.
+    floating_island_face_indices:
+        Face indices belonging to floating islands (pruned components).
+    passed:
+        Whether all Tier 0 gates passed.
+    failure_reasons:
+        Human-readable descriptions of each failed gate.
+    """
+
+    is_manifold: bool = Field(..., description="Whether mesh is a valid 2-manifold")
+    is_watertight: bool = Field(
+        ..., description="Whether mesh is strictly watertight (closed)",
+    )
+    num_vertices: int = Field(..., ge=0)
+    num_faces: int = Field(..., ge=0)
+    degenerate_face_indices: list[int] = Field(default_factory=list)
+    self_intersecting_pairs: list[tuple[int, int]] = Field(default_factory=list)
+    num_connected_components: int = Field(default=1, ge=0)
+    floating_island_face_indices: list[int] = Field(default_factory=list)
+    passed: bool = Field(..., description="Whether all Tier 0 gates passed")
+    failure_reasons: list[str] = Field(default_factory=list)

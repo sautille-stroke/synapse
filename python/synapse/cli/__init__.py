@@ -679,6 +679,97 @@ def _cmd_lora_merge(
 # -------------------------------------------------------------------
 
 
+
+def _cmd_inspect_mesh(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Run Tier 0 geometric topology validation on a mesh file."""
+    import numpy as np
+
+    from synapse.inspect.geometry_gate import validate_mesh_geometry
+
+    mesh_path = Path(getattr(args, "mesh_path", ""))
+    if not mesh_path.is_file():
+        raise AssetNotFoundError(
+            f"Mesh file not found: {mesh_path}",
+            agent_fix_hint=(
+                f"Ensure '{mesh_path}' exists and is a valid .obj / .glb "
+                "/ .ply mesh file."
+            ),
+        )
+
+    # Lazy import trimesh for loading (optional dependency)
+    try:
+        import trimesh
+    except ImportError:
+        raise ContractValidationError(
+            "trimesh is required for mesh file loading. "
+            "Install with: pip install 'synapse[mesh]'",
+            agent_fix_hint="pip install trimesh>=4.0.0",
+        )
+
+    mesh = trimesh.load(str(mesh_path), force="mesh")
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+
+    backend = getattr(args, "backend", "auto")
+    require_wt = getattr(args, "require_watertight", False)
+
+    result = validate_mesh_geometry(
+        vertices,
+        faces,
+        require_watertight=require_wt,
+        backend=backend,
+    )
+
+    result_dict = result.model_dump()
+
+    if not args.json:
+        status = "PASS" if result.passed else "FAIL"
+        print(f"[Tier 0 Geometry Gate] {mesh_path.name}: {status}")
+        print(f"  Vertices:    {result.num_vertices}")
+        print(f"  Faces:       {result.num_faces}")
+        print(f"  Manifold:    {result.is_manifold}")
+        print(f"  Watertight:  {result.is_watertight}")
+        print(f"  Degenerate:  {len(result.degenerate_face_indices)}")
+        print(
+            f"  Self-Intersecting: "
+            f"{len(result.self_intersecting_pairs)} pairs"
+        )
+        print(f"  Components:  {result.num_connected_components}")
+        print(
+            f"  Float Debris: "
+            f"{len(result.floating_island_face_indices)} faces"
+        )
+        if result.failure_reasons:
+            print("  Failures:")
+            for reason in result.failure_reasons:
+                print(f"    - {reason}")
+
+    # Write report file if requested
+    report_path = getattr(args, "report", None)
+    if report_path:
+        report_file = Path(report_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(
+            json.dumps(result_dict, indent=2, default=str),
+            encoding="utf-8",
+        )
+        if not args.json:
+            print(f"  Report: {report_file}")
+
+    if not result.passed:
+        raise QualityGateError(
+            "Tier 0 geometry gate failed: "
+            + "; ".join(result.failure_reasons),
+            agent_fix_hint=(
+                "Fix mesh topology issues before proceeding to "
+                "neural rendering or video generation stages."
+            ),
+        )
+
+    return result_dict
+
 def _cmd_inspect_align(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
@@ -959,7 +1050,7 @@ def main_synapse(args: list[str] | None = None) -> int:
         synapse view [dataset] [--port ...] [--no-browser]
         synapse worker run --bundle <path> [--json]
         synapse lora prepare-data|train|eval|merge [--json]
-        synapse inspect align|eval|refine|export-rl-data [--json]
+        synapse inspect mesh|align|eval|refine|export-rl-data [--json]
     """
     parser = argparse.ArgumentParser(
         prog="synapse",
@@ -1088,6 +1179,28 @@ def main_synapse(args: list[str] | None = None) -> int:
     )
     inspect_sub = inspect_parser.add_subparsers(
         dest="inspect_command",
+    )
+
+    insp_mesh = inspect_sub.add_parser(
+        "mesh",
+        help="Run Tier 0 geometric topology gate on a mesh file",
+    )
+    insp_mesh.add_argument(
+        "mesh_path",
+        help="Path to mesh file (.obj, .glb, .ply)",
+    )
+    insp_mesh.add_argument(
+        "--report", default=None,
+        help="Output JSON report file path",
+    )
+    insp_mesh.add_argument(
+        "--backend", default="auto",
+        choices=["auto", "python", "native"],
+        help="Backend for geometry checks (default: auto)",
+    )
+    insp_mesh.add_argument(
+        "--require-watertight", action="store_true",
+        help="Require mesh to be watertight (closed)",
     )
 
     insp_align = inspect_sub.add_parser(
@@ -1355,7 +1468,12 @@ def main_synapse(args: list[str] | None = None) -> int:
 
     elif parsed.command == "inspect":
         insp_cmd = getattr(parsed, "inspect_command", None)
-        if insp_cmd == "align":
+        if insp_cmd == "mesh":
+            return _run_with_json_mode(
+                _cmd_inspect_mesh, parsed,
+                json_mode, trace_ctx,
+            )
+        elif insp_cmd == "align":
             return _run_with_json_mode(
                 _cmd_inspect_align, parsed,
                 json_mode, trace_ctx,
