@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -22,15 +22,15 @@ except ImportError:  # pragma: no cover — numba is an optional heavy dep
     # Provide no-op fallback decorators so the module can still be *imported*
     # without numba.  The JIT-accelerated kernels fall back to plain Python/
     # NumPy execution (significantly slower but functionally identical).
-    def njit(*_args, **_kwargs):  # type: ignore[misc]
+    def njit(*_args: Any, **_kwargs: Any) -> Any:  # type: ignore[no-redef]
         """Identity decorator when numba is unavailable."""
-        def _wrap(fn):
+        def _wrap(fn: Any) -> Any:
             return fn
         if _args and callable(_args[0]):
             return _args[0]
         return _wrap
 
-    prange = range  # type: ignore[assignment]
+    prange = range  # type: ignore[misc,assignment]
 
 from synapse.fgpp.frame import CameraParams
 from synapse.models.asset import ModelAsset
@@ -289,7 +289,11 @@ class SoftwareRasterizer:
             face_uvs = np.zeros((len(faces), 3, 2), dtype=np.float32)
 
         has_texture = mesh.base_color_texture is not None
-        texture = mesh.base_color_texture if has_texture else np.zeros((1, 1, 3), dtype=np.uint8)
+        texture: np.ndarray = (
+            mesh.base_color_texture
+            if mesh.base_color_texture is not None
+            else np.zeros((1, 1, 3), dtype=np.uint8)
+        )
 
         # Outputs
         # Background color: subtle dark slate (20, 22, 28)
@@ -300,11 +304,18 @@ class SoftwareRasterizer:
         mask_out = np.zeros((h, w), dtype=np.uint8)
 
         has_prev = prev_camera is not None
-        prev_view = prev_camera.view_matrix if has_prev else np.eye(4, dtype=np.float64)
-        prev_fx = prev_camera.fx if has_prev else camera.fx
-        prev_fy = prev_camera.fy if has_prev else camera.fy
-        prev_cx = prev_camera.cx if has_prev else camera.cx
-        prev_cy = prev_camera.cy if has_prev else camera.cy
+        if prev_camera is not None:
+            prev_view = prev_camera.view_matrix
+            prev_fx = prev_camera.fx
+            prev_fy = prev_camera.fy
+            prev_cx = prev_camera.cx
+            prev_cy = prev_camera.cy
+        else:
+            prev_view = np.eye(4, dtype=np.float64)
+            prev_fx = camera.fx
+            prev_fy = camera.fy
+            prev_cx = camera.cx
+            prev_cy = camera.cy
 
         _rasterize_kernel(
             screen_pts=screen_pts,

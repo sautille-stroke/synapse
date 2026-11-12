@@ -50,7 +50,7 @@ def _pil_to_rgb_array(img: Any) -> Optional[np.ndarray]:
     return None
 
 
-def _load_from_trimesh_geom(name: str, geom: "trimesh.Trimesh") -> ModelAsset:
+def _load_from_trimesh_geom(name: str, geom: Any) -> ModelAsset:
     """Convert a trimesh.Trimesh object into a ModelAsset."""
     vertices = np.ascontiguousarray(geom.vertices, dtype=np.float32)
     faces = np.ascontiguousarray(geom.faces, dtype=np.int32)
@@ -59,7 +59,8 @@ def _load_from_trimesh_geom(name: str, geom: "trimesh.Trimesh") -> ModelAsset:
     if hasattr(geom, "vertex_normals") and geom.vertex_normals is not None and len(geom.vertex_normals) == len(vertices):
         normals = np.ascontiguousarray(geom.vertex_normals, dtype=np.float32)
     else:
-        geom.recompute_normals()
+        if hasattr(geom, "recompute_normals"):
+            geom.recompute_normals()
         normals = np.ascontiguousarray(geom.vertex_normals, dtype=np.float32)
 
     # UVs
@@ -129,7 +130,11 @@ def _generate_procedural_bunny(subdivisions: int = 2) -> ModelAsset:
     r_mod = 1.0 + 0.18 * np.sin(3 * theta) * np.sin(2 * phi) + 0.08 * np.cos(5 * phi)
     v *= r_mod[:, None]
     base_mesh.vertices = v
-    base_mesh.recompute_normals()
+    if hasattr(base_mesh, "recompute_normals"):
+        base_mesh.recompute_normals()
+    else:
+        # trimesh >= 4.x invalidates cached normals when vertices are assigned
+        _ = base_mesh.vertex_normals
 
     asset = _load_from_trimesh_geom("stanford_bunny_procedural", base_mesh)
     asset.base_color_factor = np.array([0.9, 0.82, 0.75], dtype=np.float32)  # Terracotta / ceramic

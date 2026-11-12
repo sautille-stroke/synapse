@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -147,7 +147,7 @@ def load_obj(path: str | Path) -> MeshData:
         counts = np.maximum(counts, 1.0)
         vert_normals /= counts[:, np.newaxis]
         norms_mag = np.linalg.norm(vert_normals, axis=1, keepdims=True)
-        vert_normals = vert_normals / np.maximum(norms_mag, 1e-12)
+        vert_normals = (vert_normals / np.maximum(norms_mag, 1e-12)).astype(np.float32)
     else:
         vert_normals = np.zeros_like(verts_arr)
 
@@ -238,9 +238,9 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
             f"Install with: pip install synapse[mesh]"
         ) from exc
 
-    scene_or_mesh = trimesh.load(str(path), force="mesh")
+    scene_or_mesh: Any = trimesh.load(str(path), force="mesh")
     if hasattr(scene_or_mesh, "vertices"):
-        geom = scene_or_mesh
+        geom: Any = scene_or_mesh
     else:
         geom = list(scene_or_mesh.geometry.values())[0]
 

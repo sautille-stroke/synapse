@@ -193,13 +193,9 @@ def _detect_temporal_flicker(
         frame_b = video_gray[t + 1]
 
         # Motion-compensate frame_a → frame_b using FGPP motion vectors.
-        if (
-            t + 1 < len(fgpp_frames)
-            and fgpp_frames[t + 1].motion_vector is not None
-        ):
-            warped = _simple_warp(
-                frame_a, fgpp_frames[t + 1].motion_vector
-            )
+        mv_next = fgpp_frames[t + 1].motion_vector if t + 1 < len(fgpp_frames) else None
+        if mv_next is not None:
+            warped = _simple_warp(frame_a, mv_next)
         else:
             warped = frame_a
 
@@ -214,16 +210,16 @@ def _detect_temporal_flicker(
             continue
 
         # Severity: proportion of blocks that are hot, weighted by max mean.
-        max_mean = float(bmean.max())
+        max_mean = float(np.max(bmean))
         hot_ratio = float(hot_mask.sum()) / max(bmean.size, 1)
         severity = float(np.clip(hot_ratio * max_mean / threshold, 0.0, 1.0))
 
         # Bounding box of hot blocks in pixel space.
         ys, xs = np.nonzero(hot_mask)
-        x1 = int(xs.min()) * _BLOCK_SIZE
-        y1 = int(ys.min()) * _BLOCK_SIZE
-        x2 = (int(xs.max()) + 1) * _BLOCK_SIZE
-        y2 = (int(ys.max()) + 1) * _BLOCK_SIZE
+        x1 = int(np.min(xs)) * _BLOCK_SIZE
+        y1 = int(np.min(ys)) * _BLOCK_SIZE
+        x2 = (int(np.max(xs)) + 1) * _BLOCK_SIZE
+        y2 = (int(np.max(ys)) + 1) * _BLOCK_SIZE
 
         defects.append(VideoDefectRegion(
             defect_type="temporal_flicker",
@@ -283,8 +279,8 @@ def _detect_silhouette_drift(
             defect_type="silhouette_drift",
             frame_range=(t, t),
             bbox_xyxy=(
-                int(xs.min()), int(ys.min()),
-                int(xs.max()) + 1, int(ys.max()) + 1,
+                int(np.min(xs)), int(np.min(ys)),
+                int(np.max(xs)) + 1, int(np.max(ys)) + 1,
             ),
             entity_id=0,
             severity_score=severity,

@@ -378,6 +378,7 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
 
     # Create adapter
     adapter_name = getattr(args, "adapter", "mock")
+    adapter: Any
     if adapter_name == "mock":
         adapter = MockVideoAdapter()
     else:

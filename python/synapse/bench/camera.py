@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import math
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams
+
+if TYPE_CHECKING:
+    from synapse.bench.scenario import Scenario
 
 
 class CameraTrajectoryType(str, Enum):
@@ -327,7 +330,7 @@ def _generate_pan(
     return cameras
 
 
-_GENERATORS = {
+_GENERATORS: dict[CameraTrajectoryType, Callable[..., list[CameraParams]]] = {
     CameraTrajectoryType.ORBIT: _generate_orbit,
     CameraTrajectoryType.TRACKING: _generate_tracking,
     CameraTrajectoryType.DOLLY: _generate_dolly,
@@ -339,7 +342,7 @@ _GENERATORS = {
 
 def generate_cameras(
     scenario_or_type: "Scenario | CameraTrajectoryType | str",
-    **override_params: object,
+    **override_params: Any,
 ) -> list[CameraParams]:
     """Generate camera trajectory for a scenario or trajectory type."""
     if isinstance(scenario_or_type, str):

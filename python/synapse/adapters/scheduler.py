@@ -243,7 +243,7 @@ class DiscontinuityDetector:
         union = np.count_nonzero(fg_prev | fg_curr)
         if union == 0:
             return 1.0  # both empty — no discontinuity
-        return float(intersection / union)
+        return float(int(intersection) / int(union))
 
     def compute_kappa(
         self,

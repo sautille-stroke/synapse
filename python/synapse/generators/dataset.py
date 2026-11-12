@@ -52,7 +52,7 @@ def _generate_spiral_cameras(
     rotations: float = 2.0,
 ) -> list[CameraParams]:
     """Generate a rising spiral camera trajectory around target."""
-    from synapse.bench.camera import _look_at, _make_camera
+    from synapse.bench.camera import _make_camera
 
     cameras = []
     target = np.array([0.0, 0.0, 0.0])
@@ -70,8 +70,7 @@ def _generate_spiral_cameras(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
         eye = np.array([x, y, z])
 
-        view = _look_at(eye, target)
-        cam = _make_camera(view, width, height, fov_degrees)
+        cam = _make_camera(eye, target, width, height, fov_degrees)
         cameras.append(cam)
 
     return cameras
@@ -138,7 +137,7 @@ class DatasetGenerator:
 
         import cv2  # lazy: heavy native dependency, not needed at import time
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
         video_path = out_dir / "video_all.mp4"
         train_video_path = out_dir / "video_train.mp4"
         val_video_path = out_dir / "video_val.mp4"

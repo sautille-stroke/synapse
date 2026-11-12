@@ -36,7 +36,7 @@ class MultiLoRAManager:
         lora_bundles: list[tuple[LoRAManifest, float]],
     ) -> None:
         self._bundles = lora_bundles
-        self._original_weights: dict[str, Any] = {}
+        self._original_weights: dict[int, tuple[Any, Any]] = {}
 
     # -- public API ----------------------------------------------------------
 

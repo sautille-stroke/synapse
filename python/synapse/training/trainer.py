@@ -427,7 +427,7 @@ def _get_lora_linear_class() -> type:
 
 
 # Override the placeholder _LoRALinear with the real factory
-_LoRALinear = None  # type: ignore[assignment]
+_LoRALinear = None  # type: ignore[misc,assignment]
 
 
 def _create_lora_linear(

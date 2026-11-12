@@ -133,4 +133,4 @@ def histogram_intersection(
     if sum_a < 1e-12:
         return 0.0
 
-    return float(np.minimum(a, b).sum() / sum_a)
+    return float(float(np.minimum(a, b).sum()) / float(sum_a))
