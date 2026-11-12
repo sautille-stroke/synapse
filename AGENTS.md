@@ -14,7 +14,7 @@
 | :--- | :--- | :--- |
 | **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style`) | Layer 0 C++20 定义 `FGPP` 15 标量 EXR 通道布局、`metadata.json` (`fgpp.v1.0`) 与 `StyleProfile` Schema；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死，**严禁私自篡改线格式** |
 | **正向物理 FGPP 生产端** | `fulgur` (Track B) / `caelum-core` (Track A) | 导出多通道 OpenEXR 序列 + `metadata.json`；`synapse.fgpp` 负责无损读取、校验与张量转换 |
-| **原生视觉与角色算法核** | `vg-core` (`csrc/` + `pybind11`) | 承载去光照、Graph-Cut 贴图缝合、四边面重拓扑、Humanoid-53 刚体骨长与足底零速度 IK；`synapse.bridge` 通过零拷贝 FFI 调用，**严禁在 Python 中重写密集几何/IK 循环** |
+| **全仓自包含原生算法核** | `synapse` (`csrc/geometry/` + Python Oracle) | 已彻底脱离外部 `vg-core`，自包含原生 C++20 几何算子；Python 模块 (`synapse.recon.geometry`) 作为算法正确性验证的 Ground Truth Oracle，双轨互验 |
 | **上游分布式调度与编排** | `render-farm` (Go) / `narrative-rail` (Go) | 生产级 DAG 编排与 API 服务统一由 Go 承载；通过 RFC 0039 自洽 `JobBundle` 调度 `synapse` 在 `foundary` 容器内完成单步 GPU 计算后即刻退出 |
 | **上层创作工坊与总控** | `grand-studio` / `scene-forge` / `asset-forge` / `film-studio` | 负责白模布景、运镜编辑、2D 瑕疵框选、网格/材质 L2 限时人工精修与 `CommandIR` 采集；**桌面端严禁直接内嵌 `synapse` 重型 PyTorch 环境** |
 
