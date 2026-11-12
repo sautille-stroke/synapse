@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from synapse.training.losses import (
@@ -158,6 +160,36 @@ class TestDiffusionDPOLoss:
         )
         # The two losses should differ
         assert loss_a != pytest.approx(loss_b, abs=1e-3)
+
+    def test_directional_preference_monotonicity(self) -> None:
+        """Improving policy accuracy on chosen vs rejected strictly lowers DPO loss."""
+        target_w = np.array([1.0, 1.0])
+        target_l = np.array([-1.0, -1.0])
+        v_ref_w = np.array([0.5, 0.5])
+        v_ref_l = np.array([-0.5, -0.5])
+
+        # Policy == reference -> loss is exactly ln(2)
+        loss_init = diffusion_dpo_loss(
+            v_ref_w, v_ref_l, v_ref_w, v_ref_l,
+            beta=10.0, target_w=target_w, target_l=target_l,
+        )
+        assert loss_init == pytest.approx(np.log(2.0), abs=1e-6)
+
+        # Policy improves on chosen (closer to target_w than ref) -> loss < ln(2)
+        v_better_w = np.array([0.9, 0.9])
+        loss_better = diffusion_dpo_loss(
+            v_better_w, v_ref_l, v_ref_w, v_ref_l,
+            beta=10.0, target_w=target_w, target_l=target_l,
+        )
+        assert loss_better < np.log(2.0)
+
+        # Policy degrades on chosen (further from target_w than ref) -> loss > ln(2)
+        v_worse_w = np.array([0.0, 0.0])
+        loss_worse = diffusion_dpo_loss(
+            v_worse_w, v_ref_l, v_ref_w, v_ref_l,
+            beta=10.0, target_w=target_w, target_l=target_l,
+        )
+        assert loss_worse > np.log(2.0)
 
 
 # -------------------------------------------------------------------
@@ -426,12 +458,131 @@ class TestStatelessLoRATrainer:
         assert result.exists()
         assert result.stat().st_size > 0
 
-        # Load back and verify keys contain lora_A/lora_B
+        # Load back and verify keys contain lora_A/lora_B and metadata
+        from safetensors import safe_open
         from safetensors.torch import load_file
+
         loaded = load_file(str(result))
         keys = list(loaded.keys())
-        assert any("lora_A" in k for k in keys)
-        assert any("lora_B" in k for k in keys)
+        assert any(k.endswith(".lora_A.weight") for k in keys)
+        assert any(k.endswith(".lora_B.weight") for k in keys)
+
+        with safe_open(str(result), framework="pt") as f:
+            meta = f.metadata()
+            assert meta is not None
+            assert meta.get("category") == "style"
+            assert meta.get("rank") == "4"
+
+    def test_inject_lora_idempotent_and_order_independent(self) -> None:
+        """Calling inject_lora twice or before freeze_backbone works cleanly."""
+        from synapse.training.trainer import (
+            LoRATrainConfig,
+            StatelessLoRATrainer,
+        )
+
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(category="style", rank=4)
+        trainer = StatelessLoRATrainer(cfg)
+
+        # Inject first, then freeze_backbone -> LoRA params remain trainable
+        c1 = trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+        assert c1 == 2
+        # Second call with same patterns must not double-wrap .orig
+        c2 = trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+        assert c2 == 0
+
+        info = trainer.freeze_backbone(model)
+        assert info["trainable_params"] > 0
+
+    def test_dpo_step_reference_parity_and_preference_learning(self) -> None:
+        """At step 0 (B=0), DPO loss equals ln(2); training decreases DPO loss."""
+        import torch
+        from synapse.training.trainer import (
+            LoRATrainConfig,
+            StatelessLoRATrainer,
+        )
+
+        torch.manual_seed(7)
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(
+            category="motion",
+            rank=8,
+            alpha=8.0,
+            lr_spatial=5e-3,
+            loss_mode="dpo",
+            dpo_beta=10.0,
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+
+        chosen = torch.randn(4, 64)
+        rejected = -chosen.clone()
+        noise = torch.zeros(4, 64)
+        fixed_t = torch.full((4, 1), 0.5)
+
+        batch = {
+            "chosen": chosen,
+            "rejected": rejected,
+            "noise": noise,
+            "t": fixed_t,
+        }
+        step0 = trainer.train_step(model, batch, 0)
+        assert step0["loss"] == pytest.approx(float(np.log(2.0)), abs=1e-5)
+
+        for s in range(1, 25):
+            last = trainer.train_step(model, batch, s)
+        assert last["loss"] < step0["loss"] * 0.9, (
+            f"DPO loss did not decrease: {step0['loss']:.4f} -> {last['loss']:.4f}"
+        )
+
+    def test_spatial_and_temporal_lr_groups_and_grad_accum(self) -> None:
+        """Verify separate lr_spatial / lr_temporal optimizer groups and grad_accum_steps."""
+        import torch
+        from synapse.training.trainer import (
+            LoRATrainConfig,
+            StatelessLoRATrainer,
+        )
+
+        class SpatialTemporalModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.spatial_attn = torch.nn.Linear(16, 16)
+                self.temporal_attn = torch.nn.Linear(16, 16)
+
+            def forward(self, x: Any) -> Any:
+                return self.spatial_attn(x) + self.temporal_attn(x)
+
+        model = SpatialTemporalModel()
+        cfg = LoRATrainConfig(
+            category="motion",
+            rank=4,
+            lr_spatial=1e-3,
+            lr_temporal=2e-4,
+            grad_accum_steps=2,
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(
+            model, target_patterns=["spatial_attn", "temporal_attn"]
+        )
+
+        x_1 = torch.randn(4, 16)
+        x_0 = torch.randn(4, 16)
+
+        # Step 0 (micro_step 1 of 2): gradients accumulated, B still 0
+        trainer.train_step(model, {"latent": x_1, "noise": x_0}, 0)
+        b_after_half = model.spatial_attn.lora_B.data.abs().max().item()
+        assert b_after_half == 0.0
+
+        # Step 1 (micro_step 2 of 2): optimizer steps, B becomes non-zero
+        trainer.train_step(model, {"latent": x_1, "noise": x_0}, 1)
+        b_after_full = model.spatial_attn.lora_B.data.abs().max().item()
+        assert b_after_full > 0.0
+
+        assert len(trainer._optimizer.param_groups) == 2
+        lrs = {pg["lr"] for pg in trainer._optimizer.param_groups}
+        assert lrs == {1e-3, 2e-4}
 
 
 # -------------------------------------------------------------------

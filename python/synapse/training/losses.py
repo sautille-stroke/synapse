@@ -4,7 +4,7 @@ Provides:
 - ``flow_matching_loss``: Rectified flow velocity field MSE
 - ``latent_edge_alignment_loss``: Sobel-gradient edge consistency
 - ``normal_reconstruction_loss``: Cosine angular distance on normals
-- ``diffusion_dpo_loss``: Flow-matching DPO preference loss
+- ``diffusion_dpo_loss``: Flow-matching DPO preference loss (with reference model)
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def flow_matching_loss(
 
     target = x_1 - x_0
     diff = v_pred - target
-    return float(np.mean(diff ** 2))
+    return float(np.mean(diff**2))
 
 
 def latent_edge_alignment_loss(
@@ -70,7 +70,6 @@ def latent_edge_alignment_loss(
     grad_d = _sobel_magnitude(d)
 
     return float(np.mean(np.abs(grad_z - grad_d)))
-
 
 
 def normal_reconstruction_loss(
@@ -124,22 +123,32 @@ def diffusion_dpo_loss(
     v_ref_w: np.ndarray,
     v_ref_l: np.ndarray,
     beta: float = 500.0,
+    target_w: np.ndarray | None = None,
+    target_l: np.ndarray | None = None,
 ) -> float:
     """Flow-matching DPO preference loss.
 
-    Computes the diffusion-DPO objective for flow matching::
+    Computes the Diffusion-DPO objective (Wallace et al., CVPR 2024)::
 
-        -log(sigmoid(beta * (||v_ref_l - v_theta_l||^2
-                            - ||v_ref_w - v_theta_w||^2)))
+        -log(sigmoid(-beta * ((err_theta_w - err_ref_w)
+                              - (err_theta_l - err_ref_l))))
 
     where ``w`` = chosen (winner) and ``l`` = rejected (loser).
+    When ``target_w`` and ``target_l`` are provided, ``err_theta_w = ||v_theta_w - target_w||^2``
+    and ``err_ref_w = ||v_ref_w - target_w||^2`` (and analogously for ``l``),
+    so that when ``v_theta == v_ref`` the loss is identically ``ln(2)``.
+    When ``target_w`` / ``target_l`` are omitted, ``v_ref_w`` and ``v_ref_l``
+    are treated as the ground-truth velocity targets ``v_target_w`` / ``v_target_l``
+    (with ``err_ref_w = err_ref_l = 0``) for backward-compatible 4-argument calls.
 
     Args:
-        v_theta_w: Model prediction on chosen sample.
-        v_theta_l: Model prediction on rejected sample.
-        v_ref_w: Reference model prediction on chosen sample.
-        v_ref_l: Reference model prediction on rejected sample.
+        v_theta_w: Policy model prediction on chosen sample.
+        v_theta_l: Policy model prediction on rejected sample.
+        v_ref_w: Reference model prediction on chosen sample (or target_w if target_w is None).
+        v_ref_l: Reference model prediction on rejected sample (or target_l if target_l is None).
         beta: DPO temperature scaling factor.
+        target_w: Ground-truth velocity ``x_1_w - x_0`` for chosen sample.
+        target_l: Ground-truth velocity ``x_1_l - x_0`` for rejected sample.
 
     Returns:
         Scalar DPO loss value (non-negative).
@@ -149,23 +158,27 @@ def diffusion_dpo_loss(
     v_rw = np.asarray(v_ref_w, dtype=np.float64)
     v_rl = np.asarray(v_ref_l, dtype=np.float64)
 
-    # Per-element squared error, then mean
-    err_w = float(np.mean((v_rw - v_tw) ** 2))
-    err_l = float(np.mean((v_rl - v_tl) ** 2))
-
-    # DPO: chosen should have lower error than rejected
-    logit = beta * (err_l - err_w)
+    if target_w is not None and target_l is not None:
+        tw = np.asarray(target_w, dtype=np.float64)
+        tl = np.asarray(target_l, dtype=np.float64)
+        err_theta_w = float(np.mean((v_tw - tw) ** 2))
+        err_theta_l = float(np.mean((v_tl - tl) ** 2))
+        err_ref_w = float(np.mean((v_rw - tw) ** 2))
+        err_ref_l = float(np.mean((v_rl - tl) ** 2))
+        diff_w = err_theta_w - err_ref_w
+        diff_l = err_theta_l - err_ref_l
+        logit = -beta * (diff_w - diff_l)
+    else:
+        err_w = float(np.mean((v_rw - v_tw) ** 2))
+        err_l = float(np.mean((v_rl - v_tl) ** 2))
+        logit = beta * (err_l - err_w)
 
     # -log(sigmoid(logit)) = log(1 + exp(-logit))
-    # Numerically stable: softplus(-logit) equivalent
     if logit < -20.0:
-        # log(1 + exp(-logit)) ≈ -logit when logit << 0
         return float(-logit)
-    elif logit > 20.0:
-        # log(1 + exp(-logit)) ≈ exp(-logit) ≈ 0
+    if logit > 20.0:
         return float(np.exp(-logit))
-    else:
-        return float(np.log(1.0 + np.exp(-logit)))
+    return float(np.log(1.0 + np.exp(-logit)))
 
 
 def _sobel_magnitude(img: np.ndarray) -> np.ndarray:
@@ -176,13 +189,20 @@ def _sobel_magnitude(img: np.ndarray) -> np.ndarray:
 
     if w > 2 and h > 2:
         gx[1:-1, 1:-1] = (
-            -img[:-2, :-2] + img[:-2, 2:]
-            - 2 * img[1:-1, :-2] + 2 * img[1:-1, 2:]
-            - img[2:, :-2] + img[2:, 2:]
+            -img[:-2, :-2]
+            + img[:-2, 2:]
+            - 2 * img[1:-1, :-2]
+            + 2 * img[1:-1, 2:]
+            - img[2:, :-2]
+            + img[2:, 2:]
         )
         gy[1:-1, 1:-1] = (
-            -img[:-2, :-2] - 2 * img[:-2, 1:-1] - img[:-2, 2:]
-            + img[2:, :-2] + 2 * img[2:, 1:-1] + img[2:, 2:]
+            -img[:-2, :-2]
+            - 2 * img[:-2, 1:-1]
+            - img[:-2, 2:]
+            + img[2:, :-2]
+            + 2 * img[2:, 1:-1]
+            + img[2:, 2:]
         )
 
     return np.sqrt(gx * gx + gy * gy)
