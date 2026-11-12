@@ -89,8 +89,11 @@ DERVGEN_DRIVE_ROOT="${DERVGEN_DRIVE_ROOT:-/content/drive/MyDrive/dervgen}"
 USER_ID="${COLAB_USER:-yanglei}"
 if [ -d "/content/drive/MyDrive" ]; then
     mkdir -p "${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/$(date +%F)/e1-e4/checkpoints"
+    mkdir -p "${DERVGEN_DRIVE_ROOT}/data/video/base_models"
+    mkdir -p "${DERVGEN_DRIVE_ROOT}/data/common/foundations"
+    # Backward compatibility
     mkdir -p "${DERVGEN_DRIVE_ROOT}/data/models/video_gen"
-    echo "✅ Google Drive SSOT V2.0 ready: ${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/$(date +%F)/e1-e4"
+    echo "✅ Google Drive SSOT V2.1 ready: ${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/$(date +%F)/e1-e4"
 else
     echo "ℹ️ Note: /content/drive/MyDrive not mounted yet. Checkpoints will fall back to /content/synapse_checkpoints"
 fi
