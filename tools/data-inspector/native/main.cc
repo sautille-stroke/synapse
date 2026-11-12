@@ -6,23 +6,28 @@
 ///
 /// Options:
 ///   --rhi=<backend>       RHI backend: vulkan|metal|d3d12|null (default: null)
-///   --headless            Run without a visible window (default: on)
+///   --headless            Run without a visible window (default: true unless --windowed)
+///   --windowed            Run in windowed mode
 ///   --width=<W>           Frame width  (default: 1280)
 ///   --height=<H>          Frame height (default: 720)
+///   --frames=<N>          Exit after rendering N frames (default: 0 = continuous)
 ///   --shm-name=<name>     SHM region name (default: /inspector-frame)
+///   --keep-shm            Do not unlink SHM region on exit (for CLI/test inspection)
 ///   --bundle=<path>       Path to the InspectionBundle directory
 
 #include "inspector_app.h"
 
-#include <cstdlib>
-#include <cstring>
+#include <charconv>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 
-/// Parse "--key=value" style arguments.
-static std::string getArg(int argc, char** argv, std::string_view key,
-                           std::string_view fallback = "") {
+namespace {
+
+[[nodiscard]] std::string getArg(int argc, char** argv, std::string_view key,
+                                 std::string_view fallback = "") {
   const std::string prefix = "--" + std::string(key) + "=";
   for (int i = 1; i < argc; ++i) {
     std::string_view arg(argv[i]);
@@ -33,8 +38,7 @@ static std::string getArg(int argc, char** argv, std::string_view key,
   return std::string(fallback);
 }
 
-/// Check if a boolean flag is present.
-static bool hasFlag(int argc, char** argv, std::string_view flag) {
+[[nodiscard]] bool hasFlag(int argc, char** argv, std::string_view flag) {
   const std::string full = "--" + std::string(flag);
   for (int i = 1; i < argc; ++i) {
     if (std::string_view(argv[i]) == full) return true;
@@ -42,30 +46,54 @@ static bool hasFlag(int argc, char** argv, std::string_view flag) {
   return false;
 }
 
+[[nodiscard]] bool parseUint32(std::string_view text, uint32_t& out) noexcept {
+  if (text.empty()) return false;
+  uint32_t val = 0;
+  const char* begin = text.data();
+  const char* end = text.data() + text.size();
+  auto [ptr, ec] = std::from_chars(begin, end, val);
+  if (ec != std::errc{} || ptr != end) {
+    return false;
+  }
+  out = val;
+  return true;
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+  using synapse::inspector::InspectorApp;
+  using synapse::inspector::InspectorConfig;
+  using synapse::inspector::kDefaultShmName;
+
   InspectorConfig config;
   config.rhiBackend = getArg(argc, argv, "rhi", "null");
-  config.headless = hasFlag(argc, argv, "headless") || true;
-  config.shmName = getArg(argc, argv, "shm-name",
-                          std::string(kDefaultShmName));
+  config.headless = hasFlag(argc, argv, "headless") ||
+                    !hasFlag(argc, argv, "windowed");
+  config.keepShm = hasFlag(argc, argv, "keep-shm");
+  config.shmName =
+      getArg(argc, argv, "shm-name", std::string(kDefaultShmName));
   config.bundlePath = getArg(argc, argv, "bundle", "");
 
   const std::string wStr = getArg(argc, argv, "width", "1280");
   const std::string hStr = getArg(argc, argv, "height", "720");
+  const std::string framesStr = getArg(argc, argv, "frames", "0");
 
-  try {
-    config.width = static_cast<uint32_t>(std::stoul(wStr));
-    config.height = static_cast<uint32_t>(std::stoul(hStr));
-  } catch (...) {
-    std::cerr << "[inspector] Invalid width/height: " << wStr << "x"
-              << hStr << "\n";
+  if (!parseUint32(wStr, config.width) || !parseUint32(hStr, config.height)) {
+    std::cerr << "[inspector] Invalid width/height: " << wStr << "x" << hStr
+              << "\n";
+    return 1;
+  }
+
+  if (!parseUint32(framesStr, config.maxFrames)) {
+    std::cerr << "[inspector] Invalid frames count: " << framesStr << "\n";
     return 1;
   }
 
   if (config.width == 0 || config.height == 0 || config.width > 7680 ||
       config.height > 4320) {
-    std::cerr << "[inspector] Resolution out of range: " << config.width
-              << "x" << config.height << "\n";
+    std::cerr << "[inspector] Resolution out of range: " << config.width << "x"
+              << config.height << "\n";
     return 1;
   }
 

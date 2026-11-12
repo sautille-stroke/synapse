@@ -1,152 +1,110 @@
 /// @file inspector_shm_server.cc
-/// @brief Shared-memory frame server — platform-specific implementation.
+/// @brief Shared-memory frame server backed by @aether//pal:shm.
 
 #include "inspector_shm_server.h"
 
-#include <algorithm>
-#include <atomic>
 #include <cstring>
+#include <utility>
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
+namespace synapse::inspector {
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+namespace {
 
-static size_t computeTotalSize(uint32_t w, uint32_t h) {
-  const size_t frameBytes = static_cast<size_t>(w) * h * 4;  // RGBA8
-  return sizeof(InspectorShmHeader) + frameBytes * 2;         // double buffer
+[[nodiscard]] size_t computeTotalSize(uint32_t w, uint32_t h) noexcept {
+  const size_t frameBytes = static_cast<size_t>(w) * h * 4u;  // RGBA8
+  return sizeof(InspectorShmHeader) + frameBytes * kShmBufferCount;
 }
 
-// ---------------------------------------------------------------------------
-// InspectorShmServer
-// ---------------------------------------------------------------------------
+}  // namespace
 
 InspectorShmServer::~InspectorShmServer() { close(); }
 
 bool InspectorShmServer::open(std::string_view name, uint32_t width,
-                              uint32_t height) {
+                              uint32_t height, bool unlinkOnClose) {
   close();
 
-  if (width == 0 || height == 0) return false;
+  if (width == 0 || height == 0 || name.empty()) return false;
 
-  m_name = std::string(name);
+  const size_t requiredSize = computeTotalSize(width, height);
+  auto shmResult = aether::pal::SharedMemory::create(
+      name, requiredSize, aether::pal::ShmCreate::CreateOrOpen,
+      aether::pal::ShmAccess::ReadWrite);
+  if (!shmResult.isOk()) {
+    return false;
+  }
+
+  m_shm = std::move(shmResult.value());
   m_width = width;
   m_height = height;
-  m_size = computeTotalSize(width, height);
+  m_stagingIdx = 0;
+  m_unlinkOnClose = unlinkOnClose;
 
-#ifdef _WIN32
-  // Windows: Named shared memory via CreateFileMapping.
-  // Strip leading '/' for Windows named objects.
-  std::string winName = m_name;
-  if (!winName.empty() && winName[0] == '/') {
-    winName = winName.substr(1);
-  }
-
-  m_hMapping = CreateFileMappingA(
-      INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
-      static_cast<DWORD>(m_size >> 32),
-      static_cast<DWORD>(m_size & 0xFFFFFFFF), winName.c_str());
-  if (!m_hMapping) return false;
-
-  m_base = MapViewOfFile(m_hMapping, FILE_MAP_ALL_ACCESS, 0, 0, m_size);
-  if (!m_base) {
-    CloseHandle(m_hMapping);
-    m_hMapping = nullptr;
-    return false;
-  }
-#else
-  // POSIX: shm_open + mmap.
-  m_fd = shm_open(m_name.c_str(), O_CREAT | O_RDWR, 0600);
-  if (m_fd < 0) return false;
-
-  if (ftruncate(m_fd, static_cast<off_t>(m_size)) != 0) {
-    ::close(m_fd);
-    shm_unlink(m_name.c_str());
-    m_fd = -1;
+  void* base = m_shm.data();
+  if (!base || m_shm.size() < requiredSize) {
+    close();
     return false;
   }
 
-  m_base =
-      mmap(nullptr, m_size, PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
-  if (m_base == MAP_FAILED) {
-    m_base = nullptr;
-    ::close(m_fd);
-    shm_unlink(m_name.c_str());
-    m_fd = -1;
-    return false;
-  }
-#endif
-
-  // Initialise the header.
-  std::memset(m_base, 0, sizeof(InspectorShmHeader));
-  auto* hdr = static_cast<InspectorShmHeader*>(m_base);
+  std::memset(base, 0, requiredSize);
+  auto* hdr = static_cast<InspectorShmHeader*>(base);
   hdr->magic = kInspectorShmMagic;
   hdr->version = kInspectorShmVersion;
   hdr->width = width;
   hdr->height = height;
+  hdr->write_idx.store(0u, std::memory_order_relaxed);
+  hdr->buffer_count = kShmBufferCount;
+  hdr->frame_ready.store(0u, std::memory_order_release);
+  hdr->fps = 0.0f;
+  hdr->delta_time = 0.0f;
+  hdr->debug_view = 0u;
 
   return true;
 }
 
-void InspectorShmServer::close() {
-  if (!m_base) return;
+void InspectorShmServer::close() noexcept {
+  if (!m_shm.isValid()) return;
 
-#ifdef _WIN32
-  UnmapViewOfFile(m_base);
-  if (m_hMapping) {
-    CloseHandle(m_hMapping);
-    m_hMapping = nullptr;
+  const std::string shmName(m_shm.name());
+  m_shm.close();
+  if (m_unlinkOnClose && !shmName.empty()) {
+    (void)aether::pal::SharedMemory::unlink(shmName);
   }
-#else
-  munmap(m_base, m_size);
-  if (m_fd >= 0) {
-    ::close(m_fd);
-    shm_unlink(m_name.c_str());
-    m_fd = -1;
-  }
-#endif
-
-  m_base = nullptr;
-  m_size = 0;
+  m_width = 0;
+  m_height = 0;
+  m_stagingIdx = 0;
 }
 
 uint8_t* InspectorShmServer::frontBuffer() noexcept {
-  if (!m_base) return nullptr;
-  auto* hdr = static_cast<InspectorShmHeader*>(m_base);
-  const uint32_t idx = hdr->write_idx;
-  const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4;
-  return static_cast<uint8_t*>(m_base) + sizeof(InspectorShmHeader) +
-         frameBytes * idx;
+  if (!m_shm.isValid()) return nullptr;
+  const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
+  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) +
+                           frameBytes * m_stagingIdx);
 }
 
-void InspectorShmServer::publishFrame(float fps, float deltaTime) {
-  if (!m_base) return;
-  auto* hdr = static_cast<InspectorShmHeader*>(m_base);
+const uint8_t* InspectorShmServer::publishedBuffer() const noexcept {
+  if (!m_shm.isValid()) return nullptr;
+  const auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  const uint32_t pubIdx =
+      hdr->write_idx.load(std::memory_order_acquire) % kShmBufferCount;
+  const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
+  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * pubIdx);
+}
+
+uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime,
+                                          uint8_t debugView) noexcept {
+  if (!m_shm.isValid()) return 0;
+  auto* hdr = m_shm.as<InspectorShmHeader>(0);
 
   hdr->fps = fps;
   hdr->delta_time = deltaTime;
+  hdr->debug_view = debugView;
 
-  // Flip write_idx and bump frame_ready atomically.
-  // Use reinterpret_cast to access as std::atomic — the layout matches.
-  auto& atomicIdx =
-      *reinterpret_cast<std::atomic<uint32_t>*>(&hdr->write_idx);
-  auto& atomicReady =
-      *reinterpret_cast<std::atomic<uint64_t>*>(&hdr->frame_ready);
+  hdr->write_idx.store(m_stagingIdx, std::memory_order_release);
+  const uint64_t readyCount =
+      hdr->frame_ready.fetch_add(1u, std::memory_order_acq_rel) + 1u;
 
-  atomicIdx.store(1u - atomicIdx.load(std::memory_order_relaxed),
-                  std::memory_order_release);
-  atomicReady.fetch_add(1u, std::memory_order_release);
+  m_stagingIdx = (m_stagingIdx + 1u) % kShmBufferCount;
+  return readyCount;
 }
 
-size_t InspectorShmServer::totalSize() const noexcept { return m_size; }
+}  // namespace synapse::inspector

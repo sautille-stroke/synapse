@@ -1,5 +1,6 @@
 // renderer/src/app.js — Main application logic for the Data Inspector renderer.
 // Handles bundle loading, viewport canvas, camera interaction, and view switching.
+// Uses safe DOM construction (textContent) for all manifest/file strings.
 'use strict';
 
 // ─── State ───────────────────────────────────────────────────────
@@ -25,6 +26,20 @@ document.getElementById('btn-open-bundle').addEventListener('click', async () =>
   await loadBundle(bundlePath);
 });
 
+function createPropRow(label, valueText) {
+  const row = document.createElement('div');
+  row.className = 'prop-row';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'prop-label';
+  labelEl.textContent = String(label);
+  const valEl = document.createElement('span');
+  valEl.className = 'prop-value';
+  valEl.textContent = String(valueText);
+  row.appendChild(labelEl);
+  row.appendChild(valEl);
+  return row;
+}
+
 async function loadBundle(bundlePath) {
   updateStatus('Loading...');
   const result = await window.inspectorAPI.loadBundle(bundlePath);
@@ -38,11 +53,13 @@ async function loadBundle(bundlePath) {
   const manifest = result.manifest;
   const inv = result.inventory;
 
-  // Update sidebar.
+  // Update sidebar using textContent (no innerHTML injection).
   const sidebarContent = document.getElementById('sidebar-content');
-  sidebarContent.innerHTML = `
-    <div class="bundle-name">${bundlePath.split(/[/\\]/).pop()}</div>
-  `;
+  sidebarContent.replaceChildren();
+  const bundleNameEl = document.createElement('div');
+  bundleNameEl.className = 'bundle-name';
+  bundleNameEl.textContent = String(bundlePath).split(/[/\\]/).pop() || '';
+  sidebarContent.appendChild(bundleNameEl);
 
   // Show available view tabs based on manifest sources.
   const sources = manifest.sources || {};
@@ -51,29 +68,15 @@ async function loadBundle(bundlePath) {
   showTab('video', !!(sources.generated_video || sources.fgpp_sequence));
   showTab('comparison', !!sources.reconstructed_model);
 
-  // Update properties panel.
-  document.getElementById('prop-status').textContent = 'Loaded';
-
-  // Update bundle info.
+  // Update bundle info safely via textContent.
   const bundleInfo = document.getElementById('bundle-info');
-  bundleInfo.innerHTML = `
-    <div class="prop-row">
-      <span class="prop-label">Schema</span>
-      <span class="prop-value">${manifest.schema_version}</span>
-    </div>
-    <div class="prop-row">
-      <span class="prop-label">Bundle ID</span>
-      <span class="prop-value">${manifest.bundle_id || '--'}</span>
-    </div>
-    <div class="prop-row">
-      <span class="prop-label">Files</span>
-      <span class="prop-value">${inv.fileCount}</span>
-    </div>
-    <div class="prop-row">
-      <span class="prop-label">Total Size</span>
-      <span class="prop-value">${formatBytes(inv.totalSize)}</span>
-    </div>
-  `;
+  bundleInfo.replaceChildren(
+    createPropRow('Status', 'Loaded'),
+    createPropRow('Schema', manifest.schema_version || '--'),
+    createPropRow('Bundle ID', manifest.bundle_id || '--'),
+    createPropRow('Files', String(inv.fileCount)),
+    createPropRow('Total Size', formatBytes(inv.totalSize)),
+  );
 
   // Build scene tree from manifest sources.
   buildSceneTree(manifest);
@@ -91,13 +94,19 @@ function showTab(view, visible) {
 
 function buildSceneTree(manifest) {
   const tree = document.getElementById('scene-tree');
-  tree.innerHTML = '';
+  tree.replaceChildren();
 
   const sources = manifest.sources || {};
   const addNode = (icon, label) => {
     const node = document.createElement('div');
     node.className = 'tree-node';
-    node.innerHTML = `<span class="tree-icon">${icon}</span>${label}`;
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'tree-icon';
+    iconSpan.textContent = String(icon);
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = String(label);
+    node.appendChild(iconSpan);
+    node.appendChild(labelSpan);
     tree.appendChild(node);
   };
 
@@ -129,6 +138,11 @@ function startNativeRenderer(bundlePath) {
   canvas.width = w;
   canvas.height = h;
   document.getElementById('prop-resolution').textContent = `${w}x${h}`;
+
+  const overlay = document.getElementById('viewport-overlay');
+  if (overlay) {
+    overlay.textContent = 'SHM Diagnostic Rasterizer (--rhi=null)';
+  }
 
   imageData = ctx.createImageData(w, h);
 }

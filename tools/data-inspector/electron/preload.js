@@ -1,8 +1,19 @@
 // electron/preload.js — Secure contextBridge API for the Data Inspector.
-// Exposes a controlled set of IPC methods to the renderer process.
+// Exposes a controlled set of IPC methods to the renderer process, returning
+// unsubscribe disposers for all event listeners.
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
+
+function subscribeChannel(channel, wrapArgs) {
+  const listener = (_event, ...args) => {
+    wrapArgs(...args);
+  };
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.removeListener(channel, listener);
+  };
+}
 
 contextBridge.exposeInMainWorld('inspectorAPI', {
   platform: process.platform,
@@ -14,7 +25,7 @@ contextBridge.exposeInMainWorld('inspectorAPI', {
 
   // Bundle management.
   openBundleDialog: () => ipcRenderer.invoke('open-bundle-dialog'),
-  loadBundle: (path) => ipcRenderer.invoke('load-bundle', path),
+  loadBundle: (bundlePath) => ipcRenderer.invoke('load-bundle', bundlePath),
   getBundleInfo: () => ipcRenderer.invoke('get-bundle-info'),
 
   // Native renderer.
@@ -24,14 +35,13 @@ contextBridge.exposeInMainWorld('inspectorAPI', {
   nativeSendCommand: (cmd) =>
     ipcRenderer.invoke('native-send-command', cmd),
 
-  // Event listeners (main -> renderer push).
+  // Event listeners (main -> renderer push). Returns an unsubscribe function.
   onNativeFrame: (cb) =>
-    ipcRenderer.on('native-frame', (_e, header, pixels) =>
-      cb(header, pixels)),
+    subscribeChannel('native-frame', (header, pixels) => cb(header, pixels)),
   onNativeLog: (cb) =>
-    ipcRenderer.on('native-log', (_e, msg) => cb(msg)),
+    subscribeChannel('native-log', (msg) => cb(msg)),
   onNativeError: (cb) =>
-    ipcRenderer.on('native-error', (_e, msg) => cb(msg)),
+    subscribeChannel('native-error', (msg) => cb(msg)),
   onNativeExit: (cb) =>
-    ipcRenderer.on('native-exit', (_e, code) => cb(code)),
+    subscribeChannel('native-exit', (code) => cb(code)),
 });

@@ -1,8 +1,8 @@
 """Data Inspector native rendering subprocess.
 
 Standalone Bazel module for the Synapse Data Inspector's C++20 native
-rendering process.  Depends on @aether (PAL shared-memory, core types)
-and @fulgur (RHI, asset loading, renderer) via local_path_override.
+rendering process. Depends on @aether (PAL shared-memory, core types)
+via local_path_override.
 """
 
 module(
@@ -10,15 +10,11 @@ module(
     version = "0.1.0",
 )
 
-bazel_dep(name = "aether", version = "0.1.0")
-bazel_dep(name = "fulgur", version = "0.1.0")
+bazel_dep(name = "rules_cc", version = "0.2.26")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "aether", version = "0.3.0")
 
 local_path_override(
     module_name = "aether",
     path = "../../../../aether",
-)
-
-local_path_override(
-    module_name = "fulgur",
-    path = "../../../../fulgur",
 )
