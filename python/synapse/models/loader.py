@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
-import trimesh
 from PIL import Image
 
 from synapse.models.asset import ModelAsset
@@ -16,7 +15,6 @@ from synapse.models.asset import ModelAsset
 # Potential locations where sample/benchmark models reside
 _ASSET_SEARCH_PATHS: list[Path] = [
     Path(os.environ.get("SYNAPSE_MODELS_DIR", "")),
-    Path("H:/dervgen/fulgur/assets/models"),
     Path(__file__).resolve().parents[3] / "data" / "models",
     Path("../fulgur/assets/models"),
 ]
@@ -52,7 +50,7 @@ def _pil_to_rgb_array(img: Any) -> Optional[np.ndarray]:
     return None
 
 
-def _load_from_trimesh_geom(name: str, geom: trimesh.Trimesh) -> ModelAsset:
+def _load_from_trimesh_geom(name: str, geom: "trimesh.Trimesh") -> ModelAsset:
     """Convert a trimesh.Trimesh object into a ModelAsset."""
     vertices = np.ascontiguousarray(geom.vertices, dtype=np.float32)
     faces = np.ascontiguousarray(geom.faces, dtype=np.int32)
@@ -119,6 +117,8 @@ def _load_from_trimesh_geom(name: str, geom: trimesh.Trimesh) -> ModelAsset:
 
 def _generate_procedural_bunny(subdivisions: int = 2) -> ModelAsset:
     """Generate a high-detail procedural Stanford Bunny or organic mesh."""
+    import trimesh  # lazy: heavy native dependency
+
     # Create an icosphere or complex mesh as procedural benchmark
     base_mesh = trimesh.creation.icosphere(subdivisions=subdivisions + 1, radius=1.0)
     # Add high-frequency perturbation to mimic complex sculpture/bunny surfaces
@@ -138,6 +138,8 @@ def _generate_procedural_bunny(subdivisions: int = 2) -> ModelAsset:
 
 def _generate_procedural_teapot() -> ModelAsset:
     """Generate Utah Teapot or complex surface."""
+    import trimesh  # lazy: heavy native dependency
+
     # Compose body (sphere), handle (torus), spout, lid
     body = trimesh.creation.icosphere(subdivisions=3, radius=0.8)
     # Scale body to teapot proportions
@@ -206,6 +208,8 @@ def load_model(
             raise FileNotFoundError(f"Model file or built-in model '{name_or_path}' not found.")
 
     # Load via trimesh
+    import trimesh  # lazy: heavy native dependency
+
     loaded = trimesh.load(str(path))
     if isinstance(loaded, trimesh.Scene):
         # Merge all geometries into a single mesh or pick the primary one

@@ -15,7 +15,22 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from numba import njit, prange
+
+try:
+    from numba import njit, prange
+except ImportError:  # pragma: no cover — numba is an optional heavy dep
+    # Provide no-op fallback decorators so the module can still be *imported*
+    # without numba.  The JIT-accelerated kernels fall back to plain Python/
+    # NumPy execution (significantly slower but functionally identical).
+    def njit(*_args, **_kwargs):  # type: ignore[misc]
+        """Identity decorator when numba is unavailable."""
+        def _wrap(fn):
+            return fn
+        if _args and callable(_args[0]):
+            return _args[0]
+        return _wrap
+
+    prange = range  # type: ignore[assignment]
 
 from synapse.fgpp.frame import CameraParams
 from synapse.models.asset import ModelAsset

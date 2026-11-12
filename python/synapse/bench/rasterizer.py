@@ -22,44 +22,49 @@ from synapse.fgpp.frame import CameraParams, FGPPFrame
 # ---------------------------------------------------------------------------
 
 def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
-    """MurmurHash3 32-bit finaliser for entity name hashing."""
+    """MurmurHash3 32-bit finaliser for entity name hashing.
+
+    Uses native Python ``int`` with explicit ``& 0xFFFFFFFF`` masking to avoid
+    ``RuntimeWarning: overflow encountered in scalar multiply`` emitted by
+    NumPy ≥ 2.0 when performing arithmetic on ``np.uint32`` scalars.
+    """
+    _M = 0xFFFFFFFF
     length = len(key)
-    h = np.uint32(seed)
-    c1 = np.uint32(0xCC9E2D51)
-    c2 = np.uint32(0x1B873593)
+    h = seed & _M
+    c1 = 0xCC9E2D51
+    c2 = 0x1B873593
     nblocks = length // 4
 
     for i in range(nblocks):
-        k = int.from_bytes(key[i * 4:(i + 1) * 4], "little") & 0xFFFFFFFF
-        k = np.uint32(k)
-        k = np.uint32(k * c1)
-        k = np.uint32((k << np.uint32(15)) | (k >> np.uint32(17)))
-        k = np.uint32(k * c2)
+        k = int.from_bytes(key[i * 4:(i + 1) * 4], "little") & _M
+        k = (k * c1) & _M
+        k = ((k << 15) | (k >> 17)) & _M
+        k = (k * c2) & _M
         h ^= k
-        h = np.uint32((h << np.uint32(13)) | (h >> np.uint32(19)))
-        h = np.uint32(h * np.uint32(5) + np.uint32(0xE6546B64))
+        h = ((h << 13) | (h >> 19)) & _M
+        h = (h * 5 + 0xE6546B64) & _M
 
     tail = key[nblocks * 4:]
-    k1 = np.uint32(0)
+    k1 = 0
     tlen = len(tail)
     if tlen >= 3:
-        k1 ^= np.uint32(tail[2]) << np.uint32(16)
+        k1 ^= (tail[2] << 16) & _M
     if tlen >= 2:
-        k1 ^= np.uint32(tail[1]) << np.uint32(8)
+        k1 ^= (tail[1] << 8) & _M
     if tlen >= 1:
-        k1 ^= np.uint32(tail[0])
-        k1 = np.uint32(k1 * c1)
-        k1 = np.uint32((k1 << np.uint32(15)) | (k1 >> np.uint32(17)))
-        k1 = np.uint32(k1 * c2)
+        k1 ^= tail[0]
+        k1 = (k1 * c1) & _M
+        k1 = ((k1 << 15) | (k1 >> 17)) & _M
+        k1 = (k1 * c2) & _M
         h ^= k1
 
-    h ^= np.uint32(length)
-    h ^= h >> np.uint32(16)
-    h = np.uint32(h * np.uint32(0x85EBCA6B))
-    h ^= h >> np.uint32(13)
-    h = np.uint32(h * np.uint32(0xC2B2AE35))
-    h ^= h >> np.uint32(16)
-    return int(h)
+    h ^= length
+    h = (h ^ (h >> 16)) & _M
+    h = (h * 0x85EBCA6B) & _M
+    h = (h ^ (h >> 13)) & _M
+    h = (h * 0xC2B2AE35) & _M
+    h = (h ^ (h >> 16)) & _M
+    return h
 
 
 def entity_hash(name: str) -> int:

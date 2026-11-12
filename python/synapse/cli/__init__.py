@@ -484,8 +484,6 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
 
     num_frames = args.frames or scenario.camera_params.get("num_frames", 97)
     fps = scenario.camera_params.get("fps", 24)
-    radius = scenario.camera_params.get("radius", 3.0)
-    elevation = scenario.camera_params.get("elevation_deg", 15.0)
     width = scenario.width
     height = scenario.height
 
@@ -493,31 +491,31 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
         f"./data/bench_export/{scenario.id}"
     )
 
-    # Generate cameras
+    # Generate cameras — pass scenario object directly (extracts camera_type,
+    # camera_params, width, height internally).
     cameras = generate_cameras(
-        camera_type=scenario.camera_type,
+        scenario,
         num_frames=num_frames,
         width=width,
         height=height,
-        radius=radius,
-        elevation_deg=elevation,
-        fps=fps,
     )
 
-    # Load mesh
-    mesh = load_mesh(scenario.asset)
+    # Load mesh by asset ID string, not the Asset object.
+    mesh = load_mesh(scenario.asset.id, normalize=True)
 
-    # Rasterize
+    # Rasterize using the bench SoftwareRasterizer API which returns FGPPFrame
+    # directly (vertices/faces/normals keyword interface, not mesh object).
     rasterizer = SoftwareRasterizer(width=width, height=height)
     frames: list[FGPPFrame] = []
     for i, cam in enumerate(cameras):
-        result = rasterizer.render(mesh, cam)
-        frame = FGPPFrame(
+        frame = rasterizer.render(
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            normals=mesh.normals,
             camera=cam,
-            depth=result.depth,
-            world_normal=result.world_normal,
-            base_color=result.base_color,
-            frame_index=i,
+            base_color=mesh.base_color,
+            entity_name=scenario.asset.id,
+            prev_camera=cameras[i - 1] if i > 0 else None,
         )
         frames.append(frame)
 

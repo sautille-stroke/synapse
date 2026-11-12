@@ -8,7 +8,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-import cv2
 import numpy as np
 from PIL import Image
 
@@ -136,6 +135,8 @@ class DatasetGenerator:
         depth_vis_frames: list[np.ndarray] = []
         fgpp_frames: list[FGPPFrame] = []
         frame_records: list[dict[str, Any]] = []
+
+        import cv2  # lazy: heavy native dependency, not needed at import time
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         video_path = out_dir / "video_all.mp4"

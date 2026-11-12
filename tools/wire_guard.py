@@ -97,7 +97,11 @@ def _check_internal() -> list[str]:
 # C++ header parsing
 # ---------------------------------------------------------------------------
 
-_RE_CHANNEL_NAME = re.compile(r'"([A-Za-z]+\.[A-Z])"')
+_RE_CHANNEL_NAME = re.compile(r'"([A-Za-z]+\.[A-Z]+)"')
+_RE_EXR_SPECS_BODY = re.compile(
+    r"getAlphabeticalEXRChannelSpecs\b.*?\{(.*?)\}\s*;\s*\}",
+    re.DOTALL,
+)
 _RE_MIN_VERTS = re.compile(
     r"kMinCharacterWhiteboxVertices\s*=\s*(\d+)"
 )
@@ -113,8 +117,20 @@ def _parse_header(path: Path) -> dict:
     """Extract contract values from the C++ header."""
     text = path.read_text(encoding="utf-8")
 
+    # Extract channel names only from the getAlphabeticalEXRChannelSpecs()
+    # function body to avoid matching group names (e.g., "BaseColor.RGB")
+    # or Doxygen comments.
+    channel_names: list[str] = []
+    m_body = _RE_EXR_SPECS_BODY.search(text)
+    if m_body:
+        specs_body = m_body.group(1)
+        channel_names = sorted(set(_RE_CHANNEL_NAME.findall(specs_body)))
+    else:
+        # Fallback: search whole file (less precise)
+        channel_names = sorted(set(_RE_CHANNEL_NAME.findall(text)))
+
     result: dict = {
-        "channel_names": sorted(_RE_CHANNEL_NAME.findall(text)),
+        "channel_names": channel_names,
         "min_verts": None,
         "anchor_interval": None,
     }

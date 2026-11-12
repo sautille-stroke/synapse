@@ -539,8 +539,8 @@ def _handle_inverse_reconstruct(
     if not frames:
         # Synthetic video sequence
         for i in range(max(num_frames, 2)):
-            f = np.full((height, width, 3), 120 + (i % 20), dtype=np.uint8)
-            frames.append(f)
+            synth_frame = np.full((height, width, 3), 120 + (i % 20), dtype=np.uint8)
+            frames.append(synth_frame)
 
     frames_arr = np.stack(frames, axis=0)
 
