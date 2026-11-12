@@ -42,8 +42,10 @@
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ && /root/venv-synapse/bin/mypy python/synapse"
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts/prepare_datasets.py && /root/venv-synapse/bin/python scripts/run_cpu_verification.py"
 
-# Google Colab GPU 节点：解压 ubuntu24 数据包并带 Google Drive 断点续跑执行重型实验
-python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/synapse_experiments --exp all
+# Google Colab GPU 节点：必须遵循 Google Colab 与 Google Drive SSOT V2.0 铁律（零污染 MyDrive 根目录，计算存储分离）
+# 完整环境规范见 workenv/google-colab/README.md 及 architecture/google-colab-and-drive-standards.md
+bash workenv/google-colab/setup_colab.sh
+python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4/checkpoints --exp all
 
 # 本地极轻量单点冒烟（仅限纯 CPU 毫秒级单测）
 pytest tests/test_bench.py -k "test_scenario_create" -v
@@ -92,6 +94,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **3D 建模智能质检与精修数据飞轮设计规范**：[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
 - **真实视频逆向 3D 动态数字孪生与联合反演设计规范 (RFC 0060)**：[docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
+- **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
 ---
 

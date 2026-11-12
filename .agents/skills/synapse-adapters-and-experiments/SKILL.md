@@ -1,7 +1,7 @@
 ---
 name: synapse-adapters-and-experiments
 description: >-
-  Synapse 视频生成适配器、因果滑窗调度、ACEScg 风格锁、16px 手术刀合成以及 ubuntu24 + Google Colab 双阶段实验执行指南。涵盖 WanAdapter 7 通道条件构建、ConditionScheduler (W=97, S=64, overlap=33)、run_cpu_verification.py 无卡验证与 colab_runner.py 断点续跑。在编写适配器代码或执行 E1-E5 实验时使用。
+  Synapse 视频生成适配器、因果滑窗调度、ACEScg 风格锁、16px 手术刀合成以及 ubuntu24 + Google Colab 双阶段实验执行指南。涵盖 WanAdapter 7 通道条件构建、ConditionScheduler (W=97, S=64, overlap=33)、run_cpu_verification.py 无卡验证、workenv/google-colab 一站式部署与 colab_runner.py 断点续跑。在编写适配器代码或执行 E1-E5 实验时使用。
 ---
 
 # 视频生成适配器与双阶段实验执行指南（`ubuntu24` + Google Colab）
@@ -15,7 +15,7 @@ description: >-
 ### 1. 7 通道控制张量构建 (`WanAdapter.prepare_conditions`)
 `WanAdapter` 将 `FGPPSequence` 转换为形状为 **`[7, T, H, W]`** (`float32`) 的空间控制张量 `payload.control_tensor`：
 - **Channel 0**：对数归一化线性深度 $d_{\log} = \frac{\ln(\text{clip}(z, z_{\text{near}}, z_{\text{far}}) / z_{\text{near}})}{\ln(z_{\text{far}} / z_{\text{near}})} \in [0, 1]$
-- **Channels 1–3**：相机空间/世界空间单位法线 $(n_x, n_y, n_z)$
+- **Channels 1–3**：世界空间单位法线 $(n_x, n_y, n_z)$（源自 `FGPPFrame.world_normal`，即 FGPP `WorldNormal.XYZ`）
 - **Channels 4–5**：归一化帧间运动向量 $(v_x, v_y)$
 - **Channel 6**：前后帧重投影遮挡掩码（Disocclusion Mask）
 
@@ -55,16 +55,29 @@ ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts
 验证报告自动输出至 [`data/manifests/ubuntu24_cpu_verification_report.json`](file:///Volumes/work/dervgen/synapse/data/manifests/ubuntu24_cpu_verification_report.json)。
 
 ### 阶段 B：在 Google Colab (T4 / L4 / A100) 上执行 GPU 实验
+
+Synapse 在 [`workenv/google-colab/`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/README.md) 中提供了完整的一站式部署套件：
+- [`setup_colab.sh`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/setup_colab.sh)：安装系统依赖（OpenEXR、GL、FFmpeg）与 `synapse[image,metrics,gpu,train]`
+- [`models.json`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/models.json)：模型矩阵（Wan2.1 1.3B/14B、VAE、UMT5、SAM 2.1）与 VRAM 硬件分级
+- [`io_spec.md`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/io_spec.md)：各环节详细输入输出契约字典（张量形状、通道定义、退出码）
+- [`synapse_colab_workflow.ipynb`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/synapse_colab_workflow.ipynb)：开箱即用 Jupyter Notebook
+
 使用 [`scripts/colab_runner.py`](file:///Volumes/work/dervgen/synapse/scripts/colab_runner.py) 自动探测显存档位（$<35\text{ GB}$ 自动选用 `Wan2.1-T2V-1.3B` + CPU Offload，$\ge 35\text{ GB}$ 选用 `14B`）并将每个实验阶段的状态写入 Google Drive：
 
 ```bash
-# 1. 检查 Colab GPU 显存与推荐配置
+# 1. 一键配置 Colab Linux/CUDA 运行环境
+chmod +x workenv/google-colab/setup_colab.sh
+./workenv/google-colab/setup_colab.sh
+
+# 2. 检查 Colab GPU 显存与推荐配置
 python scripts/colab_runner.py --check-env
 
-# 2. 解压数据包并带 Google Drive 断点续跑执行全部实验
+# 3. 解压数据包并带 Google Drive 断点续跑执行全部实验
 python scripts/colab_runner.py \
   --bundle /content/synapse_colab_bundle_v1.tar.gz \
   --dataset-dir /content/datasets/synapse \
-  --checkpoint-dir /content/drive/MyDrive/synapse_experiments \
+  --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all/checkpoints \
   --exp all
 ```
+
+> **注意**：`colab_runner.py --exp all` 当前执行 **E1、E2、E4** 三个阶段。E3（97 帧长时序滑窗）和 E5（Synapse-Bench 30 场景基准）仅在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 无卡验证；Colab GPU 版将在后续迭代中支持。
