@@ -47,22 +47,22 @@ description: >-
 ## 二、双阶段实验执行工作流
 
 ### 阶段 A：在 `ubuntu24` 上执行 E1–E5 全链路无卡基线验证
-任何实验代码修改后，首先在 `ubuntu24` 上运行 [`scripts/run_cpu_verification.py`](file:///Volumes/work/dervgen/synapse/scripts/run_cpu_verification.py)，一次性验证 E1–E5 的张量形状、色差收敛、滑窗切镜检测、分片打包与 30 场景基准：
+任何实验代码修改后，首先在 `ubuntu24` 上运行 [`scripts/run_cpu_verification.py`](scripts/run_cpu_verification.py)，一次性验证 E1–E5 的张量形状、色差收敛、滑窗切镜检测、分片打包与 30 场景基准：
 
 ```bash
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts/run_cpu_verification.py"
 ```
-验证报告自动输出至 [`data/manifests/ubuntu24_cpu_verification_report.json`](file:///Volumes/work/dervgen/synapse/data/manifests/ubuntu24_cpu_verification_report.json)。
+验证报告自动输出至 [`data/manifests/ubuntu24_cpu_verification_report.json`](data/manifests/ubuntu24_cpu_verification_report.json)。
 
 ### 阶段 B：在 Google Colab (T4 / L4 / A100) 上执行 GPU 实验
 
-Synapse 在 [`workenv/google-colab/`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/README.md) 中提供了完整的一站式部署套件：
-- [`setup_colab.sh`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/setup_colab.sh)：安装系统依赖（OpenEXR、GL、FFmpeg）与 `synapse[image,metrics,gpu,train]`
-- [`models.json`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/models.json)：模型矩阵（Wan2.1 1.3B/14B、VAE、UMT5、SAM 2.1）与 VRAM 硬件分级
-- [`io_spec.md`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/io_spec.md)：各环节详细输入输出契约字典（张量形状、通道定义、退出码）
-- [`synapse_colab_workflow.ipynb`](file:///Volumes/work/dervgen/synapse/workenv/google-colab/synapse_colab_workflow.ipynb)：开箱即用 Jupyter Notebook
+Synapse 在 [`workenv/google-colab/`](workenv/google-colab/README.md) 中提供了完整的一站式部署套件：
+- [`setup_colab.sh`](workenv/google-colab/setup_colab.sh)：安装系统依赖（OpenEXR、GL、FFmpeg）与 `synapse[image,metrics,gpu,train]`
+- [`models.json`](workenv/google-colab/models.json)：模型矩阵（Wan2.1 1.3B/14B、VAE、UMT5、SAM 2.1）与 VRAM 硬件分级
+- [`io_spec.md`](workenv/google-colab/io_spec.md)：各环节详细输入输出契约字典（张量形状、通道定义、退出码）
+- [`synapse_colab_workflow.ipynb`](workenv/google-colab/synapse_colab_workflow.ipynb)：开箱即用 Jupyter Notebook
 
-使用 [`scripts/colab_runner.py`](file:///Volumes/work/dervgen/synapse/scripts/colab_runner.py) 自动探测显存档位（$<35\text{ GB}$ 自动选用 `Wan2.1-T2V-1.3B` + CPU Offload，$\ge 35\text{ GB}$ 选用 `14B`）并将每个实验阶段的状态写入 Google Drive：
+使用 [`scripts/colab_runner.py`](scripts/colab_runner.py) 自动探测显存档位（$<35\text{ GB}$ 自动选用 `Wan2.1-T2V-1.3B` + CPU Offload，$\ge 35\text{ GB}$ 选用 `14B`）并将每个实验阶段的状态写入 Google Drive：
 
 ```bash
 # 1. 一键配置 Colab Linux/CUDA 运行环境

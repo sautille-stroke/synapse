@@ -65,12 +65,16 @@ for sample in iter_feature_shards(shard_paths):
 
 ## 三、3D 建模智能质检 (`synapse.inspect`) 与 RSI 自演进飞轮 (`synapse.rsi`)
 
-1. **白模粗糙度防呆门禁（RFC 0044 §4.4）**：
+1. **Tier 0 确定性几何拓扑硬门禁 (`synapse.inspect.geometry_gate`)**：
+   - 双轨架构互验：生产级 `csrc/geometry/` C++20 算子核（Bazel + `@aether//math`）与 `synapse.recon.geometry` Python Oracle；
+   - 包含流形（2-Manifold）、水密闭合（Watertight）、简并面（Degenerate Faces）、自相交（Self-Intersections）与浮动碎岛过滤；
+   - `validate_mesh_geometry(vertices, faces, require_watertight=...)` 输出结构化 `GeometricValidationResult`，前置硬阻断劣化网格进入下游神经评测。
+2. **白模粗糙度防呆门禁（RFC 0044 §4.4）**：
    - 角色代理必须通过 `validate_whitebox_coarseness_floor(vertex_count, has_articulated_limbs, is_character=True)`（要求顶点数 $\ge 1500$ 且具备铰接四肢）。
    - `synapse.bench.generate_humanoid_proxy()` 生成包含 1991 顶点、14 个骨骼分段的程序化标准人形白模。
-2. **三级质检分流与 15 分钟熔断**：
+3. **三级质检分流与 15 分钟熔断**：
    - `L0`（全自动放行）$\to$ `L1`（算法自动自愈：法线重算、流形修复、反照率去高光裁剪）$\to$ `L2`（导出 `.inspection.tar.zst` 交由人工精修，单资产/单镜头超时 **15 分钟** 立即触发退出码 `40` 工程熔断降级）。
-3. **RSI 闭环演进 (`synapse.rsi`)**：
+4. **RSI 闭环演进 (`synapse.rsi`)**：
    - 结合物理渲染一致性奖励（几何 Chamfer、材质能量守恒、骨骼骨长零漂移）与 `ReplayBuffer` 20% 历史黄金锚点混采，防止多轮自演进出现色彩过饱和或高频伪影坍缩。
 
 ---

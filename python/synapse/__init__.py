@@ -13,6 +13,8 @@ Submodules:
     inspect     3D asset inspection schemas & pose alignment
     training    LoRA training pipeline
     rsi         Recursive Self-Improvement flywheel
+    recon       Video-to-3D inverse reconstruction & asset distillation
+    bridge      Cross-package thin bridge layer (foundary, hitl, vg)
     cli         CLI tools
 """
 
@@ -29,12 +31,14 @@ __version__ = "0.1.0"
 from synapse import (
     adapters,
     bench,
+    bridge,
     cli,
     composite,
     fgpp,
     inspect,
     metrics,
     pipeline,
+    recon,
     rsi,
     style,
     training,
@@ -60,6 +64,7 @@ __all__ = [
     "__version__",
     "adapters",
     "bench",
+    "bridge",
     "cli",
     "composite",
     "fgpp",
@@ -68,8 +73,9 @@ __all__ = [
     "metrics",
     "models",
     "pipeline",
+    "recon",
+    "rsi",
     "style",
     "training",
-    "rsi",
     "viewer",
 ]

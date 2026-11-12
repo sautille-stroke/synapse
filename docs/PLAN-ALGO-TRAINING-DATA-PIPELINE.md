@@ -45,23 +45,24 @@
 
 ### 0.3 跨文档指标矛盾汇总与收敛决议 (Metric Threshold Reconciliation)
 
-> [!CAUTION]
-> **`profiles.py` 代码中的阈值与 `DESIGN_REVIEW_AND_ALIGNMENT.md` §3.4 权威表格存在系统性偏差**——代码中的 `rsi_promotion` 比设计文档严格 2–10 倍（如 `normal_angular_error_deg` 代码为 5.0° vs 文档 12.0°，`chamfer_mm` 代码为 1.0mm vs 文档 4.0mm，`silhouette_iou` 代码为 0.97 vs 文档 0.90）。这是一个必须在执行前澄清的 **P0 级矛盾**。
+> [!NOTE]
+> **已闭环状态更新 (2026-11-12, PR #23 `dfd04f2`)**：
+> 下述指标矛盾已由 PR #23 彻底解决！`profiles.py` 中的 `RSI_PROMOTION` 档位已与 `DESIGN_REVIEW_AND_ALIGNMENT.md §3.4` 权威表格 100% 同步（`normal_angular_error_deg=12.0°`, `silhouette_iou=0.90`, `chamfer_mm=4.0mm`, `depth_rmse_m=0.03m`, `foot_sliding_cm=0.2cm`, `volume_breathing_pct=2.5%`），原先更严格的目标值收敛至 `RSI_PROMOTION_TARGET` 档位中。全套代码与文档双向对齐已由自动化回归测试 `tests/test_profiles_doc_sync.py` 严格断言并通过。
 
-| 指标 | REVIEW 文档 `rsi_promotion` | `profiles.py` 代码 `RSI_PROMOTION` | RSI 文档 `dual_verifier.py` 默认值 | LoRA `packager.py` 默认值 | **裁决** |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| `normal_angular_error_deg` | ≤ 12.0° | ≤ 5.0° | ≤ 12.0° | ≤ 12.0° | **⚠️ 代码过严**：需确认是否为刻意的"超额锁定" |
-| `silhouette_iou` | ≥ 0.90 | ≥ 0.97 | ≥ 0.88 | — | **⚠️ 三处不同**：REVIEW 0.90, 代码 0.97, RSI 0.88 |
-| `chamfer_mm` | ≤ 4.0 mm | ≤ 1.0 mm | — | ≤ 5.0 mm | **⚠️ 四处不同** |
-| `depth_rmse_m` | ≤ 0.03 m | ≤ 0.05 m | ≤ 0.03 m | — | **⚠️ 代码反而更宽松** |
-| `foot_sliding_cm` | ≤ 0.2 cm | ≤ 0.5 cm | 0.02 m/s (速度!) | — | **⚠️ 单位不统一**：RSI 文档用速度(m/s)，其他用位移(cm) |
-| `volume_breathing_pct` | ≤ 2.5% | ≤ 1.5% | — | — | 代码更严 |
+| 指标 | REVIEW 文档 `rsi_promotion` | `profiles.py` 代码 `RSI_PROMOTION` | 远期目标 `RSI_PROMOTION_TARGET` | **最终收敛决议状态** |
+| :--- | :---: | :---: | :---: | :--- |
+| `normal_angular_error_deg` | ≤ 12.0° | ≤ 12.0° | ≤ 5.0° | ✅ 已对齐 SSOT，远期保留至 target |
+| `silhouette_iou` | ≥ 0.90 | ≥ 0.90 | ≥ 0.97 | ✅ 已对齐 SSOT（0.90） |
+| `chamfer_mm` | ≤ 4.0 mm | ≤ 4.0 mm | ≤ 1.0 mm | ✅ 已对齐 SSOT（4.0mm） |
+| `depth_rmse_m` | ≤ 0.03 m | ≤ 0.03 m | ≤ 0.02 m | ✅ 已对齐 SSOT（0.03m） |
+| `foot_sliding_cm` | ≤ 0.2 cm | ≤ 0.2 cm | ≤ 0.1 cm | ✅ 已统一为位移制（0.2cm） |
+| `volume_breathing_pct` | ≤ 2.5% | ≤ 2.5% | ≤ 1.5% | ✅ 已对齐 SSOT（2.5%） |
 
-**收敛决议（CR-01）**：
-1. **以 `DESIGN_REVIEW_AND_ALIGNMENT.md` §3.4 为唯一权威三级阈值 SSOT**——这是经过完整跨文档审查后产出的对齐决议。
-2. **`profiles.py` 当前的"超额严格"值视为理想远期目标**——在当前骨架期不作为硬阻断门禁，否则所有实验都将无法通过。近期执行使用 REVIEW 文档值。
-3. **`dual_verifier.py` 中 `silhouette_iou` 默认值从 0.88 更新为 0.90**——对齐 `rsi_promotion` 档位。
-4. **足底滑移指标统一为位移制 `foot_sliding_cm`**——以 `REVIEW` 文档的 `foot_sliding_cm ≤ 0.2 cm`（触地相单帧水平位移）为准。`dual_verifier.py` 中 `foot_slide_velocity_ms` 保留但标注为辅助参考。
+**收敛决议落实记录（CR-01）**：
+1. **以 `DESIGN_REVIEW_AND_ALIGNMENT.md` §3.4 为唯一权威三级阈值 SSOT**——全仓代码与文档统一以其为准。
+2. **`profiles.py` 设立 `RSI_PROMOTION_TARGET` 容纳远期理想目标**——既保证当前工程门禁具备可通达性，又保留远期严格标准。
+3. **`dual_verifier.py` 中 `silhouette_iou` 默认值更新为 0.90**——完全对齐 `rsi_promotion` 档位。
+4. **足底滑移指标统一为位移制 `foot_sliding_cm`**——以 `REVIEW` 文档的 `foot_sliding_cm ≤ 0.2 cm`（触地相单帧水平位移）为准，消除速度与位移单位混用。
 
 ### 0.4 缺失超参数锁定 (Missing Hyperparameter Lock-Down)
 

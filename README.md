@@ -42,40 +42,47 @@ flowchart LR
 
 ## 3. 模块架构与当前就绪状态
 
-> 整体设计与跨文档对齐决议见 [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)，架构审查见 [docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)，M1–M8 全量 30-PR 实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。
+> 整体设计与跨文档对齐决议见 [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)，架构审查见 [docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)，M1–M8 全量 30-PR 实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。当前全仓自动化测试套件 **765 passed, 2 skipped** 全绿。
 
-| 模块路径 | 核心职责 | 当前状态 | 对应实施里程碑 |
+| 模块路径 | 核心职责 | 当前状态 | 对应实施里程碑 / 交付 |
 | :--- | :--- | :---: | :---: |
-| `python/synapse/bench/` | `Synapse-Bench` 30 场景、11×4 条件因子、纯 NumPy 软光栅与 Bundle 导出 | 🟡 M0 原型可用 | `PR-01`, `PR-15`, `PR-26` |
-| `python/synapse/fgpp/` | 对齐 `@aether//fgpp` 的 15 标量通道 (`34B/px`) OpenEXR 读写与 DLPack 桥接 | 🟡 内存骨架就绪 | `PR-02`, `PR-03` |
-| `python/synapse/cli/` | 双入口统一 CLI（`synapse` / `synapse-bench`、退出码 `0/10/20/30/40`、显存预检） | 📋 待实施 | `PR-04` |
-| `python/synapse/adapters/` | 双轨视频适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 API）、97f 因果滑窗与 Multi-LoRA | 📋 待实施 | `PR-05` ~ `PR-08`, `PR-16` |
-| `python/synapse/style/` | 双曲正切软肩 ACEScg 逆色调映射、球谐主光提取与 `StyleProfile v2.0` 映射 | 📋 待实施 | `PR-09` |
-| `python/synapse/composite/` | 穿模/闪烁检测、`3D ∪ SAM2` 膨胀掩膜、16px 环带 LAB 与光学增量融合 | 📋 待实施 | `PR-10`, `PR-11` |
-| `python/synapse/recon/` | Video-to-3D 几何逆向重建与资产蒸馏：4D 点追踪、6-DoF 运镜解算、2-流形/闭合验证、Quad 重拓扑、足底防滑零位移 IK (<0.3 cm/s)、球谐与 Retinex 本征去光照 | 🟢 原生全面就绪 | Stage 3 核心 |
-| `python/synapse/bridge/` | `vg-core` / `foundary` 薄桥接、Track-B 白模反投硬拦截与 HITL 15m 熔断 | 📋 待实施 | `PR-12` |
-| `python/synapse/metrics/` | 四维 16 项指标与三级质量门禁档位（`track_b` / `track_a` / `rsi_promotion`） | 📋 待实施 | `PR-13` |
-| `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器执行核与离线 `BenchPipelineRunner` | 📋 待实施 | `PR-14a`, `PR-14b` |
-| `python/synapse/training/` | 3D VAE / FGPP 离线潜空间 `WebDataset` 缓存与五维正交 LoRA 训练器 | 📋 待实施 | `PR-17` ~ `PR-19` |
-| `python/synapse/inspect/` | Fibonacci DINOv2 位姿对齐、微距 3D 反投、Visual Jev 判别与 DPO/PRM 导出 | 📋 待实施 | `PR-20` ~ `PR-23` |
-| `python/synapse/rsi/` | 课程域随机化、物理+PRM 双重验算、20% L0 锚点配对与单调递增发布门禁 | 📋 待实施 | `PR-24`, `PR-25` |
-| `tools/data-inspector/` | Electron 33 + `@fulgur` Native SHM 五视图训练数据与双模对比可视化检查器 | 📋 待实施 | `PR-27` ~ `PR-29` |
+| `csrc/geometry/` | Tier 0 现代 C++20 原生几何核（Bazel 构建，`@aether//math` DVec3），流形/水密/简并/自交校验 | 🟢 已就绪并测试覆盖 | Tier 0 核心算子 |
+| `python/synapse/recon/` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK (<0.2 cm)、球谐与 Retinex 本征去光照 | 🟢 原生全面就绪 | RFC 0060 逆向闭环 |
+| `python/synapse/bench/` | `Synapse-Bench` 30 场景、11×4 条件因子、纯 NumPy 软光栅与 InspectionBundle 导出器 | 🟢 已就绪并测试覆盖 | `PR-01`, `PR-15`, `PR-26` |
+| `python/synapse/fgpp/` | 对齐 `@aether//fgpp` 的 15 标量通道 (`34B/px`) OpenEXR 读写、消毒器与 DLPack 桥接 | 🟢 已就绪并测试覆盖 | `PR-02`, `PR-03` |
+| `python/synapse/cli/` | 双入口统一 CLI（`synapse` / `synapse-bench`、确定性退出码 `0/10/20/30/40/50`、显存预检） | 🟢 已就绪并测试覆盖 | `PR-04`, PR #22 |
+| `python/synapse/adapters/` | 双轨视频适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 API）、97f 因果滑窗与 Multi-LoRA 空间隔离 | 🟢 已就绪并测试覆盖 | `PR-05` ~ `PR-08`, `PR-16` |
+| `python/synapse/style/` | 双曲正切软肩 ACEScg 逆色调映射、球谐主光提取与 `StyleProfile v2.0` 映射 | 🟢 已就绪并测试覆盖 | `PR-09` |
+| `python/synapse/composite/` | 穿模/闪烁检测、`3D ∪ SAM2` 膨胀掩膜、16px 环带 LAB 与光学增量拉普拉斯金字塔融合 | 🟢 已就绪并测试覆盖 | `PR-10`, `PR-11` |
+| `python/synapse/bridge/` | `foundary` 客户端、HITL 15m 熔断状态机与 `vg_bridge`（内建 `MockVgBackend` 回退） | 🟢 已就绪并测试覆盖 | `PR-12` |
+| `python/synapse/metrics/` | 四维 16 项指标与三级质量门禁档位（`track_b` / `track_a` / `rsi_promotion`，SSOT 对齐） | 🟢 已就绪并测试覆盖 | `PR-13`, PR #23 |
+| `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器执行核、离线 `BenchPipelineRunner` 与解耦的 Stage 适配器 | 🟢 已就绪并测试覆盖 | `PR-14a`, `PR-14b`, PR #24 |
+| `python/synapse/training/` | 3D VAE / FGPP 离线潜空间 `WebDataset` 缓存与正交 LoRA 训练器（参考锚定 Diffusion-DPO） | 🟢 已就绪并测试覆盖 | `PR-17` ~ `PR-19`, PR #27 |
+| `python/synapse/inspect/` | Tier 0 几何硬门禁、Fibonacci 粗到精配准、微距 3D 反投、Visual Jev 判别与 3D 模型评估报告（SVG 雷达图） | 🟢 已就绪并测试覆盖 | `PR-20` ~ `PR-23`, PR #31 |
+| `python/synapse/rsi/` | 课程域随机化、物理+PRM 双重验算、20% L0 黄金锚点经验回放与单调递增发布门禁 | 🟢 已就绪并测试覆盖 | `PR-24`, `PR-25` |
+| `tools/data-inspector/` | Electron 33 + `@fulgur` / `@aether//pal:shm` Native C++ 五视图可视化检查器 | 🟢 已就绪并测试覆盖 | `PR-27` ~ `PR-29`, PR #30 |
 
 ---
 
 ## 4. 文档导航
 
 - **[AGENTS.md](AGENTS.md)**：AI Agent 与开发者行为铁律、测试机器分工与编码规范
-- **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)**：**整体设计深度评审与跨文档对齐决议**（`RV-01~RV-10` 纠偏、权威目录树、统一 CLI 语法树与三级门禁阈值表）
+- **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)**：**整体设计深度评审与跨文档对齐决议**（`RV-01~RV-12` 纠偏、权威目录树、统一 CLI 语法树与三级门禁阈值表）
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**：**M1–M8 八阶段 30 个原子 PR 可落地实施总计划 (`v2.0`)** 及 `docs/plans/` 五份精细化执行子计划：
   - [PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)
 - **[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)**：整体目标审查、跨仓职责定界与 10 大现状问题诊断报告
+- **[docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：**真实视频逆向 3D 动态数字孪生与联合反演设计规范 (RFC 0060)**
+- **[docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md](docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)**：算法、训练与数据流水线攻坚执行计划
+- **[docs/plans/PLAN-REVIEW-PR17-PR18.md](docs/plans/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与整改计划
+- **[docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)**：3D 生成模型质量提升方法论、评估体系全景矩阵与训练数据工程规范
+- **[docs/REVIEW_3D_EVAL_DELIVERY.md](docs/REVIEW_3D_EVAL_DELIVERY.md)**：3D 模型评估体系完整交付清单与 Review 指南
 - **[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)**：行业成熟流水线对比差距与代偿性架构设计规范
 - **[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)**：Synapse 2.0 系统设计增强规范（流式潜空间切片、拓扑突变保护、Wire Guard、软肩 ACEScg）
 - **[docs/DESIGN_LORA_PIPELINE.md](docs/DESIGN_LORA_PIPELINE.md)**：LoRA & PEFT 微调流水线设计规范
 - **[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)**：3D 建模智能质检、多尺度对齐与精修数据飞轮设计规范
 - **[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)**：递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范
 - **[docs/DESIGN_DATA_INSPECTOR.md](docs/DESIGN_DATA_INSPECTOR.md)**：训练数据可视化检查器方案（Data Inspector）
+- **[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)**：3D 多视角生成与逆向重建闭环验证计划
 
 ---
 
