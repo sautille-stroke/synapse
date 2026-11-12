@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -240,10 +240,12 @@ class BenchPipelineRunner:
 
         # --- Phase 5: Gate evaluation ----------------------------------
         if self._gate_profile is not None:
-            from synapse.metrics.profiles import evaluate_metrics_gate
+            from typing import cast
+
+            from synapse.metrics.profiles import GateProfileName, evaluate_metrics_gate
 
             report.gate_verdict = evaluate_metrics_gate(
-                metrics, self._gate_profile,
+                metrics, cast(GateProfileName, self._gate_profile),
             )
 
         report.timings["total_ms"] = _elapsed_ms(t_total_start)
@@ -393,9 +395,11 @@ def evaluate_bundle(
                 )
 
     # --- Gate evaluation ----------------------------------------------
-    from synapse.metrics.profiles import evaluate_metrics_gate
+    from typing import cast
 
-    gate = evaluate_metrics_gate(metrics, profile)
+    from synapse.metrics.profiles import GateProfileName, evaluate_metrics_gate
+
+    gate = evaluate_metrics_gate(metrics, cast(GateProfileName, profile))
     metrics["gate_passed"] = float(gate.passed)
 
     # --- Write comparison.json ----------------------------------------

@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 import numpy as np
-
 
 # -----------------------------------------------------------------------
 # WindowSlice — describes a single causal generation window
@@ -243,7 +242,7 @@ class DiscontinuityDetector:
         union = np.count_nonzero(fg_prev | fg_curr)
         if union == 0:
             return 1.0  # both empty — no discontinuity
-        return float(intersection / union)
+        return float(int(intersection) / int(union))
 
     def compute_kappa(
         self,
@@ -531,7 +530,7 @@ def compute_latent_flow_operator(
     depths: np.ndarray,
     temporal_compression: int = 4,
     spatial_block: int = 8,
-    discontinuity_frames: Optional[list[int]] = None,
+    discontinuity_frames: list[int] | None = None,
 ) -> np.ndarray:
     """Compute latent-space displacement grid from pixel motion vectors.
 
@@ -662,7 +661,7 @@ def _pool_displacement(
 
 
 def _safe_channel(
-    arr: Optional[np.ndarray],
+    arr: np.ndarray | None,
     shape: tuple[int, ...],
 ) -> np.ndarray:
     """Return *arr* if not None, else zeros of *shape* float32."""
@@ -672,7 +671,7 @@ def _safe_channel(
 
 
 def _safe_channel_1d(
-    arr: Optional[np.ndarray],
+    arr: np.ndarray | None,
     shape: tuple[int, ...],
     dtype: Any = np.uint32,
 ) -> np.ndarray:

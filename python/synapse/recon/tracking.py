@@ -7,11 +7,9 @@ visual odometry with Depth Anything V2 metric scale and ground plane alignment.
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import numpy as np
 
-from synapse.recon.geometry import refine_pose_6dof
 from synapse.recon.types import CameraExtrinsics, CameraTrajectory
 
 

@@ -1,13 +1,10 @@
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
-from pathlib import Path
 import urllib.request
 
 import numpy as np
 import pytest
-
-from synapse.fgpp.frame import CameraParams
 from synapse.generators.dataset import DatasetConfig, DatasetGenerator
 from synapse.generators.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
@@ -62,7 +59,7 @@ class TestRasterizer:
 
     def test_rasterizer_channels(self):
         model = load_model("cube", normalize=True, target_radius=1.0)
-        from synapse.bench.camera import generate_cameras, CameraTrajectoryType
+        from synapse.bench.camera import CameraTrajectoryType, generate_cameras
 
         cameras = generate_cameras(CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128)
         rasterizer = SoftwareRasterizer(width=128, height=128)
@@ -149,6 +146,29 @@ class TestDatasetGenerator:
         assert manifest["splits"]["train_count"] >= 1
         assert (out_dir / "fgpp" / "frame_0000.npz").exists()
         assert (out_dir / "frames" / "frame_0000.png").exists()
+
+    @pytest.mark.parametrize("traj_type", ["spiral", "hemisphere"])
+    def test_generate_dataset_spiral_and_hemisphere(self, tmp_path, traj_type):
+        out_dir = tmp_path / f"test_dataset_{traj_type}"
+        cfg = DatasetConfig(
+            model_name="cube",
+            trajectory_type=traj_type,
+            num_frames=4,
+            width=64,
+            height=64,
+            fps=12.0,
+            radius=2.2,
+            fov_degrees=45.0,
+            val_ratio=0.25,
+            output_dir=out_dir,
+        )
+        gen = DatasetGenerator(cfg)
+        dataset_path = gen.generate()
+        assert dataset_path.exists()
+        manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+        assert len(manifest["frames"]) == 4
+        assert manifest["trajectory"]["type"] == traj_type
+        assert abs(manifest["frames"][0]["camera"]["fov_degrees"] - 45.0) < 1e-3
 
 
 class TestViewerServer:

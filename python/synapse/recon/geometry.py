@@ -7,7 +7,6 @@ estimation, Kabsch/ICP 6-DoF rigid alignment, and quad-dominant remeshing.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
 
 import numpy as np
 

@@ -11,8 +11,6 @@ Covers:
 from __future__ import annotations
 
 import numpy as np
-import pytest
-
 from synapse.composite.blend import (
     _guided_filter_box,
     border_ring_lab_match,
@@ -24,7 +22,6 @@ from synapse.style.aces_color import (
     rgb_to_cielab,
     srgb_to_linear,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

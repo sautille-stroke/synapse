@@ -10,12 +10,12 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
-
-from synapse.adapters.lora.manifest import LoRAManifest
 from synapse.adapters.lora.manager import MultiLoRAManager
-
+from synapse.adapters.lora.manifest import LoRAManifest
 
 # ---------------------------------------------------------------------------
 # Shared helpers

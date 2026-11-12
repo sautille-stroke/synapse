@@ -12,16 +12,12 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pytest
-
 from synapse.inspect.macro import (
     _sobel_gradient_magnitude,
     _unproject_pixel,
     compute_isotopic_residual_heatmap,
     plan_macro_camera_for_roi,
 )
-from synapse.inspect.schemas import CameraPose
-
 
 # ===================================================================
 # TestSobelGradient

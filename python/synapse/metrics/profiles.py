@@ -10,8 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-import numpy as np
-
 # ── Public type alias ────────────────────────────────────────────────
 GateProfileName = Literal["track_b_video", "track_a_asset", "rsi_promotion"]
 
@@ -166,9 +164,7 @@ def evaluate_metrics_gate(
         value = float(measured[name])
         direction = _METRIC_DIRECTIONS.get(name, _LOWER)
         violated = False
-        if direction == _LOWER and value > thresh:
-            violated = True
-        elif direction == _HIGHER and value < thresh:
+        if direction == _LOWER and value > thresh or direction == _HIGHER and value < thresh:
             violated = True
         if violated:
             violations.append(

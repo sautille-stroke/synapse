@@ -26,7 +26,6 @@ from synapse.errors import (
 )
 from synapse.telemetry import TraceContext
 
-
 # -------------------------------------------------------------------
 # Internal helpers — preserved from prior implementation
 # -------------------------------------------------------------------
@@ -96,7 +95,7 @@ def main_data_gen(args: list[str] | None = None) -> int:
         output_dir=parsed.out,
     )
 
-    print(f"[Synapse] Dataset Generator")
+    print("[Synapse] Dataset Generator")
     print(f"   Model:      {cfg.model_name}")
     print(
         f"   Trajectory: {cfg.trajectory_type} "
@@ -213,7 +212,7 @@ def _run_with_json_mode(
                 file=sys.stderr,
             )
         return int(exc.exit_code)
-    except SystemExit as exc:
+    except SystemExit:
         # Re-raise argparse help / error exits
         raise
     except Exception as exc:
@@ -378,6 +377,7 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
 
     # Create adapter
     adapter_name = getattr(args, "adapter", "mock")
+    adapter: Any
     if adapter_name == "mock":
         adapter = MockVideoAdapter()
     else:
@@ -469,7 +469,7 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     from synapse.bench.model_loader import load_mesh
     from synapse.bench.rasterizer import SoftwareRasterizer
     from synapse.bench.scenario import load_scenario
-    from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+    from synapse.fgpp.frame import FGPPFrame, FGPPSequence
 
     try:
         scenario = load_scenario(args.scenario)

@@ -21,9 +21,9 @@ from synapse.metrics.fgpp_fidelity import (
     silhouette_iou,
 )
 from synapse.metrics.profiles import (
+    RSI_PROMOTION,
     TRACK_A_ASSET,
     TRACK_B_VIDEO,
-    RSI_PROMOTION,
     GateProfileName,
     GateVerdict,
     GateViolation,

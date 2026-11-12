@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from synapse.adapters.lora.manifest import LoRAManifest
 from synapse.adapters.lora.manager import MultiLoRAManager
+from synapse.adapters.lora.manifest import LoRAManifest
 
 # ---------------------------------------------------------------------------
 # LoRAPatchHook

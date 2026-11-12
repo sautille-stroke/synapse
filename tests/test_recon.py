@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import numpy as np
 import pytest
-
 from synapse.bridge.vg_bridge import (
     SynapseReconBackend,
     VgBackend,
@@ -17,8 +15,6 @@ from synapse.bridge.vg_bridge import (
 from synapse.recon import (
     CameraTrajectory,
     DelightResult,
-    MeshGeometry,
-    MocapKinematics,
     ReconPipeline,
     ReconResult,
     check_manifold,
@@ -34,7 +30,6 @@ from synapse.recon import (
     solve_two_bone_ik,
     solve_zero_slip_ik,
 )
-
 
 # ===================================================================
 # TestReconGeometry

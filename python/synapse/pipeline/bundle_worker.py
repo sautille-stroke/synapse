@@ -24,8 +24,9 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
@@ -266,7 +267,7 @@ def _handle_neural_video_generate(
         VideoGenerationConfig,
         VideoResult,
     )
-    from synapse.telemetry import FallbackLevel, MemoryForecaster
+    from synapse.telemetry import MemoryForecaster
 
     params = dict(manifest.params)
     budget = manifest.hardware_budget
@@ -320,6 +321,7 @@ def _handle_neural_video_generate(
         fallback_level = "LEVEL_1_SPATIAL_TILE_2X2"
 
     # --- Create adapter and generate ---
+    adapter: Any
     if adapter_name == "mock":
         adapter = MockVideoAdapter()
     else:
@@ -425,7 +427,7 @@ def _handle_style_extract_and_map(
                 )
             )
 
-    descriptor = extract_style_optical(frames)
+    descriptor = extract_style_optical(np.asarray(frames, dtype=np.uint8))
 
     output_path = manifest.outputs.get(
         "style_profile",

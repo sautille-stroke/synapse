@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import numpy as np
 
@@ -28,8 +28,8 @@ class MeshData:
     vertices: np.ndarray  # [N, 3] float32
     faces: np.ndarray  # [M, 3] int32
     normals: np.ndarray  # [N, 3] float32
-    uvs: Optional[np.ndarray] = None  # [N, 2] float32
-    base_color: Optional[np.ndarray] = None  # [N, 3] float32
+    uvs: np.ndarray | None = None  # [N, 2] float32
+    base_color: np.ndarray | None = None  # [N, 3] float32
 
     @property
     def num_vertices(self) -> int:
@@ -41,7 +41,7 @@ class MeshData:
         """Number of triangular faces."""
         return self.faces.shape[0]
 
-    def normalize(self, target_radius: float = 1.0) -> "MeshData":
+    def normalize(self, target_radius: float = 1.0) -> MeshData:
         """Center at origin and scale to *target_radius*."""
         if self.num_vertices == 0:
             return self
@@ -60,7 +60,7 @@ class MeshData:
             base_color=self.base_color.copy() if self.base_color is not None else None,
         )
 
-    def compute_normals(self) -> "MeshData":
+    def compute_normals(self) -> MeshData:
         """Recompute vertex normals from face geometry."""
         v = self.vertices
         f = self.faces
@@ -147,7 +147,7 @@ def load_obj(path: str | Path) -> MeshData:
         counts = np.maximum(counts, 1.0)
         vert_normals /= counts[:, np.newaxis]
         norms_mag = np.linalg.norm(vert_normals, axis=1, keepdims=True)
-        vert_normals = vert_normals / np.maximum(norms_mag, 1e-12)
+        vert_normals = (vert_normals / np.maximum(norms_mag, 1e-12)).astype(np.float32)
     else:
         vert_normals = np.zeros_like(verts_arr)
 
@@ -238,9 +238,9 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
             f"Install with: pip install synapse[mesh]"
         ) from exc
 
-    scene_or_mesh = trimesh.load(str(path), force="mesh")
+    scene_or_mesh: Any = trimesh.load(str(path), force="mesh")
     if hasattr(scene_or_mesh, "vertices"):
-        geom = scene_or_mesh
+        geom: Any = scene_or_mesh
     else:
         geom = list(scene_or_mesh.geometry.values())[0]
 

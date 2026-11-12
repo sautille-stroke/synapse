@@ -13,11 +13,11 @@ from synapse.generators.visualizer import (
 __all__ = [
     "DatasetConfig",
     "DatasetGenerator",
-    "SoftwareRasterizer",
     "RenderResult",
+    "SoftwareRasterizer",
     "colorize_depth",
-    "colorize_normal",
     "colorize_flow",
     "colorize_mask",
+    "colorize_normal",
     "make_contact_sheet",
 ]

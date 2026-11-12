@@ -12,7 +12,6 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import overload
 
 import numpy as np
 
@@ -174,7 +173,6 @@ def _read_exr_frame(
     channels: set[str] | None = None,
 ) -> FGPPFrame:
     """Read a single EXR file into an ``FGPPFrame``."""
-    import Imath  # type: ignore[import-untyped]
     import OpenEXR  # type: ignore[import-untyped]
 
     exr = OpenEXR.InputFile(str(exr_path))
@@ -199,6 +197,7 @@ def _read_exr_frame(
             _, _, pt = _CHANNEL_MAP[ch_name]
             raw_bytes = exr.channel(ch_name)
 
+            arr: np.ndarray
             if pt == PixelType.UINT32:
                 # Stored as float32 bit-pattern
                 arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)
@@ -245,15 +244,6 @@ def _iter_fgpp_frames(
             yield _read_exr_frame(
                 exr_path, meta_frame.camera, idx, channel_set
             )
-
-
-@overload
-def import_fgpp(
-    input_dir: str | Path,
-    *,
-    lazy: bool = True,
-    channels: Sequence[str] | None = None,
-) -> FGPPSequence | Iterator[FGPPFrame]: ...
 
 
 def import_fgpp(

@@ -14,13 +14,13 @@ import hashlib
 import io
 import json
 import tarfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
 from synapse.errors import ContractValidationError
-
 
 # -------------------------------------------------------------------
 # Structured caption formatter

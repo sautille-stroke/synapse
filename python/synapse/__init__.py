@@ -25,7 +25,7 @@ __version__ = "0.1.0"
 # Lightweight submodules that have no heavy third-party deps (cv2, numba,
 # trimesh) are imported eagerly so that ``import synapse`` stays fast in
 # minimal / CI environments.
-from synapse import (  # noqa: E402
+from synapse import (
     adapters,
     bench,
     cli,
@@ -48,7 +48,7 @@ if TYPE_CHECKING:  # pragma: no cover — static analysis only
     from synapse import generators, models, viewer
 
 
-def __getattr__(name: str):  # noqa: N807
+def __getattr__(name: str):
     if name in _LAZY_SUBMODULES:
         return importlib.import_module(f"synapse.{name}")
     raise AttributeError(f"module 'synapse' has no attribute {name!r}")

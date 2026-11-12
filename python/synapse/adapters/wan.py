@@ -122,8 +122,8 @@ class FoundaryHttpTransport(WanBackendTransport):
                 non-200 HTTP status.
         """
         import json
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         body = json.dumps({
             "text_prompt": payload.text_prompt,
@@ -179,8 +179,8 @@ class FoundaryHttpTransport(WanBackendTransport):
 
     def is_available(self) -> bool:
         """Probe the endpoint with a lightweight GET."""
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         try:
             urllib.request.urlopen(
@@ -351,11 +351,11 @@ class WanAdapter(VideoModelAdapter):
     # -- properties ----------------------------------------------------------
 
     @property
-    def adapter_id(self) -> str:  # noqa: D102
+    def adapter_id(self) -> str:
         return "wan2.1"
 
     @property
-    def tier(self) -> AdapterTier:  # noqa: D102
+    def tier(self) -> AdapterTier:
         return "whitebox"
 
     @property

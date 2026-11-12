@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 
 class ScenarioTier(str, Enum):
@@ -45,8 +45,8 @@ class Asset:
 
     source: AssetSource
     id: str
-    url: Optional[str] = None
-    sha256: Optional[str] = None
+    url: str | None = None
+    sha256: str | None = None
     license: str = "MIT"
 
     def to_dict(self) -> dict:
@@ -58,7 +58,7 @@ class Asset:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Asset":
+    def from_dict(cls, d: dict) -> Asset:
         return cls(
             source=AssetSource(d["source"]),
             id=d["id"],
@@ -72,24 +72,24 @@ class Asset:
 class ExpectedMetrics:
     """Pass/fail thresholds for a scenario."""
 
-    chamfer_mm: Optional[float] = None
-    f_score_1mm: Optional[float] = None
-    psnr_db: Optional[float] = None
-    ssim: Optional[float] = None
-    lpips: Optional[float] = None
-    ciede2000: Optional[float] = None
-    temporal_warp_error: Optional[float] = None
-    flicker_score: Optional[float] = None
-    foot_sliding_cm: Optional[float] = None
-    bone_length_drift_pct: Optional[float] = None
-    style_color_de: Optional[float] = None
-    style_light_error_deg: Optional[float] = None
+    chamfer_mm: float | None = None
+    f_score_1mm: float | None = None
+    psnr_db: float | None = None
+    ssim: float | None = None
+    lpips: float | None = None
+    ciede2000: float | None = None
+    temporal_warp_error: float | None = None
+    flicker_score: float | None = None
+    foot_sliding_cm: float | None = None
+    bone_length_drift_pct: float | None = None
+    style_color_de: float | None = None
+    style_light_error_deg: float | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ExpectedMetrics":
+    def from_dict(cls, d: dict) -> ExpectedMetrics:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -154,7 +154,7 @@ class Scenario:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Scenario":
+    def from_dict(cls, d: dict) -> Scenario:
         return cls(
             id=d["id"],
             tier=ScenarioTier(d["tier"]),
@@ -181,7 +181,7 @@ class Scenario:
         return path
 
     @classmethod
-    def load(cls, path: str | Path) -> "Scenario":
+    def load(cls, path: str | Path) -> Scenario:
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8"))
         return cls.from_dict(data)
@@ -207,7 +207,7 @@ def _scenarios_dir() -> Path:
     return pkg_root / "data" / "scenarios"
 
 
-def list_scenarios(tier: Optional[ScenarioTier] = None) -> list[Scenario]:
+def list_scenarios(tier: ScenarioTier | None = None) -> list[Scenario]:
     """Return all built-in scenarios, optionally filtered by tier."""
     scenarios_dir = _scenarios_dir()
     if not scenarios_dir.is_dir():

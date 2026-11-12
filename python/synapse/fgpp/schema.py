@@ -13,7 +13,6 @@ from typing import Final
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Pixel storage type enum — mirrors aether::fgpp::PixelType
 # ---------------------------------------------------------------------------

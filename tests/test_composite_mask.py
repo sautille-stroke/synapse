@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.composite.detector import (
     VideoDefectRegion,
     detect_video_artifacts,
@@ -21,7 +20,6 @@ from synapse.composite.mask import (
     generate_surgical_mask,
 )
 from synapse.fgpp.frame import CameraParams, FGPPFrame
-
 
 # ---------------------------------------------------------------------------
 # Helpers

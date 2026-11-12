@@ -17,7 +17,6 @@ import secrets
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-
 # ---------------------------------------------------------------------------
 # W3C Trace Context
 # ---------------------------------------------------------------------------

@@ -11,14 +11,10 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 import sys
-import tempfile
 from io import StringIO
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from synapse.errors import (
     AssetNotFoundError,
@@ -31,11 +27,10 @@ from synapse.errors import (
 )
 from synapse.telemetry import (
     FallbackLevel,
-    MemoryForecaster,
     MemoryForecast,
+    MemoryForecaster,
     TraceContext,
 )
-
 
 # ===================================================================
 # Helpers
@@ -427,3 +422,24 @@ class TestBenchCommands:
         data = json.loads(out)
         assert isinstance(data["scenarios"], list)
         assert "count" in data
+
+    def test_bench_export_fgpp_json_mode(self, tmp_path: Path) -> None:
+        out_dir = tmp_path / "exported_fgpp"
+        code, out, err = _capture_main_bench(
+            [
+                "--json",
+                "export-fgpp",
+                "--scenario",
+                "t1_rigid_cube_orbit",
+                "--output",
+                str(out_dir),
+                "--frames",
+                "2",
+            ]
+        )
+        assert code == 0
+        data = json.loads(out)
+        assert data["status"] == "ok"
+        assert data["scenario_id"] == "t1_rigid_cube_orbit"
+        assert (out_dir / "metadata.json").exists()
+        assert data["num_frames"] == 2

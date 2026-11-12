@@ -17,11 +17,11 @@ from synapse.composite.mask import (
 
 __all__ = [
     "VideoDefectRegion",
+    "apply_surgical_mask",
     "border_ring_lab_match",
     "composite_optical_increments",
     "composite_surgical_sequence",
     "detect_video_artifacts",
     "generate_surgical_mask",
-    "apply_surgical_mask",
     "laplacian_pyramid_blend",
 ]

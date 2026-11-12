@@ -9,7 +9,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.style.aces_color import (
     acescg_to_linear_srgb,
     ciede2000_delta_e,
@@ -29,7 +28,6 @@ from synapse.style.profile_mapper import (
     to_engine_light_overrides,
     to_style_profile_dict,
 )
-
 
 # ===================================================================
 # TestAcesColor

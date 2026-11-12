@@ -29,7 +29,6 @@ from pydantic import BaseModel, field_validator
 
 from synapse.errors import ContractValidationError
 
-
 # -------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------

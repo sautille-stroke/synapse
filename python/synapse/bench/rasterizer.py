@@ -10,12 +10,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams, FGPPFrame
-
 
 # ---------------------------------------------------------------------------
 # MurmurHash3 (32-bit) — pure Python for Cryptomatte entity IDs
@@ -119,7 +117,7 @@ class SoftwareRasterizer:
         roughness: float = 0.5,
         metallic: float = 0.0,
         entity_name: str = "default",
-        prev_camera: Optional[CameraParams] = None,
+        prev_camera: CameraParams | None = None,
     ) -> FGPPFrame:
         """Render a mesh and produce a full FGPPFrame.
 
@@ -180,6 +178,7 @@ class SoftwareRasterizer:
         rm_buf = np.zeros((H, W, 2), dtype=np.float64)  # roughness, metallic
 
         # Rasterise each triangle
+        assert self.light_dir is not None and self.light_color is not None
         norms = normals.astype(np.float64)
         light_d = self.light_dir.astype(np.float64)
         light_c = self.light_color.astype(np.float64)

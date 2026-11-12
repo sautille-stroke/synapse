@@ -6,24 +6,18 @@ import json
 import threading
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-
 from synapse.pipeline.bundle_worker import (
+    _STAGE_HANDLERS,
     BundleManifest,
     HardwareBudget,
     JobBundleWorker,
-    OutputFileEntry,
-    ResultManifest,
-    _STAGE_HANDLERS,
     _compute_sha256,
     get_registered_stages,
     register_stage,
     run_worker_cli,
 )
-
 
 # =========================================================================
 # BundleManifest

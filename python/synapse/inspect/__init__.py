@@ -28,10 +28,10 @@ __all__ = [
     "CameraPose",
     "DefectAnnotation3D",
     "InspectionReport",
-    "generate_fibonacci_sphere_cameras",
-    "compute_silhouette",
-    "compute_silhouette_iou",
     "align_reference_image_to_mesh",
     "compute_isotopic_residual_heatmap",
+    "compute_silhouette",
+    "compute_silhouette_iou",
+    "generate_fibonacci_sphere_cameras",
     "plan_macro_camera_for_roi",
 ]

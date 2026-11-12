@@ -15,9 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from synapse.errors import QualityGateError
 from synapse.inspect.schemas import CameraPose
-
 
 # -------------------------------------------------------------------
 # Internal helpers
@@ -149,7 +147,7 @@ def compute_isotopic_residual_heatmap(
         np.sum((lab_ref - lab_ren) ** 2, axis=-1),
     ).astype(np.float32)
 
-    rgb_max = rgb_diff.max()
+    rgb_max = float(np.max(rgb_diff))
     if rgb_max > 1e-8:
         rgb_diff /= rgb_max
 
@@ -158,7 +156,7 @@ def compute_isotopic_residual_heatmap(
     w_depth = 0.3
     w_normal = 0.2
 
-    channels_used = [("rgb", w_rgb, rgb_diff)]
+    channels_used: list[tuple[str, float, np.ndarray]] = [("rgb", w_rgb, rgb_diff)]
     total_weight = w_rgb
 
     # --- Channel 2: Depth edge residual ---
@@ -171,7 +169,7 @@ def compute_isotopic_residual_heatmap(
         edge_ref = _sobel_gradient_magnitude(d_ref)
         edge_ren = _sobel_gradient_magnitude(d_ren)
         depth_diff = np.abs(edge_ref - edge_ren)
-        d_max = depth_diff.max()
+        d_max = float(np.max(depth_diff))
         if d_max > 1e-8:
             depth_diff /= d_max
         channels_used.append(("depth", w_depth, depth_diff))
@@ -191,7 +189,7 @@ def compute_isotopic_residual_heatmap(
         # Dot product per pixel
         dot = np.sum(n_ref * n_ren, axis=-1)
         dot = np.clip(dot, -1.0, 1.0)
-        angular_err = np.arccos(dot) / math.pi
+        angular_err = (np.arccos(dot) / math.pi).astype(np.float32)
         channels_used.append(
             ("normal", w_normal, angular_err),
         )
@@ -385,8 +383,7 @@ def plan_macro_camera_for_roi(
     # Compute macro camera distance
     half_fov = math.radians(macro_fov_deg / 2.0)
     tan_half = math.tan(half_fov)
-    if tan_half < 1e-8:
-        tan_half = 1e-8
+    tan_half = max(tan_half, 1e-8)
     d_macro = 1.35 * r_3d / tan_half
 
     # Position macro camera along normal

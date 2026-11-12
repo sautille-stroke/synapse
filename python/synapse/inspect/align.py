@@ -13,16 +13,11 @@ RFC 0044 Appendix E:
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-from synapse.errors import ExitCode, QualityGateError
+from synapse.errors import QualityGateError
 from synapse.inspect.schemas import CameraPose
-
-if TYPE_CHECKING:
-    pass
-
 
 # ------------------------------------------------------------------
 # Fibonacci sphere camera generation
@@ -277,7 +272,7 @@ def align_reference_image_to_mesh(
     # Compute mesh bounding sphere for radius scale
     centroid = vertices.mean(axis=0)
     radii = np.linalg.norm(vertices - centroid, axis=1)
-    bbox_radius = float(radii.max())
+    bbox_radius = float(np.max(radii))
     radius_scale = bbox_radius * 2.5
 
     # Stage 1A: coarse search

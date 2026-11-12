@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
-from PIL import Image
 
 from synapse.models.asset import ModelAsset
-
 
 # Potential locations where sample/benchmark models reside
 _ASSET_SEARCH_PATHS: list[Path] = [
@@ -20,7 +18,7 @@ _ASSET_SEARCH_PATHS: list[Path] = [
 ]
 
 
-def _find_asset_file(filename: str) -> Optional[Path]:
+def _find_asset_file(filename: str) -> Path | None:
     """Search for an asset filename in standard locations."""
     for base in _ASSET_SEARCH_PATHS:
         if not base or not base.exists():
@@ -31,11 +29,15 @@ def _find_asset_file(filename: str) -> Optional[Path]:
     return None
 
 
-def _pil_to_rgb_array(img: Any) -> Optional[np.ndarray]:
+def _pil_to_rgb_array(img: Any) -> np.ndarray | None:
     """Convert PIL image or trimesh texture to uint8 RGB numpy array."""
     if img is None:
         return None
-    if isinstance(img, Image.Image):
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None  # type: ignore[assignment]
+    if Image is not None and isinstance(img, Image.Image):
         if img.mode != "RGB":
             img = img.convert("RGB")
         return np.array(img, dtype=np.uint8)
@@ -50,7 +52,7 @@ def _pil_to_rgb_array(img: Any) -> Optional[np.ndarray]:
     return None
 
 
-def _load_from_trimesh_geom(name: str, geom: "trimesh.Trimesh") -> ModelAsset:
+def _load_from_trimesh_geom(name: str, geom: Any) -> ModelAsset:
     """Convert a trimesh.Trimesh object into a ModelAsset."""
     vertices = np.ascontiguousarray(geom.vertices, dtype=np.float32)
     faces = np.ascontiguousarray(geom.faces, dtype=np.int32)
@@ -59,7 +61,8 @@ def _load_from_trimesh_geom(name: str, geom: "trimesh.Trimesh") -> ModelAsset:
     if hasattr(geom, "vertex_normals") and geom.vertex_normals is not None and len(geom.vertex_normals) == len(vertices):
         normals = np.ascontiguousarray(geom.vertex_normals, dtype=np.float32)
     else:
-        geom.recompute_normals()
+        if hasattr(geom, "recompute_normals"):
+            geom.recompute_normals()
         normals = np.ascontiguousarray(geom.vertex_normals, dtype=np.float32)
 
     # UVs
@@ -129,7 +132,11 @@ def _generate_procedural_bunny(subdivisions: int = 2) -> ModelAsset:
     r_mod = 1.0 + 0.18 * np.sin(3 * theta) * np.sin(2 * phi) + 0.08 * np.cos(5 * phi)
     v *= r_mod[:, None]
     base_mesh.vertices = v
-    base_mesh.recompute_normals()
+    if hasattr(base_mesh, "recompute_normals"):
+        base_mesh.recompute_normals()
+    else:
+        # trimesh >= 4.x invalidates cached normals when vertices are assigned
+        _ = base_mesh.vertex_normals
 
     asset = _load_from_trimesh_geom("stanford_bunny_procedural", base_mesh)
     asset.base_color_factor = np.array([0.9, 0.82, 0.75], dtype=np.float32)  # Terracotta / ceramic
@@ -186,7 +193,7 @@ def load_model(
         asset = _generate_procedural_teapot()
         return asset.normalize(target_radius) if normalize else asset
     elif name_str in ("sphere", "cube", "torus", "cylinder"):
-        from synapse.bench.procedural import generate_procedural_mesh, ProceduralMeshType
+        from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
         pm = generate_procedural_mesh(ProceduralMeshType(name_str))
         asset = ModelAsset(
             name=name_str,

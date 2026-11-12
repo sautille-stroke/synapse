@@ -14,19 +14,14 @@ import math
 
 import numpy as np
 import pytest
-
 from synapse.adapters.scheduler import (
     CausalWindowPlan,
     ConditionScheduler,
     DiscontinuityDetector,
-    ReanchorRequest,
-    ScheduledWindow,
-    WindowSlice,
     compute_latent_flow_operator,
     fuse_overlapping_latents,
 )
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-
 
 # -------------------------------------------------------------------
 # Test helpers

@@ -8,8 +8,8 @@ spatial mask-gated forward hooks, and WanAdapter integration via
 
 from __future__ import annotations
 
-from synapse.adapters.lora.manifest import LoRAManifest
 from synapse.adapters.lora.manager import MultiLoRAManager
+from synapse.adapters.lora.manifest import LoRAManifest
 from synapse.adapters.lora.patcher import (
     LoRAPatchHook,
     patch_wan_adapter_with_lora,
