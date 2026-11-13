@@ -67,7 +67,7 @@ METRIC_ALIASES: dict[str, str] = {
 # ── Profile threshold tables ────────────────────────────────────────
 
 TRACK_B_VIDEO: dict[str, float] = {
-    "temporal_warp_error": 8.0,
+    "temporal_warp_error": 0.020,
     "flicker_score": 0.025,
     "fvd": 300.0,
     "depth_rmse_m": 0.05,
@@ -86,7 +86,7 @@ TRACK_B_VIDEO: dict[str, float] = {
 }
 
 TRACK_A_ASSET: dict[str, float] = {
-    "temporal_warp_error": 4.0,
+    "temporal_warp_error": 0.015,
     "flicker_score": 0.020,
     "fvd": 150.0,
     "depth_rmse_m": 0.04,
@@ -105,7 +105,7 @@ TRACK_A_ASSET: dict[str, float] = {
 }
 
 RSI_PROMOTION: dict[str, float] = {
-    "temporal_warp_error": 2.0,
+    "temporal_warp_error": 0.015,
     "flicker_score": 0.018,
     "fvd": 50.0,
     "depth_rmse_m": 0.03,
@@ -124,7 +124,7 @@ RSI_PROMOTION: dict[str, float] = {
 }
 
 RSI_PROMOTION_TARGET: dict[str, float] = {
-    "temporal_warp_error": 2.0,
+    "temporal_warp_error": 0.015,
     "flicker_score": 0.008,
     "fvd": 50.0,
     "depth_rmse_m": 0.02,

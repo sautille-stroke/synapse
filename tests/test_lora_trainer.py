@@ -124,6 +124,47 @@ class TestNormalReconstructionLoss:
         loss = normal_reconstruction_loss(n_pred, n_gt)
         assert loss == pytest.approx(0.0, abs=1e-6)
 
+    def test_mask_restricts_to_foreground(self) -> None:
+        """With a mask, loss is computed only over foreground pixels."""
+        # 2x2 grid: top-left = identical, top-right = opposite
+        n_pred = np.array(
+            [[[0, 0, 1], [0, 0, 1]], [[0, 0, 1], [0, 0, 1]]],
+            dtype=np.float64,
+        )
+        n_gt = np.array(
+            [[[0, 0, 1], [0, 0, -1]], [[0, 0, 1], [0, 0, -1]]],
+            dtype=np.float64,
+        )
+        # Without mask: mean of (0, 2, 0, 2) = 1.0
+        loss_full = normal_reconstruction_loss(n_pred, n_gt)
+        assert loss_full == pytest.approx(1.0, abs=1e-6)
+
+        # Mask only the identical pixels → loss = 0
+        mask = np.array([[1, 0], [1, 0]], dtype=np.float64)
+        loss_fg = normal_reconstruction_loss(n_pred, n_gt, mask=mask)
+        assert loss_fg == pytest.approx(0.0, abs=1e-6)
+
+        # Mask only the opposite pixels → loss = 2
+        mask_opp = np.array([[0, 1], [0, 1]], dtype=np.float64)
+        loss_opp = normal_reconstruction_loss(n_pred, n_gt, mask=mask_opp)
+        assert loss_opp == pytest.approx(2.0, abs=1e-6)
+
+    def test_mask_none_backward_compat(self) -> None:
+        """Passing mask=None should produce same result as no mask."""
+        n = np.random.default_rng(7).standard_normal((4, 4, 3))
+        gt = np.random.default_rng(8).standard_normal((4, 4, 3))
+        loss_no_mask = normal_reconstruction_loss(n, gt)
+        loss_none = normal_reconstruction_loss(n, gt, mask=None)
+        assert loss_no_mask == pytest.approx(loss_none, abs=1e-12)
+
+    def test_mask_all_zero_returns_zero(self) -> None:
+        """All-zero mask → no valid pixels → loss = 0."""
+        n_pred = np.array([[[0, 0, 1]]], dtype=np.float64)
+        n_gt = np.array([[[0, 0, -1]]], dtype=np.float64)
+        mask = np.array([[0]], dtype=np.float64)
+        loss = normal_reconstruction_loss(n_pred, n_gt, mask=mask)
+        assert loss == pytest.approx(0.0, abs=1e-12)
+
 class TestDiffusionDPOLoss:
     """Tests for diffusion_dpo_loss."""
 
