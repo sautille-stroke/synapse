@@ -579,6 +579,69 @@ def _reconstruct_laplacian_pyramid(
 
 
 # ---------------------------------------------------------------------------
+# Internal helpers — forward motion warp
+# ---------------------------------------------------------------------------
+
+
+def _forward_warp_bilinear(
+    img: np.ndarray,
+    flow: np.ndarray,
+) -> np.ndarray:
+    """Forward-warp *img* by a per-pixel flow field using bilinear splatting.
+
+    Pixels that receive no contribution retain the original value from
+    *img* (fallback).
+
+    Args:
+        img: ``[H, W, 3]`` uint8 or float source image.
+        flow: ``[H, W, 2]`` float32 flow field (dx, dy).
+
+    Returns:
+        Warped image with the same shape and dtype as *img*.
+    """
+    h, w = img.shape[:2]
+    src = img.astype(np.float64)
+    result = np.zeros_like(src)
+    weight = np.zeros((h, w), dtype=np.float64)
+
+    yy, xx = np.mgrid[:h, :w]
+    tx = xx.astype(np.float64) + flow[..., 0].astype(np.float64)
+    ty = yy.astype(np.float64) + flow[..., 1].astype(np.float64)
+
+    # Bilinear splatting
+    x0 = np.floor(tx).astype(np.intp)
+    y0 = np.floor(ty).astype(np.intp)
+    fx = tx - x0.astype(np.float64)
+    fy = ty - y0.astype(np.float64)
+
+    for dy_off, wy in [(0, 1.0 - fy), (1, fy)]:
+        for dx_off, wx in [(0, 1.0 - fx), (1, fx)]:
+            yp = y0 + dy_off
+            xp = x0 + dx_off
+            w_splat = wy * wx
+
+            valid = (xp >= 0) & (xp < w) & (yp >= 0) & (yp < h)
+            yv = yp[valid]
+            xv = xp[valid]
+            wv = w_splat[valid]
+
+            # Scatter-add
+            np.add.at(weight, (yv, xv), wv)
+            for c in range(src.shape[2]):
+                np.add.at(result[..., c], (yv, xv), wv * src[..., c][valid])
+
+    # Normalise
+    mask = weight > 0
+    for c in range(result.shape[2]):
+        result[..., c][mask] /= weight[mask]
+
+    # Fill holes with original
+    result[~mask] = src[~mask]
+
+    return result.astype(img.dtype)
+
+
+# ---------------------------------------------------------------------------
 # Public API — composite_surgical_sequence
 # ---------------------------------------------------------------------------
 
@@ -605,8 +668,10 @@ def composite_surgical_sequence(
         surgical_masks: ``[T, H, W]`` float32 alpha masks in
             ``[0, 1]``.
         motion_vectors: ``[T, H, W, 2]`` float32 optional per-pixel
-            motion vectors. Currently used for future motion-guided
-            EMA (reserved).
+            motion vectors (dx, dy).  When provided, the previous
+            composited frame is forward-warped by the flow field before
+            temporal EMA blending.  Large-magnitude flow (mean >15 px)
+            automatically reduces ``ema_alpha`` to avoid ghosting.
         ema_alpha: EMA blending factor for temporal smoothing
             (higher = more weight on current frame).
 
@@ -636,7 +701,7 @@ def composite_surgical_sequence(
         # Step 2: Laplacian pyramid blend.
         blended = laplacian_pyramid_blend(matched, vf, mask_alpha)
 
-        # Step 3: Temporal EMA at boundary band.
+        # Step 3: Temporal EMA at boundary band with optional motion warp.
         if t > 0 and prev_boundary is not None:
             # Inner boundary band: pixels near the mask edge.
             dilated = _binary_dilation(binary_mask, se_band)
@@ -644,13 +709,38 @@ def composite_surgical_sequence(
             boundary_band = dilated & (~eroded)
 
             if np.any(boundary_band):
+                # Determine effective EMA alpha (adaptive for large flow)
+                effective_alpha = ema_alpha
+
+                # Forward-warp the previous frame by motion vectors
+                warped_prev: np.ndarray
+                if motion_vectors is not None:
+                    mv = motion_vectors[t]  # (H, W, 2) dx, dy
+                    flow_mag = float(np.mean(
+                        np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)
+                    ))
+                    # Adaptive alpha: large motion -> reduce EMA weight
+                    if flow_mag > 15.0:
+                        effective_alpha = max(
+                            0.30,
+                            ema_alpha * (15.0 / max(flow_mag, 1e-6)),
+                        )
+
+                    # Forward bilinear warp
+                    warped_prev = _forward_warp_bilinear(
+                        prev_boundary, mv,
+                    )
+                else:
+                    warped_prev = prev_boundary
+
                 # EMA blend at boundary pixels.
                 blended_f = blended.astype(np.float64)
-                prev_f = prev_boundary.astype(np.float64)
+                prev_f = warped_prev.astype(np.float64)
                 band_3d = boundary_band[..., np.newaxis]
                 smoothed = np.where(
                     band_3d,
-                    ema_alpha * blended_f + (1.0 - ema_alpha) * prev_f,
+                    effective_alpha * blended_f
+                    + (1.0 - effective_alpha) * prev_f,
                     blended_f,
                 )
                 blended = np.clip(smoothed, 0.0, 255.0).astype(np.uint8)
