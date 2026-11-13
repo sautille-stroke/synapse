@@ -15,6 +15,11 @@ Import explicitly::
 from __future__ import annotations
 
 from synapse.recon.loop.forward_guide import ForwardGuide
+from synapse.recon.loop.mitsuba_optimizer import (
+    AnalyticUVInverseOptimizer,
+    InverseOptimConfig,
+    InverseOptimResult,
+)
 from synapse.recon.loop.radiometric import (
     acescg_to_linear,
     apply_kappa_reanchor,
@@ -22,15 +27,24 @@ from synapse.recon.loop.radiometric import (
     linear_to_acescg,
     validate_frame_count_phase,
 )
+from synapse.recon.loop.texture_extractor import (
+    PBRTextureSet,
+    extract_and_pack_pbr_textures,
+)
 from synapse.recon.loop.types import ForwardGuideResult, LoopConfig
 
 __all__ = [
+    "AnalyticUVInverseOptimizer",
     "ForwardGuide",
     "ForwardGuideResult",
+    "InverseOptimConfig",
+    "InverseOptimResult",
     "LoopConfig",
+    "PBRTextureSet",
     "acescg_to_linear",
     "apply_kappa_reanchor",
     "enforce_phase_lock",
+    "extract_and_pack_pbr_textures",
     "linear_to_acescg",
     "validate_frame_count_phase",
 ]
