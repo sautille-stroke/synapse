@@ -46,13 +46,16 @@
 
 ## 2. 专用局部修正模型体系与解剖先验
 
-针对面部与手部不同的致错机理，构建两套专精的先验注入与修正模型库：
+针对面部、手部、毛发以及人体/衣物不同的致错机理与物理表象，构建四大专精的先验注入与修正模型体系：
 
 ```
-                             ┌── 面部修正 (FaceRefiner) ──── CodeFormer + PulID/ArcFace + FLAME 3DMM
+                             ┌── 1. 面部修正 (FaceRefiner) ──────── CodeFormer + PulID/ArcFace + FLAME 3DMM
                              │
-专用局部修正模型体系 ────────┤
-                             └── 手部修正 (HandRefiner) ──── FGPP 3D Depth/Normal + MANO 3D Mesh + DWPose
+                             ├── 2. 手部修正 (HandRefiner) ──────── FGPP 3D Depth/Normal + MANO 3D Mesh + DWPose
+专用解剖/局部修正模型体系 ───┤
+                             ├── 3. 毛发修正 (HairGroomRefiner) ─── Guide Strands (500~1500) + Scalp Mask + Marschner BSDF
+                             │
+                             └── 4. 衣体解耦 (BodyGarmentRefiner) ─ SMPL-X 裸模 + 2D 裁片缝合/3D 布料壳 + SDF 防穿模
 ```
 
 ### 2.1 脸部专修模型矩阵 (FaceRefiner Suite)
@@ -76,6 +79,36 @@
 > **Synapse 的先验压制优势**：
 > 纯 2D AI 视频管线（如标准 ComfyUI 流）只能靠 `MeshGraphormer` 从已经画崩的手部去“逆向猜测”正确手势，在严重遮挡时极易猜错；
 > 而在 Synapse 神经-物理渲染管线中，**3D 引擎端（`fulgur` / `caelum-core`）在白模阶段就已经拥有骨骼绑定的精确 3D 变换矩阵**。通过 FGPP 15 通道 OpenEXR，我们可以直接将完美的 3D 手部深度和法线投影为 Inpaint Condition，实现对纯 2D 方案的降维打击。
+
+### 2.3 毛发与毛皮专修模型矩阵 (HairGroomRefiner Suite)
+
+通用 3D 生成与隐式场（SDF/Marching Cubes）在毛发区域必然退化为**“塑料黏土块”或“头盔发（Helmet Hair）”**。毛发在物理本质上是微米级纤细纤维（直径 $0.05 \sim 0.1\,\text{mm}$）构成的空间一维曲线簇（1D Strands），且具备极强的各向异性（Anisotropic）双重反射/透射特性（Marschner BSDF），必须由专用模型独立生成与反演：
+
+| 模型类别 | 代表模型 / 技术方案 | 输入先验 / 驱动机制 | 职责与解决的痛点 |
+|---|---|---|---|
+| **头皮毛囊与发流场预测** | **Scalp Orientation Net** | 头皮语义 Mask + 微距局部切片 | 预测头皮毛囊生长点分布与 2D/3D 发流切线场 $\mathbf{V}_{\text{flow}}$，杜绝发际线混乱与反向生长 |
+| **稀疏引导发丝生成** | **NeuralHaircut / HairNet / Perm** | 单目/多视角图 + FLAME 头部网格 | 从图像中回归 500~1500 根 3D 样条导引线（Guide Strands），控制发旋、分缝线（Parting line）与重力垂坠 |
+| **自动发片多边形编织** | **Auto Hair Card Weaver** | 3D 导引曲线簇 | 沿导引线聚簇（Clustering）生成游戏级多边形卡带（Strip Ribbons，LOD0~LOD3），自动烘焙 Alpha、Tangent、Depth 贴图 |
+| **各向异性物理着色注入** | **`fulgur` Marschner Hair Pass** | FGPP `Cryptomatte.ID` + 切线场 $\mathbf{T}$ | 独立分离发丝与皮肤，注入纵向/方位角粗糙度 $(\beta_R, \beta_{TT})$ 与黑色素（Melanin）浓度，杜绝塑料漫反射 |
+
+### 2.4 人体与衣物解耦专修模型矩阵 (Decoupled Body & Garment Suite)
+
+在现代影视与 AAA 游戏数字人资产体系中，**“衣肉一体（Fused Single Mesh）”是致命的死穴**：一体化网格不仅无法支持角色换装、失去动态布料解算可能，且在肢体大幅度弯曲（如抬臂、深蹲）时会导致衣服如人体彩绘般紧绷拉扯变形，产生严重网格撕裂。
+
+**工业级数字人必须执行“人体裸模基底 + 分层独立衣物”的解耦架构（Layered Decoupled Human Architecture）**：
+
+```
+[外层 Layer 2: 独立衣物多层壳体] ──── 2D 裁片缝合 (Sewing Patterns) / 3D 空间布料壳，自带厚度与物理力学参数
+                                      ▲ (保持物理距离场 SDF 间隙 δ >= 2mm，杜绝自穿模)
+[内层 Layer 1: 标准解剖裸模基底] ──── SMPL-X / 53-Joint 标准拓扑网格，充当骨骼运动学、肌肉变形与碰撞体代理
+```
+
+| 模型类别 | 代表模型 / 技术方案 | 输入先验 / 驱动机制 | 职责与解决的痛点 |
+|---|---|---|---|
+| **人体裸模参数估计** | **SMPL-X / SMPL+D Estimator** | 着衣人体切片 / 姿态骨架 | 穿透衣物准确估计身体裸模体态（BMI、肌肉量）与 53 关节标准姿态，建立绝对骨骼运动学与碰撞代理 |
+| **2D 裁片与缝合生成模型** | **TailorNet / GarmentCode / DeepFashion3D** | 服装剪影 / 设计草图 / 语义标签 | 预测服装标准 2D 工业裁片（前片、后片、袖片）与缝合线（Seams），支持板片参数化调节与 UV 展开 |
+| **3D 神经布料松弛与防穿模反演** | **SNUG / Cloth3D / DrapeNet** | 2D 裁片 + 裸模 Signed Distance Field (SDF) | 通过隐式物理能量最小化（重力势能 + 应变能 + 碰撞穿透惩罚 $\Phi_{\text{body}} \ge \delta$），在裸模上自然垂坠生成写实褶皱 |
+| **布料专属材质解耦模型** | **Fabric & Sheen Delighter** | FGPP 材质遮罩 + OpenPBR 规范 | 分离织物漫反射与 OpenPBR Fabric 微纤维绒毛高光（Sheen），消除预烘焙假阴影，与人体皮肤 SSS 材质彻底解耦 |
 
 ---
 

@@ -58,6 +58,8 @@ Level 1: 几何流形与拓扑层 (Geometric Manifold & Topology)
 | **1. 几何流形层** | 浮动游离碎片、非流形边、三角面未缝合（非闭合水密）、网格内部残留体素废面 | 体素隐式场提取算法（如 Marching Cubes/Dual Contouring）在低密度或截断边界处的插值伪影 | 欧拉示性数 $\chi = V - E + F \neq 2(1-g)$、`non_manifold_edges > 0`、连通分支计数 $>1$ |
 | **2. 表面微观层** | 面部五官塌陷、局部表面法线反转（凹凸反向）、过度平滑丢失机械边缘、表面凹坑噪波 | 隐式场梯度估算不准、SDF 零等值面正则化权重过低，或高频几何惩罚不足 | 法线角偏差均值 $\theta_{\text{normal}} > 15^\circ$、离散平均曲率方差 $\text{Var}(\kappa_{\text{mean}}) > 0.08$ |
 | **3. 宏观语义层** | 手指粘连成掌、双腿粘连成裙、后脑勺或背部瞎猜结构、缺乏关节铰接拓扑 | 单目输入导致的背部严重遮挡（Ambiguity）、模型缺乏人体/通用刚体解剖学骨骼先验 | 剪影交并比 $\text{Silhouette IoU} < 0.88$、重投影漂移 $\text{RMSE} > 4.0\text{ px}$ |
+| **3.1 毛发微观层** | 发丝黏连为塑料硬块（“头盔发”）、发际线浮空/穿颅、无发流方向感、无各向异性散射 | 通用 Marching Cubes 等值面包络一维曲线纤维失效、模型缺少 1D Strand 导引线先验与 Marschner BSDF | 发丝分缕度 $\text{StrandSeparation} < 0.7$、发流切线方差 $\text{Var}(\theta) > 0.08$ |
+| **3.2 服饰解耦层** | 衣物与身体焊死（“衣肉一体”）、无内部躯干支撑、肢体弯曲时网格严重拉扯撕裂、内部穿模 | 缺少分层数字人（Layered Human）解耦架构，未区分 SMPL-X 裸模碰撞代理与外部 3D/2D 裁片壳体 | 身体穿透率 $\text{PenetrationRate} > 0.0\%$、最小碰撞间隙 $\delta < 2.0\,\text{mm}$ |
 | **4. 材质与外观层** | BaseColor 贴图带有环境阴影与高光反射、UV 展开畸变拉伸严重、贴图拼缝处有白边/黑缝 | 缺少物理去光照（Delighting）、未导出标准 PBR 材质贴图（只有单张有光照扩散图）、UV 投影重叠 | CIEDE2000 色差 $\Delta E_{00} > 2.5$、UV 面积形变比率 $\sigma_{\text{uv}} > 1.5$、接缝法线跳跃角 $>5^\circ$ |
 
 ---
@@ -317,6 +319,38 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 4. **高动态交叉与自遮挡姿态（Severe Occlusion & Entangled Poses）**：
    - 双手合十、瑜伽扭曲姿态、复杂机械折叠连杆；
    - 挑战点：自穿模与多部件粘连高发。
+
+---
+
+### 4.6 工业分层数字人解耦数据标准（Layered Human SSOT）
+
+针对“毛发、衣物与身体粘连”的行业通病，生产级角色数据**严禁入库单一闭合的“一体化网格（Fused Single Mesh）”**，必须强制解耦为自底向上的三层资产组合包（Layered Asset Bundle）：
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ Layer 3: 独立毛发/毛皮资产 (Strand Groom / Auto Hair Cards)                             │
+│   - 几何形态: 500~1500 根 3D 引导样条线 (USD/Alembic Curves) 或 LOD0-3 Hair Cards 发带  │
+│   - 生长根部: 严格锚定于 Layer 1 裸模头皮 UV 区域 (Scalp Follicles)                     │
+│   - 物理材质: Marschner BSDF 切线场 T、纵向粗糙度 β_R、方位角粗糙度 β_TT、黑色素 Melanin │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ Layer 2: 独立分层衣物资产 (Multi-Layer Garment Shells)                                  │
+│   - 几何形态: 2D 缝合裁片 (Patterns & Seams) 或 3D 双层织物壳 (Shell Thickness >= 1.5mm)│
+│   - 防穿模硬门禁: 距离 Layer 1 裸模外表面间隙恒满足 Signed Distance Field Φ_body >= 2mm   │
+│   - 物理材质: OpenPBR Fabric 织物散射 (微纤维 Sheen 反射 + 经纬编织法线 + 布料抗拉刚度) │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ Layer 1: 标准解剖裸模基底 (Underlying Neutral Body Mesh)                                │
+│   - 几何形态: SMPL-X / 53-Joint 标准拓扑网格，包含精准四肢关节旋转中心与肌肉变形场       │
+│   - 物理职责: 充当骨骼运动学 SSOT 与布料/毛发的刚体/弹性碰撞代理 (Collision Proxy)      │
+│   - 物理材质: 标准人体皮肤多层次表面漫反射 (Skin SSS / Dipole Diffusion)                │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 训练监督损失与解耦约束：
+1. **毛发解耦损失（Hair Decoupling Loss）**：
+   $$\mathcal{L}_{\text{hair}} = \lambda_{\text{tangent}} \|\mathbf{T}_{\text{pred}} - \mathbf{T}_{\text{gt}}\|^2 + \lambda_{\text{follicle}} \text{BCE}(M_{\text{scalp}}^{\text{pred}}, M_{\text{scalp}}^{\text{gt}}) + \lambda_{\text{curv}} \|\kappa_{\text{strand}} - \kappa_{\text{gt}}\|^2$$
+2. **衣体零穿模碰撞惩罚（Zero-Penetration Penalty）**：
+   $$\mathcal{L}_{\text{cloth-body}} = \sum_{\mathbf{v} \in \mathcal{V}_{\text{cloth}}} \max\left(0, \delta_{\text{clearance}} - \Phi_{\text{body}}(\mathbf{v})\right)^2$$
+   确保在任何姿态生成与微调反演中，衣物顶点绝不陷入身体肉体内部。
 
 ---
 
