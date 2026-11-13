@@ -1094,6 +1094,90 @@ def _cmd_recon_invert_video(
     return output_info
 
 
+def _cmd_recon_closed_loop(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Run 5-step inverse rendering closed loop (RFC 0062).
+
+    Orchestrates forward-guide → target-video → inverse-optimisation
+    → aligned-render → scalpel-patch.
+    """
+    import numpy as np
+
+    from synapse.recon.loop.closed_loop_runner import ClosedLoopRunner
+
+    output_dir = Path(getattr(args, "output", "./output/closed-loop"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    max_iterations = int(getattr(args, "max_iterations", 5))
+    n_preroll = int(getattr(args, "n_preroll", 0))
+
+    # Load or synthesize frames
+    video_path_raw = getattr(args, "video", None)
+    if video_path_raw and Path(video_path_raw).is_file():
+        frames = np.load(video_path_raw).astype(np.float32)
+    else:
+        rng = np.random.default_rng(42)
+        frames = rng.random((5, 64, 64, 3), dtype=np.float32)
+
+    t_count, h, w, _ = frames.shape
+
+    # Synthesize normals (pointing +Z) and UV maps
+    normals = np.zeros_like(frames)
+    normals[..., 2] = 1.0
+
+    uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
+    u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
+    v_lin = np.linspace(0.0, 1.0, h, dtype=np.float32)
+    uv_maps[:, :, :, 0] = u_lin[np.newaxis, np.newaxis, :]
+    uv_maps[:, :, :, 1] = v_lin[np.newaxis, :, np.newaxis]
+
+    from synapse.recon.loop.mitsuba_optimizer import InverseOptimConfig
+    from synapse.recon.loop.types import LoopConfig
+
+    loop_config = LoopConfig(
+        n_preroll=n_preroll,
+        max_iterations=max_iterations,
+    )
+    optim_config = InverseOptimConfig(
+        max_iterations=max_iterations,
+    )
+
+    runner = ClosedLoopRunner(
+        loop_config=loop_config,
+        optim_config=optim_config,
+    )
+    result = runner.run(
+        source_frames=frames,
+        normals=normals,
+        uv_maps=uv_maps,
+    )
+
+    # Save output
+    np.save(str(output_dir / "output_frames.npy"), result.output_frames)
+    diag = result.to_dict()
+    diag_path = output_dir / "closed_loop_diagnostics.json"
+    diag_path.write_text(
+        json.dumps(diag, indent=2, default=str), encoding="utf-8",
+    )
+
+    output_info: dict[str, Any] = {
+        "output_dir": str(output_dir),
+        **diag,
+    }
+
+    if not args.json:
+        print("[Recon] Closed-loop inverse rendering complete")
+        for k, v in output_info.items():
+            if isinstance(v, dict):
+                print(f"  {k}:")
+                for sk, sv in v.items():
+                    print(f"    {sk}: {sv}")
+            else:
+                print(f"  {k}: {v}")
+
+    return output_info
+
+
 # -------------------------------------------------------------------
 # RSI sub-command handlers
 # -------------------------------------------------------------------
@@ -1555,6 +1639,28 @@ def main_synapse(args: list[str] | None = None) -> int:
         help="Target face count for quad mesh (default: 1500)",
     )
 
+    recon_closed_loop = recon_sub.add_parser(
+        "closed-loop",
+        help="Run 5-step inverse rendering closed loop (RFC 0062)",
+    )
+    recon_closed_loop.add_argument(
+        "--video", default=None,
+        help="Path to video frames .npy file (T, H, W, 3) float32",
+    )
+    recon_closed_loop.add_argument(
+        "--output", "-o", default="./output/closed-loop",
+        help="Output directory for closed-loop results",
+    )
+    recon_closed_loop.add_argument(
+        "--max-iterations", type=int, default=5,
+        help="Max inverse optimisation iterations (default: 5)",
+    )
+    recon_closed_loop.add_argument(
+        "--n-preroll", type=int, default=0,
+        choices=[0, 4, 8],
+        help="Number of preroll frames (default: 0)",
+    )
+
     # --- refine ---
     refine_parser = subparsers.add_parser(
         "refine",
@@ -1858,12 +1964,19 @@ def main_synapse(args: list[str] | None = None) -> int:
                 _cmd_recon_invert_video, parsed,
                 json_mode, trace_ctx,
             )
+        elif recon_cmd == "closed-loop":
+            return _run_with_json_mode(
+                _cmd_recon_closed_loop, parsed,
+                json_mode, trace_ctx,
+            )
         else:
             if json_mode:
                 err = SynapseError(
-                    "Missing recon sub-command (invert-video)",
+                    "Missing recon sub-command "
+                    "(invert-video|closed-loop)",
                     ExitCode.CONTRACT_ERROR,
-                    "Use 'synapse recon invert-video --help'.",
+                    "Use 'synapse recon invert-video --help' or "
+                    "'synapse recon closed-loop --help'.",
                 )
                 json.dump(
                     err.to_json_dict(trace_ctx.trace_id),

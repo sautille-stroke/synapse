@@ -14,7 +14,10 @@ from synapse.pipeline.stages.inspect import (
     handle_inspect_export_rl,
     handle_inspect_refine,
 )
-from synapse.pipeline.stages.recon import handle_video_to_3d_invert
+from synapse.pipeline.stages.recon import (
+    handle_inverse_render_loop,
+    handle_video_to_3d_invert,
+)
 from synapse.pipeline.stages.refine import handle_anatomical_refine
 from synapse.pipeline.stages.rsi import handle_rsi_dual_verify
 from synapse.pipeline.stages.training import (
@@ -28,6 +31,7 @@ __all__ = [
     "handle_asset_inspect_3d",
     "handle_inspect_export_rl",
     "handle_inspect_refine",
+    "handle_inverse_render_loop",
     "handle_lora_package",
     "handle_lora_preencode",
     "handle_lora_train",
