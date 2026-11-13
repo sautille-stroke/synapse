@@ -74,21 +74,17 @@ class ReconPipeline:
 
         # 3. Surface Geometry & Quad Remeshing
         if initial_mesh is None:
-            # Create a default watertight cube/capsule proxy
-            verts = np.array([
-                [-0.5, 0.0, -0.5], [0.5, 0.0, -0.5], [0.5, 1.8, -0.5], [-0.5, 1.8, -0.5],
-                [-0.5, 0.0,  0.5], [0.5, 0.0,  0.5], [0.5, 1.8,  0.5], [-0.5, 1.8,  0.5],
-            ], dtype=np.float32)
-            # 12 triangles forming a closed box
-            tris = np.array([
-                [0, 1, 2], [0, 2, 3],  # back
-                [4, 6, 5], [4, 7, 6],  # front
-                [0, 4, 1], [1, 4, 5],  # bottom
-                [2, 6, 3], [3, 6, 7],  # top
-                [0, 3, 4], [3, 7, 4],  # left
-                [1, 5, 2], [2, 5, 6],  # right
-            ], dtype=np.int32)
-            active_mesh = MeshGeometry(vertices=verts, faces=tris)
+            # Multi-view reconstruction from solved camera trajectory
+            from synapse.recon.multiview import MultiViewInitializer
+
+            initializer = MultiViewInitializer()
+            active_mesh = initializer.reconstruct(
+                frames=frames,
+                cameras=[
+                    ext
+                    for ext in (camera_traj.extrinsics if camera_traj else [])
+                ],
+            )
         else:
             active_mesh = initial_mesh
 

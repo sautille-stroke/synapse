@@ -1,5 +1,9 @@
 """FGPP fidelity metrics — depth, normal, flow, and silhouette errors.
 
+These are synapse-domain-specific FGPP channel-level metrics that have
+no direct equivalent in ``@aether//metrics`` (which covers image-level
+PSNR/SSIM/CIEDE2000/FLIP).  They are synapse-original implementations.
+
 All functions accept NumPy arrays and return scalar floats.  Optional
 ``valid_mask`` parameters allow masking out sky, background, or invalid
 pixels from the error computation.
@@ -8,6 +12,14 @@ pixels from the error computation.
 from __future__ import annotations
 
 import numpy as np
+
+__all__ = [
+    "depth_rmse_m",
+    "scale_invariant_depth_error",
+    "normal_angular_error_deg",
+    "flow_endpoint_error_px",
+    "silhouette_iou",
+]
 
 
 def depth_rmse_m(

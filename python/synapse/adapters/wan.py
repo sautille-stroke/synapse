@@ -12,7 +12,9 @@ Transport backends:
 * ``LocalCallableBackend`` — synchronous in-process callable, perfect
   for unit-test injection.
 
-LoRA manager integration is stubbed for M5 PR-16.
+LoRA manager integration wired in PR-42: ``MultiLoRAManager`` is lazily
+constructed when ``lora_manifests`` are provided, and applied/restored
+around each ``generate()`` call when Cryptomatte IDs are present.
 """
 
 from __future__ import annotations
@@ -333,20 +335,26 @@ class WanAdapter(VideoModelAdapter):
             to ``None`` (must be set before calling ``generate``).
         gamma_flow_bias: Soft flow bias gamma for latent optical flow.
             Clamped to ``[0.0, 2.5]``.  ``0.0`` means no bias.
-        lora_manager: Placeholder for M5 LoRA slot — unused in this PR.
+        lora_manifests: Optional list of ``(LoRAManifest, scale)`` tuples.
+            When provided, a ``MultiLoRAManager`` is constructed lazily
+            and applied around each ``generate()`` call when Cryptomatte
+            IDs are available on the FGPP conditions payload.
     """
 
     def __init__(
         self,
         backend: WanBackendTransport | None = None,
         gamma_flow_bias: float = 0.0,
-        lora_manager: Any | None = None,
+        lora_manifests: list | None = None,
     ) -> None:
         self._backend = backend
         self._gamma_flow_bias = float(
             np.clip(gamma_flow_bias, 0.0, _FLOW_BIAS_GAMMA_MAX)
         )
-        self._lora_manager = lora_manager  # M5 PR-16 stub
+        self._lora_manager: Any | None = None
+        if lora_manifests is not None:
+            from synapse.adapters.lora.manager import MultiLoRAManager  # lazy
+            self._lora_manager = MultiLoRAManager(lora_bundles=lora_manifests)
 
     # -- properties ----------------------------------------------------------
 
@@ -460,12 +468,26 @@ class WanAdapter(VideoModelAdapter):
         self,
         conditions: PreparedConditionPayload,
         config: VideoGenerationConfig,
+        model: Any | None = None,
+        fgpp_frames: list | None = None,
     ) -> VideoResult:
         """Generate video frames via the configured backend transport.
+
+        When a ``MultiLoRAManager`` is active (i.e. ``lora_manifests``
+        were provided at construction time) **and** the supplied FGPP
+        frames contain ``cryptomatte_id`` data, the manager's spatial
+        masks are built and weights are applied to *model* before
+        inference.  ``restore_base_weights`` is called in a ``finally``
+        block to guarantee cleanup even on errors.
 
         Args:
             conditions: Output of ``prepare_conditions()``.
             config: Generation configuration.
+            model: Optional ``torch.nn.Module`` for LoRA weight injection.
+                Required when ``_lora_manager`` is active and frames have
+                Cryptomatte IDs.
+            fgpp_frames: Optional list of ``FGPPFrame`` objects from which
+                Cryptomatte entity ID maps are extracted for spatial masking.
 
         Returns:
             ``VideoResult`` with sRGB uint8 frames.
@@ -479,7 +501,33 @@ class WanAdapter(VideoModelAdapter):
                 "Pass a WanBackendTransport to the constructor."
             )
 
-        raw_frames = self._backend.submit(conditions, config)
+        # Determine whether LoRA application is needed this call
+        _lora_applied = False
+        if self._lora_manager is not None and fgpp_frames and model is not None:
+            # Collect cryptomatte IDs from frames that have them
+            crypt_maps = [
+                f.cryptomatte_id
+                for f in fgpp_frames
+                if getattr(f, "cryptomatte_id", None) is not None
+            ]
+            if crypt_maps:
+                import numpy as _np  # lazy – already at module level but explicit
+                cryptomatte_ids = _np.stack(crypt_maps, axis=0)  # [T, H, W]
+                # Collect entity IDs present across all frames
+                entity_ids: set[int] = {
+                    int(v) for v in _np.unique(cryptomatte_ids) if int(v) != 0
+                }
+                self._lora_manager.build_spatial_lora_masks(
+                    cryptomatte_ids, entity_ids
+                )
+                self._lora_manager.apply_merged_weights(model)
+                _lora_applied = True
+
+        try:
+            raw_frames = self._backend.submit(conditions, config)
+        finally:
+            if _lora_applied:
+                self._lora_manager.restore_base_weights(model)
 
         return VideoResult(
             frames_srgb_u8=raw_frames,

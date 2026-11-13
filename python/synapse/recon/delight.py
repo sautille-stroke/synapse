@@ -3,6 +3,16 @@
 Removes cast shadows, directional key lighting, and ambient occlusion from
 neural video frames using Spherical Harmonics (SH) irradiance estimation
 and edge-preserving Retinex reflectance recovery.
+
+.. note:: **synapse-original implementation**
+
+    Despite being listed in the cross-repo dedup audit (Issue #34, area ⑥),
+    ``@aether//spectra`` covers spectral rendering (wavelength sampling,
+    CIE 1931, blackbody, RGB-to-Spectrum) but has **no** Spherical Harmonics
+    evaluation.  This SH de-lighting module is inverse-rendering-specific
+    and has no upstream equivalent.  Once ``fulgur`` ships SH evaluation
+    utilities, the ``evaluate_spherical_harmonics_basis`` function should
+    delegate to the native implementation.
 """
 
 from __future__ import annotations

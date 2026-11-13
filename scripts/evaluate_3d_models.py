@@ -90,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         dest="json_output",
         help="Output pure JSON to stdout.",
     )
+    parser.add_argument(
+        "--backend",
+        default="native",
+        choices=["native", "python"],
+        help="Geometry gate backend (default: native). "
+             "'python' is for Oracle parity testing only.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -106,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
             resolution=args.resolution,
             num_views=args.num_views,
             log_fn=None if args.json_output else log_fn,
+            geometry_backend=args.backend,
         )
     except SynapseError as exc:
         err = exc.to_json_dict()
