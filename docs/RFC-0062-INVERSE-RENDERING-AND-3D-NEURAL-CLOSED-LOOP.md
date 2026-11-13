@@ -137,7 +137,57 @@ $$\min_{T} \sum_{t=1}^{N} \left( \lambda_1 \| I_{mit}(t; T) - V_{target}(t) \|_1
 
 ---
 
-## 5. 模块设计与接口契约 (Software Architecture)
+## 5. 主动协同生成与标定协议 (Cooperative Active Generation & LookDev Calibration Protocol)
+
+传统逆向渲染在工业界的最大死穴是：**假定输入视频来自不可控的第三方黑盒，强硬光、死黑阴影与复杂环境反光高度耦合在 RGB 像素中，导致材质去光照（De-lighting）极易退化，贴图满是脏斑。**
+
+然而在 DervGen / sautille-stroke 生态中，**视频生成模型（Wan 2.1 / Seedance）与正向 3D 渲染（Fulgur / Caelum-core）全栈完全自研且源码级可控**。我们可以实施**“软硬件级协同设计（Co-Design）”**，在视频生成阶段有意识地引导生成有利于逆向渲染的特殊场景，将求解难度从“不可控盲解”降低为“良态快速收敛”：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 主动协同生成协议 (Cooperative Active Generation)            │
+└─────────────────────────────────────────────────────────────────────────────┘
+  [3D 引擎控制端]                             [神经视频生成端 (Wan/Seedance)]
+   │                                                 │
+   ├── ① 注入 3~5 帧 LookDev 标定预卷 ───────────────► 强制无阴影 5500K 漫射生成
+   │                                                 │
+   ├── ② FGPP DirectRadiance 剔除硬阴影 ───────────► 宏观平滑照明、微观细节丰富
+   │                                                 │
+   ├── ③ 动态光源扫描 (Light Sweep) ────────────────► 激发动态高光 (快速反解粗糙度/金属度)
+   │                                                 │
+   ▼                                                 ▼
+  [可微逆向渲染 Mitsuba 3] ◄────────────────────── [纯净、解耦的目标视频帧]
+     秒级收敛，BaseColor 零阴影污染，PBR 三件套完美分离！
+```
+
+### 5.1 标定预卷机制 (LookDev Calibration Pre-roll)
+
+在生成正式镜头动画前，正向调度器可选择性插入一段 **3~5 帧的极短“校准预卷”**（不计入正片，仅供材质反演抽取）：
+1. **相机外参控制**：3D 引擎调度一段围绕目标主体（或核心局部）的平滑半周匀速转台运镜（Orbit 180°）；
+2. **神经 Prompt 强制约束**：在预卷时序区间内，向视频模型注入影视级 LookDev 提示词：
+   `"soft diffuse overcast studio lighting, shadowless neutral 5500K lookdev environment, pure ambient occlusion, clean albedo capture, zero hard specular glare"`；
+3. **数学原理**：在完全均匀的半球漫射光照 $\bar{E}$ 下，观测像素值满足：
+   $$V_{target}(u, v) \approx T_{basecolor}(u, v) \cdot \frac{\bar{E}}{\pi}$$
+   Mitsuba 3 的反求损失函数直接退化为准线性凹凸优化，**BaseColor 贴图在 10 步迭代内即可收敛，彻底杜绝阴影被当成色斑烤死在贴图中的致命缺陷！**
+
+### 5.2 FGPP 直接光解耦注入 (DirectRadiance Channel Decoupling)
+
+基于 Synapse 的 15 通道 OpenEXR（FGPP v1.0）架构，视频大模型直接接收 `DirectRadiance.RGB` 与 `WorldNormal.XYZ`：
+1. **正向引导剔除硬阴影**：在正向渲染白模条件时，主动关闭定向点光源/平行光源投射的硬自阴影（Cast Shadows），仅将平滑半球环境光（Hemispheric Ambient）写入 `DirectRadiance` 通道；
+2. **生成大模型响应特性**：神经模型受无阴影的辐射度引导，将所有注意力算力集中在生成**微观材质质感**（毛孔、布料纹理、金属微瑕疵），而不会虚构出剧烈的宏观明暗交界线。
+
+### 5.3 动态光源激发反解 PBR 参数 (Dynamic Light Sweep for Roughness & Metallic)
+
+在静态单帧中，无法数学区分高光到底是由于“材质原本就白”还是由于“粗糙度低镜面反射强”。通过主动生成协同：
+1. **移动光源激发**：正向渲染在两帧之间让点光源沿切向快速滑动一段微小距离；
+2. **物理响应分类**：
+   - **全角度亮度恒定的区域** $\rightarrow$ 绝对为朗伯漫反射固有色（BaseColor）；
+   - **随光源滑动出现狭窄强亮斑的区域** $\rightarrow$ 亮斑宽度逆向拟合微表面粗糙度（Roughness $\alpha$）；
+   - **高光颜色吸收了材质固有色的区域** $\rightarrow$ 严格判定为金属（Metallic $\approx 1.0$）；高光呈白色中性的判定为电介质（Metallic $\approx 0.0$）。
+
+---
+
+## 6. 模块设计与接口契约 (Software Architecture)
 
 在 `synapse.recon` 中新增专门的可微逆向闭环子模块：
 
@@ -186,13 +236,14 @@ class MitsubaInverseOptimizer:
 
 ---
 
-## 6. 实施路标与里程碑 (Milestones)
+## 7. 实施路标与里程碑 (Milestones)
 
 - **M-LOOP-1: 最小闭环桩与可运行验证（CPU/GPU 双模）**
-  - 构建 Stanford Bunny 旋转动画；
-  - 编写合成目标视频测试用例；
+  - 构建 Stanford Bunny 旋转动画与无阴影漫射测试基线；
+  - 编写合成目标视频测试用例（含 LookDev 标定预卷测试）；
   - 跑通 Mitsuba 3 `llvm_ad_rgb` / `cuda_ad_rgb` 贴图反求；
   - 验证 PSNR 提升 $\ge 10\text{ dB}$，生成对比报告图。
-- **M-LOOP-2: 视频大模型与局部缝合对接**
+- **M-LOOP-2: 主动协同生成与视频大模型局部缝合对接**
+  - 在 `synapse.adapters.wan` 中加入 LookDev Pre-roll 提示词拦截注入与 FGPP 无硬阴影条件烘焙；
   - 接入 Seedance / Wan 2.1 风格化生成视频作为真实目标输入；
   - 将材质优化后的 3D 渲染送入 RFC 0061 局部手术刀（Scalpel）修补手部/面部。
