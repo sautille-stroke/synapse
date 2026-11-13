@@ -1068,7 +1068,7 @@ def _cmd_recon_invert_video(
         "output_dir": str(output_dir),
         "num_frames": len(frames),
         "has_trajectory": result.camera_trajectory is not None,
-        "has_geometry": result.vertices is not None,
+        "has_geometry": result.mesh is not None,
     }
 
     # Save trajectory

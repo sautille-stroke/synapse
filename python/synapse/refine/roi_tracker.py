@@ -52,6 +52,14 @@ class KalmanBBoxTracker:
     ) -> None:
         self._q = float(process_noise)
         self._r = float(measurement_noise)
+        # Declare instance variable types for mypy (assigned in reset())
+        self._x: np.ndarray
+        self._P: np.ndarray
+        self._F: np.ndarray
+        self._H: np.ndarray
+        self._Q: np.ndarray
+        self._R_mat: np.ndarray
+        self._initialised: bool
         self.reset()
 
     # -- public API ----------------------------------------------------------

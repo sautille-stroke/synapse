@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from synapse.recon.types import DelightResult
+from synapse.recon.types import DelightResult, MeshGeometry
 
 
 def evaluate_spherical_harmonics_basis(normals: np.ndarray) -> np.ndarray:
@@ -279,7 +279,7 @@ def _delta_e_76(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
 def delight_multiview_albedo(
     frames: np.ndarray,
     cameras: list,
-    mesh: object,
+    mesh: MeshGeometry,
     shading_model: str = "sh2",
 ) -> DelightResult:
     """Multi-view albedo de-lighting via inverse rendering.

@@ -57,8 +57,7 @@ def handle_video_to_3d_invert(
         # Degrade gracefully for pipeline validation
         class _EmptyResult:
             camera_trajectory = None
-            vertices = None
-            normals = None
+            mesh = None
         result = _EmptyResult()  # type: ignore[assignment]
 
     output_paths: dict[str, str] = {}
@@ -69,8 +68,8 @@ def handle_video_to_3d_invert(
     )
     p_mesh = Path(mesh_path)
     p_mesh.parent.mkdir(parents=True, exist_ok=True)
-    if result.vertices is not None:
-        np.save(str(p_mesh), result.vertices)
+    if result.mesh is not None:
+        np.save(str(p_mesh), result.mesh.vertices)
         output_paths["mesh"] = str(p_mesh)
 
     # Save trajectory
@@ -85,9 +84,11 @@ def handle_video_to_3d_invert(
         output_paths["trajectory"] = str(p_traj)
 
     # De-light albedo if geometry available
-    if result.vertices is not None and result.normals is not None:
+    if result.mesh is not None and result.mesh.normals is not None:
         albedo = delight_multiview_albedo(
-            frames, result.normals,
+            frames=frames,
+            cameras=[],
+            mesh=result.mesh,
         )
         albedo_path = manifest.outputs.get(
             "albedo", str(Path("output") / "albedo.npy"),

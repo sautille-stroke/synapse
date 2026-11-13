@@ -526,7 +526,7 @@ class WanAdapter(VideoModelAdapter):
         try:
             raw_frames = self._backend.submit(conditions, config)
         finally:
-            if _lora_applied:
+            if _lora_applied and self._lora_manager is not None:
                 self._lora_manager.restore_base_weights(model)
 
         return VideoResult(
