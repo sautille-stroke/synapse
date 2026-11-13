@@ -75,15 +75,20 @@ def latent_edge_alignment_loss(
 def normal_reconstruction_loss(
     n_pred: np.ndarray,
     n_gt: np.ndarray,
+    mask: np.ndarray | None = None,
 ) -> float:
     """Cosine angular distance between predicted and ground-truth normals.
 
     Computes the per-pixel normal reconstruction loss::
 
-        mean(1 - <n_pred, n_gt>)
+        L_normal = mean(1 - <n_pred, n_gt>) over masked region.
 
     where both inputs are expected to be unit-length normal vectors
     from the FGPP ``WorldNormal.XYZ`` channels.
+
+    If *mask* is provided, only foreground pixels (``mask > 0``) contribute
+    to the average.  Handles both ``[H, W, C]`` and ``[C, H, W]`` layouts
+    via auto-transpose.
 
     Locked hyperparameter HP-04 from PLAN-ALGO-TRAINING-DATA-PIPELINE.md.
 
@@ -91,6 +96,8 @@ def normal_reconstruction_loss(
         n_pred: Predicted normal field, shape ``[H, W, 3]`` or
             ``[3, H, W]``.  Will be L2-normalised internally.
         n_gt: Ground-truth normal field from FGPP, same shape.
+        mask: Optional foreground mask, shape ``[H, W]``.  When given,
+            the loss is computed only over pixels where ``mask > 0``.
 
     Returns:
         Scalar cosine angular distance loss in ``[0, 2]``.
@@ -113,8 +120,17 @@ def normal_reconstruction_loss(
     cos_sim = np.sum(n_p * n_g, axis=-1)
     cos_sim = np.clip(cos_sim, -1.0, 1.0)
 
-    # Loss = mean(1 - cos_sim)
-    return float(np.mean(1.0 - cos_sim))
+    # Per-pixel loss
+    loss_map = 1.0 - cos_sim
+
+    # Apply foreground mask if provided
+    if mask is not None:
+        fg = np.asarray(mask, dtype=np.float64) > 0
+        if fg.any():
+            return float(np.mean(loss_map[fg]))
+        return 0.0
+
+    return float(np.mean(loss_map))
 
 
 def diffusion_dpo_loss(

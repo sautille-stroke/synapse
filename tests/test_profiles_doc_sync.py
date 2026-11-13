@@ -60,6 +60,7 @@ class TestProfilesDocSync:
         doc_profiles = _parse_doc_threshold_table()
         # Core roundtrip / geometry / style metrics governed by §3.4
         governed_metrics = [
+            "temporal_warp_error",
             "flicker_score",
             "depth_rmse_m",
             "normal_angular_error_deg",

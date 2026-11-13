@@ -54,7 +54,7 @@ class TestProfiles:
 
         # All metrics far within track_b_video thresholds
         measured = {
-            "temporal_warp_error": 1.0,
+            "temporal_warp_error": 0.001,
             "flicker_score": 0.001,
             "fvd": 10.0,
             "depth_rmse_m": 0.01,
@@ -94,15 +94,15 @@ class TestProfiles:
     def test_gate_scenario_overrides(self) -> None:
         from synapse.metrics import evaluate_metrics_gate
 
-        measured = {"temporal_warp_error": 5.0}
-        # Default track_b_video threshold is 8 → should pass
+        measured = {"temporal_warp_error": 0.010}
+        # Default track_b_video threshold is 0.020 → should pass
         v1 = evaluate_metrics_gate(measured, "track_b_video")
         assert v1.passed is True
 
         # Override to tighter threshold → should fail
         v2 = evaluate_metrics_gate(
             measured, "track_b_video",
-            scenario_overrides={"temporal_warp_error": 3.0},
+            scenario_overrides={"temporal_warp_error": 0.005},
         )
         assert v2.passed is False
 
