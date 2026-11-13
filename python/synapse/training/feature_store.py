@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from synapse.errors import ContractValidationError
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
 # Structured caption formatter
@@ -245,6 +248,7 @@ class FeatureStoreBuilder:
         self._txt_enc = text_encoder
         self._max_shard = max_shard_bytes
         self._samples: list[_BUFFERED_SAMPLE] = []
+        self.rejected_count: int = 0
 
     def add_sample(
         self,
@@ -256,6 +260,10 @@ class FeatureStoreBuilder:
     ) -> None:
         """Pre-encode and buffer a training sample.
 
+        Applies 5 quality ingestion gates before encoding.  If any gate
+        fails the sample is silently skipped and ``rejected_count`` is
+        incremented.
+
         Args:
             sample_id: Unique sample identifier.
             video_frames: ``[T, H, W, 3]`` uint8 frames.
@@ -263,11 +271,114 @@ class FeatureStoreBuilder:
             fgpp_cond: Optional FGPP condition tensor.
             source_sha256: Optional source sequence SHA-256.
         """
+        passed, reason = self._validate_ingestion_quality(
+            {
+                "sample_id": sample_id,
+                "video_frames": video_frames,
+                "fgpp_cond": fgpp_cond,
+            }
+        )
+        if not passed:
+            self.rejected_count += 1
+            logger.warning(
+                "Sample '%s' rejected by ingestion gate: %s",
+                sample_id,
+                reason,
+            )
+            return
+
         latent = self._lat_enc.encode(video_frames)
         prompt = self._txt_enc.encode(caption)
         self._samples.append(
             (sample_id, latent, prompt, fgpp_cond, source_sha256),
         )
+
+    # ── quality ingestion gates ────────────────────────────────────
+
+    @staticmethod
+    def _validate_ingestion_quality(
+        sample: dict[str, Any],
+    ) -> tuple[bool, str]:
+        """Apply 5 quality pre-filters before ingesting a sample.
+
+        Gates:
+            1. Foreground coverage ≥ 5 % — via Cryptomatte mask if available.
+            2. Depth span ≥ 0.1 m — ``max(depth) - min(depth)`` in valid region.
+            3. DirectRadiance 95th-percentile ≤ 65 504 — no half-float overflow.
+            4. Normal unit-length ratio ≥ 95 % — ``|n| ∈ [0.99, 1.01]`` for
+               ≥ 95 % of pixels.
+            5. Rotation determinant ``|det(R) − 1| < 1e-5`` — SO(3) validity.
+
+        Args:
+            sample: Dict with at least ``"video_frames"`` (``[T, H, W, C]``
+                uint8/float) and optional ``"fgpp_cond"`` (``[T, H, W, 15]``
+                float32 FGPP tensor with channels ordered per
+                ``fgpp_types.h``).
+
+        Returns:
+            ``(passed, reason)`` — *True* if every gate passes, else
+            *False* with a human-readable failure reason.
+        """
+        fgpp = sample.get("fgpp_cond")
+
+        # Gate 1 — Foreground coverage (Cryptomatte channel, index 14).
+        if fgpp is not None and fgpp.shape[-1] >= 15:
+            crypto = fgpp[..., 14]  # Cryptomatte.ID
+            fg_mask = crypto > 0
+            coverage = float(fg_mask.mean())
+            if coverage < 0.05:
+                return False, (
+                    f"Gate 1 (foreground coverage): {coverage:.3f} < 0.05"
+                )
+
+        # Gate 2 — Depth span (CameraLinearDepth.Z, index 0).
+        if fgpp is not None and fgpp.shape[-1] >= 1:
+            depth = fgpp[..., 0]
+            valid = depth[depth > 0]
+            if valid.size > 0:
+                span = float(valid.max() - valid.min())
+                if span < 0.1:
+                    return False, (
+                        f"Gate 2 (depth span): {span:.4f} m < 0.1 m"
+                    )
+
+        # Gate 3 — DirectRadiance 95th percentile (indices 1-3).
+        if fgpp is not None and fgpp.shape[-1] >= 4:
+            radiance = fgpp[..., 1:4]
+            p95 = float(np.percentile(radiance, 95))
+            if p95 > 65504.0:
+                return False, (
+                    f"Gate 3 (radiance overflow): p95={p95:.1f} > 65504"
+                )
+
+        # Gate 4 — Normal unit-length (WorldNormal indices 4-6).
+        if fgpp is not None and fgpp.shape[-1] >= 7:
+            normals = fgpp[..., 4:7]
+            norms = np.linalg.norm(normals, axis=-1)
+            # Only check pixels that have a non-zero normal.
+            active = norms > 0.01
+            if active.sum() > 0:
+                unit_ok = np.abs(norms[active] - 1.0) < 0.01
+                ratio = float(unit_ok.mean())
+                if ratio < 0.95:
+                    return False, (
+                        f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95"
+                    )
+
+        # Gate 5 — Rotation determinant (camera matrix indices 7-15 → 3×3).
+        if fgpp is not None and fgpp.shape[-1] >= 16:
+            # Extract first pixel's camera rotation matrix as a proxy.
+            flat = fgpp.reshape(-1, fgpp.shape[-1])
+            rot_vec = flat[0, 7:16]
+            rot = rot_vec.reshape(3, 3)
+            det = float(np.linalg.det(rot))
+            if abs(det - 1.0) >= 1e-5:
+                return False, (
+                    f"Gate 5 (rotation det): |det(R)-1| = "
+                    f"{abs(det - 1.0):.2e} >= 1e-5"
+                )
+
+        return True, ""
 
     def build_shards(self, output_dir: Path) -> list[Path]:
         """Write buffered samples to ``.tar`` shard files.

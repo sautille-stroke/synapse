@@ -22,6 +22,10 @@ from synapse.bench.conditions import (
     ConditionLevel,
     Conditions,
 )
+from synapse.bench.domain_randomizer import (
+    DomainRandomizationConfig,
+    DomainRandomizer,
+)
 from synapse.bench.model_loader import (
     MeshData,
     load_mesh,
@@ -67,6 +71,8 @@ __all__ = [
     "CameraTrajectoryType",
     "ConditionLevel",
     "Conditions",
+    "DomainRandomizationConfig",
+    "DomainRandomizer",
     "ExpectedMetrics",
     "InspectionBundleManifest",
     "MeshData",
