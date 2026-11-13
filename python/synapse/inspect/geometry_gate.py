@@ -4,29 +4,18 @@ Runs topology and geometric sanity checks (manifold, watertight, degenerate
 faces, self-intersections, floating islands) and produces a structured
 :class:`~synapse.inspect.schemas.GeometricValidationResult`.
 
-The gate supports two execution backends:
-
-* **python** — Pure-Python Oracle (NumPy-based, always available).
-* **native** — C++20 accelerated via ``synapse._c_geometry`` (optional).
-* **auto** (default) — Tries native first, falls back to Python with a
-  ``RuntimeWarning``.
+The gate requires the C++20 native backend (``synapse._c_geometry``) in
+production.  A ``"python"`` backend exists **only** for Oracle parity
+testing — it must never be used in production workflows.
 """
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Literal
 
 import numpy as np
 
 from synapse.inspect.schemas import GeometricValidationResult
-from synapse.recon.geometry import (
-    check_degenerate_faces,
-    check_manifold,
-    check_self_intersections,
-    check_watertight,
-    find_connected_components,
-)
 
 
 def _floating_island_indices_from_components(
@@ -58,7 +47,7 @@ def validate_mesh_geometry(
     min_area: float = 1e-8,
     max_aspect_ratio: float = 100.0,
     min_face_ratio: float = 0.01,
-    backend: Literal["auto", "python", "native"] = "auto",
+    backend: Literal["native", "python"] = "native",
 ) -> GeometricValidationResult:
     """Run all Tier 0 deterministic geometry checks on a triangle mesh.
 
@@ -76,9 +65,9 @@ def validate_mesh_geometry(
         min_face_ratio: Minimum fraction of total faces a connected
             component must have to avoid being classified as a floating
             island.
-        backend: Execution backend — ``"auto"`` (try native, fallback to
-            Python), ``"python"`` (force Python Oracle), or ``"native"``
-            (force C++, raises :class:`ImportError` if unavailable).
+        backend: Execution backend — ``"native"`` (default, requires
+            ``synapse._c_geometry``) or ``"python"`` (Python Oracle,
+            **for testing only** — must not be used in production).
 
     Returns:
         A :class:`GeometricValidationResult` with all gate results.
@@ -88,26 +77,22 @@ def validate_mesh_geometry(
             ``synapse._c_geometry`` is not available.
         ValueError: If ``backend`` is not one of the accepted values.
     """
-    if backend not in ("auto", "python", "native"):
+    if backend not in ("native", "python"):
         raise ValueError(
-            f"Invalid backend {backend!r}; expected 'auto', 'python', or 'native'."
+            f"Invalid backend {backend!r}; expected 'native' or 'python'."
         )
 
-    use_native = False
-    if backend in ("auto", "native"):
-        try:
-            import synapse._c_geometry as _cg  # type: ignore[import-not-found]
-
-            use_native = True
-        except ImportError:
-            if backend == "native":
-                raise
-            warnings.warn(
-                "synapse._c_geometry not available; falling back to Python "
-                "Oracle for geometry validation.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+    if backend == "native":
+        import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+    else:
+        # Python Oracle — for parity testing only, not production use.
+        from synapse.recon.geometry import (
+            check_degenerate_faces,
+            check_manifold,
+            check_self_intersections,
+            check_watertight,
+            find_connected_components,
+        )
 
     v = np.ascontiguousarray(vertices, dtype=np.float64)
     f = np.ascontiguousarray(faces, dtype=np.int64)
@@ -119,15 +104,15 @@ def validate_mesh_geometry(
 
     failure_reasons: list[str] = []
 
-    if use_native:
+    if backend == "native":
         verts_per_face = int(f.shape[1]) if f.ndim == 2 and f.shape[1] >= 3 else 3
         is_manifold: bool = bool(
-            _cg.check_manifold(v, f, verts_per_face=verts_per_face)  # type: ignore[possibly-undefined]
+            _cg.check_manifold(v, f, verts_per_face=verts_per_face)
         )
         is_watertight: bool = bool(
-            _cg.check_watertight(v, f, verts_per_face=verts_per_face)  # type: ignore[possibly-undefined]
+            _cg.check_watertight(v, f, verts_per_face=verts_per_face)
         )
-        degen_indices = _cg.check_degenerate_faces(  # type: ignore[possibly-undefined]
+        degen_indices = _cg.check_degenerate_faces(
             v,
             f,
             verts_per_face=verts_per_face,
@@ -136,11 +121,11 @@ def validate_mesh_geometry(
         )
         si_pairs: list[tuple[int, int]] = [
             (int(a), int(b))
-            for a, b in _cg.check_self_intersections(  # type: ignore[possibly-undefined]
+            for a, b in _cg.check_self_intersections(
                 v, f, verts_per_face=verts_per_face,
             )
         ]
-        components = _cg.find_connected_components(  # type: ignore[possibly-undefined]
+        components = _cg.find_connected_components(
             f,
             verts_per_face=verts_per_face,
             num_vertices=int(len(v)),

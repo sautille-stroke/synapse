@@ -392,8 +392,8 @@ class TestValidateMeshGeometry:
         assert "passed" in d
         assert "is_manifold" in d
 
-    def test_auto_backend_fallback(self, tetrahedron):
-        """auto backend should work (falls back to Python if no C++)."""
+    def test_auto_backend_removed(self, tetrahedron):
+        """'auto' backend no longer exists — should raise ValueError."""
         verts, faces = tetrahedron
-        result = validate_mesh_geometry(verts, faces, backend="auto")
-        assert result.passed is True
+        with pytest.raises(ValueError, match="Invalid backend"):
+            validate_mesh_geometry(verts, faces, backend="auto")  # type: ignore[arg-type]
