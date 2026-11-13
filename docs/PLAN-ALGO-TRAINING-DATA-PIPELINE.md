@@ -1,11 +1,12 @@
 # 算法、训练与数据流水线攻坚执行计划 (Algorithm, Training & Data Pipeline Assault Plan)
 
-- **文档状态**: `Draft v1.0` — 待核心审查完成后升级为 `Approved`
-- **操作模型标识**: `[opus4.6]`
-- **修订日期**: 2026-11-12
-- **定位**: 本文档是对 `IMPLEMENTATION_PLAN.md` 中 **M2（适配器）、M3（风格/合成）、M5（LoRA 训练）、M6–M7（质检/RSI 飞轮）** 阶段的算法与数据流水线专项聚焦执行计划，侧重于"短期内如何将现有代码底座转化为可运行的真实训练与数据生产闭环"。
+- **文档状态**: `Active Plan v2.0 (Aligned with M12: PR-41 ~ PR-43)`
+- **操作模型标识**: `[gemini4]` (原稿 `[opus4.6]`)
+- **修订日期**: 2026-11-13
+- **定位**: 本文档是对 `IMPLEMENTATION_PLAN.md` 中 **M2/M3/M5/M6–M7 实跑闭环** 与 **M12（`PR-41 ~ PR-43`）** 遗留算法工程项的专项聚焦执行计划，侧重于在真实权重与千级规模数据集上跑通端到端训练与 RSI 数据飞轮。
 - **关联文档**:
-  - [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — 全局 M1–M8 总计划
+  - [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — 全局 M1–M12 总计划
+  - [docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) — Horizon-3 落地详案 (`M12: PR-41 ~ PR-43`)
   - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) — LoRA 微调设计规范
   - [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md) — 物理驱动 RSI 自演进规范
   - [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) — 跨文档对齐决议（§3.4 三级门禁）
@@ -97,12 +98,12 @@
 
 > **目标**：在现有 30 个基准场景基础上，通过参数化变体（运镜轨迹、光照色温、材质粗糙度、几何摆放）自动派生出 **≥300 个训练用场景配置**。
 
-- **实现方式**：在 `python/synapse/bench/` 下新增 `domain_randomizer.py`，接受基准场景 JSON 作为模板，在以下维度实施 Curriculum DR（与 `synapse.rsi.curriculum` 中已定义的 8 个条件因子对齐）：
-  - `F01_geometry`（L1~L4：从单体球到多体人形）
-  - `F02_camera_trajectory`（L1~L4：静态/环绕/推拉/螺旋）
+- **实现方式**：在 `python/synapse/bench/` 下新增 `domain_randomizer.py`（`M12 PR-41`），接受基准场景 JSON 作为模板，严格使用 `synapse.bench.conditions` 中已定义的规范 11 因子键名实施 Curriculum DR（`L1..L4`）：
+  - `F05_geometry`（L1~L4：从单体球到多体人形/复合几何）
+  - `F01_viewpoint`（L1~L4：静态/环绕/推拉/极限运镜视角）
   - `F03_lighting`（L1~L4：均匀环境光到高对比极端逆光）
   - `F04_material`（L1~L4：纯白漫反射到高金属高光）
-  - `F08_scale`（相机距离倍率缩放）
+  - `F06_animation` & `F08_scale`（骨骼关节运动幅度与相机距离倍率缩放）
 - **验收标准**：`pytest tests/test_domain_randomizer.py` 验证生成的变体 JSON 合法且帧数满足 $T=4k+1$
 - **执行环境**：纯 CPU，本地或 ubuntu24 均可
 
@@ -209,27 +210,28 @@ done"
 | 子系统 | 当前状态 | 差距诊断 |
 | :--- | :--- | :--- |
 | `StatelessLoRATrainer` (`trainer.py`) | ✅ 522 行，含 `LoRALinear`、`inject_lora`、`train_step`、`export_checkpoint` | Tiny Mock DiT 验证通过，**真实 Wan 2.1 权重尚未实跑** |
-| 复合损失函数 (`losses.py`) | ✅ 142 行，`flow_matching_loss` + `latent_edge_alignment_loss` + `diffusion_dpo_loss` | **缺少 `$\mathcal{L}_{\text{normal}}$` 法线重建损失实现** |
+| 复合损失函数 (`losses.py`) | ✅ 208 行，`flow_matching_loss` + `edge` + `normal_reconstruction_loss` + `dpo` | `normal_reconstruction_loss` 已存在但**缺少 `mask` 前景过滤与 `[C,H,W]` 布局自适应** (`PR-43`) |
+| `temporal_warp_error` 量纲 (`profiles.py`) | ⚠️ 仍为历史像素级阈值 `8.0 / 4.0 / 2.0` | `metrics/temporal.py` 输出 `[0, 1]` 归一化 RMSE (`0.020/0.015/0.015`)，须在 `PR-43` 与 `REVIEW` 同步收敛 |
 | LoRA Manifest (`manifest.py`) | ✅ 122 行，5 类白名单 + Safetensors 强制 + SHA256 | 工程就绪 |
 | MultiLoRAManager (`manager.py`) | ✅ 241 行，Cryptomatte 掩码隔离 + Gram-Schmidt 正交化 | 工程就绪 |
-| LoRA 打包与门禁 (`packager.py`) | ✅ 340 行，`package_and_gate_lora_bundle` + `LoRAGateThresholds` | `chamfer_mm` 默认值 5.0mm，应对齐 `rsi_promotion` 为 4.0mm |
-| RSI 双重验证 (`dual_verifier.py`) | ✅ 344 行，物理优先 + 失败→LoRA 桶路由 | `silhouette_iou` 默认 0.88，应对齐为 0.90 |
+| LoRA 打包与门禁 (`packager.py`) | ✅ 340 行，`package_and_gate_lora_bundle` + `LoRAGateThresholds` | ✅ PR #23 已通过 `from_profile("rsi_promotion")` 对齐 `chamfer_mm=4.0` |
+| RSI 双重验证 (`dual_verifier.py`) | ✅ 344 行，物理优先 + 失败→LoRA 桶路由 | ✅ PR #23 已通过 `from_profile("rsi_promotion")` 对齐 `silhouette_iou=0.90` |
 | RSI 偏好配对 (`pair_builder.py`) | ✅ 269 行，20% 黄金锚点强制混采 | 工程就绪 |
 | RSI 单调递增门禁 (`promotion_gate.py`) | ✅ 268 行，四项合取条件 + Quarantine 归档 | 工程就绪 |
 
 ### 3.3 攻坚行动项
 
-#### 行动 T1：补齐法线重建损失 $\mathcal{L}_{\text{normal}}$
+#### 行动 T1：扩展 `normal_reconstruction_loss` 前景掩码过滤与 `[C, H, W]` 支持 (`M12 PR-43`)
 
-> **目标**：在 `losses.py` 中新增 `normal_reconstruction_loss`。
+> **目标**：扩展 `losses.py` 已有 `normal_reconstruction_loss(n_pred, n_gt)`（当前仅支持满屏无掩码），新增可选 `mask` 与 `channel_first` 自适应并统一 `profiles.py` 中的 `temporal_warp_error` 量纲。
 
 ```python
 def normal_reconstruction_loss(
     n_pred: np.ndarray,   # [H, W, 3] 或 [C, H, W]
     n_gt: np.ndarray,     # [H, W, 3] FGPP WorldNormal
-    mask: np.ndarray | None = None,  # 前景掩码
+    mask: np.ndarray | None = None,  # 前景掩码（Cryptomatte.ID > 0）
 ) -> float:
-    """法线余弦角距离: E[1 - <n_pred, n_gt>]"""
+    """法线余弦角距离: E[1 - <n_pred, n_gt>]（可选前景掩码加权）"""
     ...
 ```
 
@@ -253,23 +255,9 @@ def normal_reconstruction_loss(
 - **执行环境**：首轮使用 `Wan2.1-T2V-1.3B`（Colab T4 16GB 可承载），后续升级至 `14B`（需 A100 40GB）
 - **验收标准**：Flow-matching loss 在 500 步内单调下降且不发散
 
-#### 行动 T3：LoRA 准出门禁对齐 REVIEW 文档三级阈值
+#### 行动 T3：LoRA 准出门禁对齐 REVIEW 文档三级阈值（✅ 已完成 via PR #23）
 
-> **目标**：修正 `packager.py` 和 `dual_verifier.py` 中的默认阈值，使其与 `DESIGN_REVIEW_AND_ALIGNMENT.md` §3.4 完全对齐。
-
-具体修改：
-
-```python
-# packager.py — LoRAGateThresholds 默认值对齐 rsi_promotion
-chamfer_mm: float = Field(default=4.0, ge=0.0)  # 原 5.0 → 4.0
-normal_angular_error_deg: float = Field(default=12.0, ge=0.0)  # 保持 12.0 ✓
-
-# dual_verifier.py — PhysicsThresholds 默认值对齐 rsi_promotion
-silhouette_iou: float = Field(default=0.90, ge=0.0, le=1.0)  # 原 0.88 → 0.90
-```
-
-- **注意**：`profiles.py` 中的"超额严格"值（如 `normal_angular_error_deg=5.0`）保留为远期目标，但当前不作为硬阻断
-- **验收标准**：`test_rsi_verifier_and_pairs.py` 更新断言以匹配新默认值
+> **状态更新**：已通过 PR #23（`LoRAGateThresholds.from_profile("rsi_promotion")` & `PhysicsThresholds` 同步 `RSI_PROMOTION`）及 `tests/test_profiles_doc_sync.py` 闭环锁定；剩余 `profiles.py` 中 `temporal_warp_error` 的 `[0,1]` 量纲收敛归入 `M12 PR-43` 执行。
 
 #### 行动 T4：RSI 首轮物理验证闭环实验
 
@@ -348,14 +336,14 @@ flowchart LR
 
 | 本计划行动项 | 对应 IMPLEMENTATION_PLAN PR | 状态 |
 | :--- | :--- | :--- |
-| D1 域随机化 | 新增（不在原 30-PR 范围内，为数据扩张专项） | 🆕 待新增 |
-| D2 批量烘焙 | PR-15 的数据基础设施扩展 | 🔄 扩展 |
-| D3 WebDataset 分片 | **PR-17** (`training/feature_store.py`) | ✅ 代码已实现，待实跑 |
-| D4 数据清洗门禁 | PR-17 的质量过滤扩展 | 🔄 扩展 |
-| A1 WanAdapter ↔ LoRA 接线 | **PR-16** 的最后一步集成 | 🔄 补全 |
-| A2 E1 消融实验 | 对应 `scripts/colab_runner.py --exp e1` | ✅ 脚本就绪，待执行 |
-| A3 97f 长视频验证 | **PR-06** 的生产验证 | ✅ 代码已实现，待实跑 |
-| T1 补齐 $\mathcal{L}_{\text{normal}}$ | **PR-18** 补充 | 🔄 补全 |
-| T2 首轮 LoRA 训练 | **PR-18** 的实际执行 | ✅ 代码已实现，待实跑 |
-| T3 阈值对齐 | **PR-13** / **PR-25** 的阈值修正 | 🔄 修正 |
-| T4 RSI 闭环 | **PR-24** + **PR-25** | ✅ 代码已实现，待实跑 |
+| D1 域随机化 (`bench/domain_randomizer.py`) | **M12 PR-41** | 📋 已纳入 Horizon-3 |
+| D2 批量烘焙 | PR-15 数据基础设施扩展 | 🔄 实验执行项 |
+| D3 WebDataset 分片 | **PR-17** (`training/feature_store.py`) | ✅ 代码已实现，待 GPU 实跑 |
+| D4 数据清洗门禁 (`add_sample` 校验) | **M12 PR-41** | 📋 已纳入 Horizon-3 |
+| A1 `WanAdapter` ↔ `MultiLoRAManager` 接线 | **M12 PR-42** (消除 PR-16 遗留 stub) | 📋 已纳入 Horizon-3 |
+| A2 E1 消融实验 | `scripts/colab_runner.py --exp e1` | ✅ 脚本就绪，待 GPU 实跑 |
+| A3 97f 长视频验证 | **PR-06** 生产验证 | ✅ 代码已实现，待 GPU 实跑 |
+| T1 `normal_reconstruction_loss` `mask` + `temporal_warp_error` 量纲统一 | **M12 PR-43** | 📋 已纳入 Horizon-3 |
+| T2 首轮 LoRA 训练 | **PR-18** 实际执行 | ✅ 代码已实现，待 GPU 实跑 |
+| T3 阈值对齐 (`from_profile("rsi_promotion")`) | PR #23 (`dfd04f2`) | ✅ 已合入完成 |
+| T4 RSI 闭环 | **PR-24** + **PR-25** | ✅ 代码已实现，待 GPU 实跑 |

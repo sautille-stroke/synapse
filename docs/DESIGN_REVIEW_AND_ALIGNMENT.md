@@ -1,13 +1,13 @@
 # Synapse 整体架构设计深度评审与跨文档对齐决议 (Design Review & Cross-Spec Alignment)
 
-- **文档状态**: `Approved Review & Alignment Baseline (v2.0)`
-- **评审日期**: 2026-11-11
+- **文档状态**: `Approved Review & Alignment Baseline (v3.0 — Horizon-3 Aligned)`
+- **评审日期**: 2026-11-13
 - **操作模型标识**: `[gemini4]`
 - **评审范围**:
-  - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`REVIEW_3D_EVAL_DELIVERY.md`、`DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` (RFC 0060)、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
-  - 仓内代码基线（`python/synapse/**`、`csrc/geometry/**`、`tools/data-inspector/**`、`pyproject.toml`、`tests/**`）；
-  - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060）。
-- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 共 30 个原子 PR 及 5 份执行子计划)
+  - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`REVIEW_3D_EVAL_DELIVERY.md`、`RFC-0060` / `DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md`、`RFC-0061` / `DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md` / `DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md`、`RFC-0062` / `DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md`、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
+  - 仓内代码基线（`python/synapse/**`、`csrc/geometry/**`、`tools/data-inspector/**`、`pyproject.toml`、`tests/**`、`../forgekit/packages/anatomical-refine/**`）；
+  - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060 / 0061 / 0062）。
+- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.0`, M1–M12 共 44 个原子 PR) · [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)
 - **关联专项复核计划**: [docs/plans/PLAN-REVIEW-PR17-PR18.md](plans/PLAN-REVIEW-PR17-PR18.md) · [docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 
 ---
@@ -129,6 +129,26 @@
   2. 门禁一律执行 **Fail-Closed** 原则，缺失指标或非有限浮点数（NaN/Inf）立即判定 FAIL；
   3. 建立 `synapse.pipeline.stages`（`inspect.py`, `rsi.py`, `training.py`），收敛全部 `@register_stage` 挂载，领域库保持绝对纯洁。
 
+#### [RV-13 | P0] RFC 0060 Layer-A 补齐、消除 `fulgur` 可微误写与 `ReconPipeline` 空盒陷阱
+- **问题定位**：`RFC-0060` 指向不存在的跨仓断链；`DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` 误称 `fulgur` C++20 提供可微光栅化且使用虚构命名 `synapse.inversion` / `synapse invert video`；`ReconPipeline.run()` 在 `initial_mesh=None` 时直接返回硬编码 8 顶点盒，导致往返测试存在“恒等 `1.0x` 伪 PASS”隐患。
+- **对齐决议**：补齐仓内 [RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)；明确可微求导归属 `Mitsuba 3` / CPU 解析 Jacobian（`fulgur` 仅做前向校验）；CLI 统一为 `synapse recon invert-video --json`（`"status": "ok"`）；在 `M9 PR-30` 落地 `recon/multiview.py` 彻底替换 8 顶点空盒回退，并在 `PR-31` 用 $\ge 3.0\times$ 破坏性差分测试锁死。
+
+#### [RV-14 | P0] RFC 0061 算子复用纠偏、线性 ACEScg 主链与 PR 编号消歧
+- **问题定位**：`RFC 0061`（`PR-REFINE-01..06` + `hitl_meltdown.py`）与 `DESIGN_LOCAL_REFINEMENT`（`PR-22..24`，与 `M6` 撞车）两套 PR 方案分裂；设计稿使用 `uint8` `crop_rgb`、调用不存在的函数 `laplacian_blend` / `match_border_ring_lab` / `surgical_sequence_composite`；现有 `blend.py` 中 `composite_surgical_sequence` 忽略 `motion_vectors` 参数。
+- **对齐决议**：统一收编为 **`M10 (PR-33 ~ PR-37)`**；主链升级为 `crop_acescg`（仅边界转换 Display sRGB `uint8`）；明确 `_fuse_laplacian_frequency`（频域拆分）与 `laplacian_pyramid_blend`（空域羽化）分工；修正 `border_ring_lab_match`、`composite_optical_increments` 调用并在 `PR-36` 激活 `motion_vectors` 光流 Warp；HITL 熔断直接复用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker`。
+
+#### [RV-15 | P0] RFC 0062 因果 VAE $T=4k+1$ 相位锁死、防漏光重锚定与光度学域对齐
+- **问题定位**：`RFC 0062` 缺少 Layer-B 设计文档；§5.1 拟注入 `3~5 帧` LookDev 预卷，破坏 `Wan 2.1` 3D Causal VAE $T=4k+1$ 时域步长契约，且缺少分界处 $\kappa=1.0$ 硬切镜导致 5500K 棚光污染正片；$\mathcal{L}_1$ 混合线性渲染图与非线性 sRGB 目标图。
+- **对齐决议**：新建 [DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md) 并收编为 **`M11 (PR-38 ~ PR-40)`**；锁死 `n_preroll in {0, 4, 8}` 且正片首帧强制 `cut_score = 1.0`；建立 `radiometric.py` 隔离线性 ACEScg $\mathcal{L}_1$ 与 sRGB `LPIPS`；新增 `[invrender]` extra 与 CPU `AnalyticUVInverseOptimizer` 双轨测试。
+
+#### [RV-16 | P1] ForgeKit `anatomical-refine` 类型同步与 Wire 契约补全
+- **问题定位**：`DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md` 将 `RefinementTrackFrame.metrics` 写成必填，而实际 `forgekit/packages/anatomical-refine/src/types.ts` 已将其设为可选 `metrics?:` 且 5 大 UI 组件脚手架（`v0.1.0`）已落盘但缺跨端 Wire 契约。
+- **对齐决议**：同步 `metrics?:` 字段，补充 `synapse.refine_session.v1.0`（`BundleManifest` Stage `anatomical_refine`）跨端协议并于 `M10 PR-37` 联调。
+
+#### [RV-17 | P1] 域随机化因子正名、M5 Stub 收口与 `temporal_warp_error` 量纲收口路线
+- **问题定位**：`PLAN-ALGO-TRAINING-DATA-PIPELINE.md` Action `D1` 错用 `F02_camera_trajectory` 等不存在键名，且遗漏 `WanAdapter._lora_manager` stub 与 `profiles.py`（`8.0/4.0/2.0`）vs `temporal.py`（`[0, 1]` float `0.020/0.015/0.015`）量纲分裂问题。
+- **对齐决议**：统一以 `synapse.bench.conditions` 中 `F01_viewpoint..F11_postprocess` 为唯一因子键，收编入 **`M12 (PR-41 ~ PR-43)`**，`PR-43` 将同一 PR 内原子收敛 `profiles.py`、`DESIGN_REVIEW_AND_ALIGNMENT.md §3.4` 与 `test_profiles_doc_sync.py`。
+
 ---
 
 ## 3. 全仓唯一事实源（Canonical SSOT Contracts）
@@ -141,7 +161,7 @@
 synapse/
 ├── AGENTS.md / CLAUDE.md                # Agent 行为铁律与云端测试规范
 ├── README.md                            # 仓库总览与导航
-├── pyproject.toml                       # 依赖分层: core / image / mesh / metrics / gpu / train / dev
+├── pyproject.toml                       # 依赖分层: core / image / mesh / metrics / gpu / train / invrender / dev
 ├── tools/
 │   ├── wire_guard.py                    # 从 @aether//fgpp (fgpp_types.h) 生成并校验 schema.py
 │   └── data-inspector/                  # [Phase M8] Electron + fulgur Native SHM 可视化检查器
@@ -157,13 +177,29 @@ synapse/
 │   ├── py.typed                         # PEP 561 强类型标记
 │   ├── errors.py                        # SynapseError 异常族、退出码 (0/10/20/30/40/50)、agent_fix_hint
 │   ├── telemetry.py                     # W3C traceparent/tracestate 解析与 MemoryForecaster 显存预检
-│   ├── recon/                           # [RFC 0060] Video-to-3D 几何逆向重建与资产蒸馏
+│   ├── recon/                           # [RFC 0060/0062] Video-to-3D 几何逆向重建与可微闭环
 │   │   ├── geometry.py                  # 2-流形/水密闭合/简并面/自相交 Python Oracle (双轨真值基准)
+│   │   ├── multiview.py                 # [PR-30] MultiViewInitializer (轮廓刻蚀/TSDF 初始化，消除 8 顶点盒陷阱)
 │   │   ├── delight.py                   # Retinex & 球谐本征去光照
 │   │   ├── kinematics.py                # TwoBoneIK & 足底零位移防滑 IK (<0.2cm)
 │   │   ├── tracking.py                  # 4D 稠密点追踪与 6-DoF 相机位姿轨迹求解
 │   │   ├── pipeline.py                  # ReconPipeline 端到端逆向反演串联器
-│   │   └── types.py                     # MeshGeometry, CameraTrajectory, DelightResult, MocapKinematics
+│   │   ├── types.py                     # MeshGeometry, CameraTrajectory, DelightResult, MocapKinematics
+│   │   └── loop/                        # [M11 PR-38..40] RFC 0062 可微逆向与主动协同闭环
+│   │       ├── radiometric.py           # 线性 ACEScg <-> Display sRGB 双向色度/逆色调映射
+│   │       ├── forward_guide.py         # T=4k+1 相位锁定 + κ=1.0 切镜重锚定 (n_preroll∈{0,4,8})
+│   │       ├── mitsuba_optimizer.py     # Dual-Track: Mitsuba 3 ([invrender]) + AnalyticUVInverseOptimizer (CPU)
+│   │       ├── texture_extractor.py     # 多视角 UV 反投影、接缝修复与 OpenPBR 落盘
+│   │       └── closed_loop_runner.py    # 5 步闭环驱动器（回接 RFC 0061 手术刀缝合）
+│   ├── refine/                          # [M10 PR-33..37, RFC 0061] 局部解剖修正与多模型手术刀融合
+│   │   ├── types.py                     # RefinementROI (crop_acescg), FusionMethod(5枚举), RefinementResult
+│   │   ├── roi_tracker.py               # Kalman 平滑 BBox + 2x3 仿射矩阵 M / M⁻¹
+│   │   ├── tiled_executor.py            # 512x512 Tile Bypass 调度器
+│   │   ├── hand.py / face.py            # FGPP 手部先验/MANO + CanonicalAnchorGallery 面部身份保持
+│   │   ├── fusion.py                    # MultiModelRefineFusion (频域金字塔/级联/潜切换/置信度/泊松)
+│   │   ├── stitcher.py                  # ACEScg 手术刀缝合 (M⁻¹ + LAB 环匹配 + 光流 Warp EMA)
+│   │   ├── gates.py                     # 三级质量门禁 + HITL 熔断 (synapse.bridge.hitl) + hard_negatives.jsonl
+│   │   └── pipeline.py                  # LocalRefinementPipeline 总控编排器
 │   ├── fgpp/                            # [M1] @aether//fgpp Python 官方镜像 SDK
 │   │   ├── schema.py                    # 15 标量通道规格、34B/px、Log-Depth、Coarseness Floor、Anchor
 │   │   ├── frame.py                     # CameraParams (行列主序无损互转)、FGPPFrame、FGPPSequence
@@ -211,6 +247,7 @@ synapse/
 │   │   ├── model_loader.py              # 整合自原 models/ (纯 NumPy OBJ + 可选 trimesh glTF 加载)
 │   │   ├── rasterizer.py                # 整合自原 generators/ (纯 NumPy 向量化主路径 + 可选 Numba JIT)
 │   │   ├── registry.py                  # 外部测试资产 SHA256 缓存拉取器
+│   │   ├── domain_randomizer.py         # [M12 PR-41] 11 因子课程域随机化场景生成器 (≥300 变体)
 │   │   ├── bundle_exporter.py           # [M8] 导出标准化 InspectionBundle (inspection.v1.0)
 │   │   └── report.py                    # 零外部依赖自包含离线 HTML 报告生成器
 │   ├── training/                        # [M5] 无状态 LoRA 离线特征预编码与 PEFT 训练核
@@ -254,6 +291,8 @@ synapse/
 | **`synapse`** | `lora` | `synapse lora prepare-data --input <dir> --out-wds <path> [--json]`<br/>`synapse lora train --config <yaml> --dataset <wds> --out <dir> [--json]`<br/>`synapse lora eval --lora-bundle <dir> --scenario <id> [--json]`<br/>`synapse lora merge --base <ckpt> --lora <dir:scale>... --out <ckpt> [--json]` | M5 (`PR-16~19`) |
 | **`synapse`** | `inspect` | `synapse inspect align --ref-image <img> --mesh <glb> --out <pose.json> [--json]`<br/>`synapse inspect eval --ref-image <img> --mesh <glb> --camera <pose.json> [--json]`<br/>`synapse inspect refine --mesh <glb> --report <rep.json> --out <glb> [--json]`<br/>`synapse inspect export-rl-data --journal-dir <dir> --format dpo\|prm --out <jsonl> [--json]`<br/>`synapse inspect evaluate --input-dir <dir> --output-dir <dir> --gate-profile <p> [--views N] [--resolution N] [--json]` ✅ | M6 (`PR-20~23`) |
 | **`synapse`** | `rsi` | `synapse rsi sample-curriculum --round <t> --count <n> --out <dir> [--json]`<br/>`synapse rsi verify --candidate-dir <dir> --fgpp-dir <dir> [--json]`<br/>`synapse rsi build-pairs --verified-dir <dir> --l0-golden <dir> --out <dir> [--json]`<br/>`synapse rsi gate-promote --baseline <json> --candidate <json> [--json]` | M7 (`PR-24~25`) |
+| **`synapse`** | `recon` | `synapse recon invert-video --input <mp4> --output-usd <usda> [--json]` (`M9 PR-32`)<br/>`synapse recon closed-loop --mesh <obj> --cameras <json> --target-video <npy> [--variant analytic_cpu\|cuda_ad_rgb] [--json]` (`M11 PR-40`) | M9 / M11 |
+| **`synapse`** | `refine` | `synapse refine anatomical --input-video <mp4\|dir> --region <face\|left_hand\|right_hand\|all> [--fgpp-dir <dir>] [--session-out <json>] [--json]` | M10 (`PR-37`) |
 | **`synapse`** | `generate` / `view` | `synapse generate ...`（开发合成数据集） / `synapse view <dir>`（本地 `127.0.0.1` 预览） | M1 (`PR-04`) |
 | **`synapse-bench`** | 评测基准套件 | `synapse-bench list [--tier T1..T5] [--json]`<br/>`synapse-bench export-fgpp --scenario <id> --out <dir> [--json]`<br/>`synapse-bench run [--scenario <id> \| --tier <T> \| --all] --adapter <id> [--profile <p>] [--report <html_path>] [--export-bundle <dir>] [--json]`<br/>`synapse-bench evaluate --bundle <inspection_bundle_dir> [--profile <p>] [--json]` | M1 / M4 / M8 |
 
@@ -274,6 +313,9 @@ synapse/
 | `inspect_refine` | `mesh_glb`, `inspection_report` | `refined_mesh.glb` (L1 算法自愈修线) | `PR-23` / PR #24 |
 | `inspect_export_rl` | `journal_dir`, `format` (`dpo`\|`prm`) | `rl_dataset.jsonl` (RFC 0020/0021 训练对) | `PR-23` / PR #24 |
 | `rsi_dual_verify` | `candidate_dir`, `gt_fgpp_dir`, `l0_anchor_manifest` | `verification_verdict.json` + 提纯偏好对记录 | `PR-24` |
+| `video_to_3d_invert` | `video_path`, `sam2_mask_dir`, `rig_type` | `character_asset.usda`, `canonical_mesh.obj`, PBR maps | `M9 (PR-32)` |
+| `anatomical_refine` | `video_frames`, `fgpp_dir`, `anchor_gallery`, `command_ir[]` | `refined_video.mp4`, `refine_session.json`, `hard_negatives.jsonl` | `M10 (PR-37)` |
+| `inverse_render_loop` | `mesh_obj`, `camera_traj`, `target_video`, `preroll_spec` | `optimized_pbr_maps/`, `patched_video.mp4`, `closed_loop_report.json` | `M11 (PR-40)` |
 
 ### 3.4 三级质量门禁统一阈值矩阵（Reconciled Quality Gate Profiles）
 

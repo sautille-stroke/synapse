@@ -2,10 +2,15 @@
 # (Local Anatomical Refinement, Multi-Model Fusion & Industrial Scalpel Stitching Specification & Plan)
 
 - **RFC 编号**: `RFC 0061`
-- **文档状态**: `Proposed Standard (v1.0)`
-- **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`)
+- **文档状态**: `Accepted (v1.1 — Aligned with M10)`
+- **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`, `forgekit`)
+- **关联设计文档 (Layer B)**:
+  - [DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
+  - [DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
+- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M10: PR-33 ~ PR-37`)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
+  - **RFC 0044**: 15 分钟 HITL 工程熔断机制与白模粒度守护（复用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker`）
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`) 与人机协同 (`HITL`) 跨仓编排规约
   - **RFC 0058**: OpenUSD Hydra、MaterialX / OpenPBR 1.0 与 ACEScg 跨平台架构
   - **RFC 0060**: 真实视频逆向 3D 动态数字孪生与联合反演设计规范
@@ -107,7 +112,7 @@ flowchart TD
 #### 手部硬约束注入 (Hand Constraints)
 *   **Track B (FGPP 直通模式，首选)**：
     - 直接从 `fulgur` 导出的 15 通道 OpenEXR 中切出对应的 `CameraLinearDepth.Z` 与 `WorldNormal.XYZ`；
-    - 归一化至 $[0, 1]$ 范围，作为 ControlNet / DiT 辅助通道的绝对硬输入。由于 3D 白模已经具备严格的 21 关节骨骼绑定，生成模型在此硬掩膜下**在几何上完全不可能画出 6 根手指**；
+    - `CameraLinearDepth.Z` 经 `synapse.fgpp.schema.linear_to_log_normalized_depth` 对数映射至 $[0, 1]$，`WorldNormal.XYZ` 经 `synapse.adapters.wan._world_normal_to_camera` 变换到相机空间后由 $[-1, 1] \to [0, 1]$（即 $0.5(N_{\text{cam}}+1)$）作为 ControlNet / DiT 辅助通道的绝对硬输入。由于 3D 白模已经具备严格的 21 关节骨骼绑定，生成模型在此硬掩膜下**在几何上完全不可能画出 6 根手指**；
 *   **Track A (野生视频反演模式)**：
     - 运行 `HandRefiner` (MeshGraphormer)，拟合 MANO 3D 参数化手部网格，生成虚拟深度图与法线图兜底。
 
@@ -133,6 +138,7 @@ flowchart TD
 ```
 
 #### 算子 1: 拉普拉斯金字塔频域分解 (Laplacian Pyramid Multi-Band)
+*   **与现有空间羽化算子的界定**：`synapse.composite.blend.laplacian_pyramid_blend(fg, bg, alpha)` 仅实现“前景/背景按 Alpha 掩膜空域混合”，而非本 RFC 所需的“双源高频/低频频带交叉重组”；因此由 `synapse.refine.fusion` 提供独立的 `_fuse_laplacian_frequency` 算子。
 *   构建 4 层高斯与拉普拉斯金字塔：
     $$L_k(I) = G_k(I) - \text{Expand}(G_{k+1}(I)), \quad k \in \{0, 1, 2, 3\}$$
 *   高频层 $k \in \{0, 1\}$ 采用微观增强模型（CodeFormer / 手部细节 LoRA），低频层 $k \in \{2, 3\}$ 采用全局底模生成物，重构图像：
@@ -155,14 +161,12 @@ flowchart TD
     - 复用 `synapse.composite.mask`，在运动矢量方向进行前向非对称膨胀，边缘采用 $16\text{px}$ 余弦软衰减：
       $$W_{\text{cosine}}(d) = \frac{1}{2}\left(1 + \cos\left(\frac{\pi d}{16}\right)\right), \quad d \in [0, 16]$$
 *   **边界环 CIE LAB 色彩空间传递（Border-ring Match）**：
-    - 复用 `synapse.composite.blend.match_border_ring_lab`，提取掩膜边界外侧 $4 \sim 12\text{px}$ 环形区域的色度与明度分布，计算均值和标准差，对修正图块做仿射色彩映射，彻底消除微弱色偏；
+    - 复用 `synapse.composite.blend.border_ring_lab_match`（默认 `ring_width_px=16`），提取掩膜边界外侧环状区域的色度与明度均值/标准差，对修正图块做仿射色彩映射，使 `border_ring_ciede2000 <= 2.0`；
 *   **ACEScg 浮点光学增量叠加（Optical Increments）**：
-    - 将整个合成阶段置于 Half-Float (FP16) 线性 ACEScg 空间；
-    - 从 CG GBuffer 中提取纯物理计算出的接触阴影（Contact Shadow）与环境光遮蔽（AO），作为乘法项增量叠加回神经修正切片，确保物理阴影不被 AI 抹平；
+    - 全合成链路底层采用 FP16/FP32 场景线性 **ACEScg** 张量（仅在需要送入 LAB / 2D 专修模型边界处显式调用色调映射转 Display sRGB `uint8`）；
+    - 调用 `synapse.composite.blend.composite_optical_increments`，从 FGPP 中提取接触阴影与焦散增量，确保物理光影不被 AI 抹平；
 *   **跨帧光流 EMA 抖动阻尼器（Temporal EMA Damper）**：
-    - 针对连续多帧修正切片，以 $\alpha=0.85$ 进行基于光流对齐的历史帧累加：
-      $$I_{\text{smooth}}(t) = 0.85 \cdot I_{\text{comp}}(t) + 0.15 \cdot \text{Warp}_{t-1 \to t}(I_{\text{smooth}}(t-1))$$
-      彻底压制相邻帧之间的毛孔噪波跳变（Temporal Flicker）。
+    - 调用 `synapse.composite.blend.composite_surgical_sequence`（须在 `PR-36` 激活 `motion_vectors` 非空时的真实前向光流 Warp 路径），以基准系数 $\alpha=0.85$（高速运动光流模长 $>15\text{px}$ 时自适应降为 $0.30$）进行历史帧对齐累加，彻底压制相邻帧之间的闪烁。
 
 ---
 
@@ -183,16 +187,19 @@ Level 3: 3D 骨架重定与资产回滚 (DCC Rigging) ── Blender/Maya 微调
 [工程熔断 (Meltdown)]: 强制终止自动化任务，落盘全量现场现场与 Hard Negative 数据，释放 GPU 资源
 ```
 
-### 5.1 自动化质量评价矩阵 (Quality Gates)
+### 5.1 自动化质量评价矩阵 (Quality Gates) & 非目标/替代权衡
 
-| 评价维度 | 门禁判定指标 | 严格阈值 | 失败响应动作 |
+| 评价维度 | 门禁判定指标 | 严格阈值 (对齐 REVIEW SSOT) | 失败响应动作 |
 |---|---|---|---|
-| **手部解剖拓扑** | 关键点有效手指计数 | 恒等于 5，无交叉断裂 | 触发 Level 2 笔刷介入或回退 3D 白模深度遮罩 |
-| **面部身份保真** | ArcFace Cosine 相似度 | $\ge 0.78$（对比基准肖像） | 提升 PulID 注入权重，降低 Denoising 强度 |
-| **视线对称度** | 左右眼瞳孔凝视向量夹角 | $\Delta \theta_{\text{gaze}} \le 4.5^\circ$ | 引入 FLAME 3DMM 瞳孔坐标硬矫正 |
-| **边缘接缝度** | 缝合外圈 $16\text{px}$ 边界 PSNR | $\ge 38.0\text{ dB}$ | 切换至泊松梯度域融合与更大范围 LAB 匹配 |
-| **时序跳变度** | 时序光流扭曲误差 $E_{\text{temp}}$ | $\le 0.045$ | 增大时序 EMA 衰减系数 $\alpha$，启用时间轴滤波 |
-| **单镜头算力熔断** | 全流程累计推理耗时 | $\le 900\text{ s}$ (15 分钟) | **RFC 0044 硬熔断**：保存 Checkpoint 并通知排班 |
+| **手部解剖拓扑** | 关键点有效手指计数 | 恒等于 `5`，无交叉断裂 | 触发 Level 2 笔刷介入或回退 3D 白模深度遮罩 |
+| **面部身份保真** | ArcFace Cosine 相似度 | 正视锚点 $\ge 0.82$；$45^\circ$ 侧偏 $\ge 0.78$ | 提升 PulID 注入权重，降低 Denoising 强度 |
+| **视线对称度** | 左右眼瞳孔凝视向量夹角 | $\Delta \theta_{\text{gaze}} \le 4.5^\circ$ | 引入 FLAME / 人脸 3D 关键点瞳孔坐标硬矫正 |
+| **边缘接缝与色差** | 缝合外圈 $16\text{px}$ 边界 PSNR<br/>`border_ring_ciede2000` | $\ge 38.0\text{ dB}$<br/>$\le 2.0$（对齐 `profiles.py`） | 切换至泊松梯度域融合与 LAB 边界环匹配 |
+| **时序跳变度** | `temporal_warp_error` (`[0,1]` 归一化光流 RMSE) | Hero $\le 0.015$；Wide $\le 0.020$ | 增大时序 EMA 衰减系数 $\alpha$，启用光流引导 Warp |
+| **单镜头算力熔断** | 全流程累计推理/人工耗时 | $\le 900.0\text{ s}$ (`evaluate_hitl_circuit_breaker`) | 触发 `CircuitBreakerError` (退出码 `40`) 保存 Checkpoint |
+
+- **非目标 (Non-Goals)**：不在全局视频扩散阶段常驻加载所有专修大模型；不在 `synapse` 侧实现 Electron UI 或常驻 HTTP 预览服务（UI 归属 `@dervgen/forgekit-anatomical-refine`，经 RFC 0039 `JobBundle` 通信）。
+- **备选方案权衡**：选用独立 512×512 Tile 切片 + `M⁻¹` 手术刀缝合（而非全画幅 Latent Inpainting），原因在于全画幅受限于 `Wan 2.1` 全局分辨率与高显存占用，难以保留毛孔与指节微观高频纹理；且独立切片便于无损旁路（Bypass）未退化帧。
 
 ### 5.2 Hard Negative 坏样例与数据飞轮闭环 (RSI Integration)
 
@@ -202,29 +209,17 @@ $$\mathcal{T}_{\text{failure}} = \langle \text{Prompt}, I_{\text{defect}}, I_{\t
 
 ---
 
-## 6. 完整落地实施规划 (Implementation Roadmap & Milestones)
+## 6. 实施规划绑定与 CLI 入口 (`M10: PR-33 ~ PR-37`)
 
-本规划分解为 **4 个研发阶段 (Phases)**、共 **6 个可独立合并的 PR (Pull Requests)**，遵循全仓自包含、强类型、零隐藏全局状态与双轨互验规范：
+完整文件清单、函数签名与测试验证方案见 Layer C 实施总览 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M10` 里程碑）**，统一废除早期 `PR-REFINE-01..06` 离散编号并严格复用 `synapse.bridge.hitl` 熔断器（不新建 `hitl_meltdown.py`）：
 
-```
-Phase 1: 基础设施与契约 ─── [PR-REFINE-01] 数据结构契约与 Tile Bypass 调度器
-Phase 2: 解剖专修模型接入 ─┬─ [PR-REFINE-02] FGPP 手部硬约束与 HandRefiner 接入
-                           └─ [PR-REFINE-03] CodeFormer + PulID 脸部专修与画廊检索
-Phase 3: 多模型融合与缝合 ─┬─ [PR-REFINE-04] 多模型多频带与泊松融合核
-                           └─ [PR-REFINE-05] 16px 手术刀逆向缝合与时序阻尼
-Phase 4: 评测门禁与数据闭环 ── [PR-REFINE-06] 三级质量门禁、HITL 熔断器与 RSI 导出器
-```
-
-### PR 任务拆解与交付清单
-
-| PR 编号 | 核心工作内容与模块变更 | 预估代码行数 | 关联依赖 | 验收断言与测试用例 |
-|---|---|---|---|---|
-| **`PR-REFINE-01`** | 建立 `synapse/refine/types.py`（数据契约）、`roi_tracker.py`（卡尔曼平滑 BBox）、`tiled_executor.py`（Tile-based Bypass 调度器） | ~600 行 | 无 | `tests/test_refine_roi.py`：验证卡尔曼滤波在阶跃抖动下的平滑度，验证 $512 \times 512$ 仿射矩阵与其逆矩阵重构精度误差 $< 10^{-4}$ |
-| **`PR-REFINE-02`** | 建立 `synapse/refine/hand.py`：接入 FGPP `CameraLinearDepth.Z` / `WorldNormal.XYZ` 作为硬控制通道；封装 `HandRefiner` 与 DWPose 21 关节手部接口 | ~550 行 | PR-01 | `tests/test_refine_hand.py`：利用模拟坏手图像验证 MANO 网格与 FGPP 深度对齐，断言修复后有效手指数量 $\equiv 5$ |
-| **`PR-REFINE-03`** | 建立 `synapse/refine/face.py`：接入轻量 CodeFormer 算子、PulID/ArcFace 512 维特征投影与 `CanonicalAnchorGallery` 多视角加权检索器 | ~650 行 | PR-01 | `tests/test_refine_face.py`：在偏转 45° 视角下断言人脸特征与锚定画廊的余弦相似度 $\ge 0.82$，验证斜视眼位校准 |
-| **`PR-REFINE-04`** | 建立 `synapse/refine/fusion.py`：实现拉普拉斯金字塔多频带融合算子、空间距离场置信度加权算子与泊松梯度域无缝克隆算子 | ~700 行 | PR-01~03 | `tests/test_refine_fusion.py`：测试高低频分离重组，断言低频色彩偏差 $\le 1.5$ CIE $\Delta E$，高频梯度保留率 $\ge 92\%$ |
-| **`PR-REFINE-05`** | 建立 `synapse/refine/stitcher.py`：串联 `blend.py` $16\text{px}$ 手术刀掩膜、边界环 LAB 颜色匹配、ACEScg 浮点光学增量叠加与光流 EMA 时序平滑器 | ~600 行 | PR-04 | `tests/test_refine_stitcher.py`：全流程 60 帧视频切片贴合，断言边界接缝 $16\text{px}$ 环内 PSNR $\ge 38\text{ dB}$，时序抖动误差 $E_{\text{temp}} \le 0.045$ |
-| **`PR-REFINE-06`** | 建立 `synapse/refine/gates.py` 与 `hitl_meltdown.py`：落地三级质量门禁、RFC 0044 15分钟熔断状态机，以及 RSI Hard Negative 偏好数据导出器 | ~500 行 | PR-05 | `tests/test_refine_gates.py`：模拟超时场景触发熔断状态码 `40`；断言坏帧正确输出至 `hard_negatives.jsonl` |
+| PR 编号 | 核心交付范畴 | 目标模块 / CLI Stage |
+|---|---|---|
+| **`PR-33`** | 解剖 ROI 追踪与切片契约 | `synapse/refine/types.py`, `roi_tracker.py`, `tiled_executor.py` |
+| **`PR-34`** | FGPP 手部硬先验与面部正交锚定画廊 | `synapse/refine/hand.py`, `synapse/refine/face.py` |
+| **`PR-35`** | 5 类多模型协同融合核（含频域分解与泊松梯度求解） | `synapse/refine/fusion.py` |
+| **`PR-36`** | 激活光流 Warp 的 ACEScg 手术刀缝合、三级门禁与 RSI 导出 | `synapse/refine/stitcher.py`, `gates.py`, `composite/blend.py` |
+| **`PR-37`** | CLI 与 Worker 接线 + ForgeKit 数据会话联调 | `synapse refine anatomical --json`、`anatomical_refine` Stage、`refine_session.v1.0` |
 
 ---
 

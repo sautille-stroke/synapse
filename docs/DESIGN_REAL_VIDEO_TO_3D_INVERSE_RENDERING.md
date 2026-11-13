@@ -1,9 +1,10 @@
 # Synapse 真实视频逆向 3D 动态数字孪生与联合反演设计规范 (Real-World Video-to-3D Dynamic Digital Twin & Joint Inverse Rendering Specification)
 
-- **文档状态**: `Approved Design Spec (v1.0)`
-- **关联 RFC**: [RFC 0060 (DervGen 架构总览)](../../all-overview/rfcs/0060-real-video-to-3d-digital-twin-joint-inverse-rendering.md)
-- **修订日期**: 2026-11-12
-- **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `vg-core`, `fulgur`, `caelum-core`, `aether`)
+- **文档状态**: `Approved Design Spec (v1.1)`
+- **关联 RFC**: [RFC 0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)
+- **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M9: PR-30 ~ PR-32`)
+- **修订日期**: 2026-11-13
+- **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联基线**:
   - [docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md) (整体目标审查与生态架构定界)
   - [docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) (行业差距分析与代偿设计)
@@ -125,9 +126,12 @@ $$\min_{\Theta} \mathcal{E}_{\text{total}}(\Theta)$$
 $$\mathcal{E}_{\text{total}} = \lambda_{\text{rgb}} \mathcal{L}_{\text{rgb}} + \lambda_{\text{mask}} \mathcal{L}_{\text{mask}} + \lambda_{\text{depth}} \mathcal{L}_{\text{depth}} + \lambda_{\text{track}} \mathcal{L}_{\text{track}} + \lambda_{\text{phys}} \mathcal{L}_{\text{phys}} + \lambda_{\text{reg}} \mathcal{L}_{\text{reg}}$$
 
 #### 1. 多帧辐射与感知一致性项 ($\mathcal{L}_{\text{rgb}}$)
-利用 `fulgur` C++20 可微渲染 Pass 计算投影图像：
-$$\mathcal{L}_{\text{rgb}} = \frac{1}{T} \sum_{t=1}^{T} \left( \frac{1}{|\Omega_t|} \sum_{\mathbf{p} \in \Omega_t} |\hat{I}_t(\mathbf{p}) - I_t(\mathbf{p})| + \alpha_{\text{lpips}} \text{LPIPS}(\hat{I}_t, I_t) \right)$$
-其中 $\hat{I}_t = \mathcal{R}_{\text{fulgur}}(\mathbf{V}^{(t)}, \mathbf{F}, \mathcal{A}_{\text{PBR}}, P_t)$。
+利用 `Mitsuba 3` 可微路径追踪/光栅核（`[invrender]` 轨道）或纯 NumPy 解析 UV Jacobian（CPU 代理轨道）计算可微渲染投影；`fulgur` 作为非可微前向实时管线仅用于最终 FGPP 真值导出与视觉校验：
+$$\mathcal{L}_{\text{rgb}} = \frac{1}{T} \sum_{t=1}^{T} \left( \frac{1}{|\Omega_t|} \sum_{\mathbf{p} \in \Omega_t} |\hat{I}_{t,\text{lin}}(\mathbf{p}) - \mathcal{T}_{\text{inv}}(I_t)(\mathbf{p})| + \alpha_{\text{lpips}} \text{LPIPS}(\mathcal{T}_{\text{disp}}(\hat{I}_{t,\text{lin}}), I_t) \right)$$
+其中 $\hat{I}_{t,\text{lin}} = \mathcal{R}_{\text{diff}}(\mathbf{V}^{(t)}, \mathbf{F}, \mathcal{A}_{\text{PBR}}, P_t)$ 为场景线性（ACEScg）渲染输出，$\mathcal{T}_{\text{inv}}$ 为逆色调映射/去伽马算子，$\mathcal{T}_{\text{disp}}$ 为 ACEScg $\to$ Display sRGB 映射。
+
+> [!WARNING]
+> **工程防坑契约（`ReconPipeline` 空盒陷阱）**：`ReconPipeline.run()` 在 `initial_mesh=None` 时**严禁**回退到硬编码 `8` 顶点默认立方体。Stage 2 必须通过 `synapse.recon.multiview.MultiViewInitializer`（`PR-30`）由多视角轮廓与深度图构造真实初始网格，否则往返差分门禁会产生“恒定 `1.0x` 伪 PASS”假象。
 
 #### 2. SAM 2 轮廓剪影交并比项 ($\mathcal{L}_{\text{mask}}$)
 $$\mathcal{L}_{\text{mask}} = 1 - \frac{1}{T} \sum_{t=1}^T \frac{\sum_{\mathbf{p}} \hat{M}_t(\mathbf{p}) \cdot M_t^{\text{SAM2}}(\mathbf{p})}{\sum_{\mathbf{p}} \hat{M}_t(\mathbf{p}) + M_t^{\text{SAM2}}(\mathbf{p}) - \hat{M}_t(\mathbf{p}) \cdot M_t^{\text{SAM2}}(\mathbf{p})}$$
@@ -184,7 +188,7 @@ stateDiagram-v2
 
     state R3_ArticulatedFit {
         [*] --> DifferentiableRaster: 冻结拓扑, 释放 θ_t, t_t, ΔV_t
-        DifferentiableRaster --> LossBackprop: fulgur 可微光栅化残差反传
+        DifferentiableRaster --> LossBackprop: Mitsuba 3 / 解析 Jacobian 残差反传
         LossBackprop --> IK_Constraint: vg-core 硬锁足底零滑移与骨长
         IK_Constraint --> Gate3_Check: 门禁 3: Silhouette IoU ≥ 0.90, 滑步 ≤ 0.2cm
     }
@@ -232,7 +236,7 @@ stateDiagram-v2
 - **重型重拓扑 / 关节刚体 IK / 多视角贴图缝合**：在生产容器中通过 `synapse.bridge.vg_bridge` 调用 C++20/CUDA 重型算子。
 
 ```
-                    Python (synapse.inversion)
+                    Python (synapse.recon)
                          │ (PyCapsule / NumPy Buffer 零拷贝)
                          ▼
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -290,7 +294,7 @@ VG_API Result<TextureAtlasBuffer> StitchTextureAtlasGraphCut(
 ### 6.1 子命令定义
 
 ```bash
-synapse invert video \
+synapse recon invert-video \
   --input /workspace/inputs/wild_footage.mp4 \
   --output-usd /workspace/outputs/character_asset.usda \
   --canonical-mesh /workspace/outputs/canonical_mesh.obj \
@@ -303,8 +307,9 @@ synapse invert video \
 
 ```json
 {
-  "status": "success",
+  "status": "ok",
   "exit_code": 0,
+  "trace_id": "tr_98741a2b",
   "execution_metrics": {
     "total_elapsed_sec": 142.5,
     "round_breakdown": {
@@ -357,7 +362,7 @@ synapse invert video \
   "exit_code": 40,
   "error_type": "QualityGateError",
   "message": "DUST3R camera pose solver failed to converge: static reprojection error 3.42px exceeds gate (1.5px)",
-  "agent_fix_hint": "Expand SAM2 static background mask dilation and re-run: synapse invert video --input wild_footage.mp4 --sam2-dilation 15 --camera-fallback colab_bundle",
+  "agent_fix_hint": "Expand SAM2 static background mask dilation and re-run: synapse recon invert-video --input wild_footage.mp4 --sam2-dilation 15 --camera-fallback colab_bundle",
   "details": {
     "error_category": "CameraDriftError",
     "recommended_action": "expand_sam2_static_mask",
@@ -365,7 +370,7 @@ synapse invert video \
       "mask_dilation_kernel": 15,
       "confidence_threshold": 0.85
     },
-    "cli_override_command": "synapse invert video --input wild_footage.mp4 --sam2-dilation 15 --camera-fallback colab_bundle"
+    "cli_override_command": "synapse recon invert-video --input wild_footage.mp4 --sam2-dilation 15 --camera-fallback colab_bundle"
   }
 }
 ```

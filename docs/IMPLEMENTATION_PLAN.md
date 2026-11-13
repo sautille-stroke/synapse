@@ -1,22 +1,25 @@
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v2.0`（全量统合 M1–M8 共 8 大阶段、30 个原子 PR，并拆分为 5 份精细化执行子计划）
-- **修订日期**: 2026-11-11
+- **计划版本**: `v3.0`（全量统合 **M1–M12** 共 12 大里程碑、**44 个原子 PR**，涵盖 Horizon 1–3 与 6 份精细化执行子计划）
+- **修订日期**: 2026-11-13
 - **操作模型标识**: `[gemini4]`
 - **前置架构审查与跨文档对齐决议**:
-  - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（十大跨文档冲突纠偏 `RV-01~RV-10`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
+  - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
   - **[docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)**（五条绝对负向红线 `NG-1~NG-5` 与跨仓边界定界）
 - **细分可执行子计划导航（Subdivided Actionable Sub-Plans）**:
-  1. ↳ **[PLAN-M1-M2](plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md)**：地基清零、`@aether//fgpp` 线格式闭环、CLI 基座与双轨视频生成适配器（`PR-01` ~ `PR-08`）
-  2. ↳ **[PLAN-M3-M4](plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md)**：软肩 ACEScg 风格对齐、`3D ∪ SAM2` 手术刀合成、`vg-core` 桥接、`JobBundleWorker` 与 30 场景基准（`PR-09` ~ `PR-15`）
-  3. ↳ **[PLAN-M5](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)**：合成数据离线潜空间缓存、5 维正交解耦 LoRA 训练与 Cryptomatte 空间隔离调度（`PR-16` ~ `PR-19`）
-  4. ↳ **[PLAN-M6-M7](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)**：3D 微距质检、Visual Jev 强类型裁决、RL 样本导出与物理驱动递归自我提升 RSI 飞轮（`PR-20` ~ `PR-25`）
-  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + `fulgur` Native SHM 五视图可视化检查器（`PR-26` ~ `PR-29`）
-- **专项聚焦执行计划（Focused Assault Plans）**:
-  - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)**：算法核心、LoRA 训练与数据流水线三战役攻坚计划（横跨 M2/M3/M5/M6-M7，含 5 项参数纠偏、3 项跨文档阈值收敛决议与 4 项超参数锁定）
-  - ↳ **[PLAN-REVIEW-PR17-PR18](plans/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（DPO 符号、Fail-Closed、SSOT 阈值、Stage 解耦）
-  - ↳ **[PLAN-3D-ROUNDTRIP-VERIFICATION](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)**：3D 多视角生成与逆向重建闭环差分验证计划
-  - ↳ **[DESIGN-REAL-VIDEO-TO-3D (RFC 0060)](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：真实视频逆向 3D 动态数字孪生与联合反演设计规范 (RFC 0060)
+  1. ↳ **[PLAN-M1-M2](plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md)**：地基清零、`@aether//fgpp` 线格式闭环、CLI 基座与双轨视频生成适配器（`PR-01` ~ `PR-08` ✅）
+  2. ↳ **[PLAN-M3-M4](plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md)**：软肩 ACEScg 风格对齐、`3D ∪ SAM2` 手术刀合成、`vg-core` 桥接、`JobBundleWorker` 与 30 场景基准（`PR-09` ~ `PR-15` ✅）
+  3. ↳ **[PLAN-M5](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)**：合成数据离线潜空间缓存、5 维正交解耦 LoRA 训练与 Cryptomatte 空间隔离调度（`PR-16` ~ `PR-19` ✅）
+  4. ↳ **[PLAN-M6-M7](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)**：3D 微距质检、Visual Jev 强类型裁决、RL 样本导出与物理驱动递归自我提升 RSI 飞轮（`PR-20` ~ `PR-25` ✅）
+  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + `fulgur` Native SHM 五视图可视化检查器（`PR-26` ~ `PR-29` ✅）
+  6. ↳ **[PLAN-M9-M12 (Horizon 3)](plans/PLAN-M9-M12-HORIZON3-LANDING.md)**：RFC 0060 多视角真差往返、RFC 0061 解剖局部精修、RFC 0062 可微逆向闭环与 M12 全域收口（`PR-30` ~ `PR-43` 📋）
+- **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
+  - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
+  - ↳ **[PLAN-REVIEW-PR17-PR18](plans/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅）
+  - ↳ **[PLAN-3D-ROUNDTRIP-VERIFICATION](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)** (`v1.1`)：3D 多视角生成与逆向重建 `>= 3.0x` 差分验证计划（绑定 `M9 PR-30~31`）
+  - ↳ **[RFC 0060](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)** · **[DESIGN (RFC 0060)](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：真实视频逆向 3D 动态数字孪生 (`M9`)
+  - ↳ **[RFC 0061](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)** · **[DESIGN (RFC 0061)](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)** · **[ForgeKit Tooling](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)**：局部解剖修正与手术刀缝合 (`M10`)
+  - ↳ **[RFC 0062](RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)** · **[DESIGN (RFC 0062)](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)**：3D 引导生成与可微逆向双向闭环 (`M11`)
 
 ---
 
@@ -25,6 +28,7 @@
 1. **双地平线递进、单 PR 严格控量**：
    - **Horizon 1（核心互操作 SDK 与基准闭环，`M1–M4`，16 个 PR）**：优先打通 FGPP 15 通道无损互通、双轨适配器、ACEScg 风格合成、`vg-core` 薄桥接、`JobBundleWorker` 与 30 场景 `Synapse-Bench`；
    - **Horizon 2（工业飞轮、PEFT 进化与桌面检查器，`M5–M8`，14 个 PR）**：在核心底座稳固后，并行铺开 LoRA 训练管线、3D 智能质检、物理驱动 RSI 自演进闭环与原生 3D 检查器；
+   - **Horizon 3（视频逆向孪生、解剖精修、可微闭环与全域收口，`M9–M12`，14 个 PR）**：落实 `RFC 0060/0061/0062` 双向闭环与 Horizon-2 遗留算法接线，闭合多视角反演、512×512 手术刀局部精修、Mitsuba 3/解析 Jacobian 可微逆渲染及 `profiles` 量纲收口；
    - 每个原子 PR 净增代码严格控制在 **`300 ~ 750` 行**，必须使用 `/tmp/synapse-wt-<branch>` 独立 Git Worktree 走 PR Squash Merge 流程。
 2. **零 GPU 阻塞日常回归（`ubuntu24` P0 主力机优先）**：
    - 依托纯 NumPy 向量化软光栅（`PR-01`）与确定性 `MockVideoAdapter`（`PR-05`）及 Mock Transport/推理桩，**100% 的协议、调度、融合、质检编排、RSI 门禁单测均可在云端 CPU 主力机 `ubuntu24` 上秒级全量回归**；真实大模型权重与 CUDA 算子仅在 `win-dev` 或 `foundary` 容器做专项集成验收。
@@ -33,11 +37,11 @@
 
 ---
 
-## 2. 全局 8 阶段 30-PR 依赖拓扑图 (Global Dependency DAG)
+## 2. 全局 12 阶段 44-PR 依赖拓扑图 (Global Dependency DAG)
 
 ```mermaid
 flowchart LR
-    subgraph H1 ["Horizon 1: 核心互操作底座与 Synapse-Bench 闭环 (Weeks 1–8, 16 PRs)"]
+    subgraph H1 ["Horizon 1: 核心互操作底座与 Synapse-Bench 闭环 (Weeks 1–8, 16 PRs ✅)"]
         subgraph M1 ["M1: 契约与基座"]
             PR01["PR-01: bench 修复/纯NumPy光栅/懒加载"]
             PR02["PR-02: fgpp.schema & wire_guard"]
@@ -89,6 +93,31 @@ flowchart LR
         end
     end
 
+    subgraph H3 ["Horizon 3: 逆向孪生、解剖精修与可微闭环 (Waves 8–11, 14 PRs 📋)"]
+        subgraph M9 ["M9: 视频逆向 3D 孪生 (RFC 0060)"]
+            PR30["PR-30: recon/multiview 初始化"]
+            PR31["PR-31: 双轨反演 & >=3.0x 真差测试"]
+            PR32["PR-32: CLI invert-video & USD回灌"]
+        end
+        subgraph M10 ["M10: 局部解剖精修 (RFC 0061)"]
+            PR33["PR-33: refine/types & Kalman Tile"]
+            PR34["PR-34: Hand FGPP & Face Gallery"]
+            PR35["PR-35: MultiModel 5类融合核"]
+            PR36["PR-36: 光流Warp + 手术刀 + 门禁"]
+            PR37["PR-37: CLI anatomical & ForgeKit Wire"]
+        end
+        subgraph M11 ["M11: 可微逆渲染闭环 (RFC 0062)"]
+            PR38["PR-38: 4k+1/κ=1.0引导 & 光度变换"]
+            PR39["PR-39: Mitsuba [invrender] + CPU Jacobian"]
+            PR40["PR-40: ClosedLoopRunner & 手术刀回接"]
+        end
+        subgraph M12 ["M12: Horizon-2 遗留与契约收口"]
+            PR41["PR-41: 11因子 DR & FeatureStore门禁"]
+            PR42["PR-42: WanAdapter↔MultiLoRA接线"]
+            PR43["PR-43: L_normal mask & 量纲统一"]
+        end
+    end
+
     PR01 --> PR04
     PR02 --> PR03 --> PR04
     PR03 --> PR05 --> PR06 --> PR07
@@ -106,6 +135,13 @@ flowchart LR
     PR14b --> PR22
     PR19 & PR23 --> PR24 --> PR25
     PR14a & PR15 --> PR26 --> PR27 --> PR28 --> PR29
+
+    PR25 --> PR30 --> PR31 --> PR32
+    PR11 & PR12 --> PR33 --> PR34 --> PR35 --> PR36 --> PR37
+    PR16 --> PR42 --> PR38 --> PR39 --> PR40
+    PR36 --> PR40
+    PR15 & PR17 --> PR41
+    PR18 & PR13 --> PR43
 ```
 
 ---
@@ -122,11 +158,15 @@ flowchart LR
 | **Wave 4** | `PR-07` (`wan.py`) ∥ `PR-08` (`cloud.py`) ∥ `PR-11` (`composite/blend.py`) ∥ `PR-13` (`metrics/`) | M2 & M3 收官，16 项四维指标与三级门禁档位就绪 |
 | **Wave 5** | `PR-14a` (`bench_runner.py`) → [`PR-14b` (`bundle_worker.py`) ∥ `PR-15` (`bench/` 30 场景) ∥ `PR-26` (`bundle_exporter.py`)] | **Horizon 1 全线收官**：容器单步 Worker 与 30 场景基准跑通 |
 | **Wave 6** | **Track L** `PR-16→19` (`adapters/lora` + `training/`) ∥ **Track I** `PR-20→23` (`inspect/`) ∥ **Track D** `PR-27→29` (`tools/data-inspector/`) | 3 条独立业务线并行交付 LoRA 微调、3D Visual Jev 质检与桌面检查器 |
-| **Wave 7** | `PR-24` → `PR-25` (`rsi/`) | **Horizon 2 终局闭环**：物理驱动 RSI 自演进与单调递增门禁合龙 |
+| **Wave 7** | `PR-24` → `PR-25` (`rsi/`) | **Horizon 2 终局闭环**：物理驱动 RSI 自演进与单调递增门禁合龙 ✅ |
+| **Wave 8** | `PR-30` (`recon/multiview`) ∥ `PR-33` (`refine/types+roi`) ∥ `PR-41` (`bench/DR`) ∥ `PR-42` (`wan+lora`) | **Horizon 3 启动**：解除空盒陷阱、建立 `refine/` 与 DR 底座、消除 M5 Stub |
+| **Wave 9** | `PR-31` (`roundtrip`) ∥ `PR-34→35` (`hand/face+fusion`) ∥ `PR-38` (`loop/guide`) ∥ `PR-43` (`losses+profiles`) | 核心算子、`>= 3.0x` 真差门禁、VAE 相位锁定及 `temporal_warp_error` 量纲收口 |
+| **Wave 10** | `PR-32` (`invert-video CLI`) ∥ `PR-36` (`blend` 光流 Warp + 手术刀/门禁) ∥ `PR-39` (双轨可微反演) | `M9` 收官、光流 Warp 激活及 CPU/GPU 双轨反演求解就绪 |
+| **Wave 11** | `PR-37` (`synapse refine` + `forgekit` Wire) ∥ `PR-40` (`ClosedLoopRunner` + 手术刀回接) | **Horizon 3 全线收官**：三大 RFC 闭环与 ForgeKit 会话联调落地 |
 
 ---
 
-## 4. 全量 30-PR 落地追踪与“防静默失败三问”验收总表
+## 4. 全量 44-PR 落地追踪与“防静默失败三问”验收总表
 
 ### 4.1 Horizon 1：核心互操作 SDK、无状态 Worker 与 `Synapse-Bench`（M1–M4，共 16 PRs，约 21.5 人天）
 
@@ -168,6 +208,25 @@ flowchart LR
 | **[PR-28](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md#pr-28)** | M8 | 骨骼动画播放器（八面体 Gizmo + 48f 锚点帧标记）+ 视频与 FGPP 通道叠加统一时间轴 | PR-27 | ~620 行 | 2.0d | Bundle 加载测试 `test-bundle-loading.js` 全绿 | ✅ 已实施 |
 | **[PR-29](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md#pr-29)** | M8 | C++ `ComparisonEngine`（双模型叠加/Ghost/Wipe）+ `MetricsBridge` 仪表盘集成 | PR-28 | ~650 行 | 2.0d | Electron 前后端桥接与 IPC 安全沙箱 | ✅ 已实施 |
 
+### 4.3 Horizon 3：视频逆向孪生、解剖精修、可微闭环与全域收口（M9–M12，共 14 PRs，详见 [PLAN-M9-M12](plans/PLAN-M9-M12-HORIZON3-LANDING.md)）
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M9-M12](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-30](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-30)** | M9 | `recon/multiview.py` (`MultiViewInitializer`) 解除 `initial_mesh=None` 时 8 顶点盒陷阱 | PR-25 | ~420 行 | 1.5d | `tests/test_recon_multiview.py` (非盒真网格重构) | 📋 已规划 |
+| **[PR-31](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-31)** | M9 | 双轨去光照反演 + `PLAN-3D-ROUNDTRIP` 阶段 2–3 自动化与 Clean/Corrupted 真差验证 | PR-30 | ~460 行 | 1.5d | `tests/test_roundtrip_reconstruction.py` (`>= 3.0x`) | 📋 已规划 |
+| **[PR-32](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-32)** | M9 | CLI `synapse recon invert-video --json` + `video_to_3d_invert` Stage + `.usda` 回灌 | PR-31 | ~380 行 | 1.0d | `tests/test_recon_invert_cli.py` + `test_cli.py` | 📋 已规划 |
+| **[PR-33](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-33)** | M10 | `refine/{types, roi_tracker, tiled_executor}.py` (`crop_acescg`, `FusionMethod` 5 枚举) | PR-11, 12 | ~520 行 | 1.5d | `tests/test_refine_roi.py` (逆矩阵误差 $<10^{-4}\text{px}$) | 📋 已规划 |
+| **[PR-34](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-34)** | M10 | `refine/{hand, face}.py` (复用 FGPP 对数深度/相机法线 + `CanonicalAnchorGallery`) | PR-33 | ~560 行 | 1.5d | `tests/test_refine_hand_face.py` (ArcFace $\ge 0.82/0.78$) | 📋 已规划 |
+| **[PR-35](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-35)** | M10 | `refine/fusion.py` (`_fuse_laplacian_frequency` 频域金字塔 + 泊松梯度等 5 策略) | PR-34 | ~540 行 | 1.5d | `tests/test_refine_fusion.py` (频域/泊松边界 $\Delta E \le 1.5$) | 📋 已规划 |
+| **[PR-36](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-36)** | M10 | 激活 `blend.py` `motion_vectors` Warp + `stitcher.py` + `gates.py` (复用 `bridge/hitl.py` 900s) | PR-35 | ~620 行 | 2.0d | `tests/test_refine_stitcher_gates.py` (`temporal_warp <= 0.015`) | 📋 已规划 |
+| **[PR-37](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-37)** | M10 | `refine/pipeline.py` + CLI `synapse refine anatomical` + `anatomical_refine` Stage + Wire 联调 | PR-36 | ~440 行 | 1.0d | `tests/test_refine_cli_wire.py` (`refine_session.v1.0`) | 📋 已规划 |
+| **[PR-38](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-38)** | M11 | `recon/loop/{types, radiometric, forward_guide}.py` (`n_preroll∈{0,4,8}`, $4k+1$, $\kappa=1.0$) | PR-42 | ~460 行 | 1.5d | `tests/test_recon_loop_guide.py` (防漏光与相位锁死) | 📋 已规划 |
+| **[PR-39](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-39)** | M11 | `recon/loop/{mitsuba_optimizer, texture_extractor}.py` + `[invrender]` extra (GPU+CPU 双轨) | PR-38 | ~640 行 | 2.0d | `tests/test_recon_loop_optimizer.py` ($\Delta\text{PSNR} \ge 10\text{dB}$) | 📋 已规划 |
+| **[PR-40](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-40)** | M11 | `closed_loop_runner.py` + CLI `synapse recon closed-loop` + 联动 RFC 0061 手术刀缝合 | PR-36, 39 | ~420 行 | 1.0d | `tests/test_recon_closed_loop_e2e.py` (边界 $\Delta E_{00} \le 2.0$) | 📋 已规划 |
+| **[PR-41](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-41)** | M12 | `bench/domain_randomizer.py` (`F01..F11` $\ge 300$ 场景) + `feature_store.py` 5 项清洗门禁 | PR-15, 17 | ~480 行 | 1.5d | `tests/test_domain_randomizer_and_gate.py` | 📋 已规划 |
+| **[PR-42](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-42)** | M12 | `adapters/wan.py` 闭合 `_lora_manager` stub，挂载 `MultiLoRAManager` 与 `Cryptomatte` 隔离 | PR-16 | ~360 行 | 1.0d | `tests/test_wan_lora_wiring.py` + `test_wan_adapter.py` | 📋 已规划 |
+| **[PR-43](plans/PLAN-M9-M12-HORIZON3-LANDING.md#pr-43)** | M12 | `losses.py` `mask` 扩展 + `profiles.py` `temporal_warp_error` 量纲收口 (`0.020/0.015/0.015`) | PR-13, 18 | ~340 行 | 1.0d | `tests/test_profiles_doc_sync.py` + 全量回归 | 📋 已规划 |
+
 ---
 
 ## 5. 全局关键风险与防御机制矩阵 (Master Risk Register)
@@ -180,6 +239,10 @@ flowchart LR
 | **RK-04** | 多 LoRA 叠加导致角色面部被风格滤镜偏色或参数冲突崩坏 | M5 (`PR-16`) | `MultiLoRAManager` 利用 `Cryptomatte.ID` 在潜空间做前景角色与背景风格掩膜隔离，并实施正交投影去冲突 |
 | **RK-05** | 自生成数据自训引发回音室效应与灾难性遗忘（Model Collapse） | M7 (`PR-24/25`) | 强制要求通过物理闭式验算方可入池，强制混入 $\ge 20\%$ 人类专家 L0 黄金样本，且 30 场景单调递增零退化才允许晋升 |
 | **RK-06** | `tools/data-inspector` 跨仓引用 `fulgur` 私有目标导致构建断裂 | M8 (`PR-27`) | 独立 `native/MODULE.bazel` 仅依赖 `@fulgur` 和 `@aether//pal:shm` 公开目标（`RV-03`） |
+| **RK-07** | `ReconPipeline` 缺少 `initial_mesh` 时退回硬编码 8 顶点盒，导致往返差分呈 `1.0x` 伪 PASS | M9 (`PR-30/31`) | 落地 `MultiViewInitializer` 并通过 `>= 3.0x` 缺陷注入差分比强断言（`RV-13`） |
+| **RK-08** | RFC 0062 LookDev 预卷破坏 3D Causal VAE $T=4k+1$ 且 5500K 棚光污染正片 | M11 (`PR-38`) | 强制 `n_preroll in {0, 4, 8}`，并在正片首帧注入 $\kappa=1.0$ 硬切镜重锚定彻底隔断跨窗棚光渗漏（`RV-15`） |
+| **RK-09** | `refine` 使用 `uint8` 截断或线性渲染直接与 sRGB 视频算 $\mathcal{L}_1$ 造成色偏失配 | M10/M11 (`PR-33,38`) | 全程保留线性 ACEScg 主链，仅在 2D 模型/LPIPS/LAB 边界按需显式转换色彩空间（`RV-14/15`） |
+| **RK-10** | `composite_surgical_sequence` 忽略 `motion_vectors` 且 `profiles.py` 滞留 `8.0` 历史量纲 | M10/M12 (`PR-36,43`) | `PR-36` 激活真实光流双线性 Warp，`PR-43` 将 `temporal_warp_error` 原子对齐至 `[0,1]` 归一化量纲 |
 
 ---
 

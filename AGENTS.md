@@ -83,8 +83,8 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 ## 5. 核心文档导航
 
 - **整体设计深度评审与跨文档契约对齐（必读 SSOT）**：[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)
-- **全景可落地实施总计划（M1–M8, 30 PRs）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
-  - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)
+- **全景可落地实施总计划（M1–M12, 44 PRs）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+  - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md)
 - **架构审查与跨仓边界定界**：[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)
 - **行业成熟流水线对比差距与代偿设计规范**：[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
 - **行业前沿技术追踪、演进趋势与架构启示录**：[docs/INDUSTRY_TRACKING_AND_TRENDS.md](docs/INDUSTRY_TRACKING_AND_TRENDS.md)
@@ -94,12 +94,13 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **3D 建模智能质检与精修数据飞轮设计规范**：[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
 - **3D 生成模型质量提升方法论、评估体系全景矩阵与训练数据工程规范**：[docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)
 - **3D 模型评估体系完整交付清单与 Review 指南**：[docs/REVIEW_3D_EVAL_DELIVERY.md](docs/REVIEW_3D_EVAL_DELIVERY.md)
-- **真实视频逆向 3D 动态数字孪生与联合反演设计规范 (RFC 0060)**：[docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
-- **算法、训练与数据流水线攻坚执行计划**：[docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md](docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)
+- **真实视频逆向 3D 动态数字孪生与联合反演规范 (RFC 0060)**：[RFC 0060 规范](docs/RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [详细设计](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
+- **算法、训练与数据流水线攻坚执行计划 (`v2.0`)**：[docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md](docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)
 - **PR #17 / PR #18 联合评审与整改落地报告**：[docs/plans/PLAN-REVIEW-PR17-PR18.md](docs/plans/PLAN-REVIEW-PR17-PR18.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
-- **局部解剖智能修正与多模型融合设计规范 (RFC 0061)**：[docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md) · [RFC 0061 规划全文](docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
+- **局部解剖智能修正与多模型融合设计规范 (RFC 0061)**：[RFC 0061 规范](docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
 - **ForgeKit 解剖局部精修工具链设计规范**：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
+- **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (RFC 0062)**：[RFC 0062 规范](docs/RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
