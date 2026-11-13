@@ -1,6 +1,22 @@
 /// @file mesh_checks.cc
 /// @brief Implementation of the synapse native geometry validation kernels.
 ///
+/// @note **Production C++ geometry kernel** (Issue #34, area ①)
+///
+///   This is the **production** native geometry validation backend, compiled
+///   via pybind11 into `synapse._c_geometry` and used by the Tier 0 geometry
+///   gate (`synapse.inspect.geometry_gate`) for actual mesh quality checks.
+///
+///   The companion Python implementation (`synapse.recon.geometry`) serves
+///   exclusively as a **Ground Truth Oracle** for algorithm correctness
+///   verification — it does NOT participate in normal production workflows.
+///   Parity between the two is enforced by `test_geometry_oracle_parity.py`.
+///
+///   PR #37 (refactor/geo-use-aether-checks) will delegate shared checks
+///   to @aether//geo once aether PR #216 lands, keeping synapse-specific
+///   logic (e.g. floating island pruning thresholds) here.
+///   That PR is blocked on aether PR #216.
+///
 /// Algorithm summary
 /// -----------------
 ///   checkManifold           — bounds/finite check + edge-count map + umbrella BFS
