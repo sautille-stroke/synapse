@@ -49,6 +49,7 @@ __all__ = [
     "FootContactInterval",
     "MeshGeometry",
     "MocapKinematics",
+    "MultiViewInitializer",
     "ReconPipeline",
     "ReconResult",
     "check_degenerate_faces",
