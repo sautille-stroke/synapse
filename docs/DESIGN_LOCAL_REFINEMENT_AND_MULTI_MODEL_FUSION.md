@@ -1,6 +1,7 @@
 # Synapse 局部解剖智能修正与多模型融合设计规范 (Local Anatomical Refinement & Multi-Model Fusion Specification)
 
 - **文档状态**: `Approved Technical Spec v1.0`
+- **关联 RFC**: [RFC 0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
 - **关联仓库**: `synapse`（执行核心与算法 SDK）、`fulgur`（Track B 物理渲染与 FGPP 生成端）、`caelum-core`（Track A 离线光追真值对）、`aether`（FGPP 15 通道协议 SSOT）、`foundary`（GPU 推理容器与算力集群）
 - **关联生态规约**:
   - **RFC 0044**: 神经-物理混合工业流水线、FGPP 与人机协同 (HITL 15 分钟熔断与白模粗糙度下限)
