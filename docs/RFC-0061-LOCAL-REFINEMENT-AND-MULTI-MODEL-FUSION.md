@@ -21,11 +21,11 @@
 
 ## 1. 摘要 (Abstract)
 
-在数字内容创作（DCC）与神经视频生成管线中，全身或中景镜头下的**手部（Hands）**与**脸部（Faces）**存在结构性、解剖学级别的感知失真（六指/融指、视线斜视、恐怖谷微表情坍塌、身份漂移与时序闪烁）。这一失真是潜空间下采样压缩与全局注意力稀释的必然数学结果，单一全画幅生成模型在理论与工程上均无法彻底解决。
+在数字内容创作（DCC）与神经视频生成管线中，全身或中景镜头下的**手部（Hands）**、**脸部（Faces）**与**毛发/毛皮（Hair/Fur）**存在结构性、解剖学级别的感知失真（六指/融指、视线斜视、恐怖谷微表情坍塌、身份漂移、发丝粘连为“塑料头盔发”、各向异性高光缺失与时序闪烁）。这一失真是潜空间下采样压缩与全局注意力稀释的必然数学结果，单一全画幅表面网格生成模型在理论与工程上均无法彻底解决。
 
 本 RFC 确立了面向工业级影视与游戏生产的**“局部解剖智能修正、多模型协同融合与手术刀逆向缝合”**标准体系：
 1. **分治瓦片化计算（Tiled Bypass Architecture）**：全画幅背景直通（Bypass），仅对存在缺陷的动态时空 ROI 提取 $512 \times 512$ 标准切片，节省 90%+ 算力；
-2. **多源解剖硬约束注入（Anatomical Hard Priors）**：结合 FGPP 原生 3D 深度/法线、MANO 3D 手部骨骼网格、FLAME 3DMM 与 PulID/ArcFace 身份正交特征投影；
+2. **多源解剖硬约束注入（Anatomical Hard Priors）**：结合 FGPP 原生 3D 深度/法线、MANO 3D 手部骨骼网格、FLAME 3DMM、PulID/ArcFace 身份正交特征投影，以及**专用毛发/毛皮导引曲线（Guide Strands）与头皮毛囊生长场（Scalp Follicles）**；
 3. **多模型输出融合矩阵（Five Fusion Paradigms）**：标准化拉普拉斯金字塔频域分解、几何-纹理串行级联、采样潜在轨迹时步解耦、空域置信度加权以及泊松梯度域融合；
 4. **物理级无缝逆向缝合（Industrial Scalpel Stitching）**：复用 $16\text{px}$ 运动自适应手术刀掩膜、边界环 CIE LAB 色彩空间传递、ACEScg 浮点光学增量叠加与光流/EMA 时序高频抖动阻尼；
 5. **人机协同与质量门禁（Three-Tier HITL & Quality Gates）**：执行三级介入阶梯，严格落实 RFC 0044 单镜头 15 分钟熔断机制，并将异常坏帧自动采集为 Hard Negative 数据，驱动 RSI 递归自我演进飞轮。
@@ -125,6 +125,38 @@ flowchart TD
       $$w_i = \frac{\exp(-\|\mathbf{v}_{\text{cam}} - \mathbf{v}_i\|^2 / 2\sigma^2)}{\sum_j \exp(-\|\mathbf{v}_{\text{cam}} - \mathbf{v}_j\|^2 / 2\sigma^2)}$$
     - 加权合成当前机位的目标身份向量 $\mathbf{f}_{\text{id}} = \sum w_i \mathbf{A}_i$，注入 PulID / FaceID Cross-Attention，确保转头过程中面部五官具有坚不可摧的身份一致性。
 
+#### 毛发/毛皮专属模型约束与导引流场 (Hair & Fur Groom Constraints & Guide Strands)
+*   **病理归因与解耦必然性**：
+    - 通用 2-Manifold 水密网格与体素隐式场在潜空间下采样中必然将微米级一维曲线簇（$0.05 \sim 0.1\,\text{mm}$ 纤细发丝）黏连融合成“塑料黏土头盔”，且无法承载 Marschner BSDF 各向异性双重高光（$R, TT, TRT$）；
+    - 必须引入专用的毛发/毛皮生成模型（`HairGroomRefiner`），与头骨表面网格彻底解耦，独立预测发流与导引曲线。
+*   **Track B (FGPP 直通模式，首选)**：
+    - **Cryptomatte 实体解耦**：利用 FGPP 的 `Cryptomatte.ID` 精准切分 `Entity:Scalp_Hair` 与 `Entity:Head_Skin`，防止发丝高频遮挡边缘污染面部五官的法线反演；
+    - **头皮毛囊生长域约束（Scalp Follicle Mask）**：从 FLAME / SMPL-X 白模的头皮 UV 区域提取发际线与毛囊密度贴图，强制规定所有发丝根节点（Root Points）的附着拓扑与法线朝向，从数学上杜绝“发丝悬浮”或“发丝长入颅骨/面颊”；
+    - **Fulgur 物理着色参数注入**：读取原生 Groom 资产中的各向异性切线矢量 $\mathbf{T}$、纵向粗糙度 $\beta_R$、方位角粗糙度 $\beta_{TT}$ 与黑色素（Melanin）浓度，作为毛发扩散修复通道的物理引导。
+*   **Track A (野生视频单目反演模式)**：
+    - **2D/3D 发流方向场估计（Orientation Field）**：利用微距卷积算子抽取表面发流切线场 $\mathbf{V}_{\text{flow}}(x, y) \in \mathbb{R}^2$ 与深度置信度；
+    - **稀疏导引曲线反演（Guide Strands, 500~1500 根）**：采用专用头发几何模型（对标 NeuralHaircut / HairNet / Perm 范式），直接回归带 3D 样条控制点（B-Spline Control Points）的宏观发束导引线；
+    - **下游双轨导出桥接**：
+      1. *影视级曲线轨（Strand-based Curves）*：导出为 OpenUSD Hydra / Alembic (`.abc`) 曲线束，供下游过程式插值至 $10^5$ 根微观发丝并由 Marschner 着色器渲染；
+      2. *游戏级发片轨（Auto Hair Cards）*：将导引线聚簇生成层次化多边形卡带（Strip Ribbons，LOD0~LOD3），自动烘焙 Alpha、切线、深度与各向异性贴图。
+
+#### 人体与衣物解耦专属模型与碰撞硬约束 (Decoupled Body & Garment Constraints)
+*   **解耦的物理必然性（Layered Separation Rule）**：
+    - 严禁输出“衣肉一体（Fused Single Mesh）”。一体化模型在肢体屈伸时由于缺乏内部真实骨肉支撑，必然导致衣服像彩绘一样拉扯穿模，且无法进行次级布料动力学解算与换装重定向；
+    - 系统必须严格遵循“**内层标准裸模基底 + 外层分层独立衣物**”的解耦规范。
+*   **Track B (FGPP 直通模式，首选)**：
+    - **Cryptomatte 严格分层分层**：基于 `Cryptomatte.ID` 独立拆分 `Entity:Human_Body_Base` 与 `Entity:Garment_Outer`；
+    - **SDF 零穿模几何硬门禁（Zero-Penetration Gate）**：
+      - 计算身体裸模的符号距离场 $\Phi_{\text{body}}(\mathbf{x})$；
+      - 强制约束衣物外层网格的所有顶点 $\mathbf{v}_{\text{cloth}}$ 满足：
+        $$\Phi_{\text{body}}(\mathbf{v}_{\text{cloth}}) \ge \delta_{\text{clearance}} \quad (\delta_{\text{clearance}} = 2.0\,\text{mm})$$
+      - 任何穿透入体内的顶点触发几何投影惩罚 $\mathbf{v}' = \mathbf{v} + (\delta - \Phi(\mathbf{v})) \nabla \Phi(\mathbf{v})$，在几何反演层彻底消灭穿模；
+    - **材质与物理参数解耦**：身体表面分配皮肤次表面散射材质（Skin SSS），衣物表面分配 OpenPBR Fabric 织物材质（含微纤维 Sheen 与织物拉伸/抗弯物理刚度）。
+*   **Track A (野生视频反演模式)**：
+    - **两阶段解耦反演（Two-Stage Inverse Fitting）**：
+      1. *Stage 1 (裸模估计)*：利用 HMR2.0 / SMPL-X 骨架穿透衣物估计内部核心解剖裸模网格，锁定人体 53 关节运动学姿态与体态参数；
+      2. *Stage 2 (衣物多边形壳/裁片恢复)*：采用 TailorNet / SNUG 范式反演外部衣物裁片与 3D 壳体，通过物理驱动的无监督能量优化贴合在 Stage 1 裸模之上，形成天然重力悬垂折叠褶皱。
+
 ### 4.3 Layer 3: 多模型协同融合矩阵核 (MultiModelRefineFusion)
 
 本 RFC 规范化五种融合算子的数学表达与执行策略：
@@ -193,6 +225,8 @@ Level 3: 3D 骨架重定与资产回滚 (DCC Rigging) ── Blender/Maya 微调
 |---|---|---|---|
 | **手部解剖拓扑** | 关键点有效手指计数 | 恒等于 `5`，无交叉断裂 | 触发 Level 2 笔刷介入或回退 3D 白模深度遮罩 |
 | **面部身份保真** | ArcFace Cosine 相似度 | 正视锚点 $\ge 0.82$；$45^\circ$ 侧偏 $\ge 0.78$ | 提升 PulID 注入权重，降低 Denoising 强度 |
+| **毛发各向异性与连续性** | 发流切线角连续性方差<br/>发丝粘连度 (Clump/Helmet Index) | $\text{Var}(\theta_{\text{flow}}) \le 0.05$<br/>$\text{HelmetRatio} \le 0.08$ | 切换为 HairGroomRefiner 导引曲线重绘与 Marschner 切线 Pass |
+| **衣物身体无穿模度** | 衣物穿透裸模顶点比例<br/>最大穿透深度 $\max(-\Phi_{\text{body}})$ | 顶点穿透率 $= 0.0\%$<br/>深度 $\le 0.0\,\text{mm}$ | 触发 SDF 投影硬推离，或回退至 Stage 1 裸模重新解算布料松弛 |
 | **视线对称度** | 左右眼瞳孔凝视向量夹角 | $\Delta \theta_{\text{gaze}} \le 4.5^\circ$ | 引入 FLAME / 人脸 3D 关键点瞳孔坐标硬矫正 |
 | **边缘接缝与色差** | 缝合外圈 $16\text{px}$ 边界 PSNR<br/>`border_ring_ciede2000` | $\ge 38.0\text{ dB}$<br/>$\le 2.0$（对齐 `profiles.py`） | 切换至泊松梯度域融合与 LAB 边界环匹配 |
 | **时序跳变度** | `temporal_warp_error` (`[0,1]` 归一化光流 RMSE) | Hero $\le 0.015$；Wide $\le 0.020$ | 增大时序 EMA 衰减系数 $\alpha$，启用光流引导 Warp |
