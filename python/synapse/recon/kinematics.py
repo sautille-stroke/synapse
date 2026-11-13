@@ -2,6 +2,15 @@
 
 Enforces zero foot skating (<0.3 cm/s during stance phase), analytical Two-Bone
 leg IK, and hand-weapon / cloth-limb SDF penetration resolution.
+
+.. note:: **synapse-original implementation**
+
+    Despite being listed in the cross-repo dedup audit (Issue #34, area ⑤),
+    ``fulgur/engine/animator/`` does not yet exist on disk — the animator
+    module is architecturally planned but not implemented.  This Python IK
+    is currently the **only** working implementation in the DervGen ecosystem.
+    Once ``fulgur::animator`` ships its C++ IK solver, this module should
+    be bridged via pybind11 thin-wrap.
 """
 
 from __future__ import annotations
