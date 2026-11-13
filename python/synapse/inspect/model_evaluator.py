@@ -13,7 +13,7 @@ import zlib
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import numpy as np
 
@@ -239,6 +239,7 @@ def evaluate_single_model(
     num_views: int = 8,
     reference_mesh: Any | None = None,
     log_fn: Callable[[str], None] | None = None,
+    geometry_backend: Literal["native", "python"] = "native",
 ) -> ModelEvalResult:
     """Evaluate a single 3D model file against *profile_name*."""
     from synapse.bench.model_loader import load_mesh
@@ -284,6 +285,7 @@ def evaluate_single_model(
         verts,
         faces_arr,
         require_watertight=require_wt,
+        backend=geometry_backend,
     )
     n_degenerate = len(geo_res.degenerate_face_indices)
     n_self_intersections = len(geo_res.self_intersecting_pairs)
@@ -373,6 +375,7 @@ def evaluate_3d_models_directory(
     resolution: int = 256,
     num_views: int = 8,
     log_fn: Callable[[str], None] | None = None,
+    geometry_backend: Literal["native", "python"] = "native",
 ) -> dict[str, Any]:
     """Evaluate all 3D models in *input_dir* and generate HTML + JSON reports."""
     canonical_profile = normalize_eval_profile(profile_name)
@@ -444,6 +447,7 @@ def evaluate_3d_models_directory(
             num_views=num_views,
             reference_mesh=ref_mesh,
             log_fn=log_fn,
+            geometry_backend=geometry_backend,
         )
         results.append(res)
 
