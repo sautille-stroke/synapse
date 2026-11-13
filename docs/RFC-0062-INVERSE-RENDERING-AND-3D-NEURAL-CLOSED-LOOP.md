@@ -2,8 +2,10 @@
 # (3D-Guided Generation, Differentiable Inverse Rendering & Local Patching Closed-Loop Specification)
 
 - **RFC 编号**: `RFC 0062`
-- **文档状态**: `Proposed Standard (v1.0)`
+- **文档状态**: `Accepted (v1.1 — Aligned with M11)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`)
+- **关联设计文档 (Layer B)**: [DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
+- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
 - **关联生态规约**:
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`)
   - **RFC 0060**: 真实视频逆向 3D 动态数字孪生与联合反演
@@ -55,6 +57,10 @@
 | **求解变量** | 顶点缓冲区、材质常量绑定 | $\partial \mathcal{L} / \partial \text{TextureMap}$，$\partial \mathcal{L} / \partial \text{Roughness}$ |
 | **光传输模型** | Split-sum GGX 实时近似 | 物理无偏路径追踪 (Unbiased Path Tracing) |
 | **跨框架接口** | 原生 C++20 / Bazel 目标 | 原生 Python API，与 PyTorch 零拷贝共享内存 |
+
+### 2.1 非目标与备选方案权衡 (Non-Goals & Alternatives)
+- **非目标**：不在 `fulgur` C++20 渲染管线中添加可微光栅磁带；不在基础安装中强绑闭源或重型 `Mitsuba 3`/`drjit`（统一归入 `[invrender]` 可选 extra，默认环境提供纯 NumPy 解析 UV 微分 CPU 代理 `AnalyticUVInverseOptimizer` 以保障 `ubuntu24` 全绿回归）。
+- **备选方案**：在可微求解引擎与 2D 伪逆光调映射之间，选择 `Mitsuba 3` + 解析 UV Jacobian 双轨，确保物理粗糙度、金属度与反照率在能量守恒约束下被解耦吸收。
 
 ---
 
@@ -114,15 +120,16 @@ flowchart TD
    - *Phase A（确定性 Golden Case）*：赋予目标材质（如带青金石与金色雕花的彩绘纹理）渲染生成的“真值视频”；
    - *Phase B（真实神经视频）*：输入 Seedance / Wan 生成的具有丰富微观质感与环境光影的视频。
 
-### 4.2 优化目标函数与梯度流 (Loss Function)
+### 4.2 优化目标函数与光度学域对齐 (Radiometric-Consistent Loss Function)
 
-优化目标是求解材质贴图 $T_{diffuse} \in \mathbb{R}^{H \times W \times 3}$ 与粗糙度贴图 $T_{rough}$：
+优化目标是求解材质贴图 $T_{\text{albedo}} \in \mathbb{R}^{H \times W \times 3}$ 与粗糙度/金属度贴图 $T_{\text{rough}}, T_{\text{metal}}$：
 
-$$\min_{T} \sum_{t=1}^{N} \left( \lambda_1 \| I_{mit}(t; T) - V_{target}(t) \|_1 + \lambda_2 \mathcal{L}_{LPIPS}(I_{mit}(t; T), V_{target}(t)) + \lambda_3 \| \nabla T \|_2^2 \right)$$
+$$\min_{T} \sum_{t=1}^{N} \left( \lambda_1 \| I_{mit,\text{lin}}(t; T) - \mathcal{T}_{\text{inv}}(V_{target}(t)) \|_1 + \lambda_2 \mathcal{L}_{LPIPS}\big(\mathcal{T}_{\text{disp}}(I_{mit,\text{lin}}(t; T)), V_{target}(t)\big) + \lambda_3 \| \nabla T \|_2^2 \right)$$
 
-- **$I_{mit}(t; T)$**：Mitsuba 3 可微渲染器在时刻 $t$ 使用当前材质 $T$ 渲染的图像；
-- **$V_{target}(t)$**：视频生成模型在该时刻的输出帧；
-- **$\| \nabla T \|_2^2$**：全变分正则化（TV Regularization），抑制高频噪点与反光斑点过拟合。
+- **$I_{mit,\text{lin}}(t; T)$**：场景线性 **ACEScg** 物理渲染输出；
+- **$\mathcal{T}_{\text{inv}}(V_{target}(t))$**：对显示域 sRGB 视频执行去伽马及 Reinhard/ACES 软肩逆色调映射后的近似线性辐射观测，确保 $\mathcal{L}_1$ 梯度物理可加；
+- **$\mathcal{T}_{\text{disp}}(\cdot)$**：ACEScg $\to$ Display sRGB 前向色调映射，确保感知损失 `LPIPS` 在模型原生图像域度量；
+- **$\| \nabla T \|_2^2$**：全变分平滑正则化（TV Regularization），抑制高频噪点与反光过拟合。
 
 ### 4.3 差异量化度量体系 (Evaluation Metrics)
 
@@ -149,26 +156,23 @@ $$\min_{T} \sum_{t=1}^{N} \left( \lambda_1 \| I_{mit}(t; T) - V_{target}(t) \|_1
 └─────────────────────────────────────────────────────────────────────────────┘
   [3D 引擎控制端]                             [神经视频生成端 (Wan/Seedance)]
    │                                                 │
-   ├── ① 注入 3~5 帧 LookDev 标定预卷 ───────────────► 强制无阴影 5500K 漫射生成
+   ├── ① 注入 N_preroll ∈ {4, 8} LookDev 标定预卷 ───► 无阴影 5500K 漫射 + κ=1.0 切镜锚定
+   │     (严格满足 T_total = 4k + 1 与 4 帧潜空间对齐)   │
+   ├── ② FGPP DirectRadiance 剔除硬阴影 ─────────────► 宏观平滑照明、微观细节丰富
    │                                                 │
-   ├── ② FGPP DirectRadiance 剔除硬阴影 ───────────► 宏观平滑照明、微观细节丰富
-   │                                                 │
-   ├── ③ 动态光源扫描 (Light Sweep) ────────────────► 激发动态高光 (快速反解粗糙度/金属度)
+   ├── ③ 动态光源扫描 (Light Sweep) ─────────────────► 激发动态高光 (反解粗糙度/金属度)
    │                                                 │
    ▼                                                 ▼
-  [可微逆向渲染 Mitsuba 3] ◄────────────────────── [纯净、解耦的目标视频帧]
-     秒级收敛，BaseColor 零阴影污染，PBR 三件套完美分离！
+  [可微逆向渲染 Mitsuba 3 / CPU Jacobian] ◄──────── [纯净、解耦的目标视频帧]
+     低方差快速收敛，BaseColor 零阴影污染，PBR 三件套完美分离！
 ```
 
-### 5.1 标定预卷机制 (LookDev Calibration Pre-roll)
+### 5.1 标定预卷与因果 VAE 相位锁定协议 (LookDev Calibration Pre-roll)
 
-在生成正式镜头动画前，正向调度器可选择性插入一段 **3~5 帧的极短“校准预卷”**（不计入正片，仅供材质反演抽取）：
-1. **相机外参控制**：3D 引擎调度一段围绕目标主体（或核心局部）的平滑半周匀速转台运镜（Orbit 180°）；
-2. **神经 Prompt 强制约束**：在预卷时序区间内，向视频模型注入影视级 LookDev 提示词：
-   `"soft diffuse overcast studio lighting, shadowless neutral 5500K lookdev environment, pure ambient occlusion, clean albedo capture, zero hard specular glare"`；
-3. **数学原理**：在完全均匀的半球漫射光照 $\bar{E}$ 下，观测像素值满足：
-   $$V_{target}(u, v) \approx T_{basecolor}(u, v) \cdot \frac{\bar{E}}{\pi}$$
-   Mitsuba 3 的反求损失函数直接退化为准线性凹凸优化，**BaseColor 贴图在 10 步迭代内即可收敛，彻底杜绝阴影被当成色斑烤死在贴图中的致命缺陷！**
+在生成正式镜头动画前，正向调度器可插入极短“LookDev 校准预卷”（仅用于材质反演抽取，不进入正片成片）：
+1. **3D 因果 VAE 相位锁定 ($T = 4k + 1$ 铁律)**：由于 `Wan 2.1` 3D Causal VAE 以 $4\times$ 时域步长压缩潜变量且总帧数须满足 $T_{\text{total}} = 4k + 1$，预卷帧数**严禁**取任意 `3~5` 帧，必须严格锁定为 **`N_preroll` $\in \{0, 4, 8\}$**（例如 `4` 帧预卷 + `93` 帧正片 $= 97 = 4 \times 24 + 1$）；
+2. **强切镜时序重锚定 ($\kappa = 1.0$)**：在正片首帧索引 $t = N_{\text{preroll}}$ 处，必须通过 `ConditionScheduler` 强制触发 $\kappa = 1.0$ 硬切镜锚定并清理预卷潜状态记忆，防止预卷中的 5500K 摄影棚漫射光“漏光（Lighting Bleed）”污染正片戏剧打光；
+3. **相机外参与神经 Prompt**：围绕目标主体布置平滑半周转台运镜并注入 `"soft diffuse overcast studio lighting, shadowless neutral 5500K lookdev environment, clean albedo capture"`，使观测像素近似满足 $V_{\text{lin}}(u,v) \approx T_{\text{albedo}}(u,v)\cdot \bar{E}/\pi$，实现低方差快速收敛并杜绝烤死阴影斑块。
 
 ### 5.2 FGPP 直接光解耦注入 (DirectRadiance Channel Decoupling)
 
@@ -187,63 +191,39 @@ $$\min_{T} \sum_{t=1}^{N} \left( \lambda_1 \| I_{mit}(t; T) - V_{target}(t) \|_1
 
 ---
 
-## 6. 模块设计与接口契约 (Software Architecture)
+## 6. 模块契约、CLI 入口与依赖分层 (Architecture & CLI)
 
-在 `synapse.recon` 中新增专门的可微逆向闭环子模块：
+详细架构、数据流图及双轨算法实现规范见 Layer B 文档 **[DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)**。在 `synapse.recon` 下新增无状态子模块：
 
 ```
-python/synapse/recon/
-  ├── loop/
-  │   ├── __init__.py
-  │   ├── forward_guide.py       # 3D 几何与相机导出，组织引导序列
-  │   ├── mitsuba_optimizer.py   # Mitsuba 3 + Dr.Jit 可微反演核心
-  │   ├── texture_extractor.py   # UV 空间材质参数解耦与重投影烘焙
-  │   └── closed_loop_runner.py  # 最小闭环端到端驱动器
-  └── ...
+python/synapse/recon/loop/
+├── __init__.py
+├── types.py               # InverseRenderConfig, LookDevPrerollSpec, ClosedLoopReport
+├── radiometric.py         # sRGB <-> ACEScg 逆/前向色调映射（光度学损失对齐）
+├── forward_guide.py       # T=4k+1 预卷引导 + κ=1.0 切镜锚定 + 无阴影 DirectRadiance 烘焙
+├── mitsuba_optimizer.py   # MitsubaInverseOptimizer ([invrender]) + AnalyticUVInverseOptimizer (CPU)
+├── texture_extractor.py   # UV 空间 PBR 贴图烘焙、光照解耦与接缝修复
+└── closed_loop_runner.py  # 5 步闭环端到端驱动 + RFC 0061 手术刀回接
 ```
 
-### 核心接口定义 (`mitsuba_optimizer.py`)
+### 核心接口契约摘要 (`synapse.recon.loop`) & CLI 入口
 
 ```python
-@dataclass
-class InverseRenderConfig:
-    resolution: tuple[int, int] = (512, 512)
-    spp: int = 16                      # Samples Per Pixel (可微渲染采样数)
-    iterations: int = 100              # 优化迭代步数
-    learning_rate: float = 0.03        # Adam 学习率
-    tv_weight: float = 0.005           # 全变分平滑正则化权重
-    variant: str = "cuda_ad_rgb"       # GPU: cuda_ad_rgb, CPU: llvm_ad_rgb
-
-class MitsubaInverseOptimizer:
-    """使用 Mitsuba 3 和 Dr.Jit 对 3D 资产的材质纹理进行可微反演。"""
-
-    def __init__(self, mesh_path: Path, camera_trajectory: list[dict], config: InverseRenderConfig):
-        self.mesh_path = mesh_path
-        self.cameras = camera_trajectory
-        self.config = config
-        self._init_mitsuba_scene()
-
-    def optimize_material_from_video(
-        self,
-        target_video_frames: np.ndarray, # (T, H, W, 3) 浮点 [0, 1]
-    ) -> OptimizedMaterialResult:
-        """
-        以目标视频帧为 Ground Truth，反向求导更新材质贴图。
-        返回优化后的 BaseColor 纹理、Roughness 参数以及收敛度量历史。
-        """
-        ...
+class InverseOptimizerProtocol(Protocol):
+    def optimize_material_from_video(self, target_srgb: np.ndarray, uv_visibility: np.ndarray | None = None) -> OptimizedMaterialResult: ...
 ```
+- **GPU 高精轨道 (`[invrender]`)**：`MitsubaInverseOptimizer` 调用 `mitsuba>=3.5`（`cuda_ad_rgb` / `llvm_ad_rgb`）。
+- **CPU 确定性代理 (`ubuntu24`)**：`AnalyticUVInverseOptimizer` 纯 NumPy 解析 UV 微分求解，实现零 GPU CI 回归。
+- **CLI 与 Worker 契约**：统一暴露 `synapse recon closed-loop --json` 及 `JobBundle` Stage `inverse_render_loop`（遵守 `ExitCode 0/10/20/30/40/50`）。
 
 ---
 
-## 7. 实施路标与里程碑 (Milestones)
+## 7. 实施规划绑定 (`M11: PR-38 ~ PR-40`)
 
-- **M-LOOP-1: 最小闭环桩与可运行验证（CPU/GPU 双模）**
-  - 构建 Stanford Bunny 旋转动画与无阴影漫射测试基线；
-  - 编写合成目标视频测试用例（含 LookDev 标定预卷测试）；
-  - 跑通 Mitsuba 3 `llvm_ad_rgb` / `cuda_ad_rgb` 贴图反求；
-  - 验证 PSNR 提升 $\ge 10\text{ dB}$，生成对比报告图。
-- **M-LOOP-2: 主动协同生成与视频大模型局部缝合对接**
-  - 在 `synapse.adapters.wan` 中加入 LookDev Pre-roll 提示词拦截注入与 FGPP 无硬阴影条件烘焙；
-  - 接入 Seedance / Wan 2.1 风格化生成视频作为真实目标输入；
-  - 将材质优化后的 3D 渲染送入 RFC 0061 局部手术刀（Scalpel）修补手部/面部。
+完整文件、测试断言与验收脚本见 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M11` 里程碑）**：
+
+| PR 编号 | 交付范围 | 核心验证门禁 |
+|---|---|---|
+| **`PR-38`** | `loop/types.py`, `radiometric.py`, `forward_guide.py` | 校验 `N_preroll in {0, 4, 8}` 满足 $T=4k+1$、$\kappa=1.0$ 切镜防漏光及线性/sRGB 光度一致性 |
+| **`PR-39`** | `mitsuba_optimizer.py`（双轨）, `texture_extractor.py` | CPU 解析 Jacobian 闭环将 Stanford/程序化贴图 PSNR 提升 $\ge 10\text{ dB}$ 且 $\Delta E_{00} \le 2.5$ |
+| **`PR-40`** | `closed_loop_runner.py` + `synapse recon closed-loop` + RFC 0061 对接 | 端到端 5 步闭环（含局部手术刀回接）+ `[invrender]` 可选依赖延迟加载验证 |

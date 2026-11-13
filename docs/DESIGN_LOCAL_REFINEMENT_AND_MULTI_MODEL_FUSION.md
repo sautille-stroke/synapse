@@ -1,7 +1,8 @@
 # Synapse 局部解剖智能修正与多模型融合设计规范 (Local Anatomical Refinement & Multi-Model Fusion Specification)
 
-- **文档状态**: `Approved Technical Spec v1.0`
+- **文档状态**: `Approved Technical Spec v1.1`
 - **关联 RFC**: [RFC 0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
+- **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M10: PR-33 ~ PR-37`)
 - **关联仓库**: `synapse`（执行核心与算法 SDK）、`fulgur`（Track B 物理渲染与 FGPP 生成端）、`caelum-core`（Track A 离线光追真值对）、`aether`（FGPP 15 通道协议 SSOT）、`foundary`（GPU 推理容器与算力集群）
 - **关联生态规约**:
   - **RFC 0044**: 神经-物理混合工业流水线、FGPP 与人机协同 (HITL 15 分钟熔断与白模粗糙度下限)
@@ -168,12 +169,16 @@ flowchart TD
 
 ```
 python/synapse/refine/
-├── __init__.py
-├── types.py            # 数据契约：RefinementROI, AnatomicalRegion, FusionStrategy
-├── pipeline.py         # 门面执行器：LocalRefinementPipeline
-├── face.py             # 面部专修引擎：FaceRefiner (CodeFormer + ArcFace + 3DMM)
-├── hand.py             # 手部专修引擎：HandRefiner (FGPP 3D Depth + MANO)
-└── fusion.py           # 多模型融合核：LaplacianFusion, PoissonFusion, UncertaintyFusion
+├── __init__.py          # 公开门面导出
+├── types.py             # 数据契约: AnatomicalRegion, FusionMethod(5枚举), RefinementROI, RefinementResult
+├── roi_tracker.py       # 卡尔曼时序平滑 BBox 与 2x3 仿射对齐矩阵 M / M⁻¹
+├── tiled_executor.py    # 512x512 Tile-based Bypass 调度器（跳过无缺陷帧）
+├── face.py              # 面部专修引擎: FaceRefiner + CanonicalAnchorGallery (ArcFace / PulID)
+├── hand.py              # 手部专修引擎: HandRefiner (FGPP 对数深度 + 相机法线 / MANO)
+├── fusion.py            # 多模型 5 类融合核: 频域金字塔/串行级联/潜空间切换/置信度加权/泊松梯度
+├── stitcher.py          # ACEScg 手术刀缝合器 (M⁻¹ + LAB 环匹配 + 光学增量 + 光流 EMA)
+├── gates.py             # 三级质量门禁 + RSI Hard Negative 导出（HITL 熔断复用 synapse.bridge.hitl）
+└── pipeline.py          # LocalRefinementPipeline 总控编排器
 ```
 
 #### 核心数据契约 (`python/synapse/refine/types.py`)
@@ -182,7 +187,6 @@ python/synapse/refine/
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
 import numpy as np
 
 class AnatomicalRegion(str, Enum):
@@ -193,25 +197,30 @@ class AnatomicalRegion(str, Enum):
 class FusionMethod(str, Enum):
     LAPLACIAN_PYRAMID = "laplacian_pyramid"
     HIERARCHICAL_CASCADE = "hierarchical_cascade"
+    LATENT_TIMESTEP_SWITCH = "latent_timestep_switch"
     UNCERTAINTY_WEIGHTED = "uncertainty_weighted"
     POISSON_GRADIENT = "poisson_gradient"
 
 @dataclass
 class RefinementROI:
-    """提取的局部解剖学 ROI 描述符。"""
+    """提取的局部解剖学 ROI 描述符（场景线性 ACEScg 主链）。"""
     region: AnatomicalRegion
     frame_index: int
     bbox_xyxy: tuple[int, int, int, int]           # 原始大画幅中的像素坐标
-    crop_rgb: np.ndarray                           # 规范化归一化图像 [H, W, 3], uint8
-    crop_depth: np.ndarray | None                  # 对应的 FGPP 线性深度切片 [H, W], float32
-    crop_normal: np.ndarray | None                 # 对应的 FGPP 世界法线切片 [H, W, 3], float32
+    crop_acescg: np.ndarray                        # 场景线性图像 [H, W, 3], float16/float32 ACEScg
+    crop_depth: np.ndarray | None                  # FGPP 对数归一化深度 [H, W], float32 in [0, 1]
+    crop_normal: np.ndarray | None                 # 相机空间法线映射图 [H, W, 3], float32 in [0, 1]
     affine_matrix: np.ndarray                      # 原始画幅到标准 ROI 的 2x3 仿射变换矩阵
-    entity_id: int = 0                             # 关联的 Cryptomatte 实体 ID
+    entity_id: int = 0                             # 关联的 Cryptomatte.ID (UINT32)
+
+    def to_display_srgb_u8(self) -> np.ndarray:
+        """在边界 2D 专修模型或 LAB 匹配前显式完成 ACEScg -> Display sRGB uint8 色调映射。"""
+        ...
 
 @dataclass
 class RefinementResult:
-    """局部修正与融合后的输出。"""
-    refined_rgb: np.ndarray                        # 修正后的标准切片 [H, W, 3]
+    """局部修正与融合后的输出（保持线性 ACEScg 精度）。"""
+    refined_acescg: np.ndarray                     # 修正后的标准切片 [H, W, 3], float16/float32 ACEScg
     blend_mask: np.ndarray                         # 空间羽化融合掩膜 [H, W], float32 in [0, 1]
     confidence_map: np.ndarray                     # 像素级置信度热力图 [H, W], float32
     metrics: dict[str, float] = field(default_factory=dict)
@@ -225,7 +234,7 @@ import numpy as np
 from synapse.refine.types import FusionMethod
 
 class MultiModelRefineFusion:
-    """负责将多个局部修正模型的输出在频域、空间域或梯度域进行融合。"""
+    """负责将多个局部修正模型的输出在频域、空间域、潜在轨迹或梯度域进行融合。"""
 
     def __init__(self, method: FusionMethod = FusionMethod.LAPLACIAN_PYRAMID, pyramid_levels: int = 4):
         self.method = method
@@ -233,49 +242,50 @@ class MultiModelRefineFusion:
 
     def fuse(
         self,
-        base_rgb: np.ndarray,
-        refined_geometry_rgb: np.ndarray,
-        refined_detail_rgb: np.ndarray,
+        base_img: np.ndarray,
+        refined_geometry_img: np.ndarray,
+        refined_detail_img: np.ndarray,
         spatial_mask: np.ndarray,
+        confidence_map: np.ndarray | None = None,
     ) -> np.ndarray:
-        """执行多模型融合。
-
-        Args:
-            base_rgb: 底模/背景切片 (保留全局光照基准)
-            refined_geometry_rgb: 几何纠偏模型产物 (正确的五官/手部轮廓)
-            refined_detail_rgb: 微观细节模型产物 (CodeFormer/纹理模型)
-            spatial_mask: 核心区域羽化掩膜 [0, 1]
-        """
+        """按既定 FusionMethod 调度五类融合策略（均保持输入浮点精度）。"""
         if self.method == FusionMethod.LAPLACIAN_PYRAMID:
-            return self._fuse_laplacian(base_rgb, refined_detail_rgb, spatial_mask)
-        elif self.method == FusionMethod.HIERARCHICAL_CASCADE:
-            return self._fuse_cascade(base_rgb, refined_geometry_rgb, refined_detail_rgb, spatial_mask)
-        # 默认安全回退
-        return self._fuse_laplacian(base_rgb, refined_detail_rgb, spatial_mask)
+            return self._fuse_laplacian_frequency(base_img, refined_detail_img, spatial_mask)
+        if self.method == FusionMethod.HIERARCHICAL_CASCADE:
+            return self._fuse_cascade(base_img, refined_geometry_img, refined_detail_img, spatial_mask)
+        if self.method == FusionMethod.UNCERTAINTY_WEIGHTED:
+            return self._fuse_uncertainty(base_img, refined_detail_img, spatial_mask, confidence_map)
+        if self.method == FusionMethod.POISSON_GRADIENT:
+            return self._fuse_poisson_gradient(base_img, refined_detail_img, spatial_mask)
+        # LATENT_TIMESTEP_SWITCH 在去噪采样循环内部完成潜在张量交接，像素域直接输出 detail_img 掩膜混叠结果
+        return spatial_mask[..., None] * refined_detail_img + (1.0 - spatial_mask[..., None]) * base_img
 
-    def _fuse_laplacian(
+    def _fuse_laplacian_frequency(
         self,
         low_freq_source: np.ndarray,
         high_freq_source: np.ndarray,
         mask: np.ndarray,
     ) -> np.ndarray:
-        """拉普拉斯金字塔多频带融合实现。"""
-        from synapse.composite.blend import laplacian_blend
-        # 复用已有的 laplacian_blend 算子进行高低频重组
-        return laplacian_blend(low_freq_source, high_freq_source, mask, levels=self.pyramid_levels)
+        """双源多频带拉普拉斯重组：高频(k=0,1)取 detail，低频(k=2..L)取 base，再以 mask 回混。
+        注意：synapse.composite.blend.laplacian_pyramid_blend(fg, bg, alpha) 仅为单源空域 Alpha 羽化，不可混用。
+        """
+        ...
 ```
 
 ### 4.3 与现有组件的复用关系
 
-新设计绝不重复造轮子，全面无缝接入 `synapse` 现存的核心资产库：
+新设计绝不重复造轮子，严格对齐并复用 `synapse` 现存核心算子真实签名：
 
 1. **复用 `synapse.composite.mask` (`mask.py`)**：
-   - 提取修正前后的局部差异掩膜，调用 `_directional_structuring_element` 与 `_circular_structuring_element`，生成带运动向量引导的 $16\text{px}$ 膨胀手术刀掩膜。
+   - 调用 `generate_surgical_mask(mask_3d_new, mask_sam2_old=..., motion_vectors=...)`，结合 `_directional_structuring_element` 与 `_circular_structuring_element`，生成带运动向量引导的动态羽化手术刀掩膜。
 2. **复用 `synapse.composite.blend` (`blend.py`)**：
-   - 逆变换回原全景分辨率后，调用 `match_border_ring_lab()` 解决图块拼合色差；
-   - 调用 `surgical_sequence_composite()` 引入帧间 EMA（指数移动平均衰减），抑制逐帧修正带来的时序高频闪烁（Boundary Flicker）。
-3. **复用 `synapse.fgpp` (`frame.py`)**：
-   - 优先通过 `Cryptomatte.ID` 精确锁定角色对应的手与头部位姿，免去纯视觉检测网络在快速运动中丢失跟踪的风险。
+   - 边界环色差传递：调用 **`border_ring_lab_match(patch_srgb, bg_srgb, binary_mask, ring_width_px=16)`**（在 Display sRGB 域校验 `border_ring_ciede2000 <= 2.0`）；
+   - 时序 EMA 阻尼：调用 **`composite_surgical_sequence(video_frames, rerendered_frames, surgical_masks, motion_vectors=..., ema_alpha=0.85)`**（须在 `PR-36` 激活 `motion_vectors` 非空时的真实前向光流 Warp，而非当前占位忽略状态）；
+   - 光学物理增量：调用 **`composite_optical_increments(video_frames_srgb, fgpp_frames, cryptomatte_ids, contact_shadow_map=..., caustics_map=...)`**；
+   - 注意 **`laplacian_pyramid_blend(fg_srgb, bg_srgb, alpha_mask, num_levels=4)`** 仅作空间羽化合成使用，双源频带拆分由 `fusion.py::_fuse_laplacian_frequency` 承担。
+3. **复用 `synapse.fgpp` 与 `synapse.bridge.hitl`**：
+   - 通过 `Cryptomatte.ID`（`UINT32`）精确锁定实体与手/头区域，并复用 `synapse.fgpp.schema.linear_to_log_normalized_depth` 与 `synapse.adapters.wan._world_normal_to_camera` 规范化几何输入；
+   - 15 分钟 HITL 熔断直接调用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker(elapsed_seconds, domain="video_shot", max_seconds=900.0)`，超时抛出 `CircuitBreakerError` (exit `40`)。
 
 ---
 
@@ -306,40 +316,38 @@ class MultiModelRefineFusion:
 
 ```
                     ┌── Level 1: 解剖几何硬指标 (手部骨骼自由度、脸部关键点误差)
-三级质量把关门禁 ───┼── Level 2: 身份与感知保真度 (ArcFace Cosine Similarity ≥ 0.78, LPIPS ≤ 0.18)
-                    └── Level 3: 拼缝与时序平稳度 (Border PSNR ≥ 38 dB, Temporal Warping Error ≤ 0.05)
+三级质量把关门禁 ───┼── Level 2: 身份与感知保真度 (ArcFace 正视 ≥ 0.82 / 侧偏 ≥ 0.78, LPIPS ≤ 0.18)
+                    └── Level 3: 拼缝与时序平稳度 (Border PSNR ≥ 38 dB, ΔE00 ≤ 2.0, temporal_warp_error ≤ 0.015/0.020)
 ```
 
-| 评测维度 | 判定指标 | 目标阈值 | 失败降级策略 |
+| 评测维度 | 判定指标 | 目标阈值 (对齐 REVIEW SSOT) | 失败降级策略 |
 |---|---|---|---|
-| **脸部身份一致性** | ArcFace Cosine 相似度 | $\ge 0.78$（对比基准参考肖像） | 增大 PulID 特征权重，降低 Inpaint Denoise 强度 |
+| **脸部身份一致性** | ArcFace Cosine 相似度 | 正视锚点 $\ge 0.82$；$45^\circ$ 侧偏 $\ge 0.78$ | 增大 PulID 特征权重，降低 Inpaint Denoise 强度 |
 | **手部解剖合法性** | 手指骨骼计数 & MPJPE 关节误差 | 有效手指数量 $\equiv 5$，MPJPE $\le 8.5\text{mm}$ | 回退至 FGPP 3D 白模深度硬遮罩重投影 |
-| **接缝不可见度** | 缝合边界 $16\text{px}$ 环内 PSNR | $\ge 38.0\text{dB}$（无硬切边、无明显光晕） | 启动更高阶泊松梯度域融合与多频带金字塔 |
-| **时序闪烁率** | 修正区域 Temporal Warping 误差 | $E_{\text{temp}} \le 0.045$ | 调高时序 EMA 衰减系数 $\alpha$，增强光流约束 |
-| **单镜头算力熔断** | RFC 0044 耗时约束 | 单镜头修整推理时间 $\le 15$ 分钟 | 触发工程降级，回退至轻量级单模型或提示人工介入 |
+| **接缝不可见度** | 缝合边界 $16\text{px}$ PSNR / `border_ring_ciede2000` | PSNR $\ge 38.0\text{dB}$；$\Delta E_{00} \le 2.0$ | 启动泊松梯度域融合与 `border_ring_lab_match` |
+| **时序闪烁率** | `temporal_warp_error` (`[0,1]` 归一化光流 RMSE) | Hero $\le 0.015$；Wide $\le 0.020$ | 调高时序 EMA 衰减系数 $\alpha$，开启光流 Warp |
+| **单镜头算力熔断** | `evaluate_hitl_circuit_breaker` | $\le 900.0\text{s}$ (15 分钟) | 抛出 `CircuitBreakerError` (exit `40`)，沉淀断点 |
 
 ---
 
-## 7. 实施计划与 PR 演进路线
+## 7. 实施计划与 PR 演进路线 (`M10: PR-33 ~ PR-37`)
 
-按照生态敏捷开发规范，规划为 3 个独立 PR，严格遵循 Worktree 隔离与多机验证流程：
+原草案 `PR-22..24` 与全局 `M6` 编号冲突，统一收编至 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 的 M10 里程碑**（共 5 个独立 PR）：
 
 ```
-[PR-22] 基础数据结构与 ROI 提取
-  ├── 建立 synapse.refine.types (ROI, BBox, Matrix)
-  └── 接入 FGPP Cryptomatte 与 DWPose 几何锚定
+[PR-33] 契约与调度底座 (types.py, roi_tracker.py, tiled_executor.py)
         │
         ▼
-[PR-23] 专修模型接入与多模型融合核 (Fusion Core)
-  ├── 实现 FaceRefiner (CodeFormer / ArcFace 接口)
-  ├── 实现 HandRefiner (MANO 3D / FGPP Depth 条件输入)
-  └── 实现 LaplacianPyramidFusion 与 PoissonFusion 算子
+[PR-34] FGPP 手部硬先验 (hand.py) + 面部锚定画廊 (face.py)
         │
         ▼
-[PR-24] 手术刀逆向缝合、时序 EMA 平滑与 Synapse-Bench 评测
-  ├── 串联 blend.py 16px 缝合与色彩校正
-  ├── 建立跨帧卡尔曼平滑与光流一致性保障
-  └── tests/ 写入单测套件，通过 ubuntu24 验证全绿
+[PR-35] 五类多模型融合核 (fusion.py: 频域金字塔 + 泊松梯度域等)
+        │
+        ▼
+[PR-36] 光流 Warp 激活 + ACEScg 手术刀缝合 + 三级门禁与 RSI 导出 (blend.py, stitcher.py, gates.py)
+        │
+        ▼
+[PR-37] LocalRefinementPipeline + CLI `synapse refine anatomical` + `forgekit` `refine_session.v1.0`
 ```
 
 - **验证机器调度**：
