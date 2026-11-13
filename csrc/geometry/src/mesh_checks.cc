@@ -1,16 +1,20 @@
 /// @file mesh_checks.cc
 /// @brief Implementation of the synapse native geometry validation kernels.
 ///
-/// @note **Intentional dual-track architecture** (Issue #34, area ①)
+/// @note **Production C++ geometry kernel** (Issue #34, area ①)
 ///
-///   This C++ geometry kernel is the self-contained Python Oracle for
-///   cross-verification against @aether//geo (which provides the production
-///   mesh validation via half_edge.h, mesh_forensics.h, etc.).  The dual
-///   implementations enable parity testing between synapse's Python bindings
-///   and aether's native C++ geometry pipeline.
+///   This is the **production** native geometry validation backend, compiled
+///   via pybind11 into `synapse._c_geometry` and used by the Tier 0 geometry
+///   gate (`synapse.inspect.geometry_gate`) for actual mesh quality checks.
 ///
-///   PR #37 (refactor/geo-use-aether-checks) consolidates shared checks
-///   to delegate to @aether//geo, keeping only Oracle-specific logic here.
+///   The companion Python implementation (`synapse.recon.geometry`) serves
+///   exclusively as a **Ground Truth Oracle** for algorithm correctness
+///   verification — it does NOT participate in normal production workflows.
+///   Parity between the two is enforced by `test_geometry_oracle_parity.py`.
+///
+///   PR #37 (refactor/geo-use-aether-checks) will delegate shared checks
+///   to @aether//geo once aether PR #216 lands, keeping synapse-specific
+///   logic (e.g. floating island pruning thresholds) here.
 ///   That PR is blocked on aether PR #216.
 ///
 /// Algorithm summary
