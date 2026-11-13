@@ -1060,8 +1060,7 @@ def _cmd_recon_invert_video(
         # Degrade gracefully — report without geometry
         class _EmptyResult:
             camera_trajectory = None
-            vertices = None
-            normals = None
+            mesh = None
         result = _EmptyResult()  # type: ignore[assignment]
 
     output_info: dict[str, Any] = {
