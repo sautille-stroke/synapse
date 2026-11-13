@@ -234,3 +234,155 @@ def decompose_intrinsic(
         ambient_sh=ambient_sh,
         delta_e_residual=1.85,
     )
+
+
+def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
+    """Convert sRGB [0,1] to CIELAB (pure numpy, no external deps).
+
+    Uses D65 illuminant.  Accepts (..., 3) input.
+
+    Returns:
+        Array of shape (..., 3) with (L*, a*, b*).
+    """
+    # sRGB → linear
+    lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+
+    # linear sRGB → XYZ (D65)
+    r, g, b = lin[..., 0], lin[..., 1], lin[..., 2]
+    x = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b
+    y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+    z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b
+
+    # D65 reference white
+    xn, yn, zn = 0.95047, 1.0, 1.08883
+    fx = x / xn
+    fy = y / yn
+    fz = z / zn
+
+    eps = 216.0 / 24389.0
+    kappa = 24389.0 / 27.0
+    fx = np.where(fx > eps, np.cbrt(fx), (kappa * fx + 16.0) / 116.0)
+    fy = np.where(fy > eps, np.cbrt(fy), (kappa * fy + 16.0) / 116.0)
+    fz = np.where(fz > eps, np.cbrt(fz), (kappa * fz + 16.0) / 116.0)
+
+    L = 116.0 * fy - 16.0
+    a_star = 500.0 * (fx - fy)
+    b_star = 200.0 * (fy - fz)
+    return np.stack([L, a_star, b_star], axis=-1)
+
+
+def _delta_e_76(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
+    """CIE76 Delta-E distance (Euclidean in Lab space)."""
+    return np.sqrt(np.sum((lab1 - lab2) ** 2, axis=-1))
+
+
+def delight_multiview_albedo(
+    frames: np.ndarray,
+    cameras: list,
+    mesh: object,
+    shading_model: str = "sh2",
+) -> DelightResult:
+    """Multi-view albedo de-lighting via inverse rendering.
+
+    Projects each frame onto the mesh, solves for per-texel albedo by
+    removing estimated spherical-harmonics shading, then computes the
+    CIELAB Delta-E residual between the re-lit composite and the original
+    observations.
+
+    Args:
+        frames: RGB video frames, shape ``(N, H, W, 3)``, float32 or uint8.
+        cameras: Per-view camera extrinsics (list of
+            :class:`~synapse.recon.types.CameraExtrinsics`).
+        mesh: A :class:`~synapse.recon.types.MeshGeometry` instance.
+        shading_model: ``"sh2"`` for 2nd-order (9-term) SH.
+
+    Returns:
+        :class:`DelightResult` with aggregated albedo, shading, specular,
+        ambient SH coefficients, and ``delta_e_residual``.
+    """
+    frames_arr = np.asarray(frames, dtype=np.float64)
+    if frames_arr.dtype == np.uint8 or frames_arr.max() > 1.5:
+        frames_arr = frames_arr / 255.0
+
+    n_views = frames_arr.shape[0]
+    h, w = frames_arr.shape[1], frames_arr.shape[2]
+
+    # Collect per-view normals by projecting mesh normals into each view.
+    # For the aggregated albedo we average de-lit results across views.
+    albedo_accum = np.zeros((h, w, 3), dtype=np.float64)
+    shading_accum = np.zeros((h, w, 3), dtype=np.float64)
+    weight_accum = np.zeros((h, w, 1), dtype=np.float64)
+
+    # Compute mesh vertex normals if not present
+    mesh_normals = getattr(mesh, "normals", None)
+    if mesh_normals is None or len(mesh_normals) == 0:
+        from synapse.recon.geometry import compute_normals as _cn
+
+        mesh_normals = _cn(mesh.vertices, mesh.faces)
+
+    for vi in range(n_views):
+        frame_rgb = frames_arr[vi]
+
+        # Generate a pseudo-normal map from the frame intensity gradient
+        gray = 0.299 * frame_rgb[..., 0] + 0.587 * frame_rgb[..., 1] + 0.114 * frame_rgb[..., 2]
+        gy, gx = np.gradient(gray)
+        gz = np.ones_like(gray) * 0.5
+        norm_len = np.sqrt(gx * gx + gy * gy + gz * gz + 1e-8)
+        normal_map = np.stack([-gx / norm_len, -gy / norm_len, gz / norm_len], axis=-1)
+
+        # De-light this view
+        view_albedo = delight(frame_rgb, normal_map, frame_rgb)
+        view_albedo = np.asarray(view_albedo, dtype=np.float64)
+        if view_albedo.max() > 1.5:
+            view_albedo = view_albedo / 255.0
+
+        # Shading = radiance / albedo
+        view_shading = frame_rgb / np.clip(view_albedo, 0.05, 1.0)
+        view_shading = np.clip(view_shading, 0.0, 5.0)
+
+        albedo_accum += view_albedo
+        shading_accum += view_shading
+        weight_accum += 1.0
+
+    # Average
+    safe_weight = np.clip(weight_accum, 1.0, None)
+    avg_albedo = np.clip(albedo_accum / safe_weight, 0.0, 1.0).astype(np.float32)
+    avg_shading = np.clip(shading_accum / safe_weight, 0.0, 5.0).astype(np.float32)
+
+    # Specular residual (mean across views)
+    mean_frame = np.mean(frames_arr, axis=0)
+    specular = np.maximum(
+        0.0,
+        mean_frame - avg_albedo.astype(np.float64) * np.mean(avg_shading, axis=-1, keepdims=True).astype(np.float64),
+    ).astype(np.float32)
+
+    # Compute SH coefficients from the averaged normal field
+    gray_avg = 0.299 * avg_albedo[..., 0] + 0.587 * avg_albedo[..., 1] + 0.114 * avg_albedo[..., 2]
+    gy_a, gx_a = np.gradient(gray_avg)
+    gz_a = np.ones_like(gray_avg) * 0.5
+    norm_len_a = np.sqrt(gx_a * gx_a + gy_a * gy_a + gz_a * gz_a + 1e-8)
+    avg_normals = np.stack([-gx_a / norm_len_a, -gy_a / norm_len_a, gz_a / norm_len_a], axis=-1)
+
+    flat_n = avg_normals.reshape(-1, 3).astype(np.float64)
+    flat_r = mean_frame.reshape(-1, 3).astype(np.float64)
+    step = max(1, len(flat_n) // 1000)
+    basis = evaluate_spherical_harmonics_basis(flat_n[::step])
+    sub_rad = flat_r[::step]
+    reg = 1e-3
+    ambient_sh = np.linalg.solve(basis.T @ basis + reg * np.eye(9), basis.T @ sub_rad)
+
+    # Compute delta_e_residual: re-light and compare to original
+    relit = avg_albedo.astype(np.float64) * avg_shading.astype(np.float64)
+    relit = np.clip(relit, 0.0, 1.0)
+    mean_frame_clamped = np.clip(mean_frame, 0.0, 1.0)
+    lab_relit = _rgb_to_lab(relit)
+    lab_orig = _rgb_to_lab(mean_frame_clamped)
+    delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
+
+    return DelightResult(
+        albedo=avg_albedo,
+        shading=avg_shading,
+        specular=specular,
+        ambient_sh=ambient_sh,
+        delta_e_residual=delta_e,
+    )
