@@ -31,13 +31,12 @@ NO_EXCEPTIONS_COPTS = select({
 
 cc_library(
     name = "geometry",
-    srcs = ["src/mesh_checks.cc"],
     hdrs = glob(["include/**/*.h"]),
     copts = COMMON_COPTS + NO_EXCEPTIONS_COPTS,
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
-        "@aether//math",
+        "@aether//geo",
     ],
 )
 
