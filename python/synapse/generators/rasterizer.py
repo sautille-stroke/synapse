@@ -96,14 +96,38 @@ class SoftwareRasterizer:
         )
 
         # Convert FGPPFrame → RenderResult for backward compatibility
-        mask = np.zeros((self.height, self.width), dtype=np.uint8)
+        #
+        # FGPPFrame stores HDR radiance as float16; RenderResult expects
+        # LDR uint8 RGB.  Clamp to [0, 1] and quantize.
+        h, w = self.height, self.width
+
+        if fgpp_frame.direct_radiance is not None:
+            radiance = np.asarray(fgpp_frame.direct_radiance, dtype=np.float32)
+            rgb = np.clip(radiance * 255.0, 0, 255).astype(np.uint8)
+        else:
+            rgb = np.zeros((h, w, 3), dtype=np.uint8)
+
+        depth = fgpp_frame.depth if fgpp_frame.depth is not None else np.zeros((h, w), dtype=np.float32)
+
+        if fgpp_frame.world_normal is not None:
+            world_normal = np.asarray(fgpp_frame.world_normal, dtype=np.float32)
+        else:
+            world_normal = np.zeros((h, w, 3), dtype=np.float32)
+
+        if fgpp_frame.motion_vector is not None:
+            motion_vector = np.asarray(fgpp_frame.motion_vector, dtype=np.float32)
+        else:
+            motion_vector = np.zeros((h, w, 2), dtype=np.float32)
+
         if fgpp_frame.cryptomatte_id is not None:
             mask = (fgpp_frame.cryptomatte_id > 0).astype(np.uint8)
+        else:
+            mask = np.zeros((h, w), dtype=np.uint8)
 
         return RenderResult(
-            rgb=fgpp_frame.rgb,
-            depth=fgpp_frame.depth,
-            world_normal=fgpp_frame.world_normal,
-            motion_vector=fgpp_frame.motion_vector,
+            rgb=rgb,
+            depth=depth,
+            world_normal=world_normal,
+            motion_vector=motion_vector,
             mask=mask,
         )
