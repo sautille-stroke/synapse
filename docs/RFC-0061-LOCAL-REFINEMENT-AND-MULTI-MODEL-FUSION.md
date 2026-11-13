@@ -239,3 +239,18 @@ Phase 4: 评测门禁与数据闭环 ── [PR-REFINE-06] 三级质量门禁、
 3. **时序平滑引入的拖影与鬼影 (Ghosting)**：
    - *风险*：时序 EMA 系数过大时，快速运动的手指可能出现半透明重影；
    - *缓解*：引入运动感知动态自适应系数：在高速运动区域（光流模长 $> 15\text{px}$），自动降低 EMA 权重至 $\alpha=0.3$，优先保证运动锐利度；在微小动作区域提高至 $\alpha=0.85$，消除闪烁。
+
+---
+
+## 8. 工具链建设：基于 ForgeKit 的解剖局部精修组件规范 (ForgeKit Tooling Integration)
+
+详见配套规范：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)。
+
+为支撑上层交互式创作工坊（`grand-studio` / `scene-forge` / `asset-forge`）中的角色手/脸解剖精修，在前端 UI 工具包 `@dervgen/forgekit` 中设立独立子包 **`@dervgen/forgekit-anatomical-refine`** (`packages/anatomical-refine`)，深度对标 **Unreal Engine 5**（Control Rig, MetaHuman Animator, MRQ）与 **Blender 4.x**（Pose Library, Sculpt Pose Brush, Cryptomatte Compositor）：
+
+1. **`PoseLibraryShelf`（姿态资产架）**：对标 Blender Asset Shelf 悬停拖拽融合（Hover-Scrub）与 UE5 Control Rig 姿态资产，提供标准 21 关节手部与 52 维表情预设；
+2. **`ScalpelViewportOverlay`（视口手术刀画布）**：提供基于 FGPP Cryptomatte 的一键精准拾取、带动态 $16\text{px}$ 余弦羽化外环的手术刀笔刷，以及 $512 \times 512$ 画中画微距放大镜视口（Macro PIP）；
+3. **`MultiModelBlendInspector`（多模型融合监视器）**：提供 A/B/C 交互卷帘对比、低频光照与高频微观结构独立频带滑块、以及置信度热力图（Confidence Heatmap）；
+4. **`CanonicalGalleryManager`（正交锚定画廊资产柜）**：管理 4 机位标准肖像，根据视口相机航向/俯仰角动态高亮显示 Cross-Attention 注入权重；
+5. **`RefineTimelineTrack`（精修时间轴轨）**：提供时序 EMA 阻尼滑块、缺陷区间红/黄/绿染色条以及 RFC 0044 15分钟熔断倒计时与快照保存器。
+

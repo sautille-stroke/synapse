@@ -99,6 +99,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **PR #17 / PR #18 联合评审与整改落地报告**：[docs/plans/PLAN-REVIEW-PR17-PR18.md](docs/plans/PLAN-REVIEW-PR17-PR18.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
 - **局部解剖智能修正与多模型融合设计规范 (RFC 0061)**：[docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md) · [RFC 0061 规划全文](docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
+- **ForgeKit 解剖局部精修工具链设计规范**：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
