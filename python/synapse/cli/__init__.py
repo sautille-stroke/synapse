@@ -834,6 +834,10 @@ def _cmd_inspect_evaluate(
             print(msg)
 
     ref_raw = getattr(args, "reference_dir", None)
+    eval_backend_raw = str(getattr(args, "backend", "native"))
+    eval_backend: Literal["native", "python"] = (
+        "python" if eval_backend_raw == "python" else "native"
+    )
     data = evaluate_3d_models_directory(
         input_dir=Path(args.input_dir),
         output_dir=Path(args.output_dir),
@@ -842,6 +846,7 @@ def _cmd_inspect_evaluate(
         resolution=int(getattr(args, "resolution", 256)),
         num_views=int(getattr(args, "num_views", 8)),
         log_fn=None if json_mode else _log,
+        geometry_backend=eval_backend,
     )
 
     if int(data["exit_code"]) == int(ExitCode.CIRCUIT_BREAKER):
@@ -1311,6 +1316,12 @@ def main_synapse(args: list[str] | None = None) -> int:
         dest="num_views",
         type=int, default=8,
         help="Number of multi-view orbit screenshots (default: 8)",
+    )
+    insp_evaluate.add_argument(
+        "--backend", default="native",
+        choices=["native", "python"],
+        help="Geometry gate backend (default: native). "
+             "'python' is for Oracle parity testing only.",
     )
 
     insp_refine = inspect_sub.add_parser(

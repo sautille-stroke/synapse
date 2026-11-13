@@ -337,6 +337,7 @@ class TestEvalScript:
                 "--output-dir", str(output_dir),
                 "--resolution", "64",
                 "--num-views", "4",
+                "--backend", "python",
                 "--json",
             ],
             capture_output=True,
@@ -443,6 +444,7 @@ class TestEvalScript:
                 "--gate-profile", "track_b_video",
                 "--resolution", "64",
                 "--views", "4",
+                "--backend", "python",
             ]
         )
         assert rc == 0
@@ -456,6 +458,7 @@ class TestEvalScript:
                 "inspect",
                 "mesh",
                 str(model_dir / "test_cube.obj"),
+                "--backend", "python",
             ]
         )
         assert rc_mesh == 0
