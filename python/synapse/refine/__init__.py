@@ -12,6 +12,12 @@ from synapse.refine.gates import (
     export_hard_negatives,
 )
 from synapse.refine.hand import HandRefiner
+from synapse.refine.pipeline import (
+    LocalRefinementPipeline,
+    RefinePipelineResult,
+    RefineSessionPayload,
+    build_refine_session_payload,
+)
 from synapse.refine.roi_tracker import KalmanBBoxTracker, compute_affine_align
 from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
 from synapse.refine.tiled_executor import TiledBypassExecutor
@@ -31,13 +37,17 @@ __all__ = [
     "GateVerdict",
     "HandRefiner",
     "KalmanBBoxTracker",
+    "LocalRefinementPipeline",
     "MultiModelRefineFusion",
+    "RefinePipelineResult",
+    "RefineSessionPayload",
     "RefinementResult",
     "RefinementROI",
     "ScalpelStitcher",
     "StitchConfig",
     "StitchReport",
     "TiledBypassExecutor",
+    "build_refine_session_payload",
     "compute_affine_align",
     "evaluate_refinement_gates",
     "export_hard_negatives",
