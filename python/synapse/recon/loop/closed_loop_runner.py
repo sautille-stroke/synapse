@@ -42,7 +42,6 @@ from synapse.recon.loop.types import ForwardGuideResult, LoopConfig
 from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
 from synapse.refine.types import AnatomicalRegion, FusionMethod, RefinementResult
 
-
 # ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------

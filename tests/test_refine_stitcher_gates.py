@@ -9,12 +9,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.composite.blend import composite_surgical_sequence
 from synapse.errors import CircuitBreakerError
 from synapse.refine.gates import (
     GateThresholds,
-    GateVerdict,
     evaluate_refinement_gates,
     export_hard_negatives,
 )
@@ -27,7 +25,6 @@ from synapse.refine.types import (
     FusionMethod,
     RefinementResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

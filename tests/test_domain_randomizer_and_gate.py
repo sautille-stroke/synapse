@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
-
 from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
 from synapse.bench.domain_randomizer import (
+    FACTOR_KEYS,
     DomainRandomizationConfig,
     DomainRandomizer,
-    FACTOR_KEYS,
 )
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LinearProjectionEncoder,
     LinearProjectionTextEncoder,
 )
-
 
 # ── DomainRandomizer tests ────────────────────────────────────────
 

@@ -15,7 +15,7 @@ All operations are pure NumPy on float32 ACEScg tensors.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 

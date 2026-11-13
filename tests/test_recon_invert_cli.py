@@ -3,21 +3,16 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-import pytest
-
 from synapse.cli import main_synapse
 from synapse.pipeline.bundle_worker import (
     BundleManifest,
     JobBundleWorker,
     get_registered_stages,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests: CLI synapse recon invert-video

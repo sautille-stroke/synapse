@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.errors import ContractValidationError
 from synapse.recon.loop import (
     ForwardGuide,
@@ -26,7 +25,6 @@ from synapse.recon.loop.radiometric import (
     linear_to_acescg,
     validate_frame_count_phase,
 )
-
 
 # ---------------------------------------------------------------------------
 # Phase-lock validation

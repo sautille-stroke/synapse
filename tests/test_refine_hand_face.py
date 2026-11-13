@@ -10,15 +10,11 @@ Covers:
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pytest
-
 from synapse.refine.face import CanonicalAnchorGallery, FaceRefiner
 from synapse.refine.hand import HandRefiner
 from synapse.refine.types import AnatomicalRegion, RefinementROI
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -5,13 +5,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.refine.fusion import (
     MultiModelRefineFusion,
     _sobel_gradient_magnitude,
 )
 from synapse.refine.types import FusionMethod
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

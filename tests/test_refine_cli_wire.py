@@ -17,8 +17,6 @@ from __future__ import annotations
 import json
 
 import numpy as np
-import pytest
-
 
 # -------------------------------------------------------------------
 # 1. CLI smoke test
@@ -154,10 +152,9 @@ def test_method_map_all_five() -> None:
 
 def test_anatomical_refine_stage_registered() -> None:
     """``anatomical_refine`` stage is in the bundle worker registry."""
-    from synapse.pipeline.bundle_worker import get_registered_stages
-
     # Importing stages triggers registration
     import synapse.pipeline.stages  # noqa: F401
+    from synapse.pipeline.bundle_worker import get_registered_stages
 
     stages = get_registered_stages()
     assert "anatomical_refine" in stages

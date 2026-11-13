@@ -38,6 +38,8 @@ _DEPRECATION_MSG = (
 try:
     from fulgur_metrics.metrics import (  # type: ignore[import-not-found]
         temporal_flicker_score as _native_flicker_score,
+    )
+    from fulgur_metrics.metrics import (
         temporal_warp_error as _native_temporal_warp_error,
     )
 

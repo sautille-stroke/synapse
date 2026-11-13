@@ -10,11 +10,9 @@ import math
 
 import numpy as np
 import pytest
-
 from synapse.errors import ContractValidationError
 from synapse.recon.multiview import MultiViewInitializer
 from synapse.recon.types import CameraExtrinsics
-
 
 # ---------------------------------------------------------------------------
 # Helpers

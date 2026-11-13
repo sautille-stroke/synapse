@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
-
 from synapse.refine.roi_tracker import KalmanBBoxTracker, compute_affine_align
 from synapse.refine.tiled_executor import TiledBypassExecutor
 from synapse.refine.types import (
@@ -13,7 +11,6 @@ from synapse.refine.types import (
     FusionMethod,
     RefinementROI,
 )
-
 
 # ---------------------------------------------------------------------------
 # KalmanBBoxTracker

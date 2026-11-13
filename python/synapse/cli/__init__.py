@@ -938,9 +938,9 @@ def _cmd_refine_anatomical(
     import numpy as np
 
     from synapse.refine.pipeline import (
-        LocalRefinementPipeline,
         _METHOD_MAP,
         _REGION_MAP,
+        LocalRefinementPipeline,
         build_refine_session_payload,
     )
     from synapse.refine.types import RefinementROI
@@ -1037,7 +1037,6 @@ def _cmd_recon_invert_video(
 ) -> dict[str, Any]:
     """Run video-to-3D inverse reconstruction (RFC 0060)."""
     from synapse.recon import ReconPipeline
-    from synapse.recon.delight import delight_multiview_albedo
 
     output_dir = Path(getattr(args, "output", "./output/recon"))
     output_dir.mkdir(parents=True, exist_ok=True)

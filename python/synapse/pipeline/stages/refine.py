@@ -36,9 +36,9 @@ def handle_anatomical_refine(
         Dict with ``output_paths`` and ``diagnostics``.
     """
     from synapse.refine.pipeline import (
-        LocalRefinementPipeline,
         _METHOD_MAP,
         _REGION_MAP,
+        LocalRefinementPipeline,
     )
     from synapse.refine.types import FusionMethod, RefinementROI
 

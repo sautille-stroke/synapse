@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.errors import BackendUnavailableError
 from synapse.recon.loop.mitsuba_optimizer import (
     AnalyticUVInverseOptimizer,
@@ -20,7 +19,6 @@ from synapse.recon.loop.texture_extractor import (
     PBRTextureSet,
     extract_and_pack_pbr_textures,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

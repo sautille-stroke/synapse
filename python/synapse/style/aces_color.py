@@ -39,10 +39,20 @@ _DEPRECATION_MSG = (
 try:
     from fulgur_metrics.color import (  # type: ignore[import-not-found]
         acescg_to_linear_srgb as _native_acescg_to_linear_srgb,
+    )
+    from fulgur_metrics.color import (
         ciede2000_delta_e as _native_ciede2000_delta_e,
+    )
+    from fulgur_metrics.color import (
         linear_srgb_to_acescg as _native_linear_srgb_to_acescg,
+    )
+    from fulgur_metrics.color import (
         linear_to_srgb as _native_linear_to_srgb,
+    )
+    from fulgur_metrics.color import (
         rgb_to_cielab as _native_rgb_to_cielab,
+    )
+    from fulgur_metrics.color import (
         srgb_to_linear as _native_srgb_to_linear,
     )
 

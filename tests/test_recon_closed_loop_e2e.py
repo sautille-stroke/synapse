@@ -16,8 +16,6 @@ from __future__ import annotations
 import json
 
 import numpy as np
-import pytest
-
 
 # -------------------------------------------------------------------
 # Helper: build synthetic data for the closed loop
@@ -200,9 +198,8 @@ def test_recon_closed_loop_cli_human() -> None:
 
 def test_inverse_render_loop_stage_registered() -> None:
     """``inverse_render_loop`` stage is in the bundle worker registry."""
-    from synapse.pipeline.bundle_worker import get_registered_stages
-
     import synapse.pipeline.stages  # noqa: F401
+    from synapse.pipeline.bundle_worker import get_registered_stages
 
     stages = get_registered_stages()
     assert "inverse_render_loop" in stages

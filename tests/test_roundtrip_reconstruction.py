@@ -26,12 +26,10 @@ import math
 
 import numpy as np
 import pytest
-
 from synapse.metrics.image_quality import psnr_db, ssim
 from synapse.metrics.roundtrip import chamfer_mm
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
-
 
 # ---------------------------------------------------------------------------
 # Synthetic data generators
