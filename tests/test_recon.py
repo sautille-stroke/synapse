@@ -292,11 +292,17 @@ class TestReconPipelineEndToEnd:
 
     def test_pipeline_execution(self) -> None:
         """Runs full 5-stage reconstruction flow on synthetic sequence."""
+        from unittest.mock import patch
+
         num_frames = 16
         frames = np.full((num_frames, 48, 48, 3), 128, dtype=np.uint8)
 
         pipeline = ReconPipeline(target_quad_faces=500)
-        res = pipeline.run(frames, fps=30.0)
+        # Synthetic uniform frames produce degenerate (0°) camera angular
+        # separation. Patch the minimum threshold to allow the test to
+        # exercise the full 5-stage pipeline without real video input.
+        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
+            res = pipeline.run(frames, fps=30.0)
 
         assert isinstance(res, ReconResult)
         assert res.mesh.vertex_count > 0
