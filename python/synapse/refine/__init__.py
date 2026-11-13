@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from synapse.refine.face import CanonicalAnchorGallery, FaceRefiner
+from synapse.refine.hand import HandRefiner
 from synapse.refine.roi_tracker import KalmanBBoxTracker, compute_affine_align
 from synapse.refine.tiled_executor import TiledBypassExecutor
 from synapse.refine.types import (
@@ -14,7 +16,10 @@ from synapse.refine.types import (
 
 __all__ = [
     "AnatomicalRegion",
+    "CanonicalAnchorGallery",
+    "FaceRefiner",
     "FusionMethod",
+    "HandRefiner",
     "KalmanBBoxTracker",
     "RefinementResult",
     "RefinementROI",
