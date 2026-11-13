@@ -98,3 +98,93 @@ def handle_video_to_3d_invert(
         output_paths["albedo"] = str(p_albedo)
 
     return {"output_paths": output_paths}
+
+
+@register_stage("inverse_render_loop")
+def handle_inverse_render_loop(
+    manifest: BundleManifest,
+) -> dict[str, Any]:
+    """Execute the 5-step inverse rendering closed loop (RFC 0062).
+
+    Expects:
+        - ``manifest.inputs["video_frames"]``: Path to ``(T,H,W,3)`` ``.npy``.
+        - ``manifest.params["max_iterations"]``: Max optimisation iterations.
+        - ``manifest.params["n_preroll"]``: Preroll frame count (0, 4, or 8).
+
+    Returns:
+        Dict with ``output_paths`` and ``diagnostics``.
+    """
+    from synapse.recon.loop.closed_loop_runner import ClosedLoopRunner
+    from synapse.recon.loop.mitsuba_optimizer import InverseOptimConfig
+    from synapse.recon.loop.types import LoopConfig
+
+    params = dict(manifest.params)
+    width = int(params.get("width", 64))
+    height = int(params.get("height", 64))
+    num_frames = int(params.get("num_frames", 5))
+    max_iters = int(params.get("max_iterations", 5))
+    n_preroll = int(params.get("n_preroll", 0))
+
+    # Load or synthesize input frames
+    video_path = manifest.inputs.get("video_frames", "")
+    if video_path and Path(video_path).is_file():
+        frames = np.load(video_path).astype(np.float32)
+    else:
+        rng = np.random.default_rng(42)
+        frames = rng.random(
+            (num_frames, height, width, 3), dtype=np.float32,
+        )
+
+    t_count, h, w, _ = frames.shape
+
+    # Synthesize normals and UV maps
+    normals = np.zeros_like(frames)
+    normals[..., 2] = 1.0
+
+    uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
+    u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
+    v_lin = np.linspace(0.0, 1.0, h, dtype=np.float32)
+    uv_maps[:, :, :, 0] = u_lin[np.newaxis, np.newaxis, :]
+    uv_maps[:, :, :, 1] = v_lin[np.newaxis, :, np.newaxis]
+
+    loop_config = LoopConfig(
+        n_preroll=n_preroll,
+        max_iterations=max_iters,
+    )
+    optim_config = InverseOptimConfig(max_iterations=max_iters)
+
+    runner = ClosedLoopRunner(
+        loop_config=loop_config,
+        optim_config=optim_config,
+    )
+    result = runner.run(
+        source_frames=frames,
+        normals=normals,
+        uv_maps=uv_maps,
+    )
+
+    output_paths: dict[str, str] = {}
+
+    # Save output frames
+    out_path = manifest.outputs.get(
+        "output_frames",
+        str(Path("output") / "closed_loop_frames.npy"),
+    )
+    p_out = Path(out_path)
+    p_out.parent.mkdir(parents=True, exist_ok=True)
+    np.save(str(p_out), result.output_frames)
+    output_paths["output_frames"] = str(p_out)
+
+    # Save diagnostics
+    diag_path = manifest.outputs.get(
+        "diagnostics",
+        str(Path("output") / "closed_loop_diagnostics.json"),
+    )
+    p_diag = Path(diag_path)
+    p_diag.parent.mkdir(parents=True, exist_ok=True)
+    diag = result.to_dict()
+    with open(p_diag, "w", encoding="utf-8") as f:
+        json.dump(diag, f, indent=2, default=str)
+    output_paths["diagnostics"] = str(p_diag)
+
+    return {"output_paths": output_paths, "diagnostics": diag}
