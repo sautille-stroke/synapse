@@ -236,7 +236,7 @@ export interface RefinementTrackFrame {
   status: 'passed' | 'warning' | 'defect';
   defectType?: 'six_fingers' | 'strabismus' | 'flicker' | 'identity_drift';
   bboxXYWH?: [number, number, number, number];
-  metrics: {
+  metrics?: {
     fingerCount?: number;
     arcfaceSimilarity?: number;
     temporalFlickerScore?: number;
@@ -253,13 +253,27 @@ export interface RefinementTrackFrame {
 - `refine.temporal.set_damper`：时序阻尼系数调节
 - `refine.meltdown.checkpoint`：保存 15 分钟熔断快照
 
+### 4.3 跨端 Wire 契约 (`synapse.refine_session.v1.0`)
+
+`forgekit` 前端通过 RFC 0039 `JobBundle` 与后端 `synapse refine anatomical --json` 交换 JSON 会话契约（由 [PR-37](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 落地对齐）：
+
+| 字段 / 阶段 | 生产端 / 消费端 | 语义与格式约束 |
+|---|---|---|
+| `schema_version` | 双向契约 | 固定 `"synapse.refine_session.v1.0"` |
+| `stage` | `BundleManifest` | 固定 `"anatomical_refine"`（无状态单步退出） |
+| `shot_id` / `entity_id` | `forgekit` → `synapse` | 关联目标镜头与 `Cryptomatte.ID`（`UINT32`） |
+| `frames[]` | `synapse` → `forgekit` | 逐帧映射 `RefinementTrackFrame`（含可选 `metrics?:`） |
+| `command_ir[]` | `forgekit` → `synapse` | 携带 §4.2 中 5 类 `CommandIR` 动作载荷与时间戳 |
+| `hitl_elapsed_sec` | `synapse.bridge.hitl` | 超过 `900.0s` 触发 `CircuitBreakerError` (exit `40`) |
+
 ---
 
 ## 5. 落地规划与工程里程碑
 
-| 阶段 | 交付物 | 核心工作内容 | 验收标准 |
-|:---:|---|---|---|
-| **Phase A** | 基础骨架与核心类型 | 创建 `packages/anatomical-refine` 子包骨架，接入 Tailwind 4 Tokens，定义全套 TypeScript 类型契约 | `pnpm build` 与 `pnpm test` 零报错通过 |
-| **Phase B** | 视口手术刀与微距 PIP | 实现 `ScalpelViewportOverlay`，接入 Cryptomatte 拾取与 $16\text{px}$ 边界环 Canvas 渲染，完成 $512 \times 512$ 画中画视口 | 鼠标绘制遮罩流畅度稳定在 $60\text{ fps}$ |
-| **Phase C** | 姿态库与多模型监视器 | 实现 `PoseLibraryShelf`（悬停拖动插值）与 `MultiModelBlendInspector`（A/B 卷帘对比与频带滑块） | 姿态插值视口响应延迟 $< 16\text{ms}$ |
-| **Phase D** | 时间轴轨与熔断器 | 实现 `RefineTimelineTrack`，接入缺陷标记染色条、EMA 阻尼调节与 15 分钟熔断状态机 | 模拟 900 秒超时正确触发 `refine.meltdown.checkpoint` |
+| 阶段 | 交付物 | 实际状态 | 核心工作内容 | 验收标准 |
+|:---:|---|:---:|---|---|
+| **Phase A** | 基础骨架与核心类型 | `UI 脚手架已合入 (forgekit v0.1.0)` | 创建 `packages/anatomical-refine` 子包骨架，接入 Tailwind 4 Tokens，定义全套 TypeScript 类型契约 | `pnpm build` 与 `pnpm test` 零报错通过 |
+| **Phase B** | 视口手术刀与微距 PIP | `UI 组件已合入 (待接真实 FGPP)` | 实现 `ScalpelViewportOverlay`，接入 Cryptomatte 拾取与 $16\text{px}$ 边界环 Canvas 渲染，完成 $512 \times 512$ 画中画视口 | 鼠标绘制遮罩流畅度稳定在 $60\text{ fps}$ |
+| **Phase C** | 姿态库与多模型监视器 | `UI 组件已合入 (待接真实模型)` | 实现 `PoseLibraryShelf`（悬停拖动插值）与 `MultiModelBlendInspector`（A/B 卷帘对比与频带滑块） | 姿态插值视口响应延迟 $< 16\text{ms}$ |
+| **Phase D** | 时间轴轨与熔断器 | `UI 组件已合入 (待接熔断协议)` | 实现 `RefineTimelineTrack`，接入缺陷标记染色条、EMA 阻尼调节与 15 分钟熔断状态机 | 模拟 900 秒超时正确触发 `refine.meltdown.checkpoint` |
+| **Phase E (`PR-37`)** | 跨端 Wire 联调与回灌 | `Planned (M10 PR-37)` | 打通 `synapse.refine_session.v1.0`、`anatomical_refine` Worker Stage 与 `hard_negatives.jsonl` 导出闭环 | 端到端 Mock/真值联合测试通过，协议零字段漂移 |
