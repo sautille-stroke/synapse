@@ -6,7 +6,7 @@
 - **评审范围**:
   - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`REVIEW_3D_EVAL_DELIVERY.md`、`DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` (RFC 0060)、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
   - 仓内代码基线（`python/synapse/**`、`csrc/geometry/**`、`tools/data-inspector/**`、`pyproject.toml`、`tests/**`）；
-  - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060）。
+  - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060 / 0061 / 0062）。
 - **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 共 30 个原子 PR 及 5 份执行子计划)
 - **关联专项复核计划**: [docs/plans/PLAN-REVIEW-PR17-PR18.md](plans/PLAN-REVIEW-PR17-PR18.md) · [docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 
