@@ -1,5 +1,16 @@
 """Pure NumPy vectorized software rasterizer for Synapse-Bench.
 
+.. important:: **Test-only mock rasterizer** — NOT for production FGPP generation.
+
+    This is a zero-external-dependency CPU rasterization path intended
+    **exclusively** for ``@pytest`` / CI smoke tests and offline benchmarking
+    where GPU access is unavailable.  Production FGPP rendering must use:
+
+    - **Track A** (offline ground truth): ``caelum-core`` GPU path tracer
+    - **Track B** (real-time): ``fulgur`` headless renderer
+
+    See https://github.com/sautille-stroke/synapse/issues/34 (area ④)
+
 Provides a zero-external-dependency rasterization path that produces
 complete :class:`~synapse.fgpp.FGPPFrame` output including all 7 logical
 channel groups.  If ``numba`` is available, JIT-accelerated kernels are
