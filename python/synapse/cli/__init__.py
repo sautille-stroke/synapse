@@ -719,11 +719,9 @@ def _cmd_inspect_mesh(
                 agent_fix_hint="pip install trimesh>=4.0.0",
             )
 
-    raw_backend = str(getattr(args, "backend", "auto"))
-    backend: Literal["auto", "python", "native"] = (
-        "python"
-        if raw_backend == "python"
-        else ("native" if raw_backend == "native" else "auto")
+    raw_backend = str(getattr(args, "backend", "native"))
+    backend: Literal["native", "python"] = (
+        "python" if raw_backend == "python" else "native"
     )
     require_wt = bool(getattr(args, "require_watertight", False))
 
@@ -1246,9 +1244,10 @@ def main_synapse(args: list[str] | None = None) -> int:
         help="Output JSON report file path",
     )
     insp_mesh.add_argument(
-        "--backend", default="auto",
-        choices=["auto", "python", "native"],
-        help="Backend for geometry checks (default: auto)",
+        "--backend", default="native",
+        choices=["native", "python"],
+        help="Backend for geometry checks (default: native). "
+             "'python' is for Oracle parity testing only.",
     )
     insp_mesh.add_argument(
         "--require-watertight", action="store_true",

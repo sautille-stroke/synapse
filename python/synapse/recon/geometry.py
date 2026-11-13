@@ -6,13 +6,14 @@ connected components, etc.).
 
 **This is NOT production code.**  Normal workflows use the C++20 native kernel
 (``synapse._c_geometry`` via ``csrc/geometry/``) for actual geometry validation.
+If the C++ extension is unavailable, the geometry gate raises ``ImportError``
+rather than falling back to this module.
+
 This Python Oracle exists solely to:
 
 1. Serve as the algorithm correctness reference (ground truth).
 2. Enable parity testing against the C++ implementation
    (see ``tests/test_geometry_oracle_parity.py``).
-3. Act as a last-resort fallback when the C++ extension is unavailable
-   (with a ``RuntimeWarning``).
 
 Additionally includes: area-weighted normal estimation, Kabsch/ICP 6-DoF rigid
 alignment, and quad-dominant remeshing — utilities used by the recon pipeline.
