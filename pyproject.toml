@@ -43,6 +43,10 @@ gpu = [
 mesh = [
     "trimesh>=4.0.0",
 ]
+invrender = [
+    "mitsuba>=3.5.0",
+    "drjit>=0.4.5",
+]
 jit = [
     "numba>=0.58.0",
 ]
