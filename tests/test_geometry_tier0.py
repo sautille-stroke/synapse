@@ -445,3 +445,35 @@ class TestValidateMeshGeometry:
                 validate_mesh_geometry(verts, faces, backend="native")
             assert exc_info.value.exit_code == 30
             assert "python scripts/build_native.py" in exc_info.value.agent_fix_hint
+
+
+class TestBuildNativeScript:
+    """PR-62 (AUD-P0-02): Verify build_native.py dry-run and direct backend support."""
+
+    def test_build_native_dry_run_exits_zero(self) -> None:
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "build_native.py"
+        res = subprocess.run(
+            [sys.executable, str(script), "--dry-run"],
+            capture_output=True,
+            text=True,
+        )
+        assert res.returncode == 0, f"build_native.py --dry-run failed: {res.stderr}"
+
+    def test_build_native_direct_dry_run(self) -> None:
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "build_native.py"
+        res = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--backend=direct"],
+            capture_output=True,
+            text=True,
+        )
+        assert res.returncode == 0, f"build_native.py --dry-run --backend=direct failed: {res.stderr}"

@@ -87,7 +87,7 @@ def _build_with_bazel(repo_root: Path, bazel_bin: str) -> Path | None:
     return None
 
 
-def _find_pybind11_include() -> Path | None:
+def _find_pybind11_include(dry_run: bool = False) -> Path | None:
     """Find pybind11 header directory, installing if needed."""
     try:
         import pybind11  # type: ignore[import-not-found]
@@ -96,6 +96,9 @@ def _find_pybind11_include() -> Path | None:
             return inc
     except ImportError:
         pass
+
+    if dry_run:
+        return Path("<pybind11-include>")
 
     # Try pip installing pybind11
     print("[build_native] pybind11 not found in Python environment, attempting installation...")
@@ -123,36 +126,70 @@ def _find_pybind11_include() -> Path | None:
     return None
 
 
+def _find_aether_root(repo_root: Path) -> Path | None:
+    """Find aether root directory from AETHER_ROOT env or sibling directory."""
+    if "AETHER_ROOT" in os.environ:
+        cand = Path(os.environ["AETHER_ROOT"]).resolve()
+        if cand.is_dir():
+            return cand
+    for cand in [repo_root.parent / "aether", repo_root / "csrc" / "aether"]:
+        if cand.is_dir():
+            return cand
+    return None
+
+
 def _find_aether_math_include(repo_root: Path) -> Path | None:
     """Find aether/math/include directory."""
-    candidates = [
-        repo_root.parent / "aether" / "math" / "include",
-        repo_root / "csrc" / "aether" / "math" / "include",
-    ]
-    for cand in candidates:
+    aether_root = _find_aether_root(repo_root)
+    if aether_root:
+        cand = aether_root / "math" / "include"
         if cand.is_dir() and (cand / "aether" / "math" / "dvec.h").is_file():
             return cand
     return None
 
 
-def _build_direct_fallback(repo_root: Path, output_file: Path) -> bool:
+def _find_aether_geo_include(repo_root: Path) -> Path | None:
+    """Find aether/geo/include directory."""
+    aether_root = _find_aether_root(repo_root)
+    if aether_root:
+        cand = aether_root / "geo" / "include"
+        if cand.is_dir() and (cand / "aether" / "geo" / "mesh_checks.h").is_file():
+            return cand
+    return None
+
+
+def _find_aether_geo_src(repo_root: Path) -> Path | None:
+    """Find aether/geo/src/mesh_checks.cc source file for direct compilation."""
+    aether_root = _find_aether_root(repo_root)
+    if aether_root:
+        cand = aether_root / "geo" / "src" / "mesh_checks.cc"
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = False) -> bool:
     """Directly compile _c_geometry using host C++20 compiler."""
     csrc_dir = repo_root / "csrc" / "geometry"
-    sources = [
-        csrc_dir / "src" / "mesh_checks.cc",
-        csrc_dir / "src" / "bindings.cc",
-    ]
-    for s in sources:
-        if not s.is_file():
-            print(f"[build_native] Missing source file: {s}", file=sys.stderr)
-            return False
+    bindings_src = csrc_dir / "src" / "bindings.cc"
+    if not bindings_src.is_file():
+        print(f"[build_native] Missing bindings source file: {bindings_src}", file=sys.stderr)
+        return False
 
-    pybind_inc = _find_pybind11_include()
+    sources = [bindings_src]
+    aether_geo_src = _find_aether_geo_src(repo_root)
+    if aether_geo_src:
+        sources.append(aether_geo_src)
+    else:
+        print("[build_native] Notice: aether/geo/src/mesh_checks.cc not found; compiling with header declarations", file=sys.stderr)
+
+    pybind_inc = _find_pybind11_include(dry_run=dry_run)
     if not pybind_inc:
         print("[build_native] Error: pybind11 includes could not be located.", file=sys.stderr)
         return False
 
     aether_math_inc = _find_aether_math_include(repo_root)
+    aether_geo_inc = _find_aether_geo_include(repo_root)
 
     includes = [
         f"-I{csrc_dir / 'include'}",
@@ -164,13 +201,19 @@ def _build_direct_fallback(repo_root: Path, output_file: Path) -> bool:
         includes.append(f"-I{platinc}")
     if aether_math_inc:
         includes.append(f"-I{aether_math_inc}")
+    if aether_geo_inc:
+        includes.append(f"-I{aether_geo_inc}")
 
     is_windows = sys.platform == "win32"
+    source_args = [str(s) for s in sources]
     if is_windows:
         compiler = os.environ.get("CXX") or shutil.which("cl")
         if not compiler:
-            print("[build_native] MSVC cl.exe not found in PATH.", file=sys.stderr)
-            return False
+            if dry_run:
+                compiler = "cl.exe"
+            else:
+                print("[build_native] MSVC cl.exe not found in PATH.", file=sys.stderr)
+                return False
         cmd = [
             compiler,
             "/O2",
@@ -181,15 +224,17 @@ def _build_direct_fallback(repo_root: Path, output_file: Path) -> bool:
             "/DNOMINMAX",
             "/D_CRT_SECURE_NO_WARNINGS",
             *includes,
-            str(sources[0]),
-            str(sources[1]),
+            *source_args,
             f"/Fe:{output_file}",
         ]
     else:
         compiler = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("g++") or shutil.which("c++")
         if not compiler:
-            print("[build_native] No C++ compiler (clang++/g++/c++) found in PATH.", file=sys.stderr)
-            return False
+            if dry_run:
+                compiler = "clang++"
+            else:
+                print("[build_native] No C++ compiler (clang++/g++/c++) found in PATH.", file=sys.stderr)
+                return False
         cmd = [
             compiler,
             "-O3",
@@ -199,14 +244,17 @@ def _build_direct_fallback(repo_root: Path, output_file: Path) -> bool:
             "-fPIC",
             "-fvisibility=hidden",
             *includes,
-            str(sources[0]),
-            str(sources[1]),
+            *source_args,
             "-o",
             str(output_file),
         ]
 
     print(f"[build_native] Compiling fallback with {compiler}:")
     print(" ", " ".join(cmd))
+    if dry_run:
+        print("[build_native] (dry-run mode, skipping execution)")
+        return True
+
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         print("[build_native] Fallback compilation failed:", file=sys.stderr)
@@ -281,7 +329,9 @@ def _smoke_test() -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build and install native C++20 _c_geometry extension.")
     parser.add_argument("--force-direct", action="store_true", help="Force direct C++ compilation, bypassing Bazel.")
-    parser.add_argument("--check-only", action="store_true", help="Only verify existing extension integrity.")
+    parser.add_argument("--check-only", "--check", action="store_true", dest="check_only", help="Only verify existing extension integrity.")
+    parser.add_argument("--dry-run", action="store_true", help="Print compiler commands without executing.")
+    parser.add_argument("--backend", choices=["auto", "bazel", "direct"], default="auto", help="Build backend to use.")
     args = parser.parse_args()
 
     repo_root = _get_repo_root()
@@ -297,10 +347,15 @@ def main() -> int:
 
     built_artifact: Path | None = None
 
-    # Step 1: Try Bazel unless --force-direct is specified
-    bazel_bin = None if args.force_direct else _find_bazel()
+    use_bazel = (args.backend in ("auto", "bazel")) and not args.force_direct and args.backend != "direct"
+    bazel_bin = _find_bazel() if use_bazel else None
+
+    # Step 1: Try Bazel
     if bazel_bin:
         print(f"[build_native] Found Bazel at: {bazel_bin}")
+        if args.dry_run:
+            print(f"[build_native] (dry-run) {bazel_bin} build //:_c_geometry --config={_get_platform_config()}")
+            return 0
         built_artifact = _build_with_bazel(repo_root, bazel_bin)
         if built_artifact:
             print(f"[build_native] Bazel build succeeded: {built_artifact}")
@@ -310,7 +365,9 @@ def main() -> int:
         print("[build_native] Falling back to direct C++20 compiler...")
         ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
         temp_out = repo_root / "csrc" / "geometry" / f"_c_geometry{ext_suffix}"
-        if _build_direct_fallback(repo_root, temp_out):
+        if _build_direct_fallback(repo_root, temp_out, dry_run=args.dry_run):
+            if args.dry_run:
+                return 0
             built_artifact = temp_out
             print(f"[build_native] Direct compilation succeeded: {built_artifact}")
         else:

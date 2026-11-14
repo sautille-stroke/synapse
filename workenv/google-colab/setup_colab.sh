@@ -37,11 +37,9 @@ echo "======================================================================"
 # Upgrade pip, wheel, setuptools
 python3 -m pip install --upgrade --quiet pip setuptools wheel
 
-# Install Synapse in editable mode with GPU, image, metrics, and training extras
-# Note: [mesh] (trimesh) and [jit] (numba) omitted to avoid Colab LLVM conflicts;
-# install them manually if needed: pip install -e ".[mesh,jit]"
+# Install Synapse in editable mode with GPU, image, metrics, mesh, and training extras
 if [ -f "pyproject.toml" ]; then
-    python3 -m pip install --quiet -e ".[image,metrics,gpu,train]"
+    python3 -m pip install --quiet -e ".[image,metrics,gpu,train,mesh]"
 else
     echo "❌ Error: pyproject.toml not found. Please run this script from the synapse repository root."
     exit 1
@@ -53,12 +51,16 @@ python3 -m pip install --quiet \
     "accelerate>=0.33.0" \
     "transformers>=4.44.0" \
     "sentencepiece>=0.2.0" \
-    "webdataset>=0.2.86"
+    "webdataset>=0.2.86" \
+    "huggingface_hub>=0.24.0"
 
 # Build and install native C++20 geometry kernel (_c_geometry)
 echo ">>> Building native _c_geometry extension kernel..."
-python3 scripts/build_native.py
-python3 -c "from synapse._c_geometry import validate_mesh_geometry; print('native OK')"
+if python3 scripts/build_native.py; then
+    python3 -c "from synapse._c_geometry import validate_mesh_geometry; print('native _c_geometry OK')" || true
+else
+    echo "⚠️ Native compilation skipped or failed; operating in pure Python Oracle geometry mode."
+fi
 
 echo ""
 echo "======================================================================"
