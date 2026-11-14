@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-from synapse.generators.rasterizer import SoftwareRasterizer
+from synapse.render_core.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
     colorize_depth,
     colorize_flow,

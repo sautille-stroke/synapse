@@ -31,8 +31,8 @@ __all__ = [
 
 _DEPRECATION_MSG = (
     "synapse.style.aces_color: using pure-NumPy fallback.  "
-    "Install 'fulgur-metrics' for production-grade SIMD-accelerated "
-    "color science.  This fallback will be removed in synapse v2.0.  "
+    "A future @aether//color native extension will provide "
+    "SIMD-accelerated color science.  "
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 

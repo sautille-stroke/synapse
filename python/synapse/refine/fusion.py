@@ -4,7 +4,7 @@
 Provides five heterogeneous fusion strategies for merging candidate
 refinement outputs from different generative models into a single
 high-quality patch.  All operations are **pure NumPy** on **float32
-ACEScg** tensors â€” no ``torch`` or ``scipy`` dependency at import
+ACEScg** tensors â€?no ``torch`` or ``scipy`` dependency at import
 time.
 
 The five strategies are intentionally **orthogonal** to the spatial
@@ -21,102 +21,18 @@ from typing import Sequence
 import numpy as np
 
 from synapse.refine.types import FusionMethod
+from synapse.render_core.pyramid import (
+    build_laplacian_pyramid,
+    downsample2x,
+    reconstruct_laplacian_pyramid,
+    separable_gaussian,
+    upsample2x,
+)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-
-def _build_gaussian_kernel_1d(sigma: float, radius: int) -> np.ndarray:
-    """1-D normalised Gaussian kernel."""
-    x = np.arange(-radius, radius + 1, dtype=np.float32)
-    k = np.exp(-0.5 * (x / max(sigma, 1e-6)) ** 2)
-    return (k / k.sum()).astype(np.float32)
-
-
-def _separable_blur(
-    img: np.ndarray,
-    sigma: float,
-) -> np.ndarray:
-    """Separable Gaussian blur (pure NumPy)."""
-    if sigma < 0.5:
-        return img.copy()
-
-    radius = max(int(round(3.0 * sigma)), 1)
-    kernel = _build_gaussian_kernel_1d(sigma, radius)
-
-    def _convolve_1d(arr: np.ndarray, axis: int) -> np.ndarray:
-        pad_w = [(0, 0)] * arr.ndim
-        pad_w[axis] = (radius, radius)
-        padded = np.pad(arr, pad_w, mode="reflect")
-        n_out = arr.shape[axis]
-        result = np.zeros_like(arr)
-        for i, w in enumerate(kernel):
-            slices = [slice(None)] * arr.ndim
-            slices[axis] = slice(i, i + n_out)
-            result += w * padded[tuple(slices)]
-        return result
-
-    out = _convolve_1d(img, axis=0)
-    out = _convolve_1d(out, axis=1)
-    return out
-
-
-def _downsample2x(img: np.ndarray) -> np.ndarray:
-    """Gaussian-prefiltered 2x downsample."""
-    blurred = _separable_blur(img, sigma=1.0)
-    return blurred[::2, ::2]
-
-
-def _upsample2x(img: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
-    """Bilinear 2x upsample to ``(target_h, target_w, ...)``."""
-    h, w = img.shape[:2]
-    row_idx = np.arange(target_h, dtype=np.float32) * (h - 1) / max(target_h - 1, 1)
-    col_idx = np.arange(target_w, dtype=np.float32) * (w - 1) / max(target_w - 1, 1)
-
-    r0 = np.floor(row_idx).astype(np.intp)
-    r1 = np.minimum(r0 + 1, h - 1)
-    rf = (row_idx - r0).astype(np.float32)
-
-    c0 = np.floor(col_idx).astype(np.intp)
-    c1 = np.minimum(c0 + 1, w - 1)
-    cf = (col_idx - c0).astype(np.float32)
-
-    out = np.empty((target_h, target_w, img.shape[2]), dtype=img.dtype)
-    for i in range(target_h):
-        top = (1.0 - rf[i]) * img[r0[i], :, :] + rf[i] * img[r1[i], :, :]
-        out[i, :, :] = (
-            (1.0 - cf)[:, np.newaxis] * top[c0, :]
-            + cf[:, np.newaxis] * top[c1, :]
-        )
-    return out
-
-
-def _build_laplacian_pyramid(
-    img: np.ndarray, n_levels: int,
-) -> list[np.ndarray]:
-    """Build a Laplacian pyramid (last entry is the low-pass residual)."""
-    gaussian: list[np.ndarray] = [img.copy()]
-    cur = img.copy()
-    for _ in range(n_levels):
-        cur = _downsample2x(cur)
-        gaussian.append(cur)
-
-    lap: list[np.ndarray] = []
-    for i in range(n_levels):
-        up = _upsample2x(gaussian[i + 1], gaussian[i].shape[0], gaussian[i].shape[1])
-        lap.append(gaussian[i] - up)
-    lap.append(gaussian[-1])
-    return lap
-
-
-def _reconstruct_laplacian(pyramid: list[np.ndarray]) -> np.ndarray:
-    """Reconstruct image from its Laplacian pyramid."""
-    cur = pyramid[-1].copy()
-    for i in range(len(pyramid) - 2, -1, -1):
-        up = _upsample2x(cur, pyramid[i].shape[0], pyramid[i].shape[1])
-        cur = pyramid[i] + up
-    return cur
 
 
 def _sobel_gradient_magnitude(img: np.ndarray) -> np.ndarray:
@@ -164,7 +80,7 @@ def _fuse_laplacian_frequency(
     max_levels = max(int(np.floor(np.log2(max(min_dim, 1)))), 1)
     n_levels = min(n_levels, max_levels)
 
-    pyramids = [_build_laplacian_pyramid(cand, n_levels) for cand in candidates]
+    pyramids = [build_laplacian_pyramid(cand, n_levels) for cand in candidates]
     n_entries = len(pyramids[0])
 
     blended_pyr: list[np.ndarray] = []
@@ -174,7 +90,7 @@ def _fuse_laplacian_frequency(
             accum += weights[k] * pyr[level]
         blended_pyr.append(accum)
 
-    return _reconstruct_laplacian(blended_pyr)
+    return reconstruct_laplacian_pyramid(blended_pyr)
 
 
 def _fuse_cascade(
@@ -188,7 +104,7 @@ def _fuse_cascade(
     resolutions, producing a result that draws structure from the most
     trusted candidate while incorporating detail from others.
     """
-    # Sort candidates by weight (ascending) â€” lowest weight contributes
+    # Sort candidates by weight (ascending) â€?lowest weight contributes
     # coarse structure, highest weight contributes fine detail.
     order = np.argsort(weights)
     h, w, c = candidates[0].shape
@@ -208,18 +124,18 @@ def _fuse_cascade(
         if scale > 1 and h > scale * 4 and w > scale * 4:
             small_h = h // scale
             small_w = w // scale
-            result_small = _upsample2x(
-                _downsample2x(result),
+            result_small = upsample2x(
+                downsample2x(result),
                 small_h,
                 small_w,
             )
-            cand_small = _upsample2x(
-                _downsample2x(candidates[cand_idx]),
+            cand_small = upsample2x(
+                downsample2x(candidates[cand_idx]),
                 small_h,
                 small_w,
             )
             blended_small = (1.0 - alpha) * result_small + alpha * cand_small
-            result = _upsample2x(blended_small, h, w)
+            result = upsample2x(blended_small, h, w)
         else:
             result = (1.0 - alpha) * result + alpha * candidates[cand_idx]
 
@@ -242,11 +158,11 @@ def _fuse_latent_timestep_switch(
 
     # Compute structure from first candidate (heavily blurred)
     structure_sigma = max(h, w) * 0.05
-    structure = _separable_blur(candidates[0], structure_sigma)
+    structure = separable_gaussian(candidates[0], structure_sigma)
 
     # Compute detail from last candidate
     detail_source = candidates[-1]
-    detail_blurred = _separable_blur(detail_source, structure_sigma)
+    detail_blurred = separable_gaussian(detail_source, structure_sigma)
     detail = detail_source - detail_blurred
 
     # For middle candidates, interpolate contribution
@@ -259,7 +175,7 @@ def _fuse_latent_timestep_switch(
             mid_accum /= mid_weight_sum
             # Blend mid-frequency from middle candidates
             mid_sigma = structure_sigma * 0.5
-            mid_structure = _separable_blur(mid_accum, mid_sigma)
+            mid_structure = separable_gaussian(mid_accum, mid_sigma)
             mid_detail = mid_accum - mid_structure
             detail = 0.5 * detail + 0.5 * mid_detail
 
@@ -292,7 +208,7 @@ def _fuse_uncertainty(
         # Compute per-pixel variance across channels
         chan_var = np.var(stack[k], axis=-1)  # (H, W)
         # Smooth to get local neighbourhood variance
-        smoothed = _separable_blur(chan_var[:, :, np.newaxis], sigma=1.5)
+        smoothed = separable_gaussian(chan_var[:, :, np.newaxis], sigma=1.5)
         local_vars[k] = smoothed[:, :, 0]
 
     # Inverse variance weighting (regularised)

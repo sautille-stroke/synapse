@@ -29,9 +29,8 @@ __all__ = [
 
 _DEPRECATION_MSG = (
     "synapse.metrics.temporal: using pure-NumPy fallback for temporal "
-    "metrics.  Install 'fulgur-metrics' for production-grade "
-    "SIMD-accelerated temporal analysis.  This fallback will be removed "
-    "in synapse v2.0.  "
+    "metrics.  A future @aether//metrics native extension will provide "
+    "SIMD-accelerated temporal analysis.  "
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 
