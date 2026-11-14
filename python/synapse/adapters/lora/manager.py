@@ -184,19 +184,19 @@ class MultiLoRAManager:
         norm_b = np.linalg.norm(b_flat)
 
         if norm_a < 1e-12 or norm_b < 1e-12:
-            return lora_b_delta.copy()
+            return np.asarray(lora_b_delta.copy())
 
         cos_theta = np.dot(a_flat, b_flat) / (norm_a * norm_b)
 
         if abs(cos_theta) <= threshold:
-            return lora_b_delta.copy()
+            return np.asarray(lora_b_delta.copy())
 
         # Gram-Schmidt: remove component of b parallel to a
         proj_coeff = np.dot(a_flat, b_flat) / np.dot(a_flat, a_flat)
         b_orth = b_flat - proj_coeff * a_flat
 
-        return b_orth.reshape(lora_b_delta.shape).astype(
-            lora_b_delta.dtype,
+        return np.asarray(
+            b_orth.reshape(lora_b_delta.shape).astype(lora_b_delta.dtype)
         )
 
     # -- internals -----------------------------------------------------------

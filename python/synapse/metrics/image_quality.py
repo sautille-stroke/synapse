@@ -260,11 +260,13 @@ def _downsample_2x(img4: np.ndarray) -> np.ndarray:
     if h2 < 2 or w2 < 2:
         return img4
     cropped = img4[:, :h2, :w2, :]
-    return 0.25 * (
-        cropped[:, 0::2, 0::2, :]
-        + cropped[:, 1::2, 0::2, :]
-        + cropped[:, 0::2, 1::2, :]
-        + cropped[:, 1::2, 1::2, :]
+    return np.asarray(
+        0.25 * (
+            cropped[:, 0::2, 0::2, :]
+            + cropped[:, 1::2, 0::2, :]
+            + cropped[:, 0::2, 1::2, :]
+            + cropped[:, 1::2, 1::2, :]
+        )
     )
 
 

@@ -38,11 +38,11 @@ class ProceduralMesh:
 
     @property
     def num_vertices(self) -> int:
-        return self.vertices.shape[0]
+        return int(self.vertices.shape[0])
 
     @property
     def num_faces(self) -> int:
-        return self.faces.shape[0]
+        return int(self.faces.shape[0])
 
     def bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Return (min_corner, max_corner) of the axis-aligned bbox."""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -200,7 +202,7 @@ def register_lora_subparser(
         "--output", required=True,
         help="Output directory for merged model",
     )
-    return lora_parser
+    return cast(argparse.ArgumentParser, lora_parser)
 
 
 def dispatch_lora(

@@ -10,6 +10,8 @@ See: https://github.com/sautille-stroke/synapse/issues/34
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 __all__ = [
@@ -104,12 +106,12 @@ _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
 
 def _fallback_linear_srgb_to_acescg(rgb: np.ndarray) -> np.ndarray:
     arr = np.asarray(rgb, dtype=np.float64)
-    return arr @ _M_SRGB_TO_ACESCG.T
+    return np.asarray(arr @ _M_SRGB_TO_ACESCG.T)
 
 
 def _fallback_acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
     arr = np.asarray(acescg, dtype=np.float64)
-    return arr @ _M_ACESCG_TO_SRGB.T
+    return np.asarray(arr @ _M_ACESCG_TO_SRGB.T)
 
 
 # --- Soft-knee inverse tonemapping ---------------------------------
@@ -265,7 +267,7 @@ def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarra
         + term_H ** 2
         + R_T * term_C * term_H
     )
-    return dE
+    return np.asarray(dE)
 
 
 # ===================================================================
@@ -283,7 +285,7 @@ def srgb_to_linear(srgb: np.ndarray) -> np.ndarray:
         Linear RGB array with the same shape.
     """
     if _HAS_NATIVE:
-        return _native_srgb_to_linear(srgb)  # type: ignore[misc]
+        return cast(np.ndarray, _native_srgb_to_linear(srgb))
     _warn_fallback()
     return _fallback_srgb_to_linear(srgb)
 
@@ -298,7 +300,7 @@ def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
         sRGB array with the same shape.
     """
     if _HAS_NATIVE:
-        return _native_linear_to_srgb(linear)  # type: ignore[misc]
+        return cast(np.ndarray, _native_linear_to_srgb(linear))
     _warn_fallback()
     return _fallback_linear_to_srgb(linear)
 
@@ -313,7 +315,7 @@ def linear_srgb_to_acescg(rgb: np.ndarray) -> np.ndarray:
         ACEScg array with the same shape.
     """
     if _HAS_NATIVE:
-        return _native_linear_srgb_to_acescg(rgb)  # type: ignore[misc]
+        return cast(np.ndarray, _native_linear_srgb_to_acescg(rgb))
     _warn_fallback()
     return _fallback_linear_srgb_to_acescg(rgb)
 
@@ -328,7 +330,7 @@ def acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
         Linear sRGB array with the same shape.
     """
     if _HAS_NATIVE:
-        return _native_acescg_to_linear_srgb(acescg)  # type: ignore[misc]
+        return cast(np.ndarray, _native_acescg_to_linear_srgb(acescg))
     _warn_fallback()
     return _fallback_acescg_to_linear_srgb(acescg)
 
@@ -361,7 +363,7 @@ def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
         CIE Lab array with shape (..., 3) where channels are [L, a, b].
     """
     if _HAS_NATIVE:
-        return _native_rgb_to_cielab(rgb_linear)  # type: ignore[misc]
+        return cast(np.ndarray, _native_rgb_to_cielab(rgb_linear))
     _warn_fallback()
     return _fallback_rgb_to_cielab(rgb_linear)
 
@@ -380,6 +382,6 @@ def ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
         ΔE₀₀ array with shape (...).
     """
     if _HAS_NATIVE:
-        return _native_ciede2000_delta_e(lab1, lab2)  # type: ignore[misc]
+        return cast(np.ndarray, _native_ciede2000_delta_e(lab1, lab2))
     _warn_fallback()
     return _fallback_ciede2000_delta_e(lab1, lab2)

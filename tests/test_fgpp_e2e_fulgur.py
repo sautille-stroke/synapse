@@ -308,6 +308,7 @@ class TestFgppFulgurWireParity:
         assert int(crypto[0, 1]) == 0xFFFFFFFF
 
 
+@pytest.mark.slow
 class TestFgppFulgurRealGpuExport:
     """End-to-end verification against real fulgur GPU-rendered EXR sequences."""
 

@@ -179,7 +179,7 @@ class LinearProjectionEncoder:
         )
 
         # Rearrange to [C_latent, tau, h8, w8]
-        return projected.transpose(3, 0, 1, 2)
+        return np.asarray(projected.transpose(3, 0, 1, 2))
 
 
 class LinearProjectionTextEncoder:

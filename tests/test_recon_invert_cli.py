@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 from synapse.cli import main_synapse
 from synapse.pipeline.bundle_worker import (
     BundleManifest,
@@ -33,6 +34,7 @@ def test_recon_invert_video_cli_json() -> None:
     assert exit_code == 20
 
 
+@pytest.mark.slow
 def test_recon_invert_video_cli_with_video() -> None:
     """synapse recon invert-video works with actual video .npy file.
 
@@ -73,6 +75,7 @@ def test_video_to_3d_invert_stage_registered() -> None:
     assert "video_to_3d_invert" in stages
 
 
+@pytest.mark.slow
 def test_video_to_3d_invert_stage_execution() -> None:
     """video_to_3d_invert stage executes with valid video_frames input."""
     with tempfile.TemporaryDirectory() as tmpdir:

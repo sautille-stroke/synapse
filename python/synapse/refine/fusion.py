@@ -53,7 +53,7 @@ def _sobel_gradient_magnitude(img: np.ndarray) -> np.ndarray:
     gy[1:-1, :, :] = img[2:, :, :] - img[:-2, :, :]
 
     mag = np.sqrt(gx ** 2 + gy ** 2)
-    return mag.mean(axis=-1)
+    return np.asarray(mag.mean(axis=-1))
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ def _fuse_cascade(
         else:
             result = (1.0 - alpha) * result + alpha * candidates[cand_idx]
 
-    return result
+    return np.asarray(result)
 
 
 def _fuse_latent_timestep_switch(
@@ -185,7 +185,7 @@ def _fuse_latent_timestep_switch(
     w_struct = max(w_struct, 0.3)
 
     result = w_struct * structure + w_detail * detail
-    return result
+    return np.asarray(result)
 
 
 def _fuse_uncertainty(
@@ -352,7 +352,7 @@ class MultiModelRefineFusion:
 
         # Single candidate passthrough
         if len(candidates) == 1:
-            return candidates[0].copy()
+            return np.asarray(candidates[0].copy())
 
         # Validate shapes
         ref_shape = candidates[0].shape

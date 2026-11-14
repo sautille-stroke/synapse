@@ -63,16 +63,18 @@ def separable_gaussian(
         Blurred array with the same shape and dtype.
     """
     if sigma < 0.5:
-        return img.copy()
+        return np.asarray(img.copy())
 
     orig_dtype = img.dtype
 
     try:
         from scipy.ndimage import gaussian_filter
 
-        return gaussian_filter(
-            img.astype(np.float64), sigma=sigma, mode="reflect",
-        ).astype(orig_dtype)
+        return np.asarray(
+            gaussian_filter(
+                img.astype(np.float64), sigma=sigma, mode="reflect",
+            ).astype(orig_dtype)
+        )
     except ImportError:
         pass
 
@@ -192,4 +194,4 @@ def reconstruct_laplacian_pyramid(pyramid: list[np.ndarray]) -> np.ndarray:
     for i in range(len(pyramid) - 2, -1, -1):
         up = upsample2x(cur, pyramid[i].shape[0], pyramid[i].shape[1])
         cur = pyramid[i] + up
-    return cur
+    return np.asarray(cur)

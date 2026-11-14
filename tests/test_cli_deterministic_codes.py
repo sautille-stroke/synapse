@@ -269,7 +269,7 @@ class TestGenerateCliJsonEnvelopes:
         out_dir = tmp_path / "gen_output"
         code, out, err = _capture_synapse([
             "--json", "generate",
-            "--model", "damaged_helmet",
+            "--model", "cube",
             "--frames", "2",
             "--res", "64",
             "--out", str(out_dir),
@@ -282,14 +282,14 @@ class TestGenerateCliJsonEnvelopes:
         assert payload["status"] == "ok"
         assert payload["exit_code"] == 0
         assert payload["frames_count"] == 2
-        assert payload["model"] == "damaged_helmet"
+        assert payload["model"] == "cube"
 
     def test_standalone_data_gen_json_flag(self, tmp_path: Path) -> None:
         """'synapse-data-gen --json' should emit 100% parseable JSON to stdout."""
         out_dir = tmp_path / "data_gen_out"
         code, out, err = _capture_data_gen([
             "--json",
-            "--model", "damaged_helmet",
+            "--model", "cube",
             "--frames", "2",
             "--res", "64",
             "--out", str(out_dir),

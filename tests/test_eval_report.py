@@ -440,6 +440,7 @@ class TestEvalScript:
                 "inspect",
                 "evaluate",
                 "--input-dir", str(model_dir),
+                "--reference-dir", str(model_dir),
                 "--output-dir", str(out_dir),
                 "--gate-profile", "track_b_video",
                 "--resolution", "64",

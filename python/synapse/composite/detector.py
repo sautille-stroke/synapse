@@ -59,10 +59,11 @@ _BLOCK_SIZE: int = 16
 
 def _to_grayscale(rgb: np.ndarray) -> np.ndarray:
     """Convert uint8 sRGB [H, W, 3] → float32 luminance [H, W]."""
-    return (
+    return np.asarray(
         0.2126 * rgb[..., 0].astype(np.float32)
         + 0.7152 * rgb[..., 1].astype(np.float32)
-        + 0.0722 * rgb[..., 2].astype(np.float32)
+        + 0.0722 * rgb[..., 2].astype(np.float32),
+        dtype=np.float32,
     ) / 255.0
 
 
@@ -84,7 +85,7 @@ def _sobel_edges(gray: np.ndarray) -> np.ndarray:
         -padded[:-2, :-2] - 2.0 * padded[:-2, 1:-1] - padded[:-2, 2:]
         + padded[2:, :-2] + 2.0 * padded[2:, 1:-1] + padded[2:, 2:]
     )
-    return np.sqrt(gx * gx + gy * gy)
+    return np.asarray(np.sqrt(gx * gx + gy * gy), dtype=np.float32)
 
 
 def _block_mean(img: np.ndarray, block: int) -> np.ndarray:
@@ -132,7 +133,7 @@ def _simple_warp(
     mv_f = np.nan_to_num(mv.astype(np.float32), nan=0.0)
     src_x = np.clip(np.round(xx + mv_f[..., 0]).astype(np.intp), 0, w - 1)
     src_y = np.clip(np.round(yy + mv_f[..., 1]).astype(np.intp), 0, h - 1)
-    return frame[src_y, src_x]
+    return np.asarray(frame[src_y, src_x])
 
 
 def _distance_transform_bf(mask: np.ndarray) -> np.ndarray:
@@ -146,7 +147,7 @@ def _distance_transform_bf(mask: np.ndarray) -> np.ndarray:
     """
     try:
         from scipy.ndimage import distance_transform_edt
-        return distance_transform_edt(~mask).astype(np.float32)
+        return np.asarray(distance_transform_edt(~mask).astype(np.float32))
     except ImportError:  # pragma: no cover
         pass
 

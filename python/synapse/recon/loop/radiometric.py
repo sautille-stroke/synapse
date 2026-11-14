@@ -85,8 +85,10 @@ def linear_to_acescg(linear_rgb: np.ndarray) -> np.ndarray:
     Returns:
         Array of the same shape in ACEScg colour space.
     """
-    return np.einsum("...c,rc->...r", linear_rgb.astype(np.float64), _SRGB_TO_AP1).astype(
-        linear_rgb.dtype
+    return np.asarray(
+        np.einsum("...c,rc->...r", linear_rgb.astype(np.float64), _SRGB_TO_AP1).astype(
+            linear_rgb.dtype
+        )
     )
 
 
@@ -99,8 +101,10 @@ def acescg_to_linear(acescg: np.ndarray) -> np.ndarray:
     Returns:
         Array of the same shape in linear sRGB colour space.
     """
-    return np.einsum("...c,rc->...r", acescg.astype(np.float64), _AP1_TO_SRGB).astype(
-        acescg.dtype
+    return np.asarray(
+        np.einsum("...c,rc->...r", acescg.astype(np.float64), _AP1_TO_SRGB).astype(
+            acescg.dtype
+        )
     )
 
 
@@ -143,4 +147,4 @@ def apply_kappa_reanchor(
         result[-1] = production_first_frame
     elif kappa > 0.0:
         result[-1] = (1.0 - kappa) * result[-1] + kappa * production_first_frame
-    return result
+    return np.asarray(result)

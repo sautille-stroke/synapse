@@ -405,7 +405,7 @@ def _acescg_to_srgb_f32(acescg: np.ndarray) -> np.ndarray:
         acescg.astype(np.float64),
     )
     srgb = linear_to_srgb(np.clip(linear_srgb, 0.0, None))
-    return np.clip(srgb, 0.0, 1.0).astype(np.float32)
+    return np.asarray(np.clip(srgb, 0.0, 1.0), dtype=np.float32)
 
 
 def _srgb_to_acescg_f32(srgb: np.ndarray) -> np.ndarray:
@@ -414,7 +414,7 @@ def _srgb_to_acescg_f32(srgb: np.ndarray) -> np.ndarray:
 
     linear = srgb_to_linear(np.clip(srgb.astype(np.float64), 0.0, 1.0))
     acescg = linear_srgb_to_acescg(linear)
-    return acescg.astype(np.float32)
+    return np.asarray(acescg, dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +442,7 @@ def _border_ring_mask(
     se = circular_structuring_element(ring)
     dilated = binary_dilation(fg_mask, se)
     eroded = binary_erosion(fg_mask, se)
-    return dilated & (~eroded)
+    return np.asarray(dilated & (~eroded), dtype=bool)
 
 
 def _border_psnr(

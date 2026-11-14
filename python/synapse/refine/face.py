@@ -160,7 +160,7 @@ class CanonicalAnchorGallery:
                 norm = np.linalg.norm(emb)
                 if norm > _IDW_EPSILON:
                     emb /= norm
-                return emb.astype(np.float64)
+                return np.asarray(emb, dtype=np.float64)
 
         # Inverse-distance weighting
         weights = np.array(
@@ -179,7 +179,7 @@ class CanonicalAnchorGallery:
         if norm > _IDW_EPSILON:
             result /= norm
 
-        return result
+        return np.asarray(result)
 
 
 # ---------------------------------------------------------------------------

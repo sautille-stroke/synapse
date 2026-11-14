@@ -107,7 +107,7 @@ def _fallback_temporal_warp_error(
 
         error_sum += float(err_val)
 
-    return error_sum / t_count
+    return float(error_sum / t_count)
 
 
 def _fallback_flicker_score(frames: np.ndarray) -> float:
@@ -150,8 +150,10 @@ def temporal_warp_error(
         Mean error across all frame pairs (scalar float).
     """
     if _HAS_NATIVE and metric == "rmse":
-        return _native_temporal_warp_error(  # type: ignore[misc]
-            frames, motion_vectors, occlusion_masks,
+        return float(
+            _native_temporal_warp_error(
+                frames, motion_vectors, occlusion_masks,
+            )
         )
     return _fallback_temporal_warp_error(
         frames, motion_vectors, occlusion_masks, metric=metric,
@@ -172,7 +174,7 @@ def flicker_score(frames: np.ndarray) -> float:
         Scalar float (lower is better; 0 for perfectly static content).
     """
     if _HAS_NATIVE:
-        return _native_flicker_score(frames)  # type: ignore[misc]
+        return float(_native_flicker_score(frames))
     return _fallback_flicker_score(frames)
 
 

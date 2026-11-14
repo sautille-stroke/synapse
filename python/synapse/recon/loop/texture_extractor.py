@@ -111,4 +111,4 @@ def _tv_smooth(
             - result[:, 1:, :].astype(np.float64)
         )
         result = result - weight * grad.astype(np.float32)
-    return result
+    return np.asarray(result)

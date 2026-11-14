@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -222,7 +224,7 @@ def register_recon_subparser(
         choices=[0, 4, 8],
         help="Number of preroll frames (default: 0)",
     )
-    return recon_parser
+    return cast(argparse.ArgumentParser, recon_parser)
 
 
 def dispatch_recon(

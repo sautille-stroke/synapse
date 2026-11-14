@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 from synapse.cli.common import (
@@ -218,7 +220,7 @@ def register_fgpp_subparser(
         "--export-vis", action="store_true", default=False,
         help="Export visualisation images",
     )
-    return fgpp_parser
+    return cast(argparse.ArgumentParser, fgpp_parser)
 
 
 def dispatch_fgpp(

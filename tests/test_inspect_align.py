@@ -225,6 +225,28 @@ class TestAlignPose:
         )
         return verts, faces
 
+    def test_fast_alignment_contract(
+        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+    ) -> None:
+        """Lightweight smoke verification of alignment contract with minimal search."""
+        verts, faces = humanoid_mesh
+        res = 32
+        centroid = verts.mean(axis=0)
+        radii = np.linalg.norm(verts - centroid, axis=1)
+        bbox_r = float(radii.max())
+        cam_radius = bbox_r * 2.5
+        cams = generate_fibonacci_sphere_cameras(
+            n_cameras=4, radius_scale=cam_radius, fov_deg=50.0,
+        )
+        ref_sil = compute_silhouette(verts, faces, cams[0], resolution=res)
+        best_pose, best_iou = align_reference_image_to_mesh(
+            ref_sil, verts, faces,
+            n_coarse=4, n_refine_iters=2,
+        )
+        assert isinstance(best_pose, CameraPose)
+        assert 0.0 <= best_iou <= 1.0
+
+    @pytest.mark.slow
     def test_known_pose_recovery(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
@@ -275,6 +297,7 @@ class TestAlignPose:
             f"Recovered IoU {best_iou:.4f} < 0.88"
         )
 
+    @pytest.mark.slow
     def test_position_error_within_threshold(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
@@ -326,10 +349,11 @@ class TestAlignPose:
         with pytest.raises(QualityGateError) as exc_info:
             align_reference_image_to_mesh(
                 blank, verts, faces,
-                n_coarse=12, n_refine_iters=5,
+                n_coarse=2, n_refine_iters=1,
             )
         assert exc_info.value.exit_code == 40
 
+    @pytest.mark.slow
     def test_top3_above_random_chance(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:

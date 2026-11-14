@@ -67,7 +67,7 @@ def _spatial_smooth(img: np.ndarray, radius: int = 3) -> np.ndarray:
         from scipy.ndimage import uniform_filter
 
         size = (2 * radius + 1, 2 * radius + 1, 1)
-        return uniform_filter(img, size=size)
+        return np.asarray(uniform_filter(img, size=size))
     except ImportError:
         # Pure numpy separable box filter
         res = np.copy(img)
@@ -178,8 +178,8 @@ def delight(
     final_albedo = np.clip(recovered_albedo, 0.0, 1.0)
 
     if is_uint8:
-        return (final_albedo * 255.0).astype(np.uint8)
-    return final_albedo.astype(np.float32)
+        return np.asarray((final_albedo * 255.0).astype(np.uint8))
+    return np.asarray(final_albedo, dtype=np.float32)
 
 
 def decompose_intrinsic(
