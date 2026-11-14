@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.adapters.base import VideoGenerationConfig
 from synapse.adapters.scheduler import (
     CausalWindowPlan,
