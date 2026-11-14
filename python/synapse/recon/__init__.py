@@ -10,6 +10,7 @@ from __future__ import annotations
 from synapse.recon.delight import (
     decompose_intrinsic,
     delight,
+    delight_multiview_albedo,
     evaluate_spherical_harmonics_basis,
 )
 from synapse.recon.geometry import (
@@ -59,6 +60,7 @@ __all__ = [
     "compute_normals",
     "decompose_intrinsic",
     "delight",
+    "delight_multiview_albedo",
     "evaluate_spherical_harmonics_basis",
     "find_connected_components",
     "prune_floating_islands",

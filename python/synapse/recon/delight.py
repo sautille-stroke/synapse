@@ -195,8 +195,9 @@ def decompose_intrinsic(
     Returns:
         DelightResult containing albedo, shading, specular, and SH parameters.
     """
+    is_uint8 = np.asarray(radiance).dtype == np.uint8
     rad = np.asarray(radiance, dtype=np.float32)
-    if rad.dtype == np.uint8:
+    if is_uint8:
         rad = rad / 255.0
 
     h, w, _ = rad.shape
@@ -227,12 +228,20 @@ def decompose_intrinsic(
     reg = 1e-3
     ambient_sh = np.linalg.solve(basis.T @ basis + reg * np.eye(9), basis.T @ sub_rad)
 
+    # Compute real delta_e between the re-lit composite and input radiance.
+    relit = albedo_map * np.mean(shading_map, axis=-1, keepdims=True)
+    relit = np.clip(relit, 0.0, 1.0)
+    rad_clamped = np.clip(rad, 0.0, 1.0)
+    lab_relit = _rgb_to_lab(relit.astype(np.float64))
+    lab_orig = _rgb_to_lab(rad_clamped.astype(np.float64))
+    delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
+
     return DelightResult(
         albedo=albedo_map,
         shading=shading_map,
         specular=specular_map,
         ambient_sh=ambient_sh,
-        delta_e_residual=1.85,
+        delta_e_residual=delta_e,
     )
 
 
@@ -300,8 +309,9 @@ def delight_multiview_albedo(
         :class:`DelightResult` with aggregated albedo, shading, specular,
         ambient SH coefficients, and ``delta_e_residual``.
     """
+    is_uint8 = np.asarray(frames).dtype == np.uint8 or np.asarray(frames).max() > 1.5
     frames_arr = np.asarray(frames, dtype=np.float64)
-    if frames_arr.dtype == np.uint8 or frames_arr.max() > 1.5:
+    if is_uint8:
         frames_arr = frames_arr / 255.0
 
     n_views = frames_arr.shape[0]

@@ -112,6 +112,23 @@ class ClosedLoopResult:
 class ClosedLoopRunner:
     """End-to-end 5-step inverse rendering closed loop.
 
+    This runner supports two operating modes:
+
+    **Production mode** (default):
+        Caller supplies real ``source_frames``, ``normals``, ``uv_maps``,
+        and a ``conditioning`` dict of FGPP channel arrays.  A real
+        ``VideoAdapter`` is injected via the ``adapter`` argument to
+        generate target video from the conditioning.
+
+    **Synthetic diagnostic mode** (CI / CPU testing):
+        When ``conditioning=None``, the runner constructs minimal
+        synthetic FGPP channels from the source frames via
+        ``_build_synthetic_conditioning`` (pseudo-depth from luminance,
+        flat +Z normals).  When ``adapter=None``, the forward guide
+        uses a CPU mock pass-through that produces neutral grey frames
+        with a warm-tinted preroll.  This mode exercises all 5 pipeline
+        steps without requiring GPU backends or real video data.
+
     Args:
         loop_config: Configuration for the forward guide VAE constraints.
         optim_config: Configuration for the analytic UV inverse optimiser.
@@ -172,6 +189,8 @@ class ClosedLoopRunner:
         guide = ForwardGuide(self._loop_config)
 
         if conditioning is None:
+            # --- Synthetic diagnostic mode ---
+            # Build minimal FGPP conditioning from source frames for CI/testing.
             conditioning = self._build_synthetic_conditioning(source_frames)
 
         forward_result = guide.generate(

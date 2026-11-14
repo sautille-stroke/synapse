@@ -22,6 +22,7 @@ from synapse.recon import (
     compute_normals,
     decompose_intrinsic,
     delight,
+    delight_multiview_albedo,
     evaluate_spherical_harmonics_basis,
     quad_remesh,
     refine_pose_6dof,
@@ -250,6 +251,14 @@ class TestReconDelight:
         assert res.shading.shape == (16, 16, 3)
         assert res.specular.shape == (16, 16, 3)
         assert res.ambient_sh.shape == (9, 3)
+
+    def test_decompose_intrinsic_uint8_input(self) -> None:
+        """PR-61: uint8 input [0..255] is properly normalized in (0, 1) and not saturated at 1.0."""
+        radiance_u8 = np.full((16, 16, 3), 128, dtype=np.uint8)
+        res = decompose_intrinsic(radiance_u8)
+        assert res.albedo.mean() < 1.0
+        assert res.albedo.mean() > 0.0
+        assert res.delta_e_residual >= 0.0
 
 
 # ===================================================================

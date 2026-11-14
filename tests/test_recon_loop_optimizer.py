@@ -361,3 +361,22 @@ def test_no_approx_ciede2000_in_optimizer() -> None:
         "_compute_psnr should have been removed in favour of "
         "synapse.metrics.image_quality.psnr_db"
     )
+
+
+def test_tv_gradient_symmetric_divergence_sum_zero() -> None:
+    """PR-61: TV gradient divergence must sum to 0 across the entire UV domain."""
+    rng = np.random.default_rng(123)
+    albedo = rng.uniform(0.0, 1.0, (64, 64, 3)).astype(np.float64)
+
+    alb_f64 = albedo.astype(np.float64)
+    tv_grad = np.zeros_like(albedo, dtype=np.float64)
+    dy_fwd = alb_f64[:-1, :, :] - alb_f64[1:, :, :]
+    tv_grad[:-1, :, :] += dy_fwd
+    tv_grad[1:, :, :] -= dy_fwd
+    dx_fwd = alb_f64[:, :-1, :] - alb_f64[:, 1:, :]
+    tv_grad[:, :-1, :] += dx_fwd
+    tv_grad[:, 1:, :] -= dx_fwd
+
+    assert abs(float(tv_grad.sum())) < 1e-10, (
+        f"TV gradient sum should be 0 within float precision, got: {tv_grad.sum()}"
+    )
