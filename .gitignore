@@ -57,6 +57,10 @@ tmp/
 data/datasets/
 data/benchmarks/
 
+# L-Asset external cache & archives (RFC 0062)
+assets/*/
+!assets/models/**
+
 # Synapse-generated session data
 data/sessions/
 data/datasets/

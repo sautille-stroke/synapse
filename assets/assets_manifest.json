@@ -1,0 +1,53 @@
+{
+  "$schema": "https://dervgen.internal/schemas/asset-manifest-v1.json",
+  "version": "1.0.0",
+  "rfc": "RFC-0062",
+  "description": "Synapse L-Asset Lightweight Development & Benchmark Asset Manifest",
+  "mirrors": [
+    "${DERVGEN_ASSET_MIRROR}",
+    "https://hf-mirror.com",
+    "https://huggingface.co"
+  ],
+  "packages": {
+    "gso_starter": {
+      "version": "1.0.0",
+      "archive": "gso_starter.tar.gz",
+      "sha256": "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205",
+      "install_dir": "data/benchmarks/gso_starter",
+      "size_bytes": 146800640,
+      "size_mb": 140.0,
+      "license": "CC-BY-4.0",
+      "description": "Google Scanned Objects and Stanford scan calibration suite (10 canonical assets)"
+    },
+    "objaverse_eval": {
+      "version": "1.0.0",
+      "archive": "objaverse_eval.tar.gz",
+      "sha256": "b2f694e9f75dfd2d1d280b017b2b8e88e2c0e86a0487c69a7c39de0bc44c10c1",
+      "install_dir": "data/benchmarks/objaverse_eval",
+      "size_bytes": 83886080,
+      "size_mb": 80.0,
+      "license": "ODC-By / CC-BY",
+      "description": "Curated Objaverse manifold GLB models for 3D reconstruction benchmarks"
+    },
+    "mixamo_dynamics": {
+      "version": "1.0.0",
+      "archive": "mixamo_dynamics.tar.gz",
+      "sha256": "c88f1981977717277b96e1b764ee7ecb1130e64903a48e71887e5b1f9c8f070a",
+      "install_dir": "data/benchmarks/mixamo_dynamics",
+      "size_bytes": 15728640,
+      "size_mb": 15.0,
+      "license": "Royalty-Free Educational / Benchmark",
+      "description": "Rigged humanoid animation FBX tracks for dynamic kinematics evaluation"
+    },
+    "vbench_prompts": {
+      "version": "1.0.0",
+      "archive": "vbench_prompts.tar.gz",
+      "sha256": "07c94a4aab06568eb776fd4256beabbcc36e194c7016c5e1bbb8b4ae5a70b541",
+      "install_dir": "data/benchmarks/vbench_prompts",
+      "size_bytes": 2097152,
+      "size_mb": 2.0,
+      "license": "Apache 2.0",
+      "description": "VBench official 16-dimension canonical prompts suite"
+    }
+  }
+}
