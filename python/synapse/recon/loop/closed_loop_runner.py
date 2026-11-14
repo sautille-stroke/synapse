@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+
+# NOTE: synapse.refine imports are deferred to method bodies to break the
+# recon → refine → bridge → recon circular dependency (P0-ARCH-01).
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -40,13 +43,9 @@ from synapse.recon.loop.texture_extractor import (
 )
 from synapse.recon.loop.types import ForwardGuideResult, LoopConfig
 
-# NOTE: synapse.refine imports are deferred to method bodies to break the
-# recon → refine → bridge → recon circular dependency (P0-ARCH-01).
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
-    from synapse.refine.types import AnatomicalRegion, FusionMethod, RefinementResult
+    from synapse.refine.stitcher import StitchConfig, StitchReport
+    from synapse.refine.types import RefinementResult
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -355,13 +354,13 @@ class ClosedLoopRunner:
         _refine_types = importlib.import_module("synapse.refine.types")
         AnatomicalRegion = _refine_types.AnatomicalRegion
         FusionMethod = _refine_types.FusionMethod
-        RefinementResult = _refine_types.RefinementResult
+        _RefinementResult = _refine_types.RefinementResult
 
         t_count, h, w, _ = source.shape
-        refinements: list[list[RefinementResult]] = []
+        refinements: list[list[Any]] = []
 
         for t in range(t_count):
-            ref = RefinementResult(
+            ref = _RefinementResult(
                 refined_acescg=rerendered[t],
                 region=AnatomicalRegion.FULL_BODY,
                 fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,

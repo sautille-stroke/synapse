@@ -17,9 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from synapse.errors import CircuitBreakerError
-# Backward-compatible re-export from Tier-0 location
-from synapse.errors import evaluate_hitl_circuit_breaker  # noqa: F401
+from synapse.errors import (
+    CircuitBreakerError,  # noqa: F401
+    evaluate_hitl_circuit_breaker,  # noqa: F401
+)
 
 # -----------------------------------------------------------------------
 # Operator identity

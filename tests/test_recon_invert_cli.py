@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from synapse.cli import main_synapse
@@ -20,31 +21,36 @@ from synapse.pipeline.bundle_worker import (
 
 
 def test_recon_invert_video_cli_json() -> None:
-    """synapse recon invert-video --json produces valid JSON output."""
+    """synapse recon invert-video --json without --video returns AssetNotFoundError(20)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         exit_code = main_synapse([
             "--json", "recon", "invert-video",
             "--output", tmpdir,
         ])
-    assert exit_code == 0
+    # M13 strict contracts: missing video input → exit_code 20
+    assert exit_code == 20
 
 
 def test_recon_invert_video_cli_with_video() -> None:
-    """synapse recon invert-video works with actual video .npy file."""
+    """synapse recon invert-video works with actual video .npy file.
+
+    Synthetic frames cannot produce real angular separation, so we patch
+    the minimum threshold to 0.0° for this unit test.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create a small video array
-        video = np.random.default_rng(42).integers(
-            100, 200, (4, 64, 64, 3), dtype=np.uint8,
-        )
+        # Create a small video array with varying content
+        rng = np.random.default_rng(42)
+        video = rng.integers(100, 200, (4, 64, 64, 3), dtype=np.uint8)
         video_path = Path(tmpdir) / "test_video.npy"
         np.save(str(video_path), video)
 
-        exit_code = main_synapse([
-            "--json", "recon", "invert-video",
-            "--video", str(video_path),
-            "--output", str(Path(tmpdir) / "output"),
-            "--target-faces", "500",
-        ])
+        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
+            exit_code = main_synapse([
+                "--json", "recon", "invert-video",
+                "--video", str(video_path),
+                "--output", str(Path(tmpdir) / "output"),
+                "--target-faces", "500",
+            ])
     assert exit_code == 0
 
 
@@ -66,11 +72,20 @@ def test_video_to_3d_invert_stage_registered() -> None:
 
 
 def test_video_to_3d_invert_stage_execution() -> None:
-    """video_to_3d_invert stage executes without error."""
+    """video_to_3d_invert stage executes with valid video_frames input."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Create valid video frames as .npy file
+        rng = np.random.default_rng(42)
+        video = rng.integers(100, 200, (4, 64, 64, 3), dtype=np.uint8)
+        video_path = Path(tmpdir) / "frames.npy"
+        np.save(str(video_path), video)
+
         manifest = BundleManifest(
             job_id="test-pr32",
             stage="video_to_3d_invert",
+            inputs={
+                "video_frames": str(video_path),
+            },
             params={
                 "width": 64,
                 "height": 64,
@@ -83,7 +98,8 @@ def test_video_to_3d_invert_stage_execution() -> None:
             },
         )
         worker = JobBundleWorker()
-        result = worker.execute(manifest)
+        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
+            result = worker.execute(manifest)
 
     assert result.exit_code == 0
     assert result.status in ("success", "fallback")

@@ -4,7 +4,6 @@ import json
 import socketserver
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 import numpy as np
 import pytest

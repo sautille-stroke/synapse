@@ -10,6 +10,7 @@ import socketserver
 import threading
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.viewer.static_html import VIEWER_HTML_TEMPLATE
@@ -126,7 +127,7 @@ class ViewerServer:
                 agent_fix_hint=f"Ensure '{self.dataset_dir}' exists and contains manifest.json.",
             )
 
-        def handler_cls(*args, **kwargs):
+        def handler_cls(*args: Any, **kwargs: Any) -> _DatasetHTTPRequestHandler:
             return _DatasetHTTPRequestHandler(
                 *args, directory=str(self.dataset_dir), **kwargs
             )
@@ -135,7 +136,9 @@ class ViewerServer:
         cur_port = self.port
         for _attempt in range(10):
             try:
-                self.httpd = _ReusableHTTPServer((self.host, cur_port), handler_cls)
+                self.httpd = _ReusableHTTPServer(
+                    (self.host, cur_port), handler_cls,  # type: ignore[arg-type]
+                )
                 self.port = cur_port
                 break
             except OSError:

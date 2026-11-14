@@ -5,11 +5,11 @@
 """
 
 from synapse.render_core.conditions import (  # noqa: F401
-    ConditionLevel,
-    RENDERING_CONDITION_FACTORS,
-    Conditions,
-    SINGLE_FACTOR_CONDITIONS,
     CROSS_CONDITIONS,
-    _VALID_LEVELS,
+    RENDERING_CONDITION_FACTORS,
+    SINGLE_FACTOR_CONDITIONS,
+    ConditionLevel,
+    Conditions,
     _VALID_FACTOR_KEYS,
+    _VALID_LEVELS,
 )

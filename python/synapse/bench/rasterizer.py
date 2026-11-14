@@ -6,6 +6,6 @@
 
 from synapse.render_core.rasterizer import (  # noqa: F401
     SoftwareRasterizer,
-    entity_hash,
     _murmurhash3_32,
+    entity_hash,
 )

@@ -436,6 +436,7 @@ class TestValidateMeshGeometry:
         """Native backend raises BackendUnavailableError(exit_code=30) when _c_geometry missing (P1-ARCH-03)."""
         import sys
         from unittest.mock import patch
+
         from synapse.errors import BackendUnavailableError
 
         verts, faces = tetrahedron

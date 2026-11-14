@@ -10,7 +10,6 @@ from typing import Any
 
 import numpy as np
 
-from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.generators.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
@@ -22,6 +21,7 @@ from synapse.generators.visualizer import (
 )
 from synapse.models.asset import ModelAsset
 from synapse.models.loader import load_model
+from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
 
 
 @dataclass
