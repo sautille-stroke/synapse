@@ -19,7 +19,6 @@ from synapse.metrics.roundtrip import (
 )
 from synapse.metrics.temporal import (
     compute_fvd_from_videos,
-    fvd_feature_distance,
     temporal_warp_error,
 )
 
@@ -38,7 +37,7 @@ class TestTemporalWarpErrorL1:
 
     def test_l1_vs_rmse_mathematical_distinction(self) -> None:
         """With non-uniform delta, RMSE > L1 by Jensen's inequality."""
-        T, H, W = 2, 2, 2
+        _T, H, W = 2, 2, 2
         f0 = np.zeros((H, W, 3), dtype=np.float32)
         # Create non-uniform differences: half pixels differ by 0.2, half by 0.8
         f1 = np.zeros((H, W, 3), dtype=np.float32)
