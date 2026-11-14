@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from synapse.cli.common import (
     Any,
+    AssetNotFoundError,
+    ContractValidationError,
     ExitCode,
     Path,
     SynapseError,
@@ -59,18 +61,34 @@ def _cmd_refine_anatomical(
         fusion_method=fusion_name,
     )
 
-    # Load or synthesize frames
+    # Load frames — require real input (AUD-P0-01: no fake synthesis)
     video_path_raw = getattr(args, "video", None)
-    if video_path_raw and Path(video_path_raw).is_file():
-        frames = np.load(video_path_raw).astype(np.float32)
-    else:
-        rng = np.random.default_rng(42)
-        frames = rng.random((4, 128, 128, 3), dtype=np.float32)
+    if not video_path_raw:
+        raise ContractValidationError(
+            "Missing required '--video' argument for anatomical refinement",
+            agent_fix_hint=(
+                "Provide '--video <path>' pointing to a valid .npy "
+                "file of shape (T, H, W, 3) float32 ACEScg."
+            ),
+        )
+    if not Path(video_path_raw).is_file():
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path_raw!r}",
+            agent_fix_hint=(
+                "Provide '--video <path>' pointing to an existing .npy "
+                "file of shape (T, H, W, 3) float32 ACEScg."
+            ),
+        )
+    frames = np.load(video_path_raw).astype(np.float32)
 
     height, width = frames.shape[1], frames.shape[2]
 
-    # Build synthetic ROIs
+    # Build ROIs from input frames (no external ROI metadata)
+    # AUD-P0-04: Without --roi-meta or FGPP source, initial confidence
+    # must be <= 0.5 to avoid silently bypassing the > 0.8 threshold.
     rois_per_frame: list[list[RefinementROI]] = []
+    roi_meta_path = getattr(args, "roi_meta", None)
+    default_confidence = 0.5 if not roi_meta_path else 0.9
     for t in range(frames.shape[0]):
         frame_rois: list[RefinementROI] = []
         for rname in region_names:
@@ -86,7 +104,7 @@ def _cmd_refine_anatomical(
                 region=region,
                 bbox_xyxy=bbox,
                 crop_acescg=crop,
-                confidence=0.9,
+                confidence=default_confidence,
             )
             frame_rois.append(roi)
         rois_per_frame.append(frame_rois)

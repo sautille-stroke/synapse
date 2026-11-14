@@ -14,7 +14,11 @@ Covers:
 
 from __future__ import annotations
 
+import io
 import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -23,20 +27,47 @@ import numpy as np
 # -------------------------------------------------------------------
 
 
-def test_refine_anatomical_cli_json() -> None:
-    """``synapse --json refine anatomical`` returns exit 0 and valid JSON."""
+def test_refine_anatomical_cli_no_input_returns_contract_error() -> None:
+    """``synapse --json refine anatomical`` without --video returns exit 10 (AUD-P0-01)."""
     from synapse.cli import main_synapse
 
-    rc = main_synapse(["--json", "refine", "anatomical"])
-    assert rc == 0
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        rc = main_synapse(["--json", "refine", "anatomical"])
+    assert rc == 10
+    payload = json.loads(captured.getvalue().strip())
+    assert payload["status"] == "error"
+    assert payload["exit_code"] == 10
+    assert payload["error_type"] == "ContractValidationError"
+    assert "agent_fix_hint" in payload
 
 
-def test_refine_anatomical_cli_no_json() -> None:
-    """``synapse refine anatomical`` returns exit 0 in human mode."""
+def test_refine_anatomical_cli_with_video_success() -> None:
+    """``synapse --json refine anatomical`` with valid --video returns exit 0."""
     from synapse.cli import main_synapse
 
-    rc = main_synapse(["refine", "anatomical"])
-    assert rc == 0
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        video_path = Path(tmp_dir) / "test_video.npy"
+        # Create a small valid test video (T=2, H=64, W=64, C=3)
+        np.save(video_path, np.full((2, 64, 64, 3), 0.5, dtype=np.float32))
+
+        rc = main_synapse(["--json", "refine", "anatomical", "--video", str(video_path)])
+        assert rc == 0
+
+
+def test_refine_anatomical_cli_nonexistent_video_returns_asset_error() -> None:
+    """``synapse --json refine anatomical`` with bad path returns exit 20."""
+    from synapse.cli import main_synapse
+
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        rc = main_synapse(["--json", "refine", "anatomical", "--video", "/no/such/file.npy"])
+    assert rc == 20
+    payload = json.loads(captured.getvalue().strip())
+    assert payload["status"] == "error"
+    assert payload["exit_code"] == 20
+    assert payload["error_type"] == "AssetNotFoundError"
+    assert "agent_fix_hint" in payload
 
 
 def test_refine_cli_missing_subcommand_json() -> None:

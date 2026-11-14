@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -103,3 +105,50 @@ def test_video_to_3d_invert_stage_execution() -> None:
 
     assert result.exit_code == 0
     assert result.status in ("success", "fallback")
+
+
+# ---------------------------------------------------------------------------
+# Tests: PR-60 — no-input error assertions (AUD-P0-01)
+# ---------------------------------------------------------------------------
+
+
+def test_recon_invert_video_no_video_exit_code_and_hint() -> None:
+    """synapse recon invert-video --json without --video returns exit 20 with agent_fix_hint."""
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        exit_code = main_synapse([
+            "--json", "recon", "invert-video",
+        ])
+    assert exit_code == 20
+    output = json.loads(captured.getvalue().strip())
+    assert output["status"] == "error"
+    assert "agent_fix_hint" in output
+    assert output["agent_fix_hint"] != ""
+
+
+def test_recon_closed_loop_no_video_returns_error() -> None:
+    """synapse recon closed-loop --json without --video returns non-zero with agent_fix_hint."""
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        exit_code = main_synapse([
+            "--json", "recon", "closed-loop",
+        ])
+    assert exit_code != 0
+    output = json.loads(captured.getvalue().strip())
+    assert output["status"] == "error"
+    assert "agent_fix_hint" in output
+    assert output["agent_fix_hint"] != ""
+
+
+def test_recon_closed_loop_nonexistent_video_returns_error() -> None:
+    """synapse recon closed-loop --json with bad --video path returns exit 20."""
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        exit_code = main_synapse([
+            "--json", "recon", "closed-loop",
+            "--video", "/nonexistent/video.npy",
+        ])
+    assert exit_code == 20
+    output = json.loads(captured.getvalue().strip())
+    assert output["status"] == "error"
+    assert output["error_type"] == "AssetNotFoundError"
