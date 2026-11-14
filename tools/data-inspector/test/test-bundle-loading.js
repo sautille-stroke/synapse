@@ -492,7 +492,10 @@ if (nativeBin) {
     );
 
     assert.strictEqual(run.status, 0, `Native binary exited with ${run.status}: ${run.stderr}`);
-    assert.ok(run.stdout.includes('"type":"ack","command":"load_bundle","ok":true'));
+    assert.ok(
+      run.stdout.includes('"type":"ack","command":"load_bundle","ok":true'),
+      `Missing load_bundle ack. STDOUT was:\n${run.stdout}\nSTDERR was:\n${run.stderr}`,
+    );
     assert.ok(run.stdout.includes('"type":"ack","command":"camera","ok":true'));
     assert.ok(run.stdout.includes('"type":"ack","command":"set_debug_view","ok":true'));
     assert.ok(run.stdout.includes('"type":"frame_ready"'));
