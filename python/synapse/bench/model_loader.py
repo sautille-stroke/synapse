@@ -220,6 +220,20 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
     except ValueError:
         pass
 
+    if name_or_path.lower() == "humanoid_53":
+        from synapse.bench.procedural import generate_humanoid_proxy
+
+        verts, faces, _ = generate_humanoid_proxy()
+        mesh = MeshData(
+            name="humanoid_53",
+            vertices=verts.astype(np.float32),
+            faces=faces.astype(np.int32),
+            normals=np.zeros_like(verts, dtype=np.float32),
+        ).compute_normals()
+        if normalize:
+            mesh = mesh.normalize()
+        return mesh
+
     # File path
     path = Path(name_or_path)
     if path.suffix.lower() == ".obj" and path.exists():

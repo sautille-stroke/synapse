@@ -139,6 +139,33 @@ class TestBenchPipelineRunner:
         expected_names = {s.id for s in all_scenarios}
         actual_names = {r.scenario_name for r in reports}
         assert actual_names == expected_names
+        for r in reports:
+            assert r.error is None, (
+                f"Scenario '{r.scenario_name}' failed with error: {r.error}"
+            )
+
+    def test_humanoid_53_scenarios_no_error(self) -> None:
+        """Verify all humanoid_53 scenarios run with 0 asset resolution errors."""
+        from synapse.bench.scenario import list_scenarios
+
+        humanoid_scenarios = [
+            s.id for s in list_scenarios() if s.asset.id == "humanoid_53"
+        ]
+        assert len(humanoid_scenarios) >= 6, "Expected at least 6 humanoid_53 scenarios"
+
+        adapter = MockVideoAdapter()
+        runner = BenchPipelineRunner(adapter)
+        reports = runner.run_all(
+            scenarios=humanoid_scenarios,
+            seed=42,
+            resolution=(32, 32),
+        )
+        assert len(reports) == len(humanoid_scenarios)
+        for r in reports:
+            assert r.error is None, f"Humanoid scenario {r.scenario_name} failed: {r.error}"
+            assert r.num_frames > 0
+            d = r.to_dict()
+            assert d["metrics"]["depth_rmse_m"] == "N/A (not_produced)"
 
     def test_run_specific_scenarios(self) -> None:
         """Run a specific subset of scenarios."""

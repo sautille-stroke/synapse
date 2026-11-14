@@ -33,7 +33,9 @@ class CameraTrajectoryType(str, Enum):
     TRACKING = "tracking"
     DOLLY = "dolly"
     STATIC = "static"
+    FIXED = "fixed"
     ARC = "arc"
+    CRANE = "crane"
     PAN = "pan"
 
 
@@ -276,6 +278,8 @@ def _generate_arc(
     **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a vertical arc (elevation sweep at fixed azimuth)."""
+    if "distance" in kwargs and kwargs["distance"] is not None:
+        radius = float(kwargs["distance"])  # type: ignore[arg-type]
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     az_rad = math.radians(azimuth_deg)
     cameras: list[CameraParams] = []
@@ -333,7 +337,9 @@ _GENERATORS: dict[CameraTrajectoryType, Callable[..., list[CameraParams]]] = {
     CameraTrajectoryType.TRACKING: _generate_tracking,
     CameraTrajectoryType.DOLLY: _generate_dolly,
     CameraTrajectoryType.STATIC: _generate_static,
+    CameraTrajectoryType.FIXED: _generate_static,
     CameraTrajectoryType.ARC: _generate_arc,
+    CameraTrajectoryType.CRANE: _generate_arc,
     CameraTrajectoryType.PAN: _generate_pan,
 }
 

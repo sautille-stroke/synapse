@@ -30,36 +30,40 @@ from synapse.inspect.eval_report import (
 from synapse.inspect.geometry_gate import validate_mesh_geometry
 
 # -------------------------------------------------------------------
-# Gate profiles (aligned with synapse.metrics.profiles)
+# Gate profiles (dynamically derived from synapse.metrics.profiles)
 # -------------------------------------------------------------------
+from synapse.metrics.profiles import (
+    RSI_PROMOTION,
+    RSI_PROMOTION_TARGET,
+    TRACK_A_ASSET,
+    TRACK_B_VIDEO,
+)
 
-GATE_PROFILES: dict[str, dict[str, tuple[float, str]]] = {
-    "TRACK_A_ASSET": {
-        "is_manifold": (1.0, "eq"),
-        "is_watertight": (1.0, "eq"),
-        "num_degenerate_faces": (0.0, "eq"),
-        "self_intersecting_pairs": (0.0, "eq"),
-        "chamfer_mm": (5.0, "le"),
-    },
-    "TRACK_B_VIDEO": {
-        "is_manifold": (1.0, "eq"),
-        "chamfer_mm": (8.0, "le"),
-    },
-    "RSI_PROMOTION": {
-        "is_manifold": (1.0, "eq"),
-        "is_watertight": (1.0, "eq"),
-        "num_degenerate_faces": (0.0, "eq"),
-        "self_intersecting_pairs": (0.0, "eq"),
-        "chamfer_mm": (4.0, "le"),
-    },
-    "RSI_PROMOTION_TARGET": {
-        "is_manifold": (1.0, "eq"),
-        "is_watertight": (1.0, "eq"),
-        "num_degenerate_faces": (0.0, "eq"),
-        "self_intersecting_pairs": (0.0, "eq"),
-        "chamfer_mm": (1.0, "le"),
-    },
-}
+
+def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
+    """Dynamically derive 3D evaluation gate profiles from canonical profile SSOT."""
+    raw_profiles = {
+        "TRACK_A_ASSET": TRACK_A_ASSET,
+        "TRACK_B_VIDEO": TRACK_B_VIDEO,
+        "RSI_PROMOTION": RSI_PROMOTION,
+        "RSI_PROMOTION_TARGET": RSI_PROMOTION_TARGET,
+    }
+    profiles: dict[str, dict[str, tuple[float, str]]] = {}
+    for name, p_dict in raw_profiles.items():
+        gate: dict[str, tuple[float, str]] = {
+            "is_manifold": (1.0, "eq"),
+        }
+        if name != "TRACK_B_VIDEO":
+            gate["is_watertight"] = (1.0, "eq")
+            gate["num_degenerate_faces"] = (0.0, "eq")
+            gate["self_intersecting_pairs"] = (0.0, "eq")
+        if "chamfer_mm" in p_dict:
+            gate["chamfer_mm"] = (float(p_dict["chamfer_mm"]), "le")
+        profiles[name] = gate
+    return profiles
+
+
+GATE_PROFILES: dict[str, dict[str, tuple[float, str]]] = _build_gate_profiles()
 
 MODEL_EXTENSIONS: frozenset[str] = frozenset(
     {".obj", ".glb", ".ply", ".gltf", ".fbx", ".stl"}
@@ -160,6 +164,10 @@ def evaluate_profile_gates(
     for metric_name, (threshold, op) in profile.items():
         value = metrics.get(metric_name)
         if value is None:
+            # Fail-closed: missing metric cannot pass gate
+            if metric_name == "chamfer_mm":
+                results["reference_required_not_evaluated"] = False
+            results[metric_name] = False
             continue
         if not np.isfinite(value):
             results[metric_name] = False
@@ -320,7 +328,11 @@ def evaluate_single_model(
         pred_rgb, screenshots, labels = render_orbit_views(
             verts, faces_arr, norms, resolution, num_views,
         )
-    except Exception:
+    except Exception as exc:
+        if log_fn:
+            log_fn(
+                f"  Warning: failed to render orbit views for {model_path.name}: {exc}"
+            )
         pred_rgb = np.empty((0, resolution, resolution, 3), dtype=np.uint8)
         screenshots, labels = [], []
 
@@ -348,8 +360,11 @@ def evaluate_single_model(
                     metrics["ssim"] = ssim(pred_rgb, ref_rgb)
                     metrics["ciede2000"] = ciede2000(pred_rgb, ref_rgb)
                     metrics["lpips"] = lpips(pred_rgb, ref_rgb)
-            except Exception:
-                pass
+            except Exception as exc:
+                if log_fn:
+                    log_fn(
+                        f"  Warning: failed to compute multi-view comparison for {model_path.name}: {exc}"
+                    )
 
     gate_results = evaluate_profile_gates(metrics, canonical_profile)
     overall_passed = bool(gate_results) and all(gate_results.values())
@@ -400,7 +415,7 @@ def evaluate_3d_models_directory(
 
     model_files = sorted(
         p
-        for p in input_dir.iterdir()
+        for p in input_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in MODEL_EXTENSIONS
     )
     if not model_files:
@@ -418,14 +433,17 @@ def evaluate_3d_models_directory(
         if ref_dir.exists() and ref_dir.is_dir():
             from synapse.bench.model_loader import load_mesh
 
-            for ref_path in sorted(ref_dir.iterdir()):
+            for ref_path in sorted(ref_dir.rglob("*")):
                 if ref_path.is_file() and ref_path.suffix.lower() in MODEL_EXTENSIONS:
                     try:
                         reference_meshes[ref_path.stem] = load_mesh(
                             str(ref_path), normalize=True,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if log_fn:
+                            log_fn(
+                                f"  Warning: failed to load reference mesh {ref_path.name}: {exc}"
+                            )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     results: list[ModelEvalResult] = []
@@ -440,6 +458,10 @@ def evaluate_3d_models_directory(
         if log_fn:
             log_fn(f"[{i}/{len(model_files)}] {model_path.name}")
         ref_mesh = reference_meshes.get(model_path.stem)
+        if reference_dir is not None and ref_mesh is None and log_fn:
+            log_fn(
+                f"  Warning: no matching reference mesh found for {model_path.stem} in {reference_dir}"
+            )
         res = evaluate_single_model(
             model_path=model_path,
             profile_name=canonical_profile,
