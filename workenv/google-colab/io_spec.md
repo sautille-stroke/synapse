@@ -188,4 +188,4 @@
 | **10** | `ContractValidationError` | FGPP 通道名不匹配、矩阵行列式 $\neq +1$、非 16 整数倍分辨率 | 检查 OpenEXR 通道是否遗漏或相机外参行列式是否为负 |
 | **20** | `AssetNotFoundError` | `synapse_colab_bundle_v1.tar.gz` 缺失或 SHA256 校验和失效 | 重新在 `ubuntu24` 运行 `prepare_datasets.py` 导出数据包 |
 | **30** | `BackendUnavailableError` | CUDA OOM 显存耗尽或 Diffusers 后端加载超时 | 启用 `--enable_model_cpu_offload`，或将模型从 14B 降级至 1.3B |
-| **40** | `QualityGateCircuitBreakerError` | 白模顶点数 $<1500$、合成色差 $>3.0$ 或精修超时 15 分钟 | 触发工程熔断降级，回退至上一版稳定几何资产 |
+| **40** | `CircuitBreakerError` / `QualityGateError` | 白模顶点数 $<1500$、合成色差 $>3.0$ 或精修超时 15 分钟 | 触发工程熔断降级，回退至上一版稳定几何资产 |

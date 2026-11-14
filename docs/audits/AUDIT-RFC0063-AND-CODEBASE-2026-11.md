@@ -209,3 +209,30 @@
 | **`AUD-P2-03`** | P2 | BENCH / SCRIPT | `scripts/{run_roundtrip_verification.py:278,prepare_datasets.py:321}`, `bench/` | `0.5` 灰图占位评估、`prepare_datasets.py` 泄露 `/root/work/...` 硬编码路径 | `PR-68`, `PR-71` |
 | **`AUD-P2-04`** | P2 | BENCH | `prepare_benchmark_assets.py:46-70`, `temporal.py:165` | `VBench` 仅有 5 维/10 条，缺 16 维完整套件与可接入真视频的 I3D/FVD 特征抽取桥接 | `PR-66`, `PR-67` |
 | **`AUD-P2-05`** | P2 | DOCS / SKILLS | `.agents/skills/synapse-overview/SKILL.md:68`, `docs/IMPLEMENTATION_PLAN.md` | 错写 `QualityGateCircuitBreakerError`、过时“自包含 C++”描述；`#49` 对 `PR-44~57` 误标全绿 | 本文 + `PR-58` + `PR-73` |
+
+---
+
+## 5. 缺陷修复闭环状态（Horizon 5 收官，2026-11-15）
+
+全量 18 项审计缺陷已在 Horizon 5（Waves 16–19，PR-58 ~ PR-73）中全部闭环落地并通过 `ubuntu24` 严苛测试验证：
+
+| 缺陷 ID | 严重度 | 对应 PR | 闭环提交 / PR 状态 | 验证结论 |
+| :--- | :---: | :---: | :---: | :--- |
+| **`AUD-P0-01`** | P0 | `PR-60` | ✅ 已合入 (PR #54) | CLI 缺失输入时一律返回确定性退出码 `20`，杜绝 `np.random` 与假置信度 |
+| **`AUD-P0-02`** | P0 | `PR-62` | ✅ 已合入 (PR #56) | `scripts/build_native.py` 免 Bazel 直编链路打通，支持 Linux/macOS/Windows/Colab |
+| **`AUD-P0-03`** | P0 | `PR-66` | ✅ 已合入 (PR #61) | L-Asset 清单受控，支持 HuggingFace/HTTP/离线打包，Colab 一键就绪 |
+| **`AUD-P0-04`** | P0 | `PR-60`, `PR-68` | ✅ 已合入 (PR #54, #63) | 门禁评估真实执行、真算真拒；`bench_runner` 30 场景 0 加载失败 |
+| **`AUD-P0-05`** | P0 | `PR-64` | ✅ 已合入 (PR #58) | C++ Native 彻底消除 `rdbuf(nullptr)` UB 与 FNV 伪帧，Bazel/POSIX SHM 零拷贝就绪 |
+| **`AUD-P1-01`** | P1 | `PR-61` | ✅ 已合入 (PR #55) | 本征去光照死分支清除、TV 散度梯度对称、Mitsuba 逆向优化器真算 |
+| **`AUD-P1-02`** | P1 | `PR-63` | ✅ 已合入 (PR #57) | `import_dag_guard` 封堵 `importlib` 动态导入，根模块严格受控 |
+| **`AUD-P1-03`** | P1 | `PR-58`, `PR-59` | ✅ 已合入 (PR #51, #53) | `wire_guard.py` 覆盖 PixelType、StyleProfile 与 JobBundle；RFC 编号碰撞消除 |
+| **`AUD-P1-04`** | P1 | `PR-65` | ✅ 已合入 (PR #59) | Electron 壳修复 `SourceEntry` 契约，支持 POSIX SHM 零拷贝查看器 |
+| **`AUD-P1-05`** | P1 | `PR-69`, `PR-71` | ✅ 已合入 (PR #64, #67) | CLI 退出码严格契约化；RSI 三轴独立；`fgpp validate` 校验真实 EXR；`colab_runner` 补齐 `e3` |
+| **`AUD-P1-06`** | P1 | `PR-67`, `PR-68` | ✅ 已合入 (PR #62, #63) | $E_{\text{warp}}$ 统一为 L1 范数；FVD 视频特征桥接就绪；3D 评估指标与 SSOT 统一 |
+| **`AUD-P1-07`** | P1 | `PR-72` | ✅ 已合入 (PR #68) | `warn_return_any = true` 88 处清零；快测试 `pytest -m 'not slow'` 耗时降至 18.0s（<= 30s） |
+| **`AUD-P1-08`** | P1 | `PR-70` | ✅ 已合入 (PR #65) | 48 帧物理锚点接入调度；Log-Depth 保持 `float64` 精度；`Var(X) > 1e-4` 运行时退化门禁上线 |
+| **`AUD-P2-01`** | P2 | `PR-61`, `PR-71` | ✅ 已合入 (PR #55, #67) | 形态学与金字塔算子统一收敛至 `synapse.render_core`，消除跨模块冗余代码 |
+| **`AUD-P2-02`** | P2 | `PR-71` | ✅ 已合入 (PR #67) | 3 路 `cv2.VideoWriter` 全部包裹 `try ... finally: release()`，保障资源安全 |
+| **`AUD-P2-03`** | P2 | `PR-68`, `PR-71` | ✅ 已合入 (PR #63, #67) | 清除 0.5 灰图占位；`prepare_datasets.py` 消除硬编码绝对路径 |
+| **`AUD-P2-04`** | P2 | `PR-66`, `PR-67` | ✅ 已合入 (PR #61, #62) | VBench 16 维评测套件与 FVD 视频抽取器完备接入 |
+| **`AUD-P2-05`** | P2 | `PR-58`, `PR-73` | ✅ 已合入 (PR #51, #69) | 生态文档与 4 大 Agent Skills 体系化校准，状态去虚高，符号名对齐真实源码 |
