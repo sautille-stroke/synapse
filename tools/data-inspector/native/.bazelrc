@@ -5,6 +5,10 @@
 try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
 common --registry=https://bcr.bazel.build
+common --repo_env=https_proxy=
+common --repo_env=http_proxy=
+common --repo_env=HTTPS_PROXY=
+common --repo_env=HTTP_PROXY=
 # Prevent duplicate expansion of unix-common when --config=linux (or other platform configs)
 # is explicitly passed, resolving [P1-ARCH-03] Bazel configuration warnings.
 common --noenable_platform_specific_config
