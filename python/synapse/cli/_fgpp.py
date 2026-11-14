@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -14,6 +16,71 @@ from synapse.cli.common import (
     json,
     sys,
 )
+
+
+def _validate_exr_channels(exr_path: Path) -> None:
+    """Validate 15-channel contract, pixel types, and finite values of an EXR file."""
+    try:
+        import OpenEXR  # type: ignore[import-untyped]
+    except ImportError:
+        return
+
+    from synapse.fgpp.schema import FGPP_CHANNEL_SPECS, PixelType
+
+    try:
+        exr = OpenEXR.InputFile(str(exr_path))
+    except Exception as exc:
+        raise ContractValidationError(
+            f"Failed to open EXR file {exr_path.name}: {exc}",
+            agent_fix_hint="Ensure EXR file is uncorrupted and valid OpenEXR format.",
+        ) from exc
+
+    try:
+        header = exr.header()
+        channels = header.get("channels", {})
+        expected_channels = {name for name, _, _ in FGPP_CHANNEL_SPECS}
+        missing = expected_channels - set(channels.keys())
+        if missing:
+            raise ContractValidationError(
+                f"EXR file {exr_path.name} is missing required FGPP channels: {sorted(missing)}",
+                agent_fix_hint="Ensure all 15 FGPP channels are exported bit-identically to @aether//fgpp.",
+                details={"missing_channels": sorted(missing)},
+            )
+
+        for name, expected_pt, _ in FGPP_CHANNEL_SPECS:
+            ch = channels[name]
+            if expected_pt == PixelType.UINT32:
+                if ch.type.v not in (int(PixelType.UINT32), int(PixelType.FLOAT)):
+                    raise ContractValidationError(
+                        f"EXR {exr_path.name} channel '{name}' pixel type mismatch: "
+                        f"expected UINT32/FLOAT ({int(expected_pt)}), got {ch.type.v}",
+                        agent_fix_hint=f"Ensure channel '{name}' has storage type UINT32 or 32-bit FLOAT.",
+                    )
+                continue
+
+            if ch.type.v != int(expected_pt):
+                raise ContractValidationError(
+                    f"EXR {exr_path.name} channel '{name}' pixel type mismatch: "
+                    f"expected {expected_pt.name} ({int(expected_pt)}), got {ch.type.v}",
+                    agent_fix_hint=f"Ensure channel '{name}' has storage type {expected_pt.name}.",
+                )
+            raw = exr.channel(name)
+            if expected_pt == PixelType.FLOAT:
+                arr = np.frombuffer(raw, dtype=np.float32)
+                if not np.all(np.isfinite(arr)):
+                    raise ContractValidationError(
+                        f"EXR {exr_path.name} channel '{name}' contains NaN or Inf values",
+                        agent_fix_hint=f"Check render passes to eliminate NaN/Inf in channel '{name}'.",
+                    )
+            elif expected_pt == PixelType.HALF:
+                arr = np.frombuffer(raw, dtype=np.float16)
+                if not np.all(np.isfinite(arr)):
+                    raise ContractValidationError(
+                        f"EXR {exr_path.name} channel '{name}' contains NaN or Inf values",
+                        agent_fix_hint=f"Check render passes to eliminate NaN/Inf in channel '{name}'.",
+                    )
+    finally:
+        exr.close()
 
 
 def _cmd_fgpp_validate(args: argparse.Namespace) -> dict[str, Any]:
@@ -64,11 +131,29 @@ def _cmd_fgpp_validate(args: argparse.Namespace) -> dict[str, Any]:
             agent_fix_hint="Re-export the FGPP sequence with correct frame count.",
         )
 
+    check_exr = getattr(args, "check_exr", False)
+    exr_files = sorted(fgpp_dir.glob("*.exr"))
+    if not exr_files and (fgpp_dir / "fgpp").is_dir():
+        exr_files = sorted((fgpp_dir / "fgpp").glob("*.exr"))
+
+    if check_exr and not exr_files:
+        raise AssetNotFoundError(
+            f"No EXR files found in {fgpp_dir} to validate",
+            agent_fix_hint="Ensure .exr frames are present when using --check-exr.",
+        )
+
+    if exr_files:
+        # Validate the first frame or all frames if explicitly requested
+        to_check = exr_files if check_exr else exr_files[:1]
+        for ef in to_check:
+            _validate_exr_channels(ef)
+
     return {
         "valid": True,
         "schema_version": schema_ver,
         "num_frames": actual_frames,
         "scene_id": raw.get("scene_id", ""),
+        "exr_validated": len(exr_files) > 0,
     }
 
 
@@ -120,6 +205,10 @@ def register_fgpp_subparser(
         "validate", help="Validate FGPP output directory",
     )
     fgpp_validate.add_argument("dir", help="Path to FGPP directory")
+    fgpp_validate.add_argument(
+        "--check-exr", action="store_true", default=False,
+        help="Deep-validate EXR 15-channel wire format, pixel types, and finite values",
+    )
 
     fgpp_inspect = fgpp_sub.add_parser(
         "inspect", help="Inspect FGPP directory",

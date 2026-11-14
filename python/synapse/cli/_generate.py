@@ -17,10 +17,59 @@ from synapse.cli.common import (
 # -------------------------------------------------------------------
 
 
+def _cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
+    """Execute dataset generation and return structured summary dict."""
+    from synapse.generators.dataset import DatasetConfig, DatasetGenerator
+
+    json_mode = bool(getattr(args, "json", False))
+    cfg = DatasetConfig(
+        model_name=args.model,
+        trajectory_type=args.trajectory,
+        num_frames=args.frames,
+        width=args.res,
+        height=args.res,
+        fps=args.fps,
+        radius=args.radius,
+        val_ratio=args.val_ratio,
+        output_dir=args.out,
+    )
+
+    if not json_mode:
+        print("[Synapse] Dataset Generator")
+        print(f"   Model:      {cfg.model_name}")
+        print(
+            f"   Trajectory: {cfg.trajectory_type} "
+            f"({cfg.num_frames} frames @ {cfg.fps} fps)"
+        )
+        print(f"   Resolution: {cfg.width}x{cfg.height}")
+        print(f"   Output:     {Path(cfg.output_dir).resolve()}")
+
+    gen = DatasetGenerator(cfg)
+    out_dir = gen.generate()
+
+    if not json_mode:
+        print(f"\n[OK] Dataset successfully generated at: {out_dir}")
+        print(f"   Video:         {out_dir / 'video_all.mp4'}")
+        print(f"   Contact Sheet: {out_dir / 'contact_sheet.png'}")
+        print(f"   Manifest:      {out_dir / 'manifest.json'}")
+
+    return {
+        "status": "ok",
+        "output_dir": str(out_dir),
+        "frames_count": cfg.num_frames,
+        "model": cfg.model_name,
+        "trajectory": cfg.trajectory_type,
+        "resolution": [cfg.width, cfg.height],
+        "fps": cfg.fps,
+        "video_path": str(out_dir / "video_all.mp4"),
+        "manifest_path": str(out_dir / "manifest.json"),
+    }
+
+
 def main_data_gen(args: list[str] | None = None) -> int:
     """CLI tool: Generate multi-angle video & FGPP datasets."""
-    from synapse.generators.dataset import DatasetConfig, DatasetGenerator
     from synapse.models.loader import list_builtin_models
+    from synapse.telemetry import TraceContext
 
     parser = argparse.ArgumentParser(
         prog="synapse-data-gen",
@@ -66,43 +115,18 @@ def main_data_gen(args: list[str] | None = None) -> int:
         "--view", action="store_true",
         help="Immediately launch interactive web viewer after generation",
     )
+    parser.add_argument(
+        "--json", action="store_true", default=False,
+        help="Emit structured JSON output to stdout",
+    )
 
     parsed = parser.parse_args(args)
-
-    cfg = DatasetConfig(
-        model_name=parsed.model,
-        trajectory_type=parsed.trajectory,
-        num_frames=parsed.frames,
-        width=parsed.res,
-        height=parsed.res,
-        fps=parsed.fps,
-        radius=parsed.radius,
-        val_ratio=parsed.val_ratio,
-        output_dir=parsed.out,
-    )
-
-    print("[Synapse] Dataset Generator")
-    print(f"   Model:      {cfg.model_name}")
-    print(
-        f"   Trajectory: {cfg.trajectory_type} "
-        f"({cfg.num_frames} frames @ {cfg.fps} fps)"
-    )
-    print(f"   Resolution: {cfg.width}x{cfg.height}")
-    print(f"   Output:     {Path(cfg.output_dir).resolve()}")
-
-    gen = DatasetGenerator(cfg)
-    out_dir = gen.generate()
-
-    print(f"\n[OK] Dataset successfully generated at: {out_dir}")
-    print(f"   Video:         {out_dir / 'video_all.mp4'}")
-    print(f"   Contact Sheet: {out_dir / 'contact_sheet.png'}")
-    print(f"   Manifest:      {out_dir / 'manifest.json'}")
-
-    if parsed.view:
+    trace_ctx = TraceContext.from_env_or_dict()
+    code = _run_with_json_mode(_cmd_generate, parsed, parsed.json, trace_ctx)
+    if code == 0 and parsed.view and not parsed.json:
         from synapse.viewer.server import launch_viewer
-        launch_viewer(out_dir, port=8765, open_browser=True, block=True)
-
-    return 0
+        launch_viewer(Path(parsed.out), port=8765, open_browser=True, block=True)
+    return code
 
 
 def main_viewer(args: list[str] | None = None) -> int:
@@ -284,17 +308,10 @@ def dispatch_generate(
     trace_ctx: Any,
 ) -> int:
     """Dispatch ``synapse generate``."""
-    gen_args = []
-    if parsed.model:
-        gen_args.extend(["--model", parsed.model])
-    gen_args.extend(["--trajectory", parsed.trajectory])
-    gen_args.extend(["--frames", str(parsed.frames)])
-    gen_args.extend(["--res", str(parsed.res)])
-    gen_args.extend(["--fps", str(parsed.fps)])
-    gen_args.extend(["--radius", str(parsed.radius)])
-    gen_args.extend(["--val-ratio", str(parsed.val_ratio)])
-    gen_args.extend(["--out", parsed.out])
-    return main_data_gen(gen_args)
+    parsed.json = json_mode
+    return _run_with_json_mode(
+        _cmd_generate, parsed, json_mode, trace_ctx,
+    )
 
 
 def dispatch_view(

@@ -6,6 +6,7 @@ from synapse.cli.common import (
     Any,
     AssetNotFoundError,
     Path,
+    QualityGateError,
     _run_with_json_mode,
     argparse,
 )
@@ -108,6 +109,26 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 print(f"    Gate: {verdict}")
 
+    if gate_profile:
+        failed_scenarios: list[str] = []
+        for r in reports:
+            if r.error:
+                failed_scenarios.append(f"{r.scenario_name}: error {r.error}")
+            elif r.gate_verdict is not None and not r.gate_verdict.passed:
+                failed_scenarios.append(
+                    f"{r.scenario_name}: gate not passed ({', '.join(r.gate_verdict.failures)})"
+                )
+        if failed_scenarios:
+            raise QualityGateError(
+                f"Quality gate '{gate_profile}' failed for {len(failed_scenarios)} scenario(s): "
+                + "; ".join(failed_scenarios),
+                agent_fix_hint=(
+                    f"Adjust video generation or refinement output to satisfy "
+                    f"'{gate_profile}' quality gate thresholds."
+                ),
+                details={"gate_profile": gate_profile, "failures": failed_scenarios},
+            )
+
     return {"reports": items, "count": len(items)}
 
 
@@ -132,6 +153,15 @@ def _cmd_bench_evaluate(args: argparse.Namespace) -> dict[str, Any]:
         print("[Evaluate Bundle]")
         for k, v in metrics.items():
             print(f"  {k}: {v}")
+
+    if getattr(args, "strict", False) and metrics.get("gate_passed", 1.0) == 0.0:
+        raise QualityGateError(
+            f"InspectionBundle failed quality gate for profile '{profile}'",
+            agent_fix_hint=(
+                f"Review metrics against '{profile}' profile thresholds in comparison.json."
+            ),
+            details={"metrics": metrics, "profile": profile},
+        )
 
     return {"metrics": metrics, "bundle_dir": str(bundle_dir)}
 
@@ -278,6 +308,10 @@ def register_bench_subparsers(
     eval_parser.add_argument(
         "--profile", default="track_b_video",
         help="Quality gate profile (default: track_b_video)",
+    )
+    eval_parser.add_argument(
+        "--strict", action="store_true", default=False,
+        help="Fail closed with exit code 40 if quality gate fails",
     )
 
 

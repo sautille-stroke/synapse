@@ -8,6 +8,7 @@ from synapse.cli.common import (
     ContractValidationError,
     ExitCode,
     Path,
+    QualityGateError,
     SynapseError,
     _run_with_json_mode,
     argparse,
@@ -168,23 +169,57 @@ def _cmd_rsi_gate_promote(
     baseline_overall = float(baseline_overall_raw)
     candidate_overall = float(candidate_overall_raw)
 
+    baseline_geom_raw = getattr(args, "baseline_geom", None)
+    candidate_geom_raw = getattr(args, "candidate_geom", None)
+    baseline_temporal_raw = getattr(args, "baseline_temporal", None)
+    candidate_temporal_raw = getattr(args, "candidate_temporal", None)
+
+    baseline_geom = float(baseline_geom_raw) if baseline_geom_raw is not None else baseline_overall
+    candidate_geom = float(candidate_geom_raw) if candidate_geom_raw is not None else candidate_overall
+    baseline_temporal = (
+        float(baseline_temporal_raw)
+        if baseline_temporal_raw is not None
+        else baseline_overall
+    )
+    candidate_temporal = (
+        float(candidate_temporal_raw)
+        if candidate_temporal_raw is not None
+        else candidate_overall
+    )
+
     baseline = BenchReport(
         overall_score=baseline_overall,
-        geom_score=baseline_overall,
-        temporal_score=baseline_overall,
+        geom_score=baseline_geom,
+        temporal_score=baseline_temporal,
     )
     candidate = BenchReport(
         overall_score=candidate_overall,
-        geom_score=candidate_overall,
-        temporal_score=candidate_overall,
+        geom_score=candidate_geom,
+        temporal_score=candidate_temporal,
     )
 
     result = evaluate_monotonic_promotion(
         baseline=baseline, candidate=candidate,
     )
+
+    if getattr(args, "strict", False) and not result.promoted:
+        raise QualityGateError(
+            f"Candidate model failed monotonic promotion gate: {result.failures}",
+            agent_fix_hint="Ensure candidate scores monotonically improve over baseline on overall, geom, and temporal axes.",
+            details={
+                "failures": result.failures,
+                "conditions": result.conditions,
+                "baseline": baseline.model_dump(),
+                "candidate": candidate.model_dump(),
+            },
+        )
+
     return {
         "promoted": result.promoted,
         "conditions": result.conditions,
+        "failures": result.failures,
+        "baseline": baseline.model_dump(),
+        "candidate": candidate.model_dump(),
     }
 
 
@@ -254,6 +289,26 @@ def register_rsi_subparser(
     rsi_gate.add_argument(
         "--candidate-overall", type=float, default=None,
         help="Candidate overall score (required)",
+    )
+    rsi_gate.add_argument(
+        "--baseline-geom", type=float, default=None,
+        help="Baseline geometry score (defaults to --baseline-overall)",
+    )
+    rsi_gate.add_argument(
+        "--candidate-geom", type=float, default=None,
+        help="Candidate geometry score (defaults to --candidate-overall)",
+    )
+    rsi_gate.add_argument(
+        "--baseline-temporal", type=float, default=None,
+        help="Baseline temporal score (defaults to --baseline-overall)",
+    )
+    rsi_gate.add_argument(
+        "--candidate-temporal", type=float, default=None,
+        help="Candidate temporal score (defaults to --candidate-overall)",
+    )
+    rsi_gate.add_argument(
+        "--strict", action="store_true", default=False,
+        help="Fail closed with exit code 40 if candidate is not promoted",
     )
     return rsi_parser
 

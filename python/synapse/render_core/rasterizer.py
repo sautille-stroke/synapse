@@ -157,7 +157,15 @@ class SoftwareRasterizer:
         N = vertices.shape[0]
         if base_color is None:
             base_color = np.full((N, 3), 0.8, dtype=np.float32)
-        base_color = np.asarray(base_color, dtype=np.float32)
+        else:
+            base_color = np.asarray(base_color, dtype=np.float32)
+            if base_color.ndim == 1 and base_color.shape[0] == 3:
+                base_color = np.tile(base_color, (N, 1))
+            elif base_color.ndim == 3:
+                mean_color = np.mean(base_color, axis=(0, 1))[:3]
+                base_color = np.tile(mean_color, (N, 1))
+            elif base_color.shape != (N, 3):
+                base_color = np.full((N, 3), 0.8, dtype=np.float32)
 
         # Build MVP: view_matrix then projection
         view = camera.view_matrix.astype(np.float64)
