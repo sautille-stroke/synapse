@@ -96,7 +96,8 @@ def _fake_backend(
         payload: PreparedConditionPayload,
         config: VideoGenerationConfig,
     ) -> np.ndarray:
-        return np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+        rng = np.random.default_rng(42)
+        return rng.integers(10, 240, size=(num_frames, h, w, 3), dtype=np.uint8)
     return LocalCallableBackend(pipeline_fn=fn)
 
 

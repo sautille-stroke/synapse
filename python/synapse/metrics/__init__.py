@@ -27,6 +27,7 @@ from synapse.metrics.image_quality import (
     lpips,
     psnr_db,
     ssim,
+    validate_output_non_degenerate,
 )
 from synapse.metrics.profiles import (
     METRIC_ALIASES,
@@ -93,6 +94,7 @@ __all__ = [
     "ssim",
     "ciede2000",
     "lpips",
+    "validate_output_non_degenerate",
     # roundtrip
     "chamfer_mm",
     "f_score_1mm",
