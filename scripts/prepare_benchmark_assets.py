@@ -29,10 +29,8 @@ import json
 import os
 import shutil
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 # Ensure terminal UTF-8 output
 if hasattr(sys.stdout, "reconfigure"):
@@ -337,8 +335,8 @@ def stage_from_remote_huggingface(
 
     # Attempt Hugging Face download for starter assets if huggingface_hub is available
     try:
-        from huggingface_hub import hf_hub_download  # type: ignore
-        gso_dir = _ensure_dir(target_root / "gso_starter")
+        import huggingface_hub  # noqa: F401
+        _ensure_dir(target_root / "gso_starter")
         if verbose:
             print("  [HuggingFace] Checking remote HuggingFace mirrors...")
     except ImportError:
@@ -450,7 +448,6 @@ def main() -> int:
     verbose = not args.json
 
     # 2. Stage from local authoritative open_data if present
-    local_staged = False
     if source_root.exists() and (source_root / "04_3d_meshes").exists():
         if verbose:
             print(f"\n>>> [Fast-Path] Staging authoritative assets from {source_root}")
@@ -458,7 +455,6 @@ def main() -> int:
             target_dir, source_root, tier_canonical, args.force, verbose=verbose
         )
         all_records.extend(local_records)
-        local_staged = True
 
     # 3. Stage from remote HuggingFace / mirror fallback
     remote_records = stage_from_remote_huggingface(
