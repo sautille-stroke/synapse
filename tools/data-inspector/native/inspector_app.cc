@@ -334,6 +334,8 @@ void InspectorApp::run() {
 
     renderFrame(deltaTime);
     m_shm.publishFrame(measuredFps, deltaTime, static_cast<uint8_t>(m_debugView));
+    std::cout << "{\"type\":\"frame_ready\"}\n";
+    std::cout.flush();
 
     totalFrames++;
     if (m_config.maxFrames > 0 && totalFrames >= m_config.maxFrames) {
