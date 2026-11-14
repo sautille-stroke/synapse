@@ -1,194 +1,35 @@
+# Copyright 2026 Sautille-Stroke / DervGen. All rights reserved.
 """Thin bridge to geometry and material processing backends.
 
-This module defines abstract and concrete backends for geometry and material
-processing operations. The :class:`MockVgBackend` is always available for
-testing; production routes to :class:`~synapse.recon.backend.SynapseReconBackend`
-which is self-contained with native C++20 geometry operators and Python Oracle.
+This module provides access to geometry and material processing backends.
+The :class:`MockVgBackend` is always available for testing; production routes to
+:class:`~synapse.recon.backend.SynapseReconBackend` which is self-contained with
+native C++20 geometry operators and Python Oracle.
 
-.. note::
-
-   ``SynapseReconBackend`` and ``get_recon_backend`` have been moved to
-   :mod:`synapse.recon.backend` to break the ``bridge → recon`` circular
-   dependency (P0-ARCH-01). This module re-exports them for backward
-   compatibility.
+Abstract interface :class:`VgBackend` and :class:`MockVgBackend` are hosted in
+:mod:`synapse.render_core.backend` to preserve a clean, unidirectional import DAG.
 """
 
 from __future__ import annotations
 
 import os
-from abc import ABC, abstractmethod
-from typing import Any
-
-import numpy as np
 
 from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     MIN_CHARACTER_WHITEBOX_VERTICES,
     validate_whitebox_coarseness_floor,
 )
+from synapse.recon.backend import SynapseReconBackend, get_recon_backend
+from synapse.render_core.backend import MockVgBackend, VgBackend
 
-
-class VgBackend(ABC):
-    """Abstract interface for geometry / material operations.
-
-    Every concrete backend must implement the five core methods below.
-    """
-
-    @abstractmethod
-    def delight(
-        self,
-        albedo: np.ndarray,
-        normal: np.ndarray,
-        radiance: np.ndarray,
-    ) -> np.ndarray:
-        """Remove lighting from a radiance image using albedo and normals.
-
-        Args:
-            albedo: Base-color image, shape ``(H, W, 3)``.
-            normal: World-space normal map, shape ``(H, W, 3)``.
-            radiance: Direct radiance image, shape ``(H, W, 3)``.
-
-        Returns:
-            De-lit diffuse albedo image, shape ``(H, W, 3)``.
-        """
-
-    @abstractmethod
-    def quad_remesh(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-        target_faces: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Remesh a triangle soup into a quad-dominant mesh.
-
-        Args:
-            vertices: Vertex positions, shape ``(V, 3)``.
-            faces: Triangle indices, shape ``(F, 3)``.
-            target_faces: Desired number of output quads.
-
-        Returns:
-            Tuple of ``(new_vertices, new_faces)``.
-        """
-
-    @abstractmethod
-    def check_manifold(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-    ) -> bool:
-        """Check whether a mesh is 2-manifold and watertight.
-
-        Args:
-            vertices: Vertex positions, shape ``(V, 3)``.
-            faces: Face indices, shape ``(F, 3)`` or ``(F, 4)``.
-
-        Returns:
-            ``True`` if the mesh is manifold.
-        """
-
-    @abstractmethod
-    def solve_zero_slip_ik(
-        self,
-        skeleton_data: dict[str, Any],
-        foot_contacts: np.ndarray,
-    ) -> dict[str, Any]:
-        """Solve zero-slip inverse kinematics for foot contacts.
-
-        Args:
-            skeleton_data: Humanoid-53 skeleton joint dict.
-            foot_contacts: Per-frame foot contact binary mask,
-                shape ``(T, 2)``.
-
-        Returns:
-            Updated skeleton data dict with corrected joint transforms.
-        """
-
-    @abstractmethod
-    def refine_pose_6dof(
-        self,
-        vertices: np.ndarray,
-        target_points: np.ndarray,
-    ) -> np.ndarray:
-        """Estimate a rigid 6-DoF alignment transform.
-
-        Args:
-            vertices: Source point cloud, shape ``(N, 3)``.
-            target_points: Target point cloud, shape ``(M, 3)``.
-
-        Returns:
-            4×4 homogeneous transformation matrix.
-        """
-
-
-# -----------------------------------------------------------------------
-# Mock backend — always available, returns passthrough / dummy values
-# -----------------------------------------------------------------------
-
-
-class MockVgBackend(VgBackend):
-    """Mock backend returning passthrough / dummy values for testing."""
-
-    def delight(
-        self,
-        albedo: np.ndarray,
-        normal: np.ndarray,
-        radiance: np.ndarray,
-    ) -> np.ndarray:
-        """Return *albedo* unchanged (passthrough)."""
-        return albedo
-
-    def quad_remesh(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-        target_faces: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Return input mesh unchanged."""
-        return vertices, faces
-
-    def check_manifold(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-    ) -> bool:
-        """Always report manifold."""
-        return True
-
-    def solve_zero_slip_ik(
-        self,
-        skeleton_data: dict[str, Any],
-        foot_contacts: np.ndarray,
-    ) -> dict[str, Any]:
-        """Return skeleton data unchanged."""
-        return skeleton_data
-
-    def refine_pose_6dof(
-        self,
-        vertices: np.ndarray,
-        target_points: np.ndarray,
-    ) -> np.ndarray:
-        """Return 4×4 identity matrix."""
-        return np.eye(4, dtype=np.float64)
-
-
-# -----------------------------------------------------------------------
-# Synapse Native Recon Backend — moved to synapse.recon.backend
-# -----------------------------------------------------------------------
-
-# Backward-compatible re-exports are provided via __getattr__ using
-# importlib to avoid creating an AST-visible import edge bridge → recon.
-
-def __getattr__(name: str) -> object:
-    if name in ("SynapseReconBackend", "get_recon_backend"):
-        import importlib
-        _rb = importlib.import_module("synapse.recon.backend")
-        return getattr(_rb, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-# -----------------------------------------------------------------------
-# Factory
-# -----------------------------------------------------------------------
+__all__ = [
+    "MockVgBackend",
+    "SynapseReconBackend",
+    "VgBackend",
+    "enforce_distillation_geometry_gate",
+    "get_recon_backend",
+    "get_vg_backend",
+]
 
 
 def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBackend:
@@ -210,9 +51,7 @@ def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBack
     if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
         return MockVgBackend()
 
-    import importlib
-    _rb = importlib.import_module("synapse.recon.backend")
-    return _rb.SynapseReconBackend()
+    return SynapseReconBackend()
 
 
 # -----------------------------------------------------------------------

@@ -252,6 +252,10 @@ class TestReconDelight:
         assert res.specular.shape == (16, 16, 3)
         assert res.ambient_sh.shape == (9, 3)
 
+    def test_delight_multiview_albedo_callable(self) -> None:
+        """delight_multiview_albedo callable contract."""
+        assert callable(delight_multiview_albedo)
+
     def test_decompose_intrinsic_uint8_input(self) -> None:
         """PR-61: uint8 input [0..255] is properly normalized in (0, 1) and not saturated at 1.0."""
         radiance_u8 = np.full((16, 16, 3), 128, dtype=np.uint8)

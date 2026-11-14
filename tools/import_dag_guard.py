@@ -62,7 +62,25 @@ class _ImportVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
         if node.module:
-            self._record(node.module)
+            if node.module == "synapse":
+                for alias in node.names:
+                    self._record(f"synapse.{alias.name}")
+            else:
+                self._record(node.module)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+        func = node.func
+        module_name: str | None = None
+        if isinstance(func, ast.Name) and func.id == "__import__":
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                module_name = node.args[0].value
+        elif isinstance(func, ast.Attribute) and func.attr == "import_module":
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                module_name = node.args[0].value
+
+        if module_name is not None:
+            self._record(module_name)
         self.generic_visit(node)
 
 
@@ -95,9 +113,13 @@ def scan_import_dag(
         rel = py_file.relative_to(synapse_dir)
         parts = rel.parts
         if len(parts) < 2:
-            # Top-level synapse module (e.g. synapse/errors.py) — no sub-pkg
-            continue
-        source_pkg = parts[0]
+            if py_file.name == "__init__.py":
+                # Package root aggregator — allowed to re-export subpackages
+                continue
+            # Top-level synapse module (e.g. synapse/errors.py, synapse/telemetry.py)
+            source_pkg = py_file.stem
+        else:
+            source_pkg = parts[0]
         pkg_files[source_pkg].add(str(rel))
 
         try:
