@@ -199,7 +199,7 @@ class DatasetGenerator:
 
             render_res = self.rasterizer.render(
                 model.vertices, model.faces, model.normals, cam,
-                base_color=model.base_color_texture,
+                base_color=model.base_color_factor,
                 roughness=model.roughness_factor,
                 metallic=model.metallic_factor,
                 prev_camera=prev_cam,

@@ -402,7 +402,8 @@ def evaluate_bundle(
     from synapse.metrics.profiles import GateProfileName, evaluate_metrics_gate
 
     gate = evaluate_metrics_gate(metrics, cast(GateProfileName, profile))
-    metrics["gate_passed"] = float(gate.passed)
+    gate_passed = gate.passed and len(metrics) > 0
+    metrics["gate_passed"] = float(gate_passed)
 
     # --- Write comparison.json ----------------------------------------
     metrics_dir = bundle_dir / "metrics"

@@ -157,11 +157,14 @@ class TestFgppCliExrValidation:
 
         h, w = 32, 32
         cam = CameraParams(
-            extrinsic=np.eye(4, dtype=np.float32),
-            intrinsic=np.eye(3, dtype=np.float32),
-            clip_near=0.1,
-            clip_far=100.0,
-            fov_y_deg=60.0,
+            fx=32.0,
+            fy=32.0,
+            cx=16.0,
+            cy=16.0,
+            width=w,
+            height=h,
+            z_near=0.1,
+            z_far=100.0,
         )
         frame = FGPPFrame(
             camera=cam,
@@ -256,7 +259,7 @@ class TestRsiCliPromotionGate:
         assert payload["status"] == "error"
         assert payload["exit_code"] == 40
         assert payload["error_type"] == "QualityGateError"
-        assert "failed monotonic promotion gate" in payload["message"]
+        assert "promotion gate failed" in payload["message"].lower()
 
 
 class TestGenerateCliJsonEnvelopes:
