@@ -11,7 +11,6 @@ from typing import Any
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
-from synapse.render_core.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
     colorize_depth,
     colorize_flow,
@@ -22,6 +21,7 @@ from synapse.generators.visualizer import (
 from synapse.models.asset import ModelAsset
 from synapse.models.loader import load_model
 from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+from synapse.render_core.rasterizer import SoftwareRasterizer
 
 
 @dataclass
@@ -197,11 +197,25 @@ class DatasetGenerator:
             cam = cameras[i]
             prev_cam = cameras[i - 1] if i > 0 else cameras[0]
 
-            render_res = self.rasterizer.render(model, cam, prev_cam)
+            render_res = self.rasterizer.render(
+                model.vertices, model.faces, model.normals, cam,
+                base_color=model.base_color_texture,
+                roughness=model.roughness_factor,
+                metallic=model.metallic_factor,
+                prev_camera=prev_cam,
+            )
+            # Derive mask and RGB from FGPPFrame channels
+            _mask = (render_res.cryptomatte_id > 0).astype(np.uint8) if render_res.cryptomatte_id is not None else np.zeros(render_res.depth.shape, dtype=np.uint8)
+            _radiance = render_res.direct_radiance.astype(np.float32) if render_res.direct_radiance is not None else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)  # type: ignore[union-attr]
+            _rgb = np.clip(_radiance * 255.0, 0, 255).astype(np.uint8)
+
+            # Assert required channels are present (rasterizer always produces them)
+            assert render_res.world_normal is not None
+            assert render_res.motion_vector is not None
 
             # Store stats
-            if np.any(render_res.mask > 0):
-                flow_mag = np.linalg.norm(render_res.motion_vector[render_res.mask > 0], axis=-1)
+            if np.any(_mask > 0):
+                flow_mag = np.linalg.norm(render_res.motion_vector[_mask > 0], axis=-1)
                 if len(flow_mag) > 0:
                     max_flow_val = max(max_flow_val, float(np.max(flow_mag)))
 
@@ -209,14 +223,14 @@ class DatasetGenerator:
             split_tag = "val" if is_val else "train"
 
             # Colorize channels for inspection
-            depth_rgb = colorize_depth(render_res.depth, render_res.mask)
-            normal_rgb = colorize_normal(render_res.world_normal, render_res.mask)
-            flow_rgb = colorize_flow(render_res.motion_vector, render_res.mask, max_flow=max(1.0, max_flow_val))
-            mask_rgb = colorize_mask(render_res.mask)
+            depth_rgb = colorize_depth(render_res.depth, _mask)
+            normal_rgb = colorize_normal(render_res.world_normal, _mask)
+            flow_rgb = colorize_flow(render_res.motion_vector, _mask, max_flow=max(1.0, max_flow_val))
+            mask_rgb = colorize_mask(_mask)
 
             # Save individual RGB frame
             rgb_filename = f"frame_{i:04d}.png"
-            Image.fromarray(render_res.rgb).save(frames_dir / rgb_filename)
+            Image.fromarray(_rgb).save(frames_dir / rgb_filename)
 
             # Save visualizations
             Image.fromarray(depth_rgb).save(vis_dir / f"depth_{i:04d}.png")
@@ -224,7 +238,7 @@ class DatasetGenerator:
             Image.fromarray(flow_rgb).save(vis_dir / f"flow_{i:04d}.png")
 
             # Write to video
-            bgr_frame = cv2.cvtColor(render_res.rgb, cv2.COLOR_RGB2BGR)
+            bgr_frame = cv2.cvtColor(_rgb, cv2.COLOR_RGB2BGR)
             video_writer.write(bgr_frame)
             if is_val:
                 val_writer.write(bgr_frame)
@@ -235,18 +249,18 @@ class DatasetGenerator:
             fgpp_filename = f"frame_{i:04d}.npz"
             np.savez_compressed(
                 fgpp_dir / fgpp_filename,
-                depth=render_res.depth.astype(np.float32),
-                world_normal=render_res.world_normal.astype(np.float16),
-                motion_vector=render_res.motion_vector.astype(np.float16),
-                mask=render_res.mask.astype(np.uint8),
+                depth=render_res.depth.astype(np.float32),  # type: ignore[union-attr]
+                world_normal=render_res.world_normal.astype(np.float16),  # type: ignore[union-attr]
+                motion_vector=render_res.motion_vector.astype(np.float16),  # type: ignore[union-attr]
+                mask=_mask.astype(np.uint8),
             )
 
             # FGPP Frame dataclass
             fgpp_frame = FGPPFrame(
                 camera=cam,
                 depth=render_res.depth,
-                world_normal=render_res.world_normal.astype(np.float16),
-                motion_vector=render_res.motion_vector.astype(np.float16),
+                world_normal=render_res.world_normal.astype(np.float16),  # type: ignore[union-attr]
+                motion_vector=render_res.motion_vector.astype(np.float16),  # type: ignore[union-attr]
                 frame_index=i,
             )
             fgpp_frames.append(fgpp_frame)
@@ -262,13 +276,13 @@ class DatasetGenerator:
                 "camera": cam.to_dict(),
             })
 
-            rgb_frames.append(render_res.rgb)
+            rgb_frames.append(_rgb)
             depth_vis_frames.append(depth_rgb)
 
             # Generate contact sheet for middle frame or key frame
             if i == num_frames // 4:
                 contact = make_contact_sheet(
-                    render_res.rgb,
+                    _rgb,
                     depth_rgb,
                     normal_rgb,
                     flow_rgb,

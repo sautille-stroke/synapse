@@ -458,7 +458,6 @@ class TestStatelessLoRATrainer:
             if hasattr(child, "orig") and hasattr(child, "lora_A"):
                 # This is a LoRA wrapper; check orig's params
                 orig_w = child.orig.weight.data
-                orig_b = child.orig.bias
                 # Find matching key by looking at shape
                 for key, snap in orig_weights.items():
                     if (
@@ -476,7 +475,7 @@ class TestStatelessLoRATrainer:
 
     def test_export_checkpoint(self, tmp_path) -> None:
         """Export should create a safetensors file."""
-        safetensors = pytest.importorskip("safetensors")
+        pytest.importorskip("safetensors")
 
         from synapse.training.trainer import (
             LoRATrainConfig,

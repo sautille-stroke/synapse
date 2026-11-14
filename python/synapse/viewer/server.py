@@ -39,7 +39,7 @@ class _ReusableHTTPServer(socketserver.TCPServer):
 class _DatasetHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """Custom HTTP handler serving the viewer UI and dataset media files."""
 
-    def __init__(self, *args, directory: str | None = None, **kwargs) -> None:
+    def __init__(self, *args: Any, directory: str | None = None, **kwargs: Any) -> None:
         self.dataset_dir = Path(directory).resolve() if directory else Path.cwd().resolve()
         super().__init__(*args, directory=str(self.dataset_dir), **kwargs)
 

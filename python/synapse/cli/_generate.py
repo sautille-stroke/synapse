@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from synapse.cli.common import (
-    _run_with_json_mode,
     Any,
     AssetNotFoundError,
     ContractValidationError,
     Path,
+    _run_with_json_mode,
     argparse,
     sys,
 )
-
 
 # -------------------------------------------------------------------
 # Legacy standalone entry points (kept for backward compatibility)

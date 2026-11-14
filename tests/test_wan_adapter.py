@@ -103,7 +103,7 @@ class TestWorldToCameraNormal:
 
     def test_90_degree_rotation(self) -> None:
         """90-degree rotation about Y should swap X and Z."""
-        h, w = 1, 1
+        _h, _w = 1, 1
         # Normal pointing along +X
         normals = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)
 

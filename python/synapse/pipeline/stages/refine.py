@@ -83,7 +83,7 @@ def handle_anatomical_refine(
         )
 
     rois_raw = json.loads(Path(rois_path).read_text(encoding="utf-8"))
-    height, width = frames.shape[1], frames.shape[2]
+    _height, _width = frames.shape[1], frames.shape[2]
 
     rois_per_frame: list[list[RefinementROI]] = []
     for t, frame_rois_raw in enumerate(rois_raw):

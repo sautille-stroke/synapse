@@ -49,7 +49,6 @@ def _circular_structuring_element(radius: int) -> np.ndarray:
 
     Returns a bool array of shape ``(2*radius+1, 2*radius+1)``.
     """
-    d = 2 * radius + 1
     yy, xx = np.ogrid[-radius:radius + 1, -radius:radius + 1]
     return (xx * xx + yy * yy) <= radius * radius
 

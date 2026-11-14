@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
 from synapse.bench.domain_randomizer import (
     FACTOR_KEYS,
@@ -18,6 +19,8 @@ from synapse.training.feature_store import (
 # ── DomainRandomizer tests ────────────────────────────────────────
 
 
+
+pytestmark = pytest.mark.slow
 class TestDomainRandomizer:
     """Tests for the 11-factor domain randomizer."""
 

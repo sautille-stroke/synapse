@@ -285,14 +285,14 @@ class SoftwareRasterizer:
                 # Unproject to world
                 ndc_x = (xs + 0.5) / W * 2.0 - 1.0
                 ndc_y = 1.0 - (ys + 0.5) / H * 2.0
-                view_inv = np.linalg.inv(view)
-                proj_inv = np.linalg.inv(proj)
+                _view_inv = np.linalg.inv(view)  # noqa: F841
+                _proj_inv = np.linalg.inv(proj)  # noqa: F841
                 pts_clip = np.stack([ndc_x * depths, ndc_y * depths,
                                      -depths, np.ones_like(depths)], axis=1)
                 # Reproject with prev camera
                 prev_view = prev_camera.view_matrix.astype(np.float64)
                 prev_proj = self._build_projection(prev_camera)
-                pts_world = (np.linalg.inv(prev_view) @ (np.linalg.inv(prev_proj) @ pts_clip.T)).T
+                _pts_world = (np.linalg.inv(prev_view) @ (np.linalg.inv(prev_proj) @ pts_clip.T)).T  # noqa: F841
                 # This is a simplified motion vector; exact would need full unprojection
 
         # Clamp depth: replace inf with z_far

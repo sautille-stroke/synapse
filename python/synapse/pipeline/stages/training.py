@@ -31,7 +31,7 @@ def handle_lora_preencode(
 ) -> dict[str, Any]:
     """Pre-encode FGPP + video frames into feature shards."""
     params = dict(manifest.params)
-    num_frames = int(params.get("num_frames", 17))
+    int(params.get("num_frames", 17))
 
     output_dir = Path(
         manifest.outputs.get("shards_dir", "output/shards"),

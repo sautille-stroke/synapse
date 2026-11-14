@@ -293,7 +293,6 @@ def align_reference_image_to_mesh(
     candidates = [
         coarse_cameras[coarse_scores[i][1]] for i in range(top_k)
     ]
-    candidate_ious = [coarse_scores[i][0] for i in range(top_k)]
 
     # Stage 1B: refine each candidate
     best_iou = -1.0

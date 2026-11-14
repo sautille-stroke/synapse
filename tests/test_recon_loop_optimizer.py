@@ -231,7 +231,7 @@ def test_extract_pbr_textures_save() -> None:
     albedo = np.full((32, 32, 3), 0.5, dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        texture_set = extract_and_pack_pbr_textures(
+        extract_and_pack_pbr_textures(
             albedo, output_dir=tmpdir,
         )
         assert (Path(tmpdir) / "albedo.npy").exists()

@@ -175,7 +175,6 @@ class AssetRegistry:
             # Cone is a cylinder with top radius = 0
             mesh = generate_procedural_mesh("cylinder")
             # Collapse top ring to apex
-            half_h = 1.0
             top_mask = mesh.vertices[:, 1] > 0.0
             mesh.vertices[top_mask, 0] = 0.0
             mesh.vertices[top_mask, 2] = 0.0

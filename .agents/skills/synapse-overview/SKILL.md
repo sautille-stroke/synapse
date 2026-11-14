@@ -28,6 +28,8 @@ description: >-
 | 模块路径 | 核心类 / 函数 | 职责说明 |
 | :--- | :--- | :--- |
 | `csrc/geometry/` | `checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections` | 现代 C++20 原生几何拓扑算子核（Bazel 构建，使用 `@aether//math` DVec3），单线程极速毫秒级流形/闭合/自交校验。 |
+| `synapse.render_core` | `SoftwareRasterizer`, `CameraParams`, `procedural`, `pyramid` (Gaussian/Laplacian), `conditions` | 纯 CPU 离线软光栅核、相机投影数学模型、拉普拉斯多分辨率金字塔无损分解/重构算子、几何基元与评测环境基底。 |
+| `synapse.cli` | `_app`, `_bench`, `_fgpp`, `_generate`, `_inspect`, `_lora`, `_recon`, `_refine`, `_rsi`, `_worker`, `common` | 模块化解耦 CLI 领域分发核（11 个轻量模块），遵循确定性退出状态码与机器可读 `--json` 信封。 |
 | `synapse.recon` | `ReconPipeline`, `check_manifold`, `check_watertight`, `solve_camera_trajectory`, `solve_zero_slip_ik`, `delight` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK 与本征去光照。 |
 | `synapse.refine` | `RefinementROI`, `roi_tracker`, `tiled_executor`, `hand`, `face`, `MultiModelRefineFusion`, `ScalpelStitcher`, `LocalRefinementPipeline` | 局部解剖智能修正与多模型手术刀融合（RFC 0061）：MANO 手部先验、Canonical 肖像面部 ID 保持、5 大模型融合算子、512x512 瓦片与光流 Warp 手术刀逆向缝合。 |
 | `synapse.bridge` | `VgBackend`, `MockVgBackend`, `NativeVgBackend`, `FoundaryClient`, `HITLSession` | 跨库/跨容器薄桥接层，含 15 分钟（900s）HITL 熔断状态机与无外部依赖 Mock 回退。 |
@@ -50,7 +52,7 @@ description: >-
 
 | 环境节点 | 角色定位 | 标准执行命令 |
 | :--- | :--- | :--- |
-| **`ubuntu24` (P0 云端主力机)** | **全量单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ && /root/venv-synapse/bin/mypy python/synapse"` |
+| **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (< 30s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy python/synapse && /root/venv-synapse/bin/python tools/wire_guard.py --check && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd csrc/geometry && bazel test //... --config=linux)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py` |
 | **Google Colab / win-dev (P1 GPU)** | **重型视频大模型 (Wan 2.1) 推理与 LoRA 微调实验**<br>详见 `workenv/google-colab/` 一站式环境套件（含 `setup_colab.sh`、`models.json`、`io_spec.md` 及 Notebook），使用 `ubuntu24` 导出的 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `bash workenv/google-colab/setup_colab.sh && python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all/checkpoints --exp all` |
 | **macOS 本地开发机** | **代码主控与 Git Worktree 管理**<br>严禁在本地拉起视频大模型或跑全量重型套件 | `pytest tests/test_bench.py -k "test_scenario_create" -v` |
 

@@ -182,7 +182,6 @@ class TestCoplanarViews:
             cz = 2.0 * math.sin(angle)
             pos = np.array([cx, 0.0, cz], dtype=np.float64)
             R = np.eye(3, dtype=np.float64)
-            t = np.zeros(3, dtype=np.float64)
             transform = np.eye(4, dtype=np.float64)
             cameras.append(
                 CameraExtrinsics(

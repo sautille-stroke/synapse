@@ -36,7 +36,6 @@ if str(_TOOLS_DIR) not in sys.path:
 sys.path.insert(0, str(_TOOLS_DIR))
 import wire_guard  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # TASK 5.1: wire_guard.py --check exits 0
 # ---------------------------------------------------------------------------

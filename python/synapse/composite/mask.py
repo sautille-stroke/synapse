@@ -28,7 +28,6 @@ def _circular_structuring_element(radius: int) -> np.ndarray:
 
     Returns a bool array of shape ``(2*radius+1, 2*radius+1)``.
     """
-    d = 2 * radius + 1
     yy, xx = np.ogrid[-radius:radius + 1, -radius:radius + 1]
     return (xx * xx + yy * yy) <= radius * radius
 
@@ -180,7 +179,6 @@ def generate_surgical_mask(
         mv_safe = np.where(np.isfinite(mv), mv, 0.0)
 
         # Mean motion within the combined mask region.
-        mask_3d = combined[..., np.newaxis]  # [H, W, 1]
         count = float(combined.sum())
         if count > 0:
             mean_dx = float((mv_safe[..., 0] * combined).sum() / count)

@@ -94,9 +94,9 @@ def solve_camera_trajectory(
         xs = 0.8 * np.cos(angles)
         zs = 0.8 * np.sin(angles)
         ys = np.linspace(-0.5, 0.8, num_pts)
-        pts_3d = np.stack([xs, ys, zs], axis=-1).astype(np.float64)
+        _pts_3d = np.stack([xs, ys, zs], axis=-1).astype(np.float64)  # noqa: F841
     else:
-        pts_3d = np.asarray(tracks_3d, dtype=np.float64)
+        _pts_3d = np.asarray(tracks_3d, dtype=np.float64)  # noqa: F841
 
     extrinsics_list: list[CameraExtrinsics] = []
 

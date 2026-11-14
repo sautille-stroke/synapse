@@ -221,4 +221,4 @@ def _sobel_magnitude(img: np.ndarray) -> np.ndarray:
             + img[2:, 2:]
         )
 
-    return np.sqrt(gx * gx + gy * gy)
+    return np.sqrt(gx * gx + gy * gy)  # type: ignore[no-any-return]

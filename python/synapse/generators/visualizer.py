@@ -56,8 +56,8 @@ def colorize_flow(flow: np.ndarray, mask: np.ndarray, max_flow: float = 10.0) ->
     h, w, _ = flow.shape
     fg_mask = mask > 0
 
-    dx = flow[:, :, 0]
-    dy = flow[:, :, 1]
+    dx = flow[:, :, 0].astype(np.float32)
+    dy = flow[:, :, 1].astype(np.float32)
 
     mag, ang = cv2.cartToPolar(dx, dy, angleInDegrees=True)
 

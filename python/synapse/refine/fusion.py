@@ -181,7 +181,7 @@ def _fuse_latent_timestep_switch(
 
     # Weighted combination
     w_struct = weights[0] / max(float(np.sum(weights)), 1e-8)
-    w_detail = weights[-1] / max(float(np.sum(weights)), 1e-8)
+    weights[-1] / max(float(np.sum(weights)), 1e-8)
     w_struct = max(w_struct, 0.3)
 
     result = w_struct * structure + detail

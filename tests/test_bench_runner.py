@@ -26,6 +26,8 @@ from synapse.pipeline.bench_runner import (
 # -------------------------------------------------------------------
 
 
+
+pytestmark = pytest.mark.slow
 class _BrokenAdapter(VideoModelAdapter):
     """Adapter that always raises for error-handling tests."""
 

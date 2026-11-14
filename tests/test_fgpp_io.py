@@ -126,7 +126,6 @@ class TestSanitizer:
 
     def test_sanitize_returns_new_frame(self) -> None:
         frame = _make_frame()
-        original_depth = frame.depth.copy()
         frame.depth[0, 0] = np.nan
         out = sanitize_fgpp_frame(frame)
         # Original should NOT be mutated (except the nan we set)
@@ -181,7 +180,7 @@ class TestResize:
 
 class TestExportImport:
     def test_roundtrip_basic(self) -> None:
-        openexr = pytest.importorskip("OpenEXR")
+        pytest.importorskip("OpenEXR")
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(2, 32, 32)
@@ -197,7 +196,7 @@ class TestExportImport:
 
     def test_roundtrip_cryptomatte_exact(self) -> None:
         """Large uint32 IDs (>2^24) must survive EXR round-trip exactly."""
-        openexr = pytest.importorskip("OpenEXR")
+        pytest.importorskip("OpenEXR")
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
@@ -219,7 +218,7 @@ class TestExportImport:
             np.testing.assert_array_equal(out, gt)
 
     def test_roundtrip_half_precision(self) -> None:
-        openexr = pytest.importorskip("OpenEXR")
+        pytest.importorskip("OpenEXR")
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
@@ -236,7 +235,7 @@ class TestExportImport:
             assert max_err <= 5e-4
 
     def test_lazy_import_yields_frames(self) -> None:
-        openexr = pytest.importorskip("OpenEXR")
+        pytest.importorskip("OpenEXR")
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(3, 16, 16)
@@ -248,7 +247,7 @@ class TestExportImport:
             assert all(isinstance(f, FGPPFrame) for f in frames)
 
     def test_selective_channels(self) -> None:
-        openexr = pytest.importorskip("OpenEXR")
+        pytest.importorskip("OpenEXR")
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
@@ -269,7 +268,7 @@ class TestExportImport:
 
 class TestTorchBridge:
     def test_frame_to_tensors_keys(self) -> None:
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         from synapse.fgpp.torch_bridge import frame_to_tensors
 
         frame = _make_frame()
@@ -280,7 +279,7 @@ class TestTorchBridge:
         assert set(tensors.keys()) == expected
 
     def test_frame_to_tensors_zero_copy(self) -> None:
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         from synapse.fgpp.torch_bridge import frame_to_tensors
 
         frame = _make_frame()
@@ -292,7 +291,7 @@ class TestTorchBridge:
         assert depth_t.data_ptr() == depth_np.ctypes.data
 
     def test_cryptomatte_int32_roundtrip(self) -> None:
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         from synapse.fgpp.torch_bridge import frame_to_tensors, tensors_to_frame
 
         frame = _make_frame()
@@ -307,7 +306,7 @@ class TestTorchBridge:
         assert out.cryptomatte_id[0, 1] == 0xFFFFFFFF
 
     def test_tensors_to_frame_roundtrip(self) -> None:
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         from synapse.fgpp.torch_bridge import frame_to_tensors, tensors_to_frame
 
         frame = _make_frame()

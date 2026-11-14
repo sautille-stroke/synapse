@@ -56,7 +56,7 @@ if TYPE_CHECKING:  # pragma: no cover — static analysis only
     from synapse import generators, models, refine, render_core, viewer
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     if name in _LAZY_SUBMODULES:
         return importlib.import_module(f"synapse.{name}")
     raise AttributeError(f"module 'synapse' has no attribute {name!r}")

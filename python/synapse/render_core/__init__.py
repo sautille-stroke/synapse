@@ -22,7 +22,6 @@ from synapse.render_core.procedural import (
     generate_humanoid_proxy,
     generate_procedural_mesh,
 )
-from synapse.render_core.rasterizer import SoftwareRasterizer, entity_hash
 
 # Re-export pyramid primitives used by composite/blend and refine/fusion.
 from synapse.render_core.pyramid import (  # noqa: F401
@@ -34,6 +33,7 @@ from synapse.render_core.pyramid import (  # noqa: F401
     separable_gaussian,
     upsample2x,
 )
+from synapse.render_core.rasterizer import SoftwareRasterizer, entity_hash
 
 __all__ = [
     "CROSS_CONDITIONS",

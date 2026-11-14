@@ -311,7 +311,7 @@ def test_stitcher_ciede2000_uses_real_delta_e() -> None:
     source_linear = acescg_to_linear_srgb(frames[0].astype(np.float64))
     lab_result = rgb_to_cielab(np.clip(result_linear, 0.0, None))
     lab_source = rgb_to_cielab(np.clip(source_linear, 0.0, None))
-    de_map = ciede2000_delta_e(lab_result, lab_source)
+    ciede2000_delta_e(lab_result, lab_source)
 
     # The reported value should be the mean over border pixels,
     # which we can verify is in the same order of magnitude.

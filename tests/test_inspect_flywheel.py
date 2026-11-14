@@ -682,7 +682,7 @@ class TestInspectCLI:
         from synapse.cli import main_synapse
 
         old = sys.stdout
-        sys.stdout = buf = io.StringIO()
+        sys.stdout = io.StringIO()
         try:
             code = main_synapse([
                 "--json", "inspect", "align",
@@ -702,7 +702,7 @@ class TestInspectCLI:
         from synapse.cli import main_synapse
 
         old = sys.stdout
-        sys.stdout = buf = io.StringIO()
+        sys.stdout = io.StringIO()
         try:
             code = main_synapse([
                 "--json", "inspect", "refine",

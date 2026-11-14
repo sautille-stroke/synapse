@@ -286,7 +286,6 @@ class TestAlignPose:
         radii = np.linalg.norm(verts - centroid, axis=1)
         bbox_r = float(radii.max())
         cam_radius = bbox_r * 2.5
-        bbox_diameter = bbox_r * 2.0
 
         # Known camera
         from synapse.inspect.align import _look_at_rotation
@@ -310,9 +309,6 @@ class TestAlignPose:
             n_coarse=48, n_refine_iters=30,
         )
 
-        recovered_pos = np.array(best_pose.position)
-        pos_error = float(np.linalg.norm(recovered_pos - gt_pos))
-        threshold = 0.05 * bbox_diameter
 
         # If IoU is good, position should be close (or symmetric)
         # For asymmetric mesh, good IoU implies close position

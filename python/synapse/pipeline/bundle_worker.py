@@ -417,8 +417,8 @@ def _handle_style_extract_and_map(
     )
 
     # Build sRGB frames for style extraction — no synthetic fallback
-    width = int(params.get("width", 512))
-    height = int(params.get("height", 512))
+    int(params.get("width", 512))
+    int(params.get("height", 512))
     num_frames = int(params.get("num_frames", 8))
 
     if not frames_dir.is_dir():
@@ -628,8 +628,8 @@ def _handle_inverse_reconstruct(
     from synapse.recon import ReconPipeline
 
     params = dict(manifest.params)
-    width = int(params.get("width", 512))
-    height = int(params.get("height", 512))
+    int(params.get("width", 512))
+    int(params.get("height", 512))
     num_frames = int(params.get("num_frames", 8))
     target_faces = int(params.get("target_faces", 1500))
 

@@ -57,7 +57,6 @@ class LoRAPatchHook:
             output: torch.Tensor,
         ) -> torch.Tensor:
             # x @ delta^T gives the LoRA contribution
-            lora_out = output.new_zeros(output.shape)
             # Simple additive: add delta applied to input
             inp = input[0] if isinstance(input, tuple) else input
             lora_contrib = inp @ delta.T.to(output.device)

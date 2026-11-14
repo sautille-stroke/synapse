@@ -125,7 +125,7 @@ def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     )
 
 
-def _generate_sphere(
+def _generate_sphere(  # type: ignore[no-untyped-def]
     radius: float = 1.0,
     segments: int = 32,
     rings: int = 16,
@@ -176,7 +176,7 @@ def _generate_sphere(
     )
 
 
-def _generate_cylinder(
+def _generate_cylinder(  # type: ignore[no-untyped-def]
     radius: float = 0.5,
     height: float = 2.0,
     segments: int = 32,
@@ -251,7 +251,7 @@ def _generate_cylinder(
     )
 
 
-def _generate_torus(
+def _generate_torus(  # type: ignore[no-untyped-def]
     major_radius: float = 1.0,
     minor_radius: float = 0.3,
     major_segments: int = 32,
@@ -304,7 +304,7 @@ def _generate_torus(
     )
 
 
-def _generate_plane(
+def _generate_plane(  # type: ignore[no-untyped-def]
     size: float = 2.0,
     subdivisions: int = 1,
     **kwargs,
@@ -629,7 +629,7 @@ def _compute_walk_pose(
     forearm_bend = 0.20
 
     s = math.sin(phase)
-    c = math.cos(phase)
+    math.cos(phase)
 
     rotations: dict[str, tuple[float, float, float]] = {}
 

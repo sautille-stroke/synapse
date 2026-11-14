@@ -27,6 +27,13 @@ struct StdinQueueState {
 
 namespace {
 
+/// @brief Minimal single-level JSON string/number/bool extractors.
+///
+/// These handle flat JSON objects with unescaped values.  For production
+/// use with nested payloads, consider nlohmann/json or simdjson.  This
+/// implementation intentionally avoids external dependencies for the
+/// lightweight diagnostic inspector binary.
+
 [[nodiscard]] uint32_t fnv1aHash(std::string_view text) noexcept {
   uint32_t h = 2166136261u;
   for (unsigned char c : text) {
@@ -96,12 +103,14 @@ InspectorApp::~InspectorApp() {
   if (m_stdinState) {
     m_stdinState->stop.store(true, std::memory_order_release);
   }
+  // Close stdin's underlying buffer to unblock std::getline in the reader
+  // thread.  This is safe because the inspector owns the stdin contract
+  // (Electron host pipes commands through it) and we are shutting down.
+  if (auto* buf = std::cin.rdbuf()) {
+    std::cin.rdbuf(nullptr);
+  }
   if (m_stdinThread.joinable()) {
-    if (m_stdinState && m_stdinState->eof.load(std::memory_order_acquire)) {
-      m_stdinThread.join();
-    } else {
-      m_stdinThread.detach();
-    }
+    m_stdinThread.join();
   }
   m_shm.close();
 }
