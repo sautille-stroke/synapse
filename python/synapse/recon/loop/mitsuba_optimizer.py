@@ -126,9 +126,11 @@ class AnalyticUVInverseOptimizer:
         # Initialise albedo map with mid-grey
         albedo = np.full((res, res, 3), 0.5, dtype=np.float32)
 
-        # Compute initial PSNR
+        # Compute initial PSNR using canonical metric
+        from synapse.metrics.image_quality import psnr_db as _psnr_db_init
+
         initial_render = self._render(albedo, normals, uv_maps, light_dirs)
-        psnr_before = _compute_psnr(initial_render, frames)
+        psnr_before = _psnr_db_init(initial_render, frames)
 
         # Accumulation buffers for per-texel inverse solve
         accum_color = np.zeros((res, res, 3), dtype=np.float64)
@@ -153,12 +155,20 @@ class AnalyticUVInverseOptimizer:
             solved = np.clip(solved, 0.0, 2.0)
 
             # Weight by N·L (higher confidence when well-lit)
-            for row in range(h):
-                for col in range(w):
-                    ti, tj = ty[row, col], tx[row, col]
-                    w_val = ndotl[row, col]
-                    accum_color[ti, tj] += w_val * solved[row, col]
-                    accum_weight[ti, tj] += w_val
+            # Vectorized accumulation via flat UV indices + np.add.at
+            flat_uv_idx = ty.ravel() * res + tx.ravel()  # (h*w,)
+            w_vals = ndotl.ravel()  # (h*w,)
+            solved_flat = solved.reshape(-1, 3)  # (h*w, 3)
+
+            # Accumulate weighted color per texel.
+            # NOTE: .ravel() on a C-contiguous array returns a view, which
+            # is required for np.add.at to modify the original. We use
+            # reshape(-1) equivalently.
+            accum_color_flat = accum_color.reshape(-1, 3)
+            accum_weight_flat = accum_weight.reshape(-1)
+            for c in range(3):
+                np.add.at(accum_color_flat[:, c], flat_uv_idx, w_vals * solved_flat[:, c])
+            np.add.at(accum_weight_flat, flat_uv_idx, w_vals)
 
         # Finalise albedo
         valid = accum_weight > 1e-8
@@ -169,13 +179,69 @@ class AnalyticUVInverseOptimizer:
 
         albedo = np.clip(albedo, 0.0, 1.0)
 
-        # Iterative TV regularisation refinement
+        # Iterative optimisation: photometric data residual + TV regularisation
         converged = False
         iters_run = 0
         for it in range(self.config.max_iterations):
             iters_run = it + 1
 
-            # TV gradient (finite differences)
+            # --- Photometric data residual gradient ---
+            # Render current albedo estimate under all views.
+            rendered = self._render(albedo, normals, uv_maps, light_dirs)
+            # Residual: rendered - target (per pixel, per view)
+            photo_residual = rendered.astype(np.float64) - frames.astype(
+                np.float64
+            )  # (V, H, W, 3)
+
+            # Scatter photometric gradient back to texture space.
+            # For L = mean((albedo*NdotL - target)²), the gradient w.r.t.
+            # albedo_texel is: dL/da = 2 * (a*NdotL - target) * NdotL
+            #                        = 2 * residual * NdotL
+            # We accumulate weighted by NdotL² (Gauss-Newton diagonal
+            # approximation) for proper normalisation.
+            photo_grad = np.zeros_like(albedo, dtype=np.float64)
+            photo_weight = np.zeros((res, res), dtype=np.float64)
+
+            for v in range(n_views):
+                l_dir = light_dirs[v].astype(np.float64)
+                n_map = normals[v].astype(np.float64)
+                ndotl_v = np.clip(
+                    np.sum(n_map * l_dir[np.newaxis, np.newaxis, :], axis=-1),
+                    0.01,
+                    1.0,
+                )
+
+                uv = uv_maps[v].astype(np.float64)
+                tx = np.clip(
+                    (uv[..., 0] * (res - 1)).astype(np.intp), 0, res - 1
+                )
+                ty = np.clip(
+                    (uv[..., 1] * (res - 1)).astype(np.intp), 0, res - 1
+                )
+
+                # d(loss)/d(albedo_texel) = 2 * residual * NdotL
+                weighted_residual = (
+                    photo_residual[v] * ndotl_v[..., np.newaxis]
+                )  # (H, W, 3)
+                ndotl_sq = ndotl_v ** 2  # for Gauss-Newton diagonal
+
+                flat_uv_idx = ty.ravel() * res + tx.ravel()
+                photo_grad_flat = photo_grad.reshape(-1, 3)
+                photo_weight_flat = photo_weight.reshape(-1)
+                for c in range(3):
+                    np.add.at(
+                        photo_grad_flat[:, c],
+                        flat_uv_idx,
+                        weighted_residual[:, :, c].ravel(),
+                    )
+                np.add.at(photo_weight_flat, flat_uv_idx, ndotl_sq.ravel())
+
+            # Gauss-Newton normalisation: divide by sum of NdotL²
+            valid_photo = photo_weight > 1e-8
+            for c in range(3):
+                photo_grad[:, :, c][valid_photo] /= photo_weight[valid_photo]
+
+            # --- TV gradient (finite differences) ---
             tv_grad = np.zeros_like(albedo, dtype=np.float64)
             tv_grad[:-1, :, :] += (
                 albedo[:-1, :, :].astype(np.float64)
@@ -187,20 +253,28 @@ class AnalyticUVInverseOptimizer:
             )
             tv_grad *= self.config.tv_weight
 
-            # Apply gradient
-            albedo = albedo - self.config.learning_rate * tv_grad.astype(np.float32)
+            # Combined gradient: photometric + TV regularisation
+            total_grad = photo_grad + tv_grad
+
+            # Apply gradient descent step
+            albedo = albedo - self.config.learning_rate * total_grad.astype(
+                np.float32
+            )
             albedo = np.clip(albedo, 0.0, 1.0)
 
-            # Check convergence
-            grad_norm = float(np.sqrt(np.mean(tv_grad ** 2)))
+            # Check convergence on total gradient norm
+            grad_norm = float(np.sqrt(np.mean(total_grad ** 2)))
             if grad_norm < self.config.convergence_threshold:
                 converged = True
                 break
 
-        # Compute final metrics
+        # Compute final metrics using canonical implementations
+        from synapse.metrics.image_quality import ciede2000 as _ciede2000
+        from synapse.metrics.image_quality import psnr_db as _psnr_db
+
         final_render = self._render(albedo, normals, uv_maps, light_dirs)
-        psnr_after = _compute_psnr(final_render, frames)
-        ciede_after = _approx_ciede2000(final_render, frames)
+        psnr_after = _psnr_db(final_render, frames)
+        ciede_after = _ciede2000(final_render, frames)
 
         return InverseOptimResult(
             albedo_map=albedo,
@@ -291,16 +365,3 @@ class MitsubaInverseOptimizer:
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _compute_psnr(pred: np.ndarray, target: np.ndarray) -> float:
-    """Compute PSNR between two float arrays (assuming [0, 1] range)."""
-    mse = float(np.mean((pred.astype(np.float64) - target.astype(np.float64)) ** 2))
-    if mse < 1e-10:
-        return 100.0
-    return float(10.0 * np.log10(1.0 / mse))
-
-
-def _approx_ciede2000(pred: np.ndarray, target: np.ndarray) -> float:
-    """Approximate CIE ΔE₀₀ as scaled L2 distance."""
-    diff = pred.astype(np.float64) - target.astype(np.float64)
-    return float(np.sqrt(np.mean(diff ** 2))) * 100.0

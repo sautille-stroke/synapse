@@ -60,5 +60,21 @@ class TestPipelineStageAdapters:
             "asset_inspect_3d",
             "inspect_refine",
             "inspect_export_rl",
+            "video_to_3d_invert",
+            "inverse_render_loop",
+            "anatomical_refine",
         }
         assert expected.issubset(stages)
+
+    def test_no_monkey_patch_min_angular_span(self) -> None:
+        """_MIN_ANGULAR_SPAN_DEG must not be referenced outside recon/multiview.py."""
+        repo_root = Path(__file__).resolve().parent.parent
+        pipeline_dir = repo_root / "python" / "synapse" / "pipeline"
+        violations: list[str] = []
+        for py_file in sorted(pipeline_dir.rglob("*.py")):
+            source = py_file.read_text(encoding="utf-8")
+            if "_MIN_ANGULAR_SPAN_DEG" in source:
+                violations.append(str(py_file))
+        assert violations == [], (
+            f"_MIN_ANGULAR_SPAN_DEG monkey-patch found in: {violations}"
+        )

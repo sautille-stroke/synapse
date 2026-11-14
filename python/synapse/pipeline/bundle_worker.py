@@ -273,7 +273,6 @@ def _handle_neural_video_generate(
     """
     from synapse.adapters import MockVideoAdapter, create_adapter
     from synapse.adapters.base import (
-        PreparedConditionPayload,
         VideoGenerationConfig,
         VideoResult,
     )
@@ -355,8 +354,23 @@ def _handle_neural_video_generate(
         },
     )
 
-    # Build empty conditions payload for the adapter
-    conditions = PreparedConditionPayload()
+    # Validate and load FGPP conditions
+    fgpp_dir_str = manifest.inputs.get("fgpp_dir", "")
+    if not fgpp_dir_str or not Path(fgpp_dir_str).is_dir():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"FGPP directory not found: {fgpp_dir_str!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['fgpp_dir'] pointing to a "
+                "valid FGPP directory with metadata.json and EXR frames."
+            ),
+        )
+
+    from synapse.fgpp.frame import FGPPSequence
+
+    fgpp_seq = FGPPSequence.load_metadata(fgpp_dir_str)
+    conditions = adapter.prepare_conditions(fgpp_seq, gen_cfg)
 
     result: VideoResult = adapter.generate(
         conditions=conditions, config=gen_cfg,
@@ -402,40 +416,56 @@ def _handle_style_extract_and_map(
         manifest.inputs.get("frames_dir", ""),
     )
 
-    # Build synthetic sRGB frames for style extraction
+    # Build sRGB frames for style extraction — no synthetic fallback
     width = int(params.get("width", 512))
     height = int(params.get("height", 512))
     num_frames = int(params.get("num_frames", 8))
 
-    frames: list[np.ndarray] = []
-    if frames_dir.is_dir():
-        for img_path in sorted(frames_dir.glob("*.png"))[
-            :num_frames
-        ]:
-            # Lazy import: PIL is optional
-            try:
-                from PIL import Image
+    if not frames_dir.is_dir():
+        from synapse.errors import AssetNotFoundError
 
-                img = np.array(
-                    Image.open(img_path).convert("RGB"),
-                    dtype=np.uint8,
-                )
-                frames.append(img)
-            except ImportError:
-                frames.append(
-                    np.zeros(
-                        (height, width, 3), dtype=np.uint8,
-                    )
-                )
+        raise AssetNotFoundError(
+            f"Frames directory does not exist: {frames_dir}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['frames_dir'] pointing to a "
+                "directory containing .png frame files."
+            ),
+        )
+
+    frames: list[np.ndarray] = []
+    for img_path in sorted(frames_dir.glob("*.png"))[
+        :num_frames
+    ]:
+        # Lazy import: PIL is optional
+        try:
+            from PIL import Image
+
+            img = np.array(
+                Image.open(img_path).convert("RGB"),
+                dtype=np.uint8,
+            )
+            frames.append(img)
+        except ImportError:
+            from synapse.errors import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "PIL (Pillow) is required for loading frame images "
+                "but is not installed.",
+                agent_fix_hint=(
+                    "Install Pillow: pip install 'Pillow>=9.0'"
+                ),
+            )
 
     if not frames:
-        # Generate dummy frames for pipeline validation
-        for _ in range(max(num_frames, 2)):
-            frames.append(
-                np.zeros(
-                    (height, width, 3), dtype=np.uint8,
-                )
-            )
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No .png frame files found in {frames_dir}",
+            agent_fix_hint=(
+                "Ensure frames_dir contains .png frame files for "
+                "style extraction."
+            ),
+        )
 
     descriptor = extract_style_optical(np.asarray(frames, dtype=np.uint8))
 
@@ -469,34 +499,104 @@ def _handle_surgical_composite(
     )
 
     params = dict(manifest.params)
-    width = int(params.get("width", 512))
-    height = int(params.get("height", 512))
     num_frames = int(params.get("num_frames", 4))
 
-    # Build dummy frame arrays for pipeline validation
-    rendered_frames = np.zeros(
-        (num_frames, height, width, 3), dtype=np.uint8,
-    )
-    neural_frames = np.full(
-        (num_frames, height, width, 3), 128, dtype=np.uint8,
-    )
+    # Load real rendered and neural frames — no synthetic fallback
+    rendered_dir_str = manifest.inputs.get("rendered_dir", "")
+    neural_dir_str = manifest.inputs.get("neural_dir", "")
 
-    # Generate per-frame surgical masks
-    masks = np.zeros(
-        (num_frames, height, width), dtype=np.float32,
-    )
-    for t in range(num_frames):
-        # Create a simple mask for the centre region
-        mask_3d_new = np.zeros(
-            (height, width), dtype=bool,
+    if not rendered_dir_str or not Path(rendered_dir_str).is_dir():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Rendered frames directory not found: {rendered_dir_str!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['rendered_dir'] pointing to "
+                "a directory containing rendered .png frame files."
+            ),
         )
-        cy, cx = height // 2, width // 2
-        r = min(height, width) // 4
-        y, x = np.ogrid[:height, :width]
-        mask_3d_new[
-            (y - cy) ** 2 + (x - cx) ** 2 <= r ** 2
-        ] = True
-        masks[t] = generate_surgical_mask(mask_3d_new)
+
+    if not neural_dir_str or not Path(neural_dir_str).is_dir():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Neural frames directory not found: {neural_dir_str!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['neural_dir'] pointing to "
+                "a directory containing neural .png frame files."
+            ),
+        )
+
+    try:
+        from PIL import Image
+    except ImportError:
+        from synapse.errors import BackendUnavailableError
+
+        raise BackendUnavailableError(
+            "PIL (Pillow) is required for loading frame images "
+            "but is not installed.",
+            agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
+        )
+
+    rendered_dir = Path(rendered_dir_str)
+    neural_dir = Path(neural_dir_str)
+
+    rendered_list: list[np.ndarray] = []
+    for img_path in sorted(rendered_dir.glob("*.png"))[:num_frames]:
+        img = np.array(
+            Image.open(img_path).convert("RGB"), dtype=np.uint8,
+        )
+        rendered_list.append(img)
+
+    neural_list: list[np.ndarray] = []
+    for img_path in sorted(neural_dir.glob("*.png"))[:num_frames]:
+        img = np.array(
+            Image.open(img_path).convert("RGB"), dtype=np.uint8,
+        )
+        neural_list.append(img)
+
+    if not rendered_list:
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No .png frames found in rendered_dir: {rendered_dir}",
+            agent_fix_hint=(
+                "Ensure rendered_dir contains .png frame files."
+            ),
+        )
+
+    if not neural_list:
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No .png frames found in neural_dir: {neural_dir}",
+            agent_fix_hint=(
+                "Ensure neural_dir contains .png frame files."
+            ),
+        )
+
+    rendered_frames = np.stack(rendered_list, axis=0)
+    neural_frames = np.stack(neural_list, axis=0)
+
+    height, width = rendered_frames.shape[1], rendered_frames.shape[2]
+
+    # Generate per-frame surgical masks from compositing module
+    mask_input_path = manifest.inputs.get("masks", "")
+    if mask_input_path and Path(mask_input_path).is_file():
+        masks = np.load(mask_input_path).astype(np.float32)
+    else:
+        # Generate masks from the neural/rendered frame differences
+        masks = np.zeros(
+            (rendered_frames.shape[0], height, width),
+            dtype=np.float32,
+        )
+        for t in range(rendered_frames.shape[0]):
+            diff = np.abs(
+                rendered_frames[t].astype(np.float32)
+                - neural_frames[t].astype(np.float32),
+            )
+            binary_mask = diff.mean(axis=-1) > 10.0
+            masks[t] = generate_surgical_mask(binary_mask)
 
     # Composite
     composited = composite_surgical_sequence(
@@ -534,49 +634,63 @@ def _handle_inverse_reconstruct(
     target_faces = int(params.get("target_faces", 1500))
 
     frames_dir = Path(manifest.inputs.get("frames_dir", ""))
-    frames: list[np.ndarray] = []
-    if frames_dir.is_dir():
-        for img_path in sorted(frames_dir.glob("*.png"))[:num_frames]:
-            try:
-                from PIL import Image
+    if not frames_dir.is_dir():
+        from synapse.errors import AssetNotFoundError
 
-                img = np.array(
-                    Image.open(img_path).convert("RGB"),
-                    dtype=np.uint8,
-                )
-                frames.append(img)
-            except ImportError:
-                pass
+        raise AssetNotFoundError(
+            f"Frames directory does not exist: {frames_dir}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['frames_dir'] pointing to a "
+                "directory containing .png frame files."
+            ),
+        )
+
+    frames: list[np.ndarray] = []
+    for img_path in sorted(frames_dir.glob("*.png"))[:num_frames]:
+        try:
+            from PIL import Image
+
+            img = np.array(
+                Image.open(img_path).convert("RGB"),
+                dtype=np.uint8,
+            )
+            frames.append(img)
+        except ImportError:
+            from synapse.errors import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "PIL (Pillow) is required for loading frame images "
+                "but is not installed.",
+                agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
+            )
 
     if not frames:
-        # Synthetic video sequence for pipeline validation.
-        for i in range(max(num_frames, 2)):
-            synth_frame = np.full(
-                (height, width, 3), 120 + (i % 20), dtype=np.uint8,
-            )
-            frames.append(synth_frame)
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No .png frame files found in {frames_dir}",
+            agent_fix_hint=(
+                "Ensure frames_dir contains .png frame files for "
+                "inverse reconstruction."
+            ),
+        )
 
     frames_arr = np.stack(frames, axis=0)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    # When running with real video input, camera validation is critical.
-    # When falling back to synthetic uniform frames (no real input), the
-    # degenerate 0° angular separation is expected — patch the threshold
-    # so the pipeline can still validate end-to-end.
-    _has_real_input = bool(
-        manifest.inputs.get("frames_dir", "")
-    ) and frames_dir.is_dir() and len(frames) > 0
-    if not _has_real_input:
-        import synapse.recon.multiview as _mv
-        _orig_min = _mv._MIN_ANGULAR_SPAN_DEG
-        _mv._MIN_ANGULAR_SPAN_DEG = 0.0
-    try:
-        result = pipe.run(frames_arr)
-    finally:
-        if not _has_real_input:
-            _mv._MIN_ANGULAR_SPAN_DEG = _orig_min
+    result = pipe.run(frames_arr)
 
     output_paths: dict[str, str] = {}
+
+    # Save mesh if available
+    if result.mesh is not None:
+        mesh_path = manifest.outputs.get(
+            "mesh", str(Path("output") / "reconstructed_mesh.npy"),
+        )
+        p_mesh = Path(mesh_path)
+        p_mesh.parent.mkdir(parents=True, exist_ok=True)
+        np.save(str(p_mesh), result.mesh.vertices)
+        output_paths["mesh"] = str(p_mesh)
 
     # Save trajectory if requested
     traj_path = manifest.outputs.get(

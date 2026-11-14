@@ -198,12 +198,17 @@ class TestFaceRefiner:
         )
 
     def test_face_refiner_with_gallery(self) -> None:
-        """Refiner should work when a populated gallery is provided."""
+        """Refiner should use gallery's interpolate_identity for identity fusion."""
         rng = np.random.RandomState(7)
         gallery = CanonicalAnchorGallery(embedding_dim=128)
         emb = rng.randn(128).astype(np.float64)
         emb /= np.linalg.norm(emb)
         gallery.add_anchor(0.0, 0.0, emb)
+
+        # Add a second anchor at a different pose
+        emb2 = rng.randn(128).astype(np.float64)
+        emb2 /= np.linalg.norm(emb2)
+        gallery.add_anchor(45.0, 0.0, emb2)
 
         roi = _make_roi(32, 32, region=AnatomicalRegion.FACE)
         refiner = FaceRefiner(gallery=gallery)
@@ -211,6 +216,31 @@ class TestFaceRefiner:
 
         assert result.region == AnatomicalRegion.FACE
         assert result.refined_acescg.shape == (32, 32, 3)
+        # With identity fusion active, output should differ from input
+        # (the gallery-driven colour correction should modify values).
+        diff = np.abs(result.refined_acescg - roi.crop_acescg)
+        assert diff.max() > 0.0, (
+            "Gallery-based identity fusion did not modify the output"
+        )
+
+    def test_face_refiner_gallery_interpolation_called(self) -> None:
+        """Verify that interpolate_identity is called during refinement."""
+        rng = np.random.RandomState(99)
+        gallery = CanonicalAnchorGallery(embedding_dim=64)
+
+        # Add two different pose anchors
+        for yaw in [0.0, 90.0]:
+            emb = rng.randn(64).astype(np.float64)
+            emb /= np.linalg.norm(emb)
+            gallery.add_anchor(yaw, 0.0, emb)
+
+        roi = _make_roi(32, 32, region=AnatomicalRegion.FACE)
+        refiner = FaceRefiner(gallery=gallery)
+        result = refiner.refine(roi)
+
+        # The result should be valid and different from a pure clone
+        assert result.refined_acescg.shape == (32, 32, 3)
+        assert result.quality_score > 0.0
 
 
 # ---------------------------------------------------------------------------

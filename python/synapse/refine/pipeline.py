@@ -15,25 +15,34 @@ structured JSON results.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from synapse.errors import CircuitBreakerError, QualityGateError
+from synapse.refine.face import FaceRefiner
 from synapse.refine.fusion import MultiModelRefineFusion
 from synapse.refine.gates import (
     GateThresholds,
+    GateVerdict,
     evaluate_refinement_gates,
     export_hard_negatives,
 )
+from synapse.refine.hand import HandRefiner
+from synapse.refine.roi_tracker import KalmanBBoxTracker
 from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
+from synapse.refine.tiled_executor import TiledBypassExecutor
 from synapse.refine.types import (
     AnatomicalRegion,
     FusionMethod,
     RefinementResult,
     RefinementROI,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Session wire format
@@ -159,17 +168,27 @@ class LocalRefinementPipeline:
     Args:
         stitch_config: Configuration for the scalpel stitcher.
         gate_thresholds: Quality gate thresholds.
+        strict: When ``True``, raise :class:`QualityGateError` on
+            gate failure instead of falling back to the original frame.
     """
 
     def __init__(
         self,
         stitch_config: StitchConfig | None = None,
         gate_thresholds: GateThresholds | None = None,
+        strict: bool = False,
     ) -> None:
         self.stitch_config = stitch_config or StitchConfig()
         self.gate_thresholds = gate_thresholds or GateThresholds()
+        self.strict = strict
         self.stitcher = ScalpelStitcher(self.stitch_config)
         self.fusion = MultiModelRefineFusion()
+
+        # --- Wire up anatomical refiners (PR-45 fix #1) ---
+        self.hand_refiner = HandRefiner()
+        self.face_refiner = FaceRefiner()
+        self.bbox_tracker = KalmanBBoxTracker()
+        self.tiled_executor = TiledBypassExecutor()
 
     def run(
         self,
@@ -180,6 +199,7 @@ class LocalRefinementPipeline:
         ) = None,
         fusion_method: FusionMethod = FusionMethod.LAPLACIAN_FREQUENCY,
         hard_negatives_path: str | None = None,
+        elapsed_seconds_override: float | None = None,
     ) -> RefinePipelineResult:
         """Run the full refinement pipeline.
 
@@ -187,14 +207,22 @@ class LocalRefinementPipeline:
             frames_acescg: ``(T, H, W, 3)`` float32 ACEScg source video.
             rois_per_frame: Per-frame list of detected ROIs.
             candidates_per_roi: Per-ROI list of candidate refinement
-                patches.  If ``None``, the ROI crop is used as-is
-                (single-candidate passthrough).
+                patches.  If ``None``, dispatches to region-specific
+                refiners (``HandRefiner`` / ``FaceRefiner``) instead of
+                using the ROI crop as-is.
             fusion_method: Fusion strategy to use.
             hard_negatives_path: Optional path for hard negatives JSONL.
+            elapsed_seconds_override: Optional override for elapsed time
+                (used for testing circuit breaker propagation).
 
         Returns:
             :class:`RefinePipelineResult` with refined frames and
             diagnostics.
+
+        Raises:
+            CircuitBreakerError: If elapsed time exceeds the 900 s HITL
+                circuit breaker budget (exit_code=40).
+            QualityGateError: If ``strict=True`` and quality gates fail.
         """
         t_start = time.monotonic()
         t_count = frames_acescg.shape[0]
@@ -213,7 +241,8 @@ class LocalRefinementPipeline:
             for roi_idx, roi in enumerate(rois):
                 total_rois += 1
 
-                # Get candidates (or use ROI crop as single candidate)
+                # --- PR-45 fix #2: Region-based dispatch when no
+                # explicit candidates are provided ---
                 if (
                     candidates_per_roi is not None
                     and t < len(candidates_per_roi)
@@ -221,7 +250,37 @@ class LocalRefinementPipeline:
                 ):
                     cands = candidates_per_roi[t][roi_idx]
                 else:
-                    cands = [roi.crop_acescg]
+                    # Dispatch to region-specific refiner instead of
+                    # identity self-merge (cands = [roi.crop_acescg]).
+                    # Apply temporal smoothing via KalmanBBoxTracker.
+                    smoothed_bbox = self.bbox_tracker.update(roi.bbox_xyxy)
+                    roi_smoothed = RefinementROI(
+                        bbox_xyxy=smoothed_bbox,
+                        crop_acescg=roi.crop_acescg,
+                        region=roi.region,
+                        confidence=roi.confidence,
+                        frame_index=roi.frame_index,
+                    )
+
+                    # Use TiledBypassExecutor to skip healthy tiles
+                    defective_rois, _bypass_count = (
+                        self.tiled_executor.extract_and_filter(
+                            frames_acescg, [roi_smoothed],
+                        )
+                    )
+                    if not defective_rois:
+                        # All tiles healthy — use original crop
+                        cands = [roi.crop_acescg]
+                    elif roi.region == AnatomicalRegion.HAND:
+                        ref_result = self.hand_refiner.refine(roi_smoothed)
+                        cands = [ref_result.refined_acescg]
+                    elif roi.region == AnatomicalRegion.FACE:
+                        ref_result = self.face_refiner.refine(roi_smoothed)
+                        cands = [ref_result.refined_acescg]
+                    else:
+                        # For other regions, use the crop as a single
+                        # candidate (no specialised refiner yet).
+                        cands = [roi.crop_acescg]
 
                 # Fuse candidates
                 fused = self.fusion.fuse(
@@ -246,29 +305,61 @@ class LocalRefinementPipeline:
             frames_acescg, refinements,
         )
 
-        elapsed = time.monotonic() - t_start
+        elapsed = (
+            elapsed_seconds_override
+            if elapsed_seconds_override is not None
+            else time.monotonic() - t_start
+        )
 
-        # Gate evaluation (aggregate metrics)
+        # --- PR-45 fix #3 & #4: Consume GateVerdict and propagate
+        # CircuitBreakerError ---
         try:
-            evaluate_refinement_gates(
+            verdict: GateVerdict = evaluate_refinement_gates(
                 border_psnr_db=stitch_report.mean_border_psnr_db,
                 border_ciede2000=stitch_report.mean_border_ciede2000,
                 elapsed_seconds=elapsed,
                 thresholds=self.gate_thresholds,
             )
+        except CircuitBreakerError:
+            # PR-45 fix #4: NEVER swallow CircuitBreakerError — the
+            # 900 s HITL budget must propagate as exit_code=40.
+            raise
         except Exception:
-            # Record hard negatives but don't fail the pipeline
+            # Gate evaluation itself failed (non-circuit-breaker) —
+            # record hard negatives but allow pipeline to continue.
+            verdict = GateVerdict(passed=False, failure_reasons=["gate_evaluation_error"])
+
+        # PR-45 fix #3: Act on the verdict
+        if not verdict.passed:
             for t in range(t_count):
                 for ref in refinements[t]:
                     hard_negatives.append({
                         "frame_index": t,
                         "region": ref.region.name,
-                        "failure_reasons": ["gate_failed"],
+                        "failure_reasons": verdict.failure_reasons,
                         "metrics": {
                             "border_psnr_db": stitch_report.mean_border_psnr_db,
                             "border_ciede2000": stitch_report.mean_border_ciede2000,
                         },
                     })
+            if self.strict:
+                raise QualityGateError(
+                    f"Refinement quality gates failed: "
+                    f"{', '.join(verdict.failure_reasons)}",
+                    agent_fix_hint=(
+                        "Retry with adjusted thresholds or fall back "
+                        "to original frames."
+                    ),
+                    details={"verdict": verdict.metrics},
+                )
+            else:
+                # Non-strict: fall back to original frames
+                logger.warning(
+                    "Quality gates failed (%s); falling back to "
+                    "original frames in non-strict mode.",
+                    ", ".join(verdict.failure_reasons),
+                )
+                result_frames = frames_acescg.copy()
 
         # Export hard negatives
         hn_count = 0

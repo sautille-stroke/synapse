@@ -239,18 +239,53 @@ class FaceRefiner:
         fusion = FusionMethod.LAPLACIAN_FREQUENCY
 
         # Apply identity-aware refinement when an anchor gallery is
-        # available — blend towards the canonical embedding's implied
-        # luminance distribution for cross-view consistency.
+        # available — use IDW-interpolated identity embedding to guide
+        # luminance distribution for cross-view consistency (PR-45 fix #5).
         if active_gallery is not None and active_gallery.num_anchors > 0:
-            # Use a gentle identity-preserving luminance adjustment
+            # Estimate head pose from the ROI (simplified: use bbox
+            # aspect ratio as a coarse yaw proxy).
+            bbox_w = float(roi.bbox_xyxy[2] - roi.bbox_xyxy[0])
+            bbox_h = float(roi.bbox_xyxy[3] - roi.bbox_xyxy[1])
+            aspect_ratio = bbox_w / max(bbox_h, 1e-6)
+            # Map aspect ratio to approximate yaw: 1.0 → 0°, <0.8 → ±45°
+            est_yaw = (1.0 - min(aspect_ratio, 1.0)) * 45.0
+            est_pitch = 0.0
+
+            # Get IDW-weighted identity embedding for this pose
+            identity_emb = active_gallery.interpolate_identity(
+                yaw_deg=est_yaw, pitch_deg=est_pitch,
+            )
+
+            # Derive per-channel colour statistics from the identity
+            # embedding: use embedding magnitude partitioned across RGB
+            # channels as a proxy for target luminance distribution.
+            emb_abs = np.abs(identity_emb)
+            # Partition embedding into 3 equal segments for R, G, B
+            seg_len = len(emb_abs) // 3
+            channel_weights = np.array([
+                float(np.mean(emb_abs[:seg_len])),
+                float(np.mean(emb_abs[seg_len:2 * seg_len])),
+                float(np.mean(emb_abs[2 * seg_len:])),
+            ], dtype=np.float32)
+            # Normalise to [0.8, 1.2] range for gentle colour adjustment
+            cw_mean = float(np.mean(channel_weights))
+            if cw_mean > 1e-8:
+                channel_weights = channel_weights / cw_mean
+            channel_weights = np.clip(channel_weights, 0.8, 1.2)
+
+            # Identity-guided luminance and colour adjustment
             lum = np.mean(refined, axis=-1, keepdims=True)
-            # Slightly boost under-exposed regions and suppress
-            # over-exposed ones to stabilise identity features across views.
             target_lum = np.clip(lum, 0.15, 0.85)
-            blend_factor = 0.1  # conservative blend
+            blend_factor = 0.15  # moderate identity-driven blend
             adjusted_lum = lum * (1.0 - blend_factor) + target_lum * blend_factor
             scale = np.where(lum > 1e-6, adjusted_lum / lum, 1.0)
             refined = np.clip(refined * scale, 0.0, 1.0).astype(np.float32)
+
+            # Apply per-channel identity-driven colour correction
+            refined = np.clip(
+                refined * channel_weights[np.newaxis, np.newaxis, :],
+                0.0, 1.0,
+            ).astype(np.float32)
 
         # Gaze consistency check (simulated: compare original vs refined
         # gaze directions computed from the eye-region gradient field)

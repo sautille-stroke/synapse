@@ -82,6 +82,10 @@ class RefinementResult:
         quality_score: Quality assessment score in ``[0, 1]``.
         frame_index: Source frame index.
         bbox_xyxy: Bounding box ``[x1, y1, x2, y2]`` in the original frame.
+        inverse_affine_2x3: Optional ``(2, 3)`` inverse affine matrix to
+            map the refined patch back to the original frame coordinate
+            space.  When ``None``, a default inverse is computed from
+            ``bbox_xyxy`` via axis-aligned scaling.
     """
 
     refined_acescg: np.ndarray  # (H, W, 3) float32 in linear ACEScg
@@ -92,3 +96,4 @@ class RefinementResult:
     bbox_xyxy: np.ndarray = field(
         default_factory=lambda: np.zeros(4, dtype=np.float32)
     )
+    inverse_affine_2x3: np.ndarray | None = None

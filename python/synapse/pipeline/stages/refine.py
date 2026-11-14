@@ -43,19 +43,20 @@ def handle_anatomical_refine(
     from synapse.refine.types import FusionMethod, RefinementROI
 
     params = dict(manifest.params)
-    width = int(params.get("width", 256))
-    height = int(params.get("height", 256))
-    num_frames = int(params.get("num_frames", 4))
 
-    # Load or synthesize input frames
+    # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
-    if video_path and Path(video_path).is_file():
-        frames = np.load(video_path).astype(np.float32)
-    else:
-        rng = np.random.default_rng(42)
-        frames = rng.random(
-            (num_frames, height, width, 3), dtype=np.float32,
+    if not video_path or not Path(video_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['video_frames'] pointing to "
+                "a valid .npy file of shape (T, H, W, 3) float32 ACEScg."
+            ),
         )
+    frames = np.load(video_path).astype(np.float32)
 
     # Parse regions
     region_names: list[str] = params.get("regions", ["HAND", "FACE"])
@@ -68,25 +69,37 @@ def handle_anatomical_refine(
         fusion_name, FusionMethod.LAPLACIAN_FREQUENCY,
     )
 
-    # Build synthetic ROIs for pipeline validation (one per region per frame)
+    # Load ROIs — no synthetic fallback
+    rois_path = manifest.inputs.get("rois", "")
+    if not rois_path or not Path(rois_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"ROIs file not found: {rois_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['rois'] pointing to a valid "
+                "JSON file with per-frame ROI annotations."
+            ),
+        )
+
+    rois_raw = json.loads(Path(rois_path).read_text(encoding="utf-8"))
+    height, width = frames.shape[1], frames.shape[2]
+
     rois_per_frame: list[list[RefinementROI]] = []
-    for t in range(frames.shape[0]):
+    for t, frame_rois_raw in enumerate(rois_raw):
         frame_rois: list[RefinementROI] = []
-        for rname in region_names:
-            region = _REGION_MAP.get(rname)
+        for roi_dict in frame_rois_raw:
+            region = _REGION_MAP.get(roi_dict["region"])
             if region is None:
                 continue
-            # Synthetic ROI in center quarter of the frame
-            h4, w4 = height // 4, width // 4
-            bbox = np.array(
-                [w4, h4, w4 * 3, h4 * 3], dtype=np.float32,
-            )
-            crop = frames[t, h4:h4 * 3, w4:w4 * 3, :].copy()
+            bbox = np.array(roi_dict["bbox_xyxy"], dtype=np.float32)
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            crop = frames[t, y1:y2, x1:x2, :].copy()
             roi = RefinementROI(
                 region=region,
                 bbox_xyxy=bbox,
                 crop_acescg=crop,
-                confidence=0.9,
+                confidence=float(roi_dict.get("confidence", 0.9)),
             )
             frame_rois.append(roi)
         rois_per_frame.append(frame_rois)

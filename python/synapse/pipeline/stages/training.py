@@ -32,36 +32,59 @@ def handle_lora_preencode(
     """Pre-encode FGPP + video frames into feature shards."""
     params = dict(manifest.params)
     num_frames = int(params.get("num_frames", 17))
-    height = int(params.get("height", 64))
-    width = int(params.get("width", 64))
-    num_samples = int(params.get("num_samples", 1))
 
     output_dir = Path(
         manifest.outputs.get("shards_dir", "output/shards"),
     )
 
+    # Load real dataset — no synthetic fallback
+    dataset_dir_str = manifest.inputs.get("dataset_dir", "")
+    if not dataset_dir_str or not Path(dataset_dir_str).is_dir():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Dataset directory not found: {dataset_dir_str!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['dataset_dir'] pointing to "
+                "a directory containing video frame .npy files and "
+                "caption .txt files."
+            ),
+        )
+
+    dataset_dir = Path(dataset_dir_str)
     enc = LinearProjectionEncoder()
     txt_enc = LinearProjectionTextEncoder()
     builder = FeatureStoreBuilder(enc, txt_enc)
 
-    for i in range(num_samples):
-        rng = np.random.RandomState(i)
-        frames = rng.randint(
-            0,
-            256,
-            size=(num_frames, height, width, 3),
-            dtype=np.uint8,
+    # Each .npy file in the dataset directory is a sample
+    sample_files = sorted(dataset_dir.glob("*.npy"))
+    if not sample_files:
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No .npy sample files found in {dataset_dir}",
+            agent_fix_hint=(
+                "Ensure dataset_dir contains .npy video frame files "
+                "of shape (T, H, W, 3) uint8."
+            ),
         )
-        caption = format_structured_caption(
-            trigger_token="sks",
-            subject_desc=f"sample {i}",
-            lighting_env="studio",
-            camera_motion="static",
-            art_style_tag="photorealistic",
-        )
+
+    for i, npy_path in enumerate(sample_files):
+        video_frames = np.load(str(npy_path))
+        caption_path = npy_path.with_suffix(".txt")
+        if caption_path.is_file():
+            caption = caption_path.read_text(encoding="utf-8").strip()
+        else:
+            caption = format_structured_caption(
+                trigger_token="sks",
+                subject_desc=npy_path.stem,
+                lighting_env="studio",
+                camera_motion="static",
+                art_style_tag="photorealistic",
+            )
         builder.add_sample(
             sample_id=f"sample_{i:04d}",
-            video_frames=frames,
+            video_frames=video_frames,
             caption=caption,
         )
 
@@ -129,7 +152,7 @@ def handle_lora_package(
         rank=params.get("rank", 8),
         alpha=params.get("alpha", 1.0),
         bench_metrics=params.get("bench_metrics"),
-        skip_bench=bool(params.get("skip_bench", True)),
+        skip_bench=bool(params.get("skip_bench", False)),
     )
     return {
         "output_paths": {

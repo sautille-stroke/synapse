@@ -1043,25 +1043,21 @@ def _cmd_recon_invert_video(
     target_faces = int(getattr(args, "target_faces", 1500))
 
     video_path_raw = getattr(args, "video", None)
-    if video_path_raw and Path(video_path_raw).is_file():
-        import numpy as np
+    if not video_path_raw or not Path(video_path_raw).is_file():
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path_raw!r}",
+            agent_fix_hint=(
+                "Provide '--video <path>' pointing to a valid .npy "
+                "file of shape (T, H, W, 3)."
+            ),
+        )
 
-        frames = np.load(video_path_raw)
-    else:
-        import numpy as np
+    import numpy as np
 
-        rng = np.random.default_rng(42)
-        frames = rng.integers(100, 200, (8, 256, 256, 3), dtype=np.uint8)
+    frames = np.load(video_path_raw)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    try:
-        result = pipe.run(frames)
-    except Exception:
-        # Degrade gracefully — report without geometry
-        class _EmptyResult:
-            camera_trajectory = None
-            mesh = None
-        result = _EmptyResult()  # type: ignore[assignment]
+    result = pipe.run(frames)
 
     output_info: dict[str, Any] = {
         "output_dir": str(output_dir),
@@ -1316,12 +1312,22 @@ def _cmd_rsi_gate_promote(
         evaluate_monotonic_promotion,
     )
 
-    baseline_overall = float(
-        getattr(args, "baseline_overall", 0.7),
-    )
-    candidate_overall = float(
-        getattr(args, "candidate_overall", 0.8),
-    )
+    baseline_overall_raw = getattr(args, "baseline_overall", None)
+    candidate_overall_raw = getattr(args, "candidate_overall", None)
+
+    if baseline_overall_raw is None or candidate_overall_raw is None:
+        raise ContractValidationError(
+            "Both --baseline-overall and --candidate-overall are "
+            "required for 'synapse rsi gate-promote'. Hardcoded "
+            "defaults are forbidden.",
+            agent_fix_hint=(
+                "Pass explicit '--baseline-overall <float>' and "
+                "'--candidate-overall <float>' arguments."
+            ),
+        )
+
+    baseline_overall = float(baseline_overall_raw)
+    candidate_overall = float(candidate_overall_raw)
 
     baseline = BenchReport(
         overall_score=baseline_overall,
@@ -1751,12 +1757,12 @@ def main_synapse(args: list[str] | None = None) -> int:
         help="Evaluate monotonic promotion gate",
     )
     rsi_gate.add_argument(
-        "--baseline-overall", type=float, default=0.7,
-        help="Baseline overall score (default: 0.7)",
+        "--baseline-overall", type=float, default=None,
+        help="Baseline overall score (required)",
     )
     rsi_gate.add_argument(
-        "--candidate-overall", type=float, default=0.8,
-        help="Candidate overall score (default: 0.8)",
+        "--candidate-overall", type=float, default=None,
+        help="Candidate overall score (required)",
     )
 
     parsed = parser.parse_args(args)

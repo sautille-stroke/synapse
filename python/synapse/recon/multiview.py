@@ -194,11 +194,139 @@ class MultiViewInitializer:
         if masks is not None:
             return self._reconstruct_visual_hull(frames, cameras, masks)
 
-        # Fallback: synthesise depth maps from frames as uniform depth and
-        # run TSDF.  In practice the caller should supply depth or masks.
-        h, w = frames.shape[1], frames.shape[2]
-        synth_depths = np.ones((len(cameras), h, w), dtype=np.float32) * 1.0
-        return self._reconstruct_tsdf(frames, cameras, synth_depths)
+        # No depths or masks provided — attempt to derive foreground masks
+        # from frames via adaptive Otsu thresholding on grayscale variance,
+        # then fall back to visual hull reconstruction.
+        derived_masks = self._derive_foreground_masks(frames)
+        if derived_masks is not None:
+            return self._reconstruct_visual_hull(frames, cameras, derived_masks)
+
+        # Foreground separation failed completely — raise structured error
+        # instead of silently producing a flat plane from constant depth.
+        raise ContractValidationError(
+            "Cannot reconstruct 3D mesh: neither depth maps nor silhouette "
+            "masks were provided, and automatic foreground estimation from "
+            f"{len(cameras)} input frames failed (frames may be uniform or "
+            "lack sufficient contrast for foreground/background separation).",
+            agent_fix_hint=(
+                "Provide explicit `depths` (metric depth maps) or `masks` "
+                "(binary silhouette masks) to MultiViewInitializer.reconstruct(). "
+                "Alternatively, ensure input frames have visible foreground "
+                "objects with sufficient contrast against the background."
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Automatic foreground mask derivation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _derive_foreground_masks(frames: np.ndarray) -> np.ndarray | None:
+        """Attempt to derive binary foreground masks from RGB frames.
+
+        Uses a combination of per-frame Otsu thresholding on grayscale
+        intensity and cross-frame variance to separate foreground from
+        background.  Returns ``None`` if the frames are too uniform
+        (e.g. all-black, all-white) to produce meaningful masks.
+
+        Args:
+            frames: RGB frames, shape ``(N, H, W, 3)``, uint8 or float32.
+
+        Returns:
+            Binary masks ``(N, H, W)`` float32 or ``None`` on failure.
+        """
+        n, h, w, _ = frames.shape
+
+        # Convert to float [0, 1] grayscale
+        if frames.dtype == np.uint8:
+            gray = np.mean(frames.astype(np.float32) / 255.0, axis=-1)
+        else:
+            gray = np.mean(frames.astype(np.float32), axis=-1)
+
+        # Cross-frame variance — pixels that change across views are
+        # more likely foreground (parallax).
+        if n > 1:
+            frame_variance = np.var(gray, axis=0)  # (H, W)
+            variance_useful = float(np.max(frame_variance)) > 1e-4
+        else:
+            frame_variance = np.zeros((h, w), dtype=np.float32)
+            variance_useful = False
+
+        masks = np.zeros((n, h, w), dtype=np.float32)
+        any_foreground = False
+
+        for i in range(n):
+            g = gray[i]
+
+            # Otsu's method: find threshold that minimises intra-class
+            # variance on a 256-bin histogram.
+            hist_bins = 256
+            g_uint8 = np.clip(g * 255.0, 0, 255).astype(np.uint8)
+            hist = np.bincount(g_uint8.ravel(), minlength=hist_bins).astype(
+                np.float64
+            )
+            total = g_uint8.size
+            if total == 0:
+                continue
+
+            sum_total = np.dot(np.arange(hist_bins, dtype=np.float64), hist)
+            sum_bg = 0.0
+            weight_bg = 0.0
+            max_var = 0.0
+            threshold = 0
+
+            for t in range(hist_bins):
+                weight_bg += hist[t]
+                if weight_bg == 0:
+                    continue
+                weight_fg = total - weight_bg
+                if weight_fg == 0:
+                    break
+                sum_bg += t * hist[t]
+                mean_bg = sum_bg / weight_bg
+                mean_fg = (sum_total - sum_bg) / weight_fg
+                between_var = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+                if between_var > max_var:
+                    max_var = between_var
+                    threshold = t
+
+            # Apply threshold — foreground is typically the brighter
+            # object on a dark background, or vice versa.
+            mask_bright = g_uint8 > threshold
+            mask_dark = g_uint8 <= threshold
+
+            # Heuristic: pick the smaller region as foreground
+            # (foreground object usually occupies < 50% of image).
+            bright_frac = np.mean(mask_bright)
+            if 0.05 < bright_frac < 0.95:
+                if bright_frac < 0.5:
+                    mask = mask_bright
+                else:
+                    mask = mask_dark
+            else:
+                # Nearly uniform — Otsu cannot separate.
+                # Try cross-frame variance if available.
+                if variance_useful:
+                    var_thresh = float(np.percentile(frame_variance, 75))
+                    mask = frame_variance > var_thresh
+                else:
+                    continue
+
+            # Combine with cross-frame variance when both are useful
+            if variance_useful and 0.05 < bright_frac < 0.95:
+                var_thresh = float(np.percentile(frame_variance, 50))
+                var_mask = frame_variance > var_thresh
+                mask = mask | var_mask
+
+            fg_fraction = float(np.mean(mask))
+            if 0.01 < fg_fraction < 0.99:
+                masks[i] = mask.astype(np.float32)
+                any_foreground = True
+
+        if not any_foreground:
+            return None
+
+        return masks
 
     # ------------------------------------------------------------------
     # Validation

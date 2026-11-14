@@ -222,3 +222,62 @@ class TestVisualHull:
             f"Expected > 50 vertices from visual hull, got {mesh.vertex_count}"
         )
         assert mesh.face_count > 0
+
+
+class TestDerivedForegroundMasks:
+    """When depths=None and masks=None, foreground masks are auto-derived."""
+
+    def test_different_foreground_shapes_produce_different_meshes(self) -> None:
+        """Two different foreground shapes (circle vs rectangle) produce
+        non-planar, non-identical meshes — not constant depth."""
+        n_views = 8
+        cameras = _make_ring_cameras(n_views, radius=2.0)
+        h, w = 64, 64
+
+        # Shape A: bright circle on dark background
+        frames_circle = np.zeros((n_views, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        circle_mask = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (min(h, w) // 4) ** 2
+        for v in range(n_views):
+            frames_circle[v][circle_mask] = 200
+
+        # Shape B: bright rectangle on dark background
+        frames_rect = np.zeros((n_views, h, w, 3), dtype=np.uint8)
+        rect_mask = np.zeros((h, w), dtype=bool)
+        rect_mask[h // 4 : 3 * h // 4, w // 4 : 3 * w // 4] = True
+        for v in range(n_views):
+            frames_rect[v][rect_mask] = 200
+
+        init = MultiViewInitializer(
+            voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0)
+        )
+
+        mesh_circle = init.reconstruct(frames_circle, cameras)
+        mesh_rect = init.reconstruct(frames_rect, cameras)
+
+        # Both must produce non-trivial meshes
+        assert mesh_circle.vertex_count > 10
+        assert mesh_rect.vertex_count > 10
+        assert mesh_circle.face_count > 0
+        assert mesh_rect.face_count > 0
+
+        # They should differ (different silhouettes → different visual hulls)
+        assert mesh_circle.vertex_count != mesh_rect.vertex_count or not np.allclose(
+            mesh_circle.vertices[:min(5, mesh_circle.vertex_count)],
+            mesh_rect.vertices[:min(5, mesh_rect.vertex_count)],
+        ), "Different foreground shapes must produce different meshes"
+
+    def test_uniform_frames_without_depth_or_masks_raises(self) -> None:
+        """Completely uniform frames with no depth/masks raises error."""
+        n_views = 4
+        cameras = _make_ring_cameras(n_views, radius=2.0)
+        h, w = 32, 32
+        # All-grey uniform frames — no foreground/background separation possible
+        frames = np.full((n_views, h, w, 3), 128, dtype=np.uint8)
+
+        init = MultiViewInitializer()
+        with pytest.raises(ContractValidationError) as exc_info:
+            init.reconstruct(frames, cameras)
+
+        assert exc_info.value.exit_code == 10
+        assert exc_info.value.agent_fix_hint

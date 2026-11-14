@@ -172,7 +172,7 @@ class TestJobBundleWorker:
     def test_neural_video_generate_stage(
         self, tmp_path: Path,
     ) -> None:
-        """neural_video_generate with mock adapter should succeed."""
+        """neural_video_generate without fgpp_dir should return exit_code=20."""
         output_video = tmp_path / "video.npy"
 
         manifest = BundleManifest(
@@ -195,13 +195,63 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         result = worker.execute(manifest)
 
+        assert result.exit_code == 20
+        assert result.status == "error"
+        assert "fgpp" in (result.agent_fix_hint or "").lower()
+
+    def test_neural_video_generate_with_fgpp(
+        self, tmp_path: Path,
+    ) -> None:
+        """neural_video_generate with valid fgpp_dir should succeed."""
+        from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
+
+        fgpp_dir = tmp_path / "fgpp"
+        fgpp_dir.mkdir()
+        meta = {
+            "schema_version": FGPP_SCHEMA_VERSION,
+            "scene_id": "test_scene",
+            "fps": 24,
+            "num_frames": 2,
+            "total_frames": 2,
+            "resolution": [64, 64],
+            "frames": [
+                {"frame_index": 0},
+                {"frame_index": 1},
+            ],
+        }
+        (fgpp_dir / "metadata.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+
+        output_video = tmp_path / "video.npy"
+
+        manifest = BundleManifest(
+            job_id="test-nvg-fgpp",
+            stage="neural_video_generate",
+            inputs={"fgpp_dir": str(fgpp_dir)},
+            outputs={"video": str(output_video)},
+            params={
+                "num_frames": 2,
+                "height": 64,
+                "width": 64,
+                "adapter": "mock",
+                "model_variant": "wan2.1_1.3b",
+            },
+            hardware_budget=HardwareBudget(
+                free_vram_gb=48.0,
+            ),
+        )
+
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+
         assert result.exit_code == 0
         assert result.status in ("success", "fallback")
         assert "video" in result.output_files
         assert output_video.exists()
 
     def test_style_extract_stage(self, tmp_path: Path) -> None:
-        """style_extract_and_map should produce a style profile."""
+        """style_extract_and_map without frames_dir should return exit_code=20."""
         output_yaml = tmp_path / "style_profile.yaml"
 
         manifest = BundleManifest(
@@ -219,17 +269,53 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         result = worker.execute(manifest)
 
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_style_extract_with_frames(self, tmp_path: Path) -> None:
+        """style_extract_and_map with valid frames_dir should succeed."""
+        import numpy as np
+
+        frames_dir = tmp_path / "frames"
+        frames_dir.mkdir()
+        # Create dummy PNG frames using PIL
+        try:
+            from PIL import Image
+
+            for i in range(4):
+                img = Image.fromarray(
+                    np.full((64, 64, 3), 128, dtype=np.uint8),
+                    mode="RGB",
+                )
+                img.save(frames_dir / f"frame_{i:04d}.png")
+        except ImportError:
+            pytest.skip("PIL not available")
+
+        output_yaml = tmp_path / "style_profile.yaml"
+
+        manifest = BundleManifest(
+            job_id="test-style-real",
+            stage="style_extract_and_map",
+            inputs={"frames_dir": str(frames_dir)},
+            outputs={"style_profile": str(output_yaml)},
+            params={
+                "width": 64,
+                "height": 64,
+                "num_frames": 4,
+            },
+        )
+
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+
         assert result.exit_code == 0
         assert result.status == "success"
         assert "style_profile" in result.output_files
-        # May be .yaml or .json depending on pyyaml availability
-        entry = result.output_files["style_profile"]
-        assert Path(entry.path).exists()
 
     def test_surgical_composite_stage(
         self, tmp_path: Path,
     ) -> None:
-        """surgical_composite should produce a composited array."""
+        """surgical_composite without input dirs should return exit_code=20."""
         output_npy = tmp_path / "composited.npy"
 
         manifest = BundleManifest(
@@ -247,15 +333,13 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         result = worker.execute(manifest)
 
-        assert result.exit_code == 0
-        assert result.status == "success"
-        assert "composited" in result.output_files
-        assert output_npy.exists()
+        assert result.exit_code == 20
+        assert result.status == "error"
 
     def test_inverse_reconstruct_stage(
         self, tmp_path: Path,
     ) -> None:
-        """inverse_reconstruct should produce trajectory and telemetry."""
+        """inverse_reconstruct without frames_dir should return exit_code=20."""
         output_traj = tmp_path / "camera_trajectory.json"
         output_telem = tmp_path / "kinematics_telemetry.json"
 
@@ -277,23 +361,120 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         result = worker.execute(manifest)
 
-        assert result.exit_code == 0
-        assert result.status == "success"
-        assert "trajectory" in result.output_files
-        assert "telemetry" in result.output_files
-        assert output_traj.exists()
-        assert output_telem.exists()
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_style_extract_missing_pil_exits_30(
+        self, tmp_path: Path,
+    ) -> None:
+        """style_extract_and_map with PIL unavailable should return exit_code=30."""
+        import unittest.mock
+
+        frames_dir = tmp_path / "frames"
+        frames_dir.mkdir()
+        # Create a dummy .png file (content doesn't matter — PIL import fails before read)
+        (frames_dir / "frame_0000.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        output_yaml = tmp_path / "style_profile.yaml"
+
+        manifest = BundleManifest(
+            job_id="test-style-nopil",
+            stage="style_extract_and_map",
+            inputs={"frames_dir": str(frames_dir)},
+            outputs={"style_profile": str(output_yaml)},
+            params={
+                "width": 64,
+                "height": 64,
+                "num_frames": 4,
+            },
+        )
+
+        worker = JobBundleWorker()
+        with unittest.mock.patch.dict(
+            "sys.modules", {"PIL": None, "PIL.Image": None},
+        ):
+            result = worker.execute(manifest)
+
+        assert result.exit_code == 30
+        assert result.status == "error"
+
+    def test_lora_preencode_missing_dataset_exits_20(
+        self, tmp_path: Path,
+    ) -> None:
+        """lora_preencode without dataset_dir should return exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-preencode-nodata",
+            stage="lora_preencode",
+            inputs={},
+            outputs={"shards_dir": str(tmp_path / "shards")},
+            params={"num_frames": 4},
+        )
+
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_lora_package_skip_bench_false_exits_40(
+        self, tmp_path: Path,
+    ) -> None:
+        """lora_package with skip_bench=False and no bench_metrics → exit 40."""
+        # Create a minimal fake weights file so we get past path validation
+        weights = tmp_path / "adapter_model.safetensors"
+        weights.write_bytes(b"\x00" * 16)
+
+        manifest = BundleManifest(
+            job_id="test-package-nogate",
+            stage="lora_package",
+            inputs={},
+            outputs={},
+            params={
+                "weights_path": str(weights),
+                "output_dir": str(tmp_path / "bundle_out"),
+                "category": "style",
+                "rank": 8,
+                "alpha": 1.0,
+                # skip_bench defaults to False, bench_metrics not provided
+            },
+        )
+
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+
+        assert result.exit_code == 40
+        assert result.status == "error"
 
     def test_oom_fallback_spatial_tile(
         self, tmp_path: Path,
     ) -> None:
         """With tight VRAM (0.80 < R <= 1.05), spatial_tile injected."""
+        from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
+
+        fgpp_dir = tmp_path / "fgpp"
+        fgpp_dir.mkdir()
+        meta = {
+            "schema_version": FGPP_SCHEMA_VERSION,
+            "scene_id": "oom_test",
+            "fps": 24,
+            "num_frames": 2,
+            "total_frames": 2,
+            "resolution": [64, 64],
+            "frames": [
+                {"frame_index": 0},
+                {"frame_index": 1},
+            ],
+        }
+        (fgpp_dir / "metadata.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+
         output_video = tmp_path / "video.npy"
 
         manifest = BundleManifest(
             job_id="test-oom-l1",
             stage="neural_video_generate",
-            inputs={},
+            inputs={"fgpp_dir": str(fgpp_dir)},
             outputs={"video": str(output_video)},
             params={
                 "num_frames": 16,
@@ -382,12 +563,32 @@ class TestJobBundleWorker:
         self, tmp_path: Path,
     ) -> None:
         """SHA256 checksums in output_files must be correct."""
+        from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
+
+        fgpp_dir = tmp_path / "fgpp"
+        fgpp_dir.mkdir()
+        meta = {
+            "schema_version": FGPP_SCHEMA_VERSION,
+            "scene_id": "sha_test",
+            "fps": 24,
+            "num_frames": 2,
+            "total_frames": 2,
+            "resolution": [32, 32],
+            "frames": [
+                {"frame_index": 0},
+                {"frame_index": 1},
+            ],
+        }
+        (fgpp_dir / "metadata.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
+
         output_video = tmp_path / "video.npy"
 
         manifest = BundleManifest(
             job_id="test-sha",
             stage="neural_video_generate",
-            inputs={},
+            inputs={"fgpp_dir": str(fgpp_dir)},
             outputs={"video": str(output_video)},
             params={
                 "num_frames": 4,
@@ -416,13 +617,33 @@ class TestJobBundleWorker:
 
     def test_single_execution(self, tmp_path: Path) -> None:
         """Worker executes once and returns; no lingering threads."""
+        from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
+
         initial_threads = threading.active_count()
+
+        fgpp_dir = tmp_path / "fgpp"
+        fgpp_dir.mkdir()
+        meta = {
+            "schema_version": FGPP_SCHEMA_VERSION,
+            "scene_id": "single_test",
+            "fps": 24,
+            "num_frames": 2,
+            "total_frames": 2,
+            "resolution": [32, 32],
+            "frames": [
+                {"frame_index": 0},
+                {"frame_index": 1},
+            ],
+        }
+        (fgpp_dir / "metadata.json").write_text(
+            json.dumps(meta), encoding="utf-8",
+        )
 
         output_video = tmp_path / "video.npy"
         manifest = BundleManifest(
             job_id="test-single",
             stage="neural_video_generate",
-            inputs={},
+            inputs={"fgpp_dir": str(fgpp_dir)},
             outputs={"video": str(output_video)},
             params={
                 "num_frames": 4,
@@ -572,3 +793,143 @@ class TestCLIWorker:
         captured = capsys.readouterr()
         assert "SUCCESS" in captured.out
         assert "text-test-001" in captured.out
+
+
+# =========================================================================
+# PR-44: Missing-input error tests (anti-silent-failure contract)
+# =========================================================================
+
+
+class TestMissingInputErrors:
+    """Verify that missing inputs raise proper errors, not fake success."""
+
+    def test_neural_video_generate_missing_fgpp_dir(self) -> None:
+        """neural_video_generate without fgpp_dir → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-nvg-no-fgpp",
+            stage="neural_video_generate",
+            inputs={},
+            params={
+                "num_frames": 4,
+                "height": 32,
+                "width": 32,
+                "adapter": "mock",
+                "model_variant": "wan2.1_1.3b",
+            },
+            hardware_budget=HardwareBudget(free_vram_gb=48.0),
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_style_extract_missing_frames_dir(self) -> None:
+        """style_extract_and_map without frames_dir → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-style-no-frames",
+            stage="style_extract_and_map",
+            inputs={},
+            params={"width": 64, "height": 64, "num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_surgical_composite_missing_rendered_dir(self) -> None:
+        """surgical_composite without rendered_dir → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-comp-no-rendered",
+            stage="surgical_composite",
+            inputs={},
+            params={"num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_inverse_reconstruct_missing_frames_dir(self) -> None:
+        """inverse_reconstruct without frames_dir → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-recon-no-frames",
+            stage="inverse_reconstruct",
+            inputs={},
+            params={"width": 64, "height": 64, "num_frames": 8},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_lora_preencode_missing_dataset_dir(self) -> None:
+        """lora_preencode without dataset_dir → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-preencode-no-dataset",
+            stage="lora_preencode",
+            inputs={},
+            params={"num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_video_to_3d_invert_missing_video(self) -> None:
+        """video_to_3d_invert without video_frames → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-v2d-no-video",
+            stage="video_to_3d_invert",
+            inputs={},
+            params={"num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_inverse_render_loop_missing_video(self) -> None:
+        """inverse_render_loop without video_frames → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-irl-no-video",
+            stage="inverse_render_loop",
+            inputs={},
+            params={"num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_anatomical_refine_missing_video(self) -> None:
+        """anatomical_refine without video_frames → exit_code=20."""
+        manifest = BundleManifest(
+            job_id="test-refine-no-video",
+            stage="anatomical_refine",
+            inputs={},
+            params={"num_frames": 4},
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20
+        assert result.status == "error"
+
+    def test_lora_package_skip_bench_defaults_false(
+        self, tmp_path: Path,
+    ) -> None:
+        """handle_lora_package skip_bench defaults to False."""
+        manifest = BundleManifest(
+            job_id="test-pkg-bench",
+            stage="lora_package",
+            inputs={},
+            params={
+                "output_dir": str(tmp_path / "bundle"),
+                "weights_path": str(tmp_path / "nonexistent.safetensors"),
+            },
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        # The packager should not silently skip bench
+        # It will fail because weights_path doesn't exist, but the
+        # important thing is that skip_bench was False
+        assert result.exit_code != 0

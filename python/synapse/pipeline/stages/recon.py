@@ -34,31 +34,24 @@ def handle_video_to_3d_invert(
     from synapse.recon.delight import delight_multiview_albedo
 
     params = dict(manifest.params)
-    width = int(params.get("width", 512))
-    height = int(params.get("height", 512))
-    num_frames = int(params.get("num_frames", 8))
     target_faces = int(params.get("target_faces", 1500))
 
-    # Load or synthesize input frames
+    # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
-    if video_path and Path(video_path).is_file():
-        frames = np.load(video_path)
-    else:
-        # Synthetic fallback for pipeline validation
-        rng = np.random.default_rng(42)
-        frames = rng.integers(
-            100, 200, (num_frames, height, width, 3), dtype=np.uint8,
+    if not video_path or not Path(video_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['video_frames'] pointing to "
+                "a valid .npy file of shape (T, H, W, 3)."
+            ),
         )
+    frames = np.load(video_path)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    try:
-        result = pipe.run(frames)
-    except Exception:
-        # Degrade gracefully for pipeline validation
-        class _EmptyResult:
-            camera_trajectory = None
-            mesh = None
-        result = _EmptyResult()  # type: ignore[assignment]
+    result = pipe.run(frames)
 
     output_paths: dict[str, str] = {}
 
@@ -120,33 +113,50 @@ def handle_inverse_render_loop(
     from synapse.recon.loop.types import LoopConfig
 
     params = dict(manifest.params)
-    width = int(params.get("width", 64))
-    height = int(params.get("height", 64))
-    num_frames = int(params.get("num_frames", 5))
     max_iters = int(params.get("max_iterations", 5))
     n_preroll = int(params.get("n_preroll", 0))
 
-    # Load or synthesize input frames
+    # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
-    if video_path and Path(video_path).is_file():
-        frames = np.load(video_path).astype(np.float32)
-    else:
-        rng = np.random.default_rng(42)
-        frames = rng.random(
-            (num_frames, height, width, 3), dtype=np.float32,
+    if not video_path or not Path(video_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['video_frames'] pointing to "
+                "a valid .npy file of shape (T, H, W, 3) float32."
+            ),
         )
+    frames = np.load(video_path).astype(np.float32)
 
-    t_count, h, w, _ = frames.shape
+    # Load normals — no synthetic fallback
+    normals_path = manifest.inputs.get("normals", "")
+    if not normals_path or not Path(normals_path).is_file():
+        from synapse.errors import AssetNotFoundError
 
-    # Synthesize normals and UV maps
-    normals = np.zeros_like(frames)
-    normals[..., 2] = 1.0
+        raise AssetNotFoundError(
+            f"Normals file not found: {normals_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['normals'] pointing to "
+                "a valid .npy file of shape (T, H, W, 3) float32."
+            ),
+        )
+    normals = np.load(normals_path).astype(np.float32)
 
-    uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
-    u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
-    v_lin = np.linspace(0.0, 1.0, h, dtype=np.float32)
-    uv_maps[:, :, :, 0] = u_lin[np.newaxis, np.newaxis, :]
-    uv_maps[:, :, :, 1] = v_lin[np.newaxis, :, np.newaxis]
+    # Load UV maps — no synthetic fallback
+    uv_path = manifest.inputs.get("uv_maps", "")
+    if not uv_path or not Path(uv_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"UV maps file not found: {uv_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['uv_maps'] pointing to "
+                "a valid .npy file of shape (T, H, W, 2) float32."
+            ),
+        )
+    uv_maps = np.load(uv_path).astype(np.float32)
 
     loop_config = LoopConfig(
         n_preroll=n_preroll,

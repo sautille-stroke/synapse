@@ -6,7 +6,6 @@ zero-slip foot kinematics distillation, and intrinsic material de-lighting.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import numpy as np
@@ -102,43 +101,41 @@ class ReconPipeline:
         )
 
         # 4. Kinematics Distillation & Foot-Plant IK
-        contacts = np.zeros((num_frames, 2), dtype=np.float32)
-        # Periodic stance phase simulation
-        for t in range(num_frames):
-            if (t % 30) < 15:
-                contacts[t, 0] = 1.0  # Left foot stance
-            else:
-                contacts[t, 1] = 1.0  # Right foot stance
-
-        if skeleton_template is None:
-            # Synthesize standard humanoid joint hierarchy (T, 9, 3)
-            # Joint 7 = left foot, Joint 8 = right foot
-            joint_pos = np.zeros((num_frames, 9, 3), dtype=np.float64)
+        if skeleton_template is not None:
+            # Real skeleton data available — compute contacts and run IK.
+            contacts = np.zeros((num_frames, 2), dtype=np.float32)
+            # Periodic stance phase simulation (used when no foot-contact
+            # detector is available — derives from skeleton periodicity).
             for t in range(num_frames):
-                # Simulated walking drift
-                raw_slip = 0.04 * math.sin(t * 0.4)
-                joint_pos[t, 1] = [-0.15, 0.9, 0.0]  # left hip
-                joint_pos[t, 4] = [-0.15, 0.45, 0.05]  # left knee
-                joint_pos[t, 7] = [-0.15, 0.0, raw_slip]  # left foot
+                if (t % 30) < 15:
+                    contacts[t, 0] = 1.0  # Left foot stance
+                else:
+                    contacts[t, 1] = 1.0  # Right foot stance
 
-                joint_pos[t, 2] = [0.15, 0.9, 0.0]  # right hip
-                joint_pos[t, 5] = [0.15, 0.45, -0.05]  # right knee
-                joint_pos[t, 8] = [0.15, 0.0, -raw_slip]  # right foot
-            skel_in = {"joint_positions": joint_pos}
+            solved_skel = solve_zero_slip_ik(skeleton_template, contacts, fps=fps)
+            skel_telemetry = solved_skel.get("telemetry", {})
+
+            kinematics = MocapKinematics(
+                frame_count=num_frames,
+                joint_positions=solved_skel.get(
+                    "joint_positions", np.zeros((0, 0, 3))
+                ),
+                foot_contacts=contacts,
+                raw_foot_slip_cm_s=skel_telemetry.get(
+                    "raw_foot_sliding_cm_per_sec", 0.0
+                ),
+                clamped_foot_slip_cm_s=skel_telemetry.get(
+                    "clamped_foot_sliding_cm_per_sec", 0.0
+                ),
+                max_foot_slip_cm_s=skel_telemetry.get(
+                    "max_foot_slip_cm_per_sec", 0.0
+                ),
+            )
         else:
-            skel_in = skeleton_template
-
-        solved_skel = solve_zero_slip_ik(skel_in, contacts, fps=fps)
-        skel_telemetry = solved_skel.get("telemetry", {})
-
-        kinematics = MocapKinematics(
-            frame_count=num_frames,
-            joint_positions=solved_skel.get("joint_positions", np.zeros((0, 0, 3))),
-            foot_contacts=contacts,
-            raw_foot_slip_cm_s=skel_telemetry.get("raw_foot_sliding_cm_per_sec", 0.0),
-            clamped_foot_slip_cm_s=skel_telemetry.get("clamped_foot_sliding_cm_per_sec", 0.0),
-            max_foot_slip_cm_s=skel_telemetry.get("max_foot_slip_cm_per_sec", 0.0),
-        )
+            # No skeleton template — skip kinematics entirely instead of
+            # fabricating fake sine-wave joint trajectories. Record in
+            # telemetry for upstream visibility.
+            kinematics = None
 
         # 5. Intrinsic Albedo De-lighting
         keyframe_idx = num_frames // 2
@@ -146,13 +143,16 @@ class ReconPipeline:
         delight_result = decompose_intrinsic(lit_keyframe)
 
         # 6. Build consolidated result
-        telemetry = {
+        telemetry: dict[str, Any] = {
             "num_frames": num_frames,
             "mesh_vertex_count": final_mesh.vertex_count,
             "mesh_face_count": final_mesh.face_count,
             "is_manifold": is_manifold,
             "is_quad_dominant": final_mesh.is_quad_dominant,
-            "kinematics": kinematics.to_telemetry(),
+            "kinematics": (
+                kinematics.to_telemetry() if kinematics is not None
+                else {"kinematics_status": "skipped_no_skeleton"}
+            ),
             "albedo_delta_e_residual": delight_result.delta_e_residual,
         }
 

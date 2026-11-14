@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
+
 # ---------------------------------------------------------------------------
 # Gate thresholds
 # ---------------------------------------------------------------------------
@@ -75,6 +77,9 @@ def evaluate_refinement_gates(
     elapsed_seconds: float = 0.0,
     domain: Literal["video_shot", "asset_3d"] = "video_shot",
     thresholds: GateThresholds | None = None,
+    original_patch: np.ndarray | None = None,
+    refined_patch: np.ndarray | None = None,
+    max_lpips_delta: float = 0.35,
 ) -> GateVerdict:
     """Evaluate the three-tier refinement quality gates.
 
@@ -85,6 +90,12 @@ def evaluate_refinement_gates(
         elapsed_seconds: Cumulative wall-clock time for this refinement.
         domain: ``"video_shot"`` or ``"asset_3d"`` for HITL fallback.
         thresholds: Custom thresholds (defaults to production values).
+        original_patch: Optional original image patch ``(H, W, 3)`` for
+            LPIPS-based Tier 2 neural gate evaluation.
+        refined_patch: Optional refined image patch ``(H, W, 3)`` for
+            LPIPS-based Tier 2 neural gate evaluation.
+        max_lpips_delta: Maximum acceptable LPIPS delta for Tier 2 gate.
+            Defaults to ``0.35``.
 
     Returns:
         :class:`GateVerdict` with pass/fail status and metrics.
@@ -128,8 +139,25 @@ def evaluate_refinement_gates(
 
     verdict.tier_results["tier1_automatic"] = tier1_pass
 
-    # -- Tier 2: Neural perceptual (placeholder — always pass) --
-    verdict.tier_results["tier2_neural"] = True
+    # -- Tier 2: Neural perceptual gate (LPIPS-based when patches available) --
+    # PR-45 fix #6: Replace hardcoded ``True`` with real LPIPS evaluation.
+    tier2_pass = True
+    if original_patch is not None and refined_patch is not None:
+        try:
+            from synapse.metrics.image_quality import lpips as compute_lpips
+
+            lpips_delta = compute_lpips(refined_patch, original_patch)
+            verdict.metrics["lpips_delta"] = lpips_delta
+            if lpips_delta > max_lpips_delta:
+                tier2_pass = False
+                verdict.failure_reasons.append(
+                    f"lpips_delta {lpips_delta:.4f} > {max_lpips_delta:.4f}"
+                )
+        except ImportError:
+            # Heavy deps unavailable — fall back to pass (graceful
+            # degradation in CPU-only CI environments).
+            pass
+    verdict.tier_results["tier2_neural"] = tier2_pass
 
     # -- Tier 3: HITL circuit breaker --
     from synapse.bridge.hitl import evaluate_hitl_circuit_breaker

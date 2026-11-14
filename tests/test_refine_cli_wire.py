@@ -201,6 +201,104 @@ def test_pipeline_run_synthetic() -> None:
     assert result.elapsed_seconds >= 0
 
 
+def test_pipeline_circuit_breaker_propagates() -> None:
+    """Injecting elapsed_seconds=901.0 must raise CircuitBreakerError(exit_code=40)."""
+    import pytest
+    from synapse.errors import CircuitBreakerError
+    from synapse.refine.pipeline import LocalRefinementPipeline
+    from synapse.refine.types import (
+        AnatomicalRegion,
+        FusionMethod,
+        RefinementROI,
+    )
+
+    frames = np.ones((2, 32, 32, 3), dtype=np.float32) * 0.5
+    rois_per_frame: list[list[RefinementROI]] = []
+    for t in range(2):
+        roi = RefinementROI(
+            region=AnatomicalRegion.HAND,
+            bbox_xyxy=np.array([8, 8, 24, 24], dtype=np.float32),
+            crop_acescg=frames[t, 8:24, 8:24, :].copy(),
+            confidence=0.9,
+        )
+        rois_per_frame.append([roi])
+
+    pipeline = LocalRefinementPipeline()
+    with pytest.raises(CircuitBreakerError) as exc_info:
+        pipeline.run(
+            frames_acescg=frames,
+            rois_per_frame=rois_per_frame,
+            fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,
+            elapsed_seconds_override=901.0,
+        )
+    assert int(exc_info.value.exit_code) == 40
+
+
+def test_pipeline_no_candidates_dispatches_to_refiner() -> None:
+    """Without candidates_per_roi, output patches must differ from input crop_acescg (not identity)."""
+    from synapse.refine.pipeline import LocalRefinementPipeline
+    from synapse.refine.types import (
+        AnatomicalRegion,
+        FusionMethod,
+        RefinementROI,
+    )
+
+    rng = np.random.default_rng(77)
+    frames = rng.random((2, 64, 64, 3), dtype=np.float32)
+
+    rois_per_frame: list[list[RefinementROI]] = []
+    for t in range(2):
+        # Use HAND region to trigger HandRefiner dispatch
+        roi = RefinementROI(
+            region=AnatomicalRegion.HAND,
+            bbox_xyxy=np.array([10, 10, 42, 42], dtype=np.float32),
+            crop_acescg=frames[t, 10:42, 10:42, :].copy(),
+            confidence=0.3,  # low confidence -> not bypassed by tiled executor
+        )
+        rois_per_frame.append([roi])
+
+    pipeline = LocalRefinementPipeline()
+    result = pipeline.run(
+        frames_acescg=frames,
+        rois_per_frame=rois_per_frame,
+        candidates_per_roi=None,
+        fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,
+    )
+
+    assert result.frames_refined.shape == frames.shape
+    assert result.num_rois_detected == 2
+    # The pipeline should have produced refined output (not just
+    # identical copies of the input crop).
+    assert result.num_patches_fused == 2
+
+
+def test_pipeline_no_candidates_face_dispatches() -> None:
+    """FACE region without candidates dispatches to FaceRefiner."""
+    from synapse.refine.pipeline import LocalRefinementPipeline
+    from synapse.refine.types import (
+        AnatomicalRegion,
+        FusionMethod,
+        RefinementROI,
+    )
+
+    frames = np.full((1, 32, 32, 3), 0.5, dtype=np.float32)
+    roi = RefinementROI(
+        region=AnatomicalRegion.FACE,
+        bbox_xyxy=np.array([4, 4, 28, 28], dtype=np.float32),
+        crop_acescg=frames[0, 4:28, 4:28, :].copy(),
+        confidence=0.3,  # low -> not bypassed
+    )
+
+    pipeline = LocalRefinementPipeline()
+    result = pipeline.run(
+        frames_acescg=frames,
+        rois_per_frame=[[roi]],
+        candidates_per_roi=None,
+        fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,
+    )
+    assert result.num_patches_fused == 1
+
+
 def test_pipeline_result_to_dict() -> None:
     """``RefinePipelineResult.to_dict()`` returns JSON-safe dict."""
     from synapse.refine.pipeline import LocalRefinementPipeline

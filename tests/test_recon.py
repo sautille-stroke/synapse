@@ -295,10 +295,18 @@ class TestReconPipelineEndToEnd:
         from unittest.mock import patch
 
         num_frames = 16
-        frames = np.full((num_frames, 48, 48, 3), 128, dtype=np.uint8)
+        # Create frames with a bright circle on dark background so that
+        # foreground mask derivation succeeds (no longer falls back to
+        # constant depth).
+        h, w = 48, 48
+        frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        circle = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (h // 4) ** 2
+        for t in range(num_frames):
+            frames[t][circle] = 200
 
         pipeline = ReconPipeline(target_quad_faces=500)
-        # Synthetic uniform frames produce degenerate (0°) camera angular
+        # Synthetic frames still produce degenerate (0°) camera angular
         # separation. Patch the minimum threshold to allow the test to
         # exercise the full 5-stage pipeline without real video input.
         with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
@@ -309,10 +317,44 @@ class TestReconPipelineEndToEnd:
         assert res.mesh.face_count > 0
         assert res.camera_trajectory is not None
         assert res.camera_trajectory.frame_count == num_frames
-        assert res.kinematics is not None
-        assert res.kinematics.clamped_foot_slip_cm_s < 0.3
-        assert res.telemetry["kinematics"]["zero_slip_verified"] is True
+        # Without skeleton_template, kinematics is None (no fake sine data).
+        assert res.kinematics is None
+        assert res.telemetry["kinematics"]["kinematics_status"] == "skipped_no_skeleton"
         assert res.delight is not None
+
+    def test_pipeline_with_skeleton_template(self) -> None:
+        """Pipeline with a real skeleton template produces valid kinematics."""
+        from unittest.mock import patch
+
+        num_frames = 16
+        h, w = 48, 48
+        # Create frames with foreground contrast
+        frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        circle = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (h // 4) ** 2
+        for t in range(num_frames):
+            frames[t][circle] = 200
+
+        # Provide a real skeleton template with joint positions
+        joint_pos = np.zeros((num_frames, 9, 3), dtype=np.float64)
+        for t in range(num_frames):
+            joint_pos[t, 1] = [-0.15, 0.9, 0.0]   # left hip
+            joint_pos[t, 4] = [-0.15, 0.45, 0.05]  # left knee
+            joint_pos[t, 7] = [-0.15, 0.0, 0.0]    # left foot
+            joint_pos[t, 2] = [0.15, 0.9, 0.0]     # right hip
+            joint_pos[t, 5] = [0.15, 0.45, -0.05]  # right knee
+            joint_pos[t, 8] = [0.15, 0.0, 0.0]     # right foot
+        skeleton_template = {"joint_positions": joint_pos}
+
+        pipeline = ReconPipeline(target_quad_faces=500)
+        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
+            res = pipeline.run(frames, skeleton_template=skeleton_template, fps=30.0)
+
+        assert isinstance(res, ReconResult)
+        assert res.kinematics is not None
+        assert res.kinematics.frame_count == num_frames
+        assert "kinematics_status" not in res.telemetry["kinematics"]
+        assert res.telemetry["kinematics"]["zero_slip_verified"] is True
 
 
 # ===================================================================
