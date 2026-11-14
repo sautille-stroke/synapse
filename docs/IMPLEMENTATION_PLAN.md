@@ -1,20 +1,22 @@
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v3.1`（全量统合 **M1–M16** 共 16 大里程碑、**58 个原子 PR**（`PR-01` ~ `PR-57`, 含 `PR-14a/b`），涵盖 Horizon 1–4 与 7 份精细化执行子计划）
+- **计划版本**: `v3.2`（全量统合 **M1–M20** 共 20 大里程碑、**74 个原子 PR**（`PR-01` ~ `PR-73`, 含 `PR-14a/b`），涵盖 Horizon 1–5 与 8 份精细化执行子计划）
 - **修订日期**: 2026-11-14
 - **操作模型标识**: `[gemini4]`
 - **前置架构审查与跨文档对齐决议**:
   - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
   - **[docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)**（五条绝对负向红线 `NG-1~NG-5` 与跨仓边界定界）
   - **[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)**（Horizon 1–3 大规模重构后全库架构、工程实现与技术债务深度审计报告）
+  - **[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)**（`RFC-0063` 深度评审、Colab/L-Asset 断裂定位与 `PR-44~57` 实态审计报告）
 - **细分可执行子计划导航（Subdivided Actionable Sub-Plans）**:
   1. ↳ **[PLAN-M1-M2](plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md)**：地基清零、`@aether//fgpp` 线格式闭环、CLI 基座与双轨视频生成适配器（`PR-01` ~ `PR-08` ✅）
   2. ↳ **[PLAN-M3-M4](plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md)**：软肩 ACEScg 风格对齐、`3D ∪ SAM2` 手术刀合成、`vg-core` 桥接、`JobBundleWorker` 与 30 场景基准（`PR-09` ~ `PR-15` ✅）
   3. ↳ **[PLAN-M5](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)**：合成数据离线潜空间缓存、5 维正交解耦 LoRA 训练与 Cryptomatte 空间隔离调度（`PR-16` ~ `PR-19` ✅）
   4. ↳ **[PLAN-M6-M7](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)**：3D 微距质检、Visual Jev 强类型裁决、RL 样本导出与物理驱动递归自我提升 RSI 飞轮（`PR-20` ~ `PR-25` ✅）
-  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + SHM 可视化检查器（`PR-26` ✅ · `PR-27~29` 脚手架已合入，真实 3D/EXR 视口见 `M16 PR-55`）
+  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + SHM 可视化检查器（`PR-26` ✅ · `PR-27~29` 脚手架已合入，真实 3D/EXR 视口移交 `M18 PR-64~65`）
   6. ↳ **[PLAN-M9-M12 (Horizon 3)](plans/PLAN-M9-M12-HORIZON3-LANDING.md)**：RFC 0060 多视角真差往返、RFC 0061 解剖局部精修、RFC 0062 可微逆向闭环与 M12 全域收口（`PR-30` ~ `PR-43` ⚠️ 骨架与单测已合入，生产硬化见 `PLAN-M13-M16`）
-  7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` 📋）
+  7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` ⚠️ `PR-51` ✅，`PR-55` ❌，余项收口于 Horizon 5）
+  8. ↳ **[PLAN-M17-M20 (Horizon 5 质量治理与基准落地)](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)**：生态 RFC 碰撞消解、遗留 `data-inspector`/`build_native` 收口、`RFC-0063` 基准真实落地与严苛 `mypy`/快测试门禁（`PR-58` ~ `PR-73` 📋）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -22,6 +24,7 @@
   - ↳ **[RFC 0060](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)** · **[DESIGN (RFC 0060)](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：真实视频逆向 3D 动态数字孪生 (`M9`)
   - ↳ **[RFC 0061](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)** · **[DESIGN (RFC 0061)](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)** · **[ForgeKit Tooling](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)**：局部解剖修正与手术刀缝合 (`M10`)
   - ↳ **[RFC 0062](RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)** · **[DESIGN (RFC 0062)](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)**：3D 引导生成与可微逆向双向闭环 (`M11`)
+  - ↳ **[RFC 0063](RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)** · **[DESIGN (Gap & Benchmarks)](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)** · **[PLAN-M17-M20](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)**：质量保障、5 层测试金字塔与 4 轨道横向评测基准 (`M17–M20`)
 
 ---
 
@@ -139,9 +142,36 @@ flowchart LR
             PR54["PR-54: wire_guard 全契约扩围 & RFC 0060-0062 治理归位"]
         end
         subgraph M16 ["M16: 检查器收口与严苛 CI"]
-            PR55["PR-55: data-inspector 真实视口/低拷 IPC 桥接"]
+            PR55["PR-55: data-inspector 真实视口/低拷 IPC 桥接 (❌ 移交 M18)"]
             PR56["PR-56: 消除重复金字塔 & 修正虚构弃用告警"]
             PR57["PR-57: pytest 快慢分层 & 严格 mypy/ruff CI 门禁"]
+        end
+    end
+
+    subgraph H5 ["Horizon 5: 质量治理、架构收口与 RFC-0063 基准落地"]
+        subgraph M17 ["M17: 架构治理与防静默清零"]
+            PR58["PR-58: RFC 0061-0063 碰撞消解 & RFC-0063 校准"]
+            PR59["PR-59: wire_guard 严苛化 (PixelType/Style/bundle)"]
+            PR60["PR-60: CLI/Refine 伪帧回退与置信度旁路清零"]
+            PR61["PR-61: delight/TV 梯度/闭环核心与金字塔去重"]
+        end
+        subgraph M18 ["M18: 原生链路、DAG 收口与 Inspector"]
+            PR62["PR-62: csrc/geometry 无 Bazel & Colab 修复 (#47)"]
+            PR63["PR-63: import_dag_guard 封堵 importlib 环路"]
+            PR64["PR-64: data-inspector C++ Native (PR-55 收口)"]
+            PR65["PR-65: data-inspector Electron SHM 零拷贝消费"]
+        end
+        subgraph M19 ["M19: RFC-0063 基准与物理门禁落地"]
+            PR66["PR-66: L-Asset RFC 0062 清单 & Colab/HF 修复"]
+            PR67["PR-67: L1 E_warp / FVD 特征桥 & 3D F-score 5mm"]
+            PR68["PR-68: model_evaluator Fail-Closed & bench_runner"]
+            PR69["PR-69: CLI 退出码 40 / EXR 真读 / RSI 多轴"]
+            PR70["PR-70: Wan 48 帧锚点 / Float64 深度 / Var 门禁"]
+        end
+        subgraph M20 ["M20: 工程质量收口与严格 CI"]
+            PR71["PR-71: colab_runner e3 / VideoWriter RAII"]
+            PR72["PR-72: warn_return_any 清零 & Fast Pytest <= 30s"]
+            PR73["PR-73: 全生态 Skills/文档同步与全域回归收官"]
         end
     end
 
@@ -175,6 +205,14 @@ flowchart LR
     PR48 --> PR49 & PR50 & PR51
     PR48 & PR49 & PR50 --> PR52 & PR53 & PR54
     PR52 & PR53 & PR54 --> PR55 & PR56 & PR57
+
+    PR54 & PR55 & PR56 & PR57 --> PR58 & PR59 & PR60 & PR61
+    PR58 --> PR59 & PR66
+    PR59 & PR60 & PR61 --> PR62 & PR63 & PR64
+    PR64 --> PR65
+    PR62 & PR63 --> PR66 & PR67 & PR68 & PR69 & PR70
+    PR65 & PR66 & PR67 & PR68 & PR69 & PR70 --> PR71 & PR72
+    PR71 & PR72 --> PR73
 ```
 
 ---
@@ -199,11 +237,15 @@ flowchart LR
 | **Wave 12** | `PR-44` (`bundle_worker/stages`) ∥ `PR-45` (`refine` 熔断透传) ∥ `PR-46` (`stitcher` M⁻¹/Warp) ∥ `PR-47` (`recon` 深度/优化器) | M13 收官：P0 防静默失败清零与假成功止血 |
 | **Wave 13** | `PR-48` (`render_core` 抽离/DAG guard) ∥ `PR-49` (`vg_bridge` 清理/导出) ∥ `PR-50` (Bazelignore/Colab 原生打包) ∥ `PR-51` (`viewer` 静态收口) | M14 收官：斩断三角循环依赖与原生打包闭环 |
 | **Wave 14** | `PR-52` (`csrc/geometry` N-gon/GIL 释放) ∥ `PR-53` (`cli` 模块化拆分) ∥ `PR-54` (`wire_guard` 全契约扩围) | M15 收官：原生几何核硬化与 CLI 领域模块化 |
-| **Wave 15** | `PR-55` (`data-inspector` 真实视口/IPC) ∥ `PR-56` (消除重复金字塔/虚构弃用告警) ∥ `PR-57` (快慢分层/严格 mypy/ruff CI 收口) | **Horizon 4 全线收官**：生产级工程硬化合龙 📋 |
+| **Wave 15** | `PR-55` (`data-inspector` 真实视口/IPC) ∥ `PR-56` (消除重复金字塔/虚构弃用告警) ∥ `PR-57` (快慢分层/严格 mypy/ruff CI 收口) | Horizon 4 审计核验：`PR-51` ✅，`PR-55` ❌ 移交 `PR-64~65`，余项收口于 H5 ⚠️ |
+| **Wave 16** | `PR-58` (RFC 碰撞/校准) ∥ `PR-59` (`wire_guard` 严苛化) ∥ `PR-60` (CLI/Refine 零伪输入) ∥ `PR-61` (`delight`/TV/闭环修复) | M17 收官：消除规范冲突与残余静默回退 |
+| **Wave 17** | `PR-62` (`csrc/geometry` `#47` 修复) ∥ `PR-63` (`import_dag_guard` 封堵) ∥ `PR-64` → `PR-65` (`data-inspector` Native+Electron) | M18 收官：恢复 Colab 原生编译与 `PR-55` 彻底闭环 |
+| **Wave 18** | `PR-66` (L-Asset/Colab/HF) ∥ `PR-67` (L1 $E_{\text{warp}}$/FVD/5mm) ∥ `PR-68` (`model_evaluator`/`bench`) ∥ `PR-69` (CLI 退出码/EXR) ∥ `PR-70` (48 帧/Var 门禁) | M19 收官：`RFC-0063` 基准与物理门禁全线落地 |
+| **Wave 19** | `PR-71` (`colab_runner`/RAII/去重) ∥ `PR-72` (88 个 Any 清零 & 快测试 `<= 30s`) → `PR-73` (Skills/文档同步与全域验收) | **Horizon 5 全线收官**：高质量基线锁死 📋 |
 
 ---
 
-## 4. 全量 58-PR 落地追踪与“防静默失败三问”验收总表
+## 4. 全量 74-PR 落地追踪与“防静默失败三问”验收总表
 
 ### 4.1 Horizon 1：核心互操作 SDK、无状态 Worker 与 `Synapse-Bench`（M1–M4，共 16 PRs，约 21.5 人天）
 
@@ -266,22 +308,46 @@ flowchart LR
 
 ### 4.4 Horizon 4：重构后架构解耦、防静默失败清零与生产级工程硬化（M13–M16，共 14 PRs，详见 [PLAN-M13-M16](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)）
 
+> [!WARNING]
+> 下表“状态”列已根据 `2026-11-14`（`b98c6e5`）全库实测审计（[AUDIT-RFC0063-AND-CODEBASE-2026-11](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)）对 `PR #49` 的统一 `✅` 标记予以真实纠偏，全部遗留欠账已移交下方 **§4.5 Horizon 5**（[PLAN-M17-M20](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)）。
+
 | PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M13-M16](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
-| **[PR-44](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-44)** | M13 | 清除 `bundle_worker` / `stages/*` / `cli` 共 9 处假成功回退与 `_MIN_ANGULAR_SPAN_DEG` 全局篡改 | main | ~520 行 | 1.5d | `tests/test_bundle_worker.py` + `test_pipeline_stage_adapters.py` + `test_cli.py` | ✅ 已合入 |
-| **[PR-45](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-45)** | M13 | `LocalRefinementPipeline` 实接 Refiner/Tracker/LPIPS 门禁，禁止吞没 `CircuitBreakerError (40)` | main | ~480 行 | 1.5d | `tests/test_refine_cli_wire.py` + `test_refine_hand_face.py` | ✅ 已合入 |
-| **[PR-46](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-46)** | M13 | `ScalpelStitcher` 激活 `M⁻¹` 逆仿射、`motion_vectors` EMA、`composite` LAB 融合与真实 $\Delta E_{00}$ | main | ~420 行 | 1.5d | `tests/test_refine_stitcher_gates.py` (`temporal_warp <= 0.015`) | ✅ 已合入 |
-| **[PR-47](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-47)** | M13 | `ReconPipeline` 视觉深度估计替代 1m 常数薄壳与假正弦步态；`AnalyticUV` 向量化加光度梯度 | main | ~460 行 | 1.5d | `tests/test_recon.py` + `test_recon_multiview.py` + `test_recon_loop_optimizer.py` | ✅ 已合入 |
-| **[PR-48](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-48)** | M14 | 抽离 `synapse.render_core`，斩断 `bridge ↔ recon ↔ refine` 三角循环并落地 `import_dag_guard` | PR-44~47 | ~600 行 | 2.0d | `tools/import_dag_guard.py --check` + `tests/test_architecture_dag.py` | ✅ 已合入 |
-| **[PR-49](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-49)** | M14 | 下线 `vg_bridge` `import vg` 遗留、优先路由 `_c_geometry`、`__init__` 导出 `refine`、`[full]` 补 `invrender` | PR-48 | ~340 行 | 1.0d | `tests/test_bridge_and_hitl.py` + `test_geometry_tier0.py` | ✅ 已合入 |
-| **[PR-50](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-50)** | M14 | 补齐 `.bazelignore` 与 `.bazelrc` 修复；`scripts/build_native.py` 接入 Colab 实现 `_c_geometry` 开箱可用 | PR-48 | ~320 行 | 1.0d | `cd csrc/geometry && bazel test //... --config=linux` + `test_geometry_oracle_parity.py` | ✅ 已合入 |
+| **[PR-44](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-44)** | M13 | 清除 `bundle_worker` / `stages/*` / `cli` 共 9 处假成功回退与 `_MIN_ANGULAR_SPAN_DEG` 全局篡改 | main | ~520 行 | 1.5d | `tests/test_bundle_worker.py` + `test_pipeline_stage_adapters.py` + `test_cli.py` | ⚠️ 部分合入 (`PR-60,69` 收口) |
+| **[PR-45](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-45)** | M13 | `LocalRefinementPipeline` 实接 Refiner/Tracker/LPIPS 门禁，禁止吞没 `CircuitBreakerError (40)` | main | ~480 行 | 1.5d | `tests/test_refine_cli_wire.py` + `test_refine_hand_face.py` | ⚠️ 部分合入 (`PR-60` 收口) |
+| **[PR-46](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-46)** | M13 | `ScalpelStitcher` 激活 `M⁻¹` 逆仿射、`motion_vectors` EMA、`composite` LAB 融合与真实 $\Delta E_{00}$ | main | ~420 行 | 1.5d | `tests/test_refine_stitcher_gates.py` (`temporal_warp <= 0.015`) | ⚠️ 部分合入 (`PR-61,67` 收口) |
+| **[PR-47](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-47)** | M13 | `ReconPipeline` 视觉深度估计替代 1m 常数薄壳与假正弦步态；`AnalyticUV` 向量化加光度梯度 | main | ~460 行 | 1.5d | `tests/test_recon.py` + `test_recon_multiview.py` + `test_recon_loop_optimizer.py` | ⚠️ 部分合入 (`PR-61` 收口) |
+| **[PR-48](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-48)** | M14 | 抽离 `synapse.render_core`，斩断 `bridge ↔ recon ↔ refine` 三角循环并落地 `import_dag_guard` | PR-44~47 | ~600 行 | 2.0d | `tools/import_dag_guard.py --check` + `tests/test_architecture_dag.py` | ⚠️ 部分合入 (`PR-63` 收口) |
+| **[PR-49](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-49)** | M14 | 下线 `vg_bridge` `import vg` 遗留、优先路由 `_c_geometry`、`__init__` 导出 `refine`、`[full]` 补 `invrender` | PR-48 | ~340 行 | 1.0d | `tests/test_bridge_and_hitl.py` + `test_geometry_tier0.py` | ⚠️ 部分合入 (`PR-63,66` 收口) |
+| **[PR-50](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-50)** | M14 | 补齐 `.bazelignore` 与 `.bazelrc` 修复；`scripts/build_native.py` 接入 Colab 实现 `_c_geometry` 开箱可用 | PR-48 | ~320 行 | 1.0d | `cd csrc/geometry && bazel test //... --config=linux` + `test_geometry_oracle_parity.py` | ⚠️ 部分合入 (`#47` 破坏，`PR-62` 收口) |
 | **[PR-51](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-51)** | M14 | `synapse.viewer` 默认导出静态 HTML、移除 `TCPServer` 全局态篡改、强制回环与 `--json` 互斥 | PR-48 | ~340 行 | 1.0d | `tests/test_dataset_and_viewer.py` + `test_cli.py` | ✅ 已合入 |
-| **[PR-52](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-52)** | M15 | `csrc/geometry` Quad/N-gon 扇形剖分修复、单次 `validate_mesh_geometry` FFI 与 GIL 释放 | PR-49, 50 | ~460 行 | 1.5d | `bazel test //... --config=linux` + `test_geometry_oracle_parity.py` | ✅ 已合入 |
-| **[PR-53](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-53)** | M15 | `2,211` 行单体 `cli/__init__.py` 拆分为 11 个 `< 350` 行领域子模块与共享 `--json` 信封 | PR-44, 48 | ~550 行 | 1.5d | `tests/test_cli.py` + `test_recon_invert_cli.py` + `test_refine_cli_wire.py` | ✅ 已合入 |
-| **[PR-54](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-54)** | M15 | `wire_guard.py` 扩围逐通道 `PixelType`/`StyleProfile`/4 项 JSON Schema，`RFC 0060–0062` 治理归位 | PR-49 | ~480 行 | 1.5d | `tools/wire_guard.py --check` + `tests/test_wire_schemas.py` | ✅ 已合入 |
-| **[PR-55](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-55)** | M16 | `data-inspector` 标准 JSON 解析、安全线程 `join`、真实 3D/EXR 视口与低拷 IPC | PR-52 | ~620 行 | 2.0d | `tools/data-inspector/native` Bazel 测试 + `test-bundle-loading.js` | ✅ 已合入 |
-| **[PR-56](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-56)** | M16 | 消除 `composite`/`refine` 金字塔与指标重复轮子，修正虚构 `fulgur-metrics` 弃用告警 | PR-46, 47 | ~350 行 | 1.0d | `pytest -W error::DeprecationWarning` 合成/融合/生成测试全绿 | ✅ 已合入 |
-| **[PR-57](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-57)** | M16 | `pytest` 快慢分层 (`< 30s`)、开启严格 `mypy`/`ruff` 门禁及 `.agents/skills/` 全景同步 | PR-52~56 | ~360 行 | 1.0d | `pytest -m 'not slow'` + 全量 `pytest`/`ruff`/`mypy`/`wire_guard`/`import_dag_guard` | ✅ 已合入 |
+| **[PR-52](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-52)** | M15 | `csrc/geometry` Quad/N-gon 扇形剖分修复、单次 `validate_mesh_geometry` FFI 与 GIL 释放 | PR-49, 50 | ~460 行 | 1.5d | `bazel test //... --config=linux` + `test_geometry_oracle_parity.py` | ⚠️ 部分合入 (`PR-68` 收口) |
+| **[PR-53](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-53)** | M15 | `2,211` 行单体 `cli/__init__.py` 拆分为 11 个 `< 350` 行领域子模块与共享 `--json` 信封 | PR-44, 48 | ~550 行 | 1.5d | `tests/test_cli.py` + `test_recon_invert_cli.py` + `test_refine_cli_wire.py` | ⚠️ 部分合入 (`PR-69` 收口) |
+| **[PR-54](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-54)** | M15 | `wire_guard.py` 扩围逐通道 `PixelType`/`StyleProfile`/4 项 JSON Schema，`RFC 0060–0062` 治理归位 | PR-49 | ~480 行 | 1.5d | `tools/wire_guard.py --check` + `tests/test_wire_schemas.py` | ⚠️ 部分合入 (`PR-58,59` 收口) |
+| **[PR-55](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-55)** | M16 | `data-inspector` 标准 JSON 解析、安全线程 `join`、真实 3D/EXR 视口与低拷 IPC | PR-52 | ~620 行 | 2.0d | `tools/data-inspector/native` Bazel 测试 + `test-bundle-loading.js` | ❌ 未实施 (移交 `M18 PR-64~65`) |
+| **[PR-56](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-56)** | M16 | 消除 `composite`/`refine` 金字塔与指标重复轮子，修正虚构 `fulgur-metrics` 弃用告警 | PR-46, 47 | ~350 行 | 1.0d | `pytest -W error::DeprecationWarning` 合成/融合/生成测试全绿 | ⚠️ 部分合入 (`PR-61,71` 收口) |
+| **[PR-57](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md#pr-57)** | M16 | `pytest` 快慢分层 (`< 30s`)、开启严格 `mypy`/`ruff` 门禁及 `.agents/skills/` 全景同步 | PR-52~56 | ~360 行 | 1.0d | `pytest -m 'not slow'` + 全量 `pytest`/`ruff`/`mypy`/`wire_guard`/`import_dag_guard` | ⚠️ 部分合入 (`PR-72,73` 收口) |
+
+### 4.5 Horizon 5：质量治理、架构收口与 `RFC-0063` 基准落地（M17–M20，共 16 PRs，详见 [PLAN-M17-M20](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)）
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M17-M20](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-58](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-58)** | M17 | 消解生态 `RFC 0061–0063` 三重编号碰撞，补齐 `GOVERNANCE.md` 必填表与 `RFC-0063 §5/§6` 阈值/符号纠偏 | main | ~260 行 | 1.0d | `tests/test_profiles_doc_sync.py` + 相对路径校验 | 📋 已规划 |
+| **[PR-59](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-59)** | M17 | `wire_guard.py` 严苛化：`WorldNormal=HALF` 锁死、启用 `_RE_PIXEL_TYPE`、`@aether//style` 解析与 `bundle` Schema | PR-58 | ~320 行 | 1.5d | `tools/wire_guard.py --check` + `tests/test_wire_schemas.py` | 📋 已规划 |
+| **[PR-60](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-60)** | M17 | 清除 `cli/_recon` & `_refine` 伪帧回退、`confidence=0.9` 旁路、`refine/pipeline` 与 `fusion` 死代码 | main | ~360 行 | 1.5d | `tests/test_recon_invert_cli.py` + `tests/test_refine_cli_wire.py` | 📋 已规划 |
+| **[PR-61](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-61)** | M17 | 修复 `delight` `uint8` 死分支与真实 $\Delta E_{00}$、`stages/recon` 实传相机、对称 TV 散度梯度与闭环骨架硬化 | main | ~420 行 | 2.0d | `tests/test_recon.py` + `test_recon_multiview.py` + `test_recon_loop_optimizer.py` | 📋 已规划 |
+| **[PR-62](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-62)** | M18 | 修复 `#47` 删除 `mesh_checks.cc` 造成的 `scripts/build_native.py` 与 Colab `_c_geometry` 编不过断裂 | PR-59~61 | ~280 行 | 1.5d | `csrc/geometry` Bazel + `scripts/build_native.py --check` + `test_geometry_oracle_parity.py` | 📋 已规划 |
+| **[PR-63](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-63)** | M18 | `import_dag_guard.py` 封堵 `importlib` 动态导入并消除 `vg_bridge`/`closed_loop_runner` 隐蔽环路 | PR-59~61 | ~340 行 | 1.5d | `tools/import_dag_guard.py --check` + `tests/test_architecture_dag.py` | 📋 已规划 |
+| **[PR-64](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-64)** | M18 | `data-inspector` Native：修复 `std::cin.rdbuf(nullptr)` UB、私服 Bazel、标准 JSON 与真 EXR/Mesh 渲染（`PR-55` 收口） | PR-59~61 | ~560 行 | 2.5d | `cd tools/data-inspector/native && bazel test //... --config=linux` | 📋 已规划 |
+| **[PR-65](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-65)** | M18 | `data-inspector` Electron：修复 `SourceEntry` 崩溃、POSIX SHM 零拷贝消费与 `currentView` AOV 联动 | PR-64 | ~420 行 | 2.0d | `node tools/data-inspector/tests/test-bundle-loading.js` | 📋 已规划 |
+| **[PR-66](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-66)** | M19 | 遵循生态 `RFC 0062` 重构 `assets/assets_manifest.json`、修复 Colab `relative_to` 必崩并接通 GSO-10 / VBench-16 / HF | PR-58, 62 | ~540 行 | 2.0d | `tests/test_benchmark_assets.py` + `setup_colab.sh` 干跑检查 | 📋 已规划 |
+| **[PR-67](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-67)** | M19 | `metrics/temporal` 对齐 L1 $E_{\text{warp}}$ & FVD 视频特征桥；`metrics/roundtrip` 补齐 `f_score_5mm` / `watertight_pct` | PR-62, 63 | ~360 行 | 1.5d | `tests/test_temporal.py` + `tests/test_roundtrip_metrics.py` | 📋 已规划 |
+| **[PR-68](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-68)** | M19 | `model_evaluator` 单 SSOT + Fail-Closed + `rglob`；`bench_runner` 修 `humanoid_53` 与伪深度法线比较 | PR-62, 63 | ~440 行 | 2.0d | `tests/test_model_evaluator.py` + `tests/test_bench_runner.py` + `test_bench_full_suite.py` | 📋 已规划 |
+| **[PR-69](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-69)** | M19 | CLI 收口：`bench run` 门禁失败 exit 40、`fgpp validate` 真读 EXR、`rsi gate-promote` 多轴与 `main_data_gen --json` | PR-62, 63 | ~360 行 | 1.5d | `tests/test_cli.py` + `tests/test_fgpp.py` | 📋 已规划 |
+| **[PR-70](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-70)** | M19 | `WanAdapter` 接入 48 帧物理锚点、保留 `float64` Log-Depth 精度与 Tier-2 `Var(X) > 1e-4` 运行时退化门禁 | PR-62, 63 | ~320 行 | 1.5d | `tests/test_wan_adapter.py` + `tests/test_scheduler.py` | 📋 已规划 |
+| **[PR-71](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-71)** | M20 | `colab_runner` `sys.path`/`e3` 修复、`prepare_datasets` 去私路、`VideoWriter` RAII 与 `composite/blend` 最终去重 | PR-65~70 | ~380 行 | 1.5d | `tests/test_dataset_and_viewer.py` + `test_composite_and_pipeline.py` (`-W error::DeprecationWarning`) | 📋 已规划 |
+| **[PR-72](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-72)** | M20 | 清零 37 文件 88 处 `warn_return_any` 错误，修复 `run_cpu_verification` 模块冲突并提速 fast pytest 至 `<= 30s` | PR-65~70 | ~450 行 | 2.0d | `mypy python/synapse tests/ scripts/ tools/` + `pytest -m 'not slow' <= 30s` | 📋 已规划 |
+| **[PR-73](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md#pr-73)** | M20 | 同步 `.agents/skills/`（清理虚构异常与过时描述）及全文档状态，执行 Horizon-5 全量回归封板 | PR-71, 72 | ~220 行 | 1.0d | 全套 `pytest` / `ruff` / `mypy` / `wire_guard` / `import_dag_guard` / Bazel / Electron 全绿 | 📋 已规划 |
 
 ---
 

@@ -4,8 +4,8 @@
 - **文档状态**: `Proposed (v1.0)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联详细设计 (Layer B)**: [DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)
-- **关联架构审计**: [audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)
-- **关联实施计划 (Layer C)**: [plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) (`PR-44 ~ PR-57`)
+- **关联架构审计**: [audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md) · [audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
+- **关联实施计划 (Layer C)**: [plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) (`PR-44 ~ PR-57`) · [plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) (`PR-58 ~ PR-73`)
 - **跨仓 SSOT 契约**: `@aether//fgpp` (`fgpp.v1.0`), `@aether//style`, `synapse.bench` (30 黄金场景 / 16 维质量门禁)
 
 ---
@@ -156,3 +156,6 @@ flowchart LR
 1. **`PR-44 / PR-45`（M13）**：清除 `bundle_worker.py` 与 `stages/` 中 9 处假成功与 `np.random` 回退；`LocalRefinementPipeline` 真实接线子精修器并恢复 900s 熔断抛出。
 2. **`PR-48 / PR-50`（M14）**：引入 `@pytest.mark.slow` 分层，默认单测缩短至 $\le 20\text{s}$；修复 `csrc/geometry` Quad 第二三角形漏检，补齐 `.bazelignore`。
 3. **`PR-54 / PR-57`（M15–M16）**：在 `synapse.bench` 中扩充 10 个来自 Google Scanned Objects 的工业扫描模型真值，自动导出可直接与 TRELLIS、Hunyuan3D 对齐的 16 维雷达图与工业评测报告。
+
+> [!IMPORTANT]
+> **Post-Review 治理修正与 Horizon 5 真实落地计划 (`2026-11-14`, `[gemini4]`)**：经对照当前代码库（`b98c6e5`）实测审计（详见 [AUDIT-RFC0063-AND-CODEBASE-2026-11.md](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)），上述 H4 路线存在编号错位（如 `pytest -m 'not slow'` 实际仍需 `143.6s–151.6s`、GSO 10 资产与 HF/L-Asset 下载器尚缺、`setup_colab.sh` 在 `relative_to(REPO_ROOT)` 必崩、`§5` 误将 `TRACK_A_ASSET` 写为 Track-B 且 `temporal_warp_error` 仍算 RMSE 非 L1）。**本 RFC 的全部未闭环条款及规范对齐修复已正式移交并锁死在 Horizon 5（`M17–M20`, `PR-58 ~ PR-73`）**：详见 [PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)。
