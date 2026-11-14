@@ -433,15 +433,15 @@ def _border_ring_mask(
     Returns pixels that are within ``ring`` pixels of the foreground
     boundary but outside the foreground interior.
     """
-    from synapse.composite.blend import (
-        _binary_dilation,
-        _binary_erosion,
-        _circular_structuring_element,
+    from synapse.render_core.morphology import (
+        binary_dilation,
+        binary_erosion,
+        circular_structuring_element,
     )
 
-    se = _circular_structuring_element(ring)
-    dilated = _binary_dilation(fg_mask, se)
-    eroded = _binary_erosion(fg_mask, se)
+    se = circular_structuring_element(ring)
+    dilated = binary_dilation(fg_mask, se)
+    eroded = binary_erosion(fg_mask, se)
     return dilated & (~eroded)
 
 

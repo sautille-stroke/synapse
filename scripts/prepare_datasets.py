@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
@@ -313,25 +314,56 @@ def _summarize_sequence(seq_dir: Path) -> dict[str, Any]:
     }
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+DEFAULT_OUTPUT_ROOT = Path(
+    os.environ.get(
+        "SYNAPSE_DATASET_ROOT",
+        os.environ.get(
+            "DERVGEN_DATASETS",
+            "/root/work/datasets/synapse"
+            if Path("/root/work/datasets/synapse").exists()
+            else str(REPO_ROOT / "data" / "golden_datasets"),
+        ),
+    )
+)
+DEFAULT_FULGUR_REPO = Path(
+    os.environ.get(
+        "FULGUR_REPO",
+        "/root/work/dervgen/fulgur"
+        if Path("/root/work/dervgen/fulgur").exists()
+        else str(REPO_ROOT.parent / "fulgur"),
+    )
+)
+DEFAULT_CAELUM_REPO = Path(
+    os.environ.get(
+        "CAELUM_REPO",
+        "/root/work/dervgen/caelum-core"
+        if Path("/root/work/dervgen/caelum-core").exists()
+        else str(REPO_ROOT.parent / "caelum-core"),
+    )
+)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("/root/work/datasets/synapse"),
+        default=DEFAULT_OUTPUT_ROOT,
         help="Root directory for exported Golden EXR sequences.",
     )
     parser.add_argument(
         "--fulgur-repo",
         type=Path,
-        default=Path("/root/work/dervgen/fulgur"),
-        help="Path to fulgur repository on ubuntu24.",
+        default=DEFAULT_FULGUR_REPO,
+        help="Path to fulgur repository.",
     )
     parser.add_argument(
         "--caelum-repo",
         type=Path,
-        default=Path("/root/work/dervgen/caelum-core"),
-        help="Path to caelum-core repository on ubuntu24.",
+        default=DEFAULT_CAELUM_REPO,
+        help="Path to caelum-core repository.",
     )
     parser.add_argument(
         "--manifest-out",
@@ -342,12 +374,17 @@ def main() -> int:
     parser.add_argument(
         "--bundle-out",
         type=Path,
-        default=Path("/root/work/datasets/synapse/synapse_colab_bundle_v1.tar.gz"),
-        help="Path to portable Colab tar.gz archive.",
+        default=None,
+        help="Path to portable Colab tar.gz archive (defaults to {output_root}/synapse_colab_bundle_v1.tar.gz).",
     )
     args = parser.parse_args()
 
     out_root: Path = args.output_root
+    bundle_out_path = (
+        args.bundle_out
+        if args.bundle_out is not None
+        else (out_root / "synapse_colab_bundle_v1.tar.gz")
+    )
     dir_102_17f = out_root / "track_b_fulgur" / "course_102_pbr_17f"
     dir_102_97f = out_root / "track_b_fulgur" / "course_102_pbr_97f"
     dir_caelum_17f = out_root / "track_a_caelum" / "cornell_spheres_17f"
@@ -376,14 +413,14 @@ def main() -> int:
     args.manifest_out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"[4/4] Wrote dataset manifest -> {args.manifest_out}")
 
-    args.bundle_out.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(args.bundle_out, "w:gz") as tar:
+    bundle_out_path.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(bundle_out_path, "w:gz") as tar:
         tar.add(dir_102_17f, arcname="track_b_fulgur/course_102_pbr_17f")
         tar.add(dir_caelum_17f, arcname="track_a_caelum/cornell_spheres_17f")
         tar.add(args.manifest_out, arcname="golden_dataset_manifest.json")
 
-    bundle_mb = args.bundle_out.stat().st_size / (1024 * 1024)
-    print(f"Packaged Colab bundle -> {args.bundle_out} ({bundle_mb:.2f} MB)")
+    bundle_mb = bundle_out_path.stat().st_size / (1024 * 1024)
+    print(f"Packaged Colab bundle -> {bundle_out_path} ({bundle_mb:.2f} MB)")
     return 0
 
 

@@ -14,12 +14,19 @@ import argparse
 import datetime
 import json
 import os
+import sys
 import tarfile
 import time
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from synapse.fgpp import FGPPSequence, import_fgpp
+
+EXPERIMENTS: list[str] = ["e1", "e2", "e3", "e4"]
 
 
 def detect_gpu_profile() -> dict[str, Any]:
@@ -205,6 +212,7 @@ def run_colab_suite(
     from scripts.run_cpu_verification import (
         _verify_e1_conditioning_ablation,
         _verify_e2_style_and_composite,
+        _verify_e3_long_horizon_scheduler,
         _verify_e4_feature_store_and_multi_lora,
     )
 
@@ -227,6 +235,13 @@ def run_colab_suite(
     assert isinstance(seq_b, FGPPSequence)
     assert isinstance(seq_a, FGPPSequence)
 
+    dir_b_97f = dataset_dir / "track_b_fulgur" / "course_102_pbr_97f"
+    if dir_b_97f.exists():
+        seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
+    else:
+        seq_b_97f = seq_b
+    assert isinstance(seq_b_97f, FGPPSequence)
+
     for exp in experiments:
         if exp in state["completed"]:
             print(f"[SKIP] {exp} already checkpointed in {state_path}")
@@ -237,6 +252,8 @@ def run_colab_suite(
             res = _verify_e1_conditioning_ablation(seq_b, seq_a)
         elif exp == "e2":
             res = _verify_e2_style_and_composite(seq_a)
+        elif exp == "e3":
+            res = _verify_e3_long_horizon_scheduler(seq_b_97f)
         elif exp == "e4":
             res = _verify_e4_feature_store_and_multi_lora(seq_a)
         else:
@@ -301,12 +318,21 @@ def main() -> int:
         default="all",
         help="Which experiment stage(s) to execute.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "mock", "real-gpu"],
+        default="auto",
+        help="Execution mode: auto (detect GPU), mock (smoke CPU/MockVideoAdapter), real-gpu (require CUDA).",
+    )
     args = parser.parse_args()
 
     profile = detect_gpu_profile()
     if args.check_env:
         print(json.dumps(profile, indent=2))
         return 0
+
+    if args.mode == "real-gpu" and not profile.get("cuda_available", False):
+        raise RuntimeError("CUDA GPU required for real-gpu mode, but none was detected.")
 
     if args.bundle.is_file():
         extract_colab_bundle(args.bundle, args.dataset_dir)
@@ -327,7 +353,7 @@ def main() -> int:
         init_job_workspace(job_dir, args.user, args.job_id, today)
 
     t_start = time.time()
-    exps = ["e1", "e2", "e4"] if args.exp == "all" else [args.exp]
+    exps = EXPERIMENTS if args.exp == "all" else [args.exp]
     try:
         state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps)
         t_duration = time.time() - t_start

@@ -153,6 +153,38 @@ def f_score_5mm(
     return f_score_1mm(points_a, points_b, threshold_mm=threshold_mm)
 
 
+def _is_mesh_watertight(faces: np.ndarray) -> bool:
+    """Check whether a mesh face array represents a closed 2-manifold orientation-consistent mesh."""
+    f = np.asarray(faces, dtype=np.int64)
+    if len(f) == 0:
+        return False
+
+    directed_edges: dict[tuple[int, int], int] = {}
+    undirected_edges: dict[tuple[int, int], int] = {}
+
+    for poly in f:
+        n = len(poly)
+        for i in range(n):
+            u, w = int(poly[i]), int(poly[(i + 1) % n])
+            directed_edges[(u, w)] = directed_edges.get((u, w), 0) + 1
+            undirected_key = (min(u, w), max(u, w))
+            undirected_edges[undirected_key] = undirected_edges.get(undirected_key, 0) + 1
+
+    # Every edge must be shared by exactly 2 faces
+    for count in undirected_edges.values():
+        if count != 2:
+            return False
+
+    # Consistent orientation check: opposite directed edges
+    for (u, w), count in directed_edges.items():
+        if count != 1:
+            return False
+        if directed_edges.get((w, u), 0) != 1:
+            return False
+
+    return True
+
+
 def watertight_pct(
     meshes: list[Any] | tuple[Any, ...],
 ) -> float:
@@ -172,22 +204,18 @@ def watertight_pct(
     if not meshes:
         return 0.0
 
-    from synapse.recon.geometry import check_watertight
-
     watertight_count = 0
     for m in meshes:
         if hasattr(m, "is_watertight") and isinstance(m.is_watertight, bool):
             if m.is_watertight:
                 watertight_count += 1
         elif isinstance(m, (tuple, list)) and len(m) >= 2:
-            v = np.asarray(m[0], dtype=np.float64)
             f = np.asarray(m[1], dtype=np.int64)
-            if check_watertight(v, f):
+            if _is_mesh_watertight(f):
                 watertight_count += 1
-        elif hasattr(m, "vertices") and hasattr(m, "faces"):
-            v = np.asarray(m.vertices, dtype=np.float64)
+        elif hasattr(m, "faces"):
             f = np.asarray(m.faces, dtype=np.int64)
-            if check_watertight(v, f):
+            if _is_mesh_watertight(f):
                 watertight_count += 1
 
     return float((watertight_count / len(meshes)) * 100.0)

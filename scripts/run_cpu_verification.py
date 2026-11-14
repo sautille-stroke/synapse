@@ -23,10 +23,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DATASET_ROOT = Path(
+    os.environ.get(
+        "SYNAPSE_DATASET_ROOT",
+        os.environ.get(
+            "DERVGEN_DATASETS",
+            "/root/work/datasets/synapse"
+            if Path("/root/work/datasets/synapse").exists()
+            else str(REPO_ROOT / "data" / "golden_datasets"),
+        ),
+    )
+)
 
 import numpy as np
 from synapse.adapters import (
@@ -353,7 +367,7 @@ def main() -> int:
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=Path("/root/work/datasets/synapse"),
+        default=DEFAULT_DATASET_ROOT,
         help="Root directory of exported Golden FGPP datasets.",
     )
     parser.add_argument(
