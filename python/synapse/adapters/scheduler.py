@@ -464,10 +464,13 @@ class ConditionScheduler:
                         reanchor_by_frame[frame_idx],
                     )
 
+            has_discontinuity = any(
+                not r.is_physical_anchor for r in window_reanchors
+            )
             scheduled.append(ScheduledWindow(
                 window=w,
                 window_index=idx,
-                needs_reanchor=len(window_reanchors) > 0,
+                needs_reanchor=has_discontinuity,
                 reanchor_requests=window_reanchors,
             ))
 

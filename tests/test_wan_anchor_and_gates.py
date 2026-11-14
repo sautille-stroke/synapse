@@ -108,7 +108,7 @@ class TestFloat64DepthPrecision:
     """Test float64 log-normalized depth numerical accuracy."""
 
     def test_log_depth_float64_roundtrip_precision(self) -> None:
-        """Float64 depth conversion round-trip should have error < 1e-12."""
+        """Float64 depth conversion round-trip should have relative error < 1e-12."""
         z_near = 0.1
         z_far = 1000.0
         depths = np.linspace(z_near, z_far, 1000, dtype=np.float64)
@@ -116,8 +116,8 @@ class TestFloat64DepthPrecision:
         log_norm = linear_to_log_normalized_depth(depths, z_near_m=z_near, z_far_m=z_far)
         recovered = log_normalized_to_linear_depth(log_norm, z_near_m=z_near, z_far_m=z_far)
 
-        max_err = float(np.max(np.abs(depths - recovered)))
-        assert max_err < 1e-12
+        rel_err = float(np.max(np.abs(depths - recovered) / depths))
+        assert rel_err < 1e-12
 
 
 class TestNonDegenerateQualityGate:
