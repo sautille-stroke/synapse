@@ -9,7 +9,6 @@ from synapse.cli.common import (
     Path,
     _run_with_json_mode,
     argparse,
-    json,
     sys,
 )
 

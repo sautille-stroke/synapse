@@ -18,7 +18,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-
 from synapse.cli import main_bench, main_synapse
 from synapse.cli._generate import main_data_gen
 from synapse.errors import ExitCode
