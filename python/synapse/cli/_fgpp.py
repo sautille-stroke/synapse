@@ -49,6 +49,15 @@ def _validate_exr_channels(exr_path: Path) -> None:
 
         for name, expected_pt, _ in FGPP_CHANNEL_SPECS:
             ch = channels[name]
+            if expected_pt == PixelType.UINT32:
+                if ch.type.v not in (int(PixelType.UINT32), int(PixelType.FLOAT)):
+                    raise ContractValidationError(
+                        f"EXR {exr_path.name} channel '{name}' pixel type mismatch: "
+                        f"expected UINT32/FLOAT ({int(expected_pt)}), got {ch.type.v}",
+                        agent_fix_hint=f"Ensure channel '{name}' has storage type UINT32 or 32-bit FLOAT.",
+                    )
+                continue
+
             if ch.type.v != int(expected_pt):
                 raise ContractValidationError(
                     f"EXR {exr_path.name} channel '{name}' pixel type mismatch: "
