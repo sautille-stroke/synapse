@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapse.dervgen.dev/schemas/lora.v1.0.schema.json",
+  "title": "Synapse LoRA Manifest v1.0",
+  "description": "LoRA adapter manifest schema. Mirrors python/synapse/adapters/lora/manifest.py::LoRAManifest. Enforces safetensors-only format and SHA256 checksums.",
+  "type": "object",
+  "required": ["schema_version", "name", "category", "rank", "alpha", "adapter_path", "adapter_sha256", "target_modules"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "synapse.lora.v1.0",
+      "description": "Fixed schema version."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable adapter name."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["style", "identity", "control", "whitebox", "motion"],
+      "description": "LoRA category controlling allowed target modules."
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "LoRA rank (typically 8-64)."
+    },
+    "alpha": {
+      "type": "number",
+      "description": "LoRA scaling factor."
+    },
+    "adapter_path": {
+      "type": "string",
+      "pattern": "\\.safetensors$",
+      "description": "Path to .safetensors file. Pickle-based formats (.bin, .pt) are rejected for security."
+    },
+    "adapter_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Hex-encoded SHA256 checksum of the adapter file."
+    },
+    "target_modules": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Layer-name patterns to patch (validated per category whitelist)."
+    },
+    "training_metadata": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "default": null,
+      "description": "Optional free-form training metadata."
+    }
+  }
+}

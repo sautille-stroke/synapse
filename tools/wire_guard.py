@@ -5,6 +5,11 @@ Validates that the Python ``synapse.fgpp.schema`` constants are
 consistent with the C++ header
 ``aether/fgpp/include/aether/fgpp/fgpp_types.h``.
 
+Extended checks:
+  - Per-channel PixelType validation (FGPP contract §34 B/px).
+  - StyleProfile v2.0.0 Pydantic model field alignment.
+  - JSON Schema alignment for JobBundle, LoRA, Inspection, RefineSession.
+
 If the C++ header is not available (no ``aether`` checkout), the tool
 falls back to internal consistency checks on the Python schema itself.
 
@@ -17,6 +22,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -89,6 +95,262 @@ def _check_internal() -> list[str]:
             f"DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES is "
             f"{DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES}, expected 48"
         )
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# PixelType per-channel validation (TASK 1)
+# ---------------------------------------------------------------------------
+
+# Normative PixelType contract — mirrors aether::fgpp::PixelType expectations.
+# Cryptomatte.ID: UINT32 (never interpolated/filtered)
+# CameraLinearDepth.Z: FLOAT (32-bit)
+# WorldNormal.{X,Y,Z}: HALF or FLOAT
+# BaseColor.{R,G,B}: HALF
+# Roughness/Metallic (RoughnessMetallic.{R,G}): HALF
+# DirectRadiance.{R,G,B}: HALF
+# MotionVector.{X,Y}: HALF
+
+_EXPECTED_PIXEL_TYPES: dict[str, set[PixelType]] = {
+    "Cryptomatte.ID": {PixelType.UINT32},
+    "CameraLinearDepth.Z": {PixelType.FLOAT},
+    "WorldNormal.X": {PixelType.HALF, PixelType.FLOAT},
+    "WorldNormal.Y": {PixelType.HALF, PixelType.FLOAT},
+    "WorldNormal.Z": {PixelType.HALF, PixelType.FLOAT},
+    "BaseColor.R": {PixelType.HALF},
+    "BaseColor.G": {PixelType.HALF},
+    "BaseColor.B": {PixelType.HALF},
+    "RoughnessMetallic.R": {PixelType.HALF},
+    "RoughnessMetallic.G": {PixelType.HALF},
+    "DirectRadiance.R": {PixelType.HALF},
+    "DirectRadiance.G": {PixelType.HALF},
+    "DirectRadiance.B": {PixelType.HALF},
+    "MotionVector.X": {PixelType.HALF},
+    "MotionVector.Y": {PixelType.HALF},
+}
+
+
+def _check_pixel_types() -> list[str]:
+    """Validate per-channel PixelType against the normative contract."""
+    errors: list[str] = []
+    spec_map: dict[str, PixelType] = {
+        name: ptype for name, ptype, _ in FGPP_CHANNEL_SPECS
+    }
+
+    for channel_name, allowed_types in _EXPECTED_PIXEL_TYPES.items():
+        actual = spec_map.get(channel_name)
+        if actual is None:
+            errors.append(
+                f"PixelType check: channel '{channel_name}' not found in FGPP_CHANNEL_SPECS"
+            )
+        elif actual not in allowed_types:
+            allowed_str = " | ".join(t.name for t in sorted(allowed_types, key=lambda t: t.value))
+            errors.append(
+                f"PixelType mismatch for '{channel_name}': "
+                f"expected {allowed_str}, got {actual.name}"
+            )
+
+    # Ensure every channel in FGPP_CHANNEL_SPECS is covered by the contract
+    for name, _, _ in FGPP_CHANNEL_SPECS:
+        if name not in _EXPECTED_PIXEL_TYPES:
+            errors.append(
+                f"PixelType check: channel '{name}' has no normative PixelType contract entry"
+            )
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# StyleProfile v2.0.0 alignment check (TASK 2)
+# ---------------------------------------------------------------------------
+
+# Expected v2.0.0 fields for StyleDescriptor (aligned with @aether//style).
+_STYLE_PROFILE_V2_EXPECTED_FIELDS: dict[str, str] = {
+    "working_colorspace": "str",
+    "color_temp_kelvin": "float",
+    "tint": "float",
+    "exposure_ev": "float",
+    "contrast": "float",
+    "saturation": "float",
+    "key_light_dir_world": "list[float]",
+    "key_light_rgb": "list[float]",
+    "ambient_ratio": "float",
+    "grain_sigma": "float",
+    "vignette_strength": "float",
+    "tone_curve_lut_1d": "list[float] | None",
+}
+
+
+def _check_style_profile() -> list[str]:
+    """Validate StyleDescriptor fields match v2.0.0 contract."""
+    errors: list[str] = []
+
+    try:
+        from synapse.style.descriptor import StyleDescriptor
+    except ImportError as e:
+        errors.append(f"Cannot import StyleDescriptor: {e}")
+        return errors
+
+    model_fields = set(StyleDescriptor.model_fields.keys())
+    expected_fields = set(_STYLE_PROFILE_V2_EXPECTED_FIELDS.keys())
+
+    missing = expected_fields - model_fields
+    extra = model_fields - expected_fields
+
+    if missing:
+        errors.append(
+            f"StyleProfile v2.0.0: missing fields in Python model: {sorted(missing)}"
+        )
+    if extra:
+        # Extra fields are a warning, not an error — we only fail on missing
+        pass
+
+    # Validate default colorspace
+    try:
+        inst = StyleDescriptor()
+        if inst.working_colorspace != "ACEScg":
+            errors.append(
+                f"StyleProfile v2.0.0: default working_colorspace is "
+                f"'{inst.working_colorspace}', expected 'ACEScg'"
+            )
+    except Exception as e:
+        errors.append(f"StyleProfile v2.0.0: cannot instantiate default: {e}")
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# JSON Schema alignment checks (TASK 3)
+# ---------------------------------------------------------------------------
+
+_SCHEMA_DIR = _REPO_ROOT / "schemas"
+
+_SCHEMA_FILES: dict[str, dict[str, str]] = {
+    "job_bundle.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "synapse.job_bundle.v1.0",
+    },
+    "lora.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "synapse.lora.v1.0",
+    },
+    "inspection.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "2.0.0",
+    },
+    "refine_session.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "synapse.refine_session.v1.0",
+    },
+}
+
+# Map schema file to (Python module path, class name, expected required fields)
+_SCHEMA_PYTHON_ALIGNMENT: dict[str, tuple[str, str, list[str]]] = {
+    "job_bundle.v1.0.schema.json": (
+        "synapse.pipeline.bundle_worker",
+        "BundleManifest",
+        ["schema_version", "job_id", "stage"],
+    ),
+    "lora.v1.0.schema.json": (
+        "synapse.adapters.lora.manifest",
+        "LoRAManifest",
+        ["schema_version", "name", "category", "rank", "alpha",
+         "adapter_path", "adapter_sha256", "target_modules"],
+    ),
+    "inspection.v1.0.schema.json": (
+        "synapse.inspect.schemas",
+        "InspectionReport",
+        ["asset_id", "asset_name", "inspection_timestamp",
+         "overall_quality_score"],
+    ),
+    "refine_session.v1.0.schema.json": (
+        "synapse.refine.pipeline",
+        "RefineSessionPayload",
+        ["schema_version", "session_id"],
+    ),
+}
+
+
+def _check_json_schemas() -> list[str]:
+    """Validate JSON schema files exist, are valid JSON, and align with Python models."""
+    errors: list[str] = []
+
+    if not _SCHEMA_DIR.is_dir():
+        errors.append(f"Schema directory not found: {_SCHEMA_DIR}")
+        return errors
+
+    for filename, meta in _SCHEMA_FILES.items():
+        schema_path = _SCHEMA_DIR / filename
+        if not schema_path.is_file():
+            errors.append(f"Schema file missing: {schema_path}")
+            continue
+
+        # Parse JSON
+        try:
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            errors.append(f"Schema file '{filename}' is not valid JSON: {e}")
+            continue
+
+        # Check it looks like a JSON Schema
+        if "$schema" not in schema:
+            errors.append(f"Schema '{filename}' missing '$schema' meta-field")
+
+        if schema.get("type") != "object":
+            errors.append(f"Schema '{filename}' top-level type is not 'object'")
+
+        # Validate version constant
+        props = schema.get("properties", {})
+        ver_field = meta["expected_version_field"]
+        if ver_field in props:
+            ver_prop = props[ver_field]
+            const_val = ver_prop.get("const")
+            if const_val != meta["expected_version_value"]:
+                errors.append(
+                    f"Schema '{filename}': {ver_field}.const = "
+                    f"'{const_val}', expected '{meta['expected_version_value']}'"
+                )
+
+        # Validate required fields align with Python model
+        if filename in _SCHEMA_PYTHON_ALIGNMENT:
+            _, _, expected_required = _SCHEMA_PYTHON_ALIGNMENT[filename]
+            schema_required = set(schema.get("required", []))
+            for field in expected_required:
+                if field not in schema_required:
+                    errors.append(
+                        f"Schema '{filename}': required field '{field}' "
+                        f"missing from JSON Schema 'required' array"
+                    )
+
+        # Validate schema properties cover Python model fields
+        if filename in _SCHEMA_PYTHON_ALIGNMENT:
+            mod_path, cls_name, _ = _SCHEMA_PYTHON_ALIGNMENT[filename]
+            try:
+                import importlib
+                mod = importlib.import_module(mod_path)
+                cls = getattr(mod, cls_name)
+
+                # Get fields from Pydantic model or dataclass
+                if hasattr(cls, "model_fields"):
+                    # Pydantic v2
+                    py_fields = set(cls.model_fields.keys())
+                elif hasattr(cls, "__dataclass_fields__"):
+                    py_fields = set(cls.__dataclass_fields__.keys())
+                else:
+                    py_fields = set()
+
+                schema_props = set(props.keys())
+                missing_in_schema = py_fields - schema_props
+                if missing_in_schema:
+                    errors.append(
+                        f"Schema '{filename}': Python {cls_name} fields "
+                        f"missing from schema properties: {sorted(missing_in_schema)}"
+                    )
+            except (ImportError, AttributeError) as e:
+                errors.append(
+                    f"Schema '{filename}': cannot import {mod_path}.{cls_name}: {e}"
+                )
 
     return errors
 
@@ -210,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
 
     all_errors: list[str] = []
 
-    # Always run internal consistency
+    # --- Section 1: Internal consistency ---
     print("=== FGPP internal consistency check ===")
     internal_errors = _check_internal()
     all_errors.extend(internal_errors)
@@ -224,7 +486,40 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Bytes/pixel: {FGPP_BYTES_PER_PIXEL}")
         print(f"  Schema version: {FGPP_SCHEMA_VERSION}")
 
-    # Try to find and compare C++ header
+    # --- Section 2: PixelType per-channel validation ---
+    print()
+    print("=== PixelType per-channel validation ===")
+    pt_errors = _check_pixel_types()
+    all_errors.extend(pt_errors)
+    if pt_errors:
+        for e in pt_errors:
+            print(f"  FAIL: {e}")
+    else:
+        print("  OK: All 15 channels have correct PixelType")
+
+    # --- Section 3: StyleProfile v2.0.0 alignment ---
+    print()
+    print("=== StyleProfile v2.0.0 alignment check ===")
+    style_errors = _check_style_profile()
+    all_errors.extend(style_errors)
+    if style_errors:
+        for e in style_errors:
+            print(f"  FAIL: {e}")
+    else:
+        print("  OK: StyleDescriptor matches v2.0.0 contract")
+
+    # --- Section 4: JSON Schema alignment ---
+    print()
+    print("=== JSON Schema alignment check ===")
+    schema_errors = _check_json_schemas()
+    all_errors.extend(schema_errors)
+    if schema_errors:
+        for e in schema_errors:
+            print(f"  FAIL: {e}")
+    else:
+        print(f"  OK: All {len(_SCHEMA_FILES)} schemas validated")
+
+    # --- Section 5: Cross-language C++ header check ---
     header_path = args.aether_header
     if header_path is None:
         for probe in _DEFAULT_HEADER_PROBES:

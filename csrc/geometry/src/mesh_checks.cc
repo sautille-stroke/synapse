@@ -300,26 +300,36 @@ class UnionFind {
 }  // anonymous namespace
 
 // ===========================================================================
-// Public API implementations
+// Internal shared edge table builder
 // ===========================================================================
+namespace {
 
-// ---------------------------------------------------------------------------
-// checkManifold
-// ---------------------------------------------------------------------------
-bool checkManifold(std::span<const Vec3> vertices,
-                   std::span<const int64_t> faces,
-                   int verts_per_face) {
+/// Result of manifold analysis with reusable edge maps.
+struct ManifoldAnalysis {
+  bool is_manifold;
+  std::unordered_map<EdgeKey, int, EdgeKeyHash> edge_count;
+  std::unordered_map<HalfEdge, int, HalfEdgeHash> half_edge_count;
+};
+
+/// Perform full manifold check and return the edge maps for reuse.
+/// `checkWatertight` and `validateMeshGeometry` can reuse these maps
+/// instead of each rebuilding them from scratch.
+ManifoldAnalysis analyzeManifold(std::span<const Vec3> vertices,
+                                 std::span<const int64_t> faces,
+                                 int verts_per_face) {
+  ManifoldAnalysis result;
+  result.is_manifold = false;
+
   if (!hasValidVertices(vertices) ||
       !hasValidFaceBuffer(faces, verts_per_face) ||
       !faceIndicesInBounds(faces, static_cast<int64_t>(vertices.size()))) {
-    return false;
+    return result;
   }
 
   const int64_t nf = numFaces(faces, verts_per_face);
-  if (nf == 0) return false;
+  if (nf == 0) return result;
 
   // ------ Step 1: edge-count check & no duplicate vertices within a face ------
-  std::unordered_map<EdgeKey, int, EdgeKeyHash> edge_count;
   std::unordered_map<int64_t, std::vector<int64_t>> vertex_faces;
 
   for (int64_t f = 0; f < nf; ++f) {
@@ -330,15 +340,16 @@ bool checkManifold(std::span<const Vec3> vertices,
       // Reject duplicate / self-pinching vertices within the same polygon.
       for (int j = k + 1; j < verts_per_face; ++j) {
         if (v0 == faceVertex(faces, verts_per_face, f, j)) {
-          return false;
+          return result;
         }
       }
 
       EdgeKey ek(v0, v1);
-      auto& cnt = edge_count[ek];
+      auto& cnt = result.edge_count[ek];
       ++cnt;
-      if (cnt > 2) return false;  // Non-manifold edge (>2 incident faces).
+      if (cnt > 2) return result;  // Non-manifold edge (>2 incident faces).
 
+      result.half_edge_count[HalfEdge(v0, v1)]++;
       vertex_faces[v0].push_back(f);
     }
   }
@@ -392,10 +403,43 @@ bool checkManifold(std::span<const Vec3> vertices,
         }
       }
     }
-    if (visited.size() != inc_faces.size()) return false;
+    if (visited.size() != inc_faces.size()) return result;
+  }
+
+  result.is_manifold = true;
+  return result;
+}
+
+/// Check watertightness given pre-computed edge maps from manifold analysis.
+bool checkWatertightFromAnalysis(const ManifoldAnalysis& analysis) {
+  if (!analysis.is_manifold) return false;
+
+  for (const auto& [edge, count] : analysis.edge_count) {
+    if (count != 2) return false;
+  }
+
+  for (const auto& [he, count] : analysis.half_edge_count) {
+    if (count != 1) return false;
+    auto it = analysis.half_edge_count.find(HalfEdge(he.to, he.from));
+    if (it == analysis.half_edge_count.end() || it->second != 1) return false;
   }
 
   return true;
+}
+
+}  // anonymous namespace
+
+// ===========================================================================
+// Public API implementations
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// checkManifold
+// ---------------------------------------------------------------------------
+bool checkManifold(std::span<const Vec3> vertices,
+                   std::span<const int64_t> faces,
+                   int verts_per_face) {
+  return analyzeManifold(vertices, faces, verts_per_face).is_manifold;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,34 +448,8 @@ bool checkManifold(std::span<const Vec3> vertices,
 bool checkWatertight(std::span<const Vec3> vertices,
                      std::span<const int64_t> faces,
                      int verts_per_face) {
-  if (!checkManifold(vertices, faces, verts_per_face)) return false;
-
-  const int64_t nf = numFaces(faces, verts_per_face);
-
-  std::unordered_map<EdgeKey, int, EdgeKeyHash> edge_face_count;
-  std::unordered_map<HalfEdge, int, HalfEdgeHash> half_edge_count;
-
-  for (int64_t f = 0; f < nf; ++f) {
-    for (int k = 0; k < verts_per_face; ++k) {
-      const int64_t v0 = faceVertex(faces, verts_per_face, f, k);
-      const int64_t v1 = faceVertex(faces, verts_per_face, f,
-                                    (k + 1) % verts_per_face);
-      edge_face_count[EdgeKey(v0, v1)]++;
-      half_edge_count[HalfEdge(v0, v1)]++;
-    }
-  }
-
-  for (const auto& [edge, count] : edge_face_count) {
-    if (count != 2) return false;
-  }
-
-  for (const auto& [he, count] : half_edge_count) {
-    if (count != 1) return false;
-    auto it = half_edge_count.find(HalfEdge(he.to, he.from));
-    if (it == half_edge_count.end() || it->second != 1) return false;
-  }
-
-  return true;
+  auto analysis = analyzeManifold(vertices, faces, verts_per_face);
+  return checkWatertightFromAnalysis(analysis);
 }
 
 // ---------------------------------------------------------------------------
@@ -452,40 +470,69 @@ std::vector<int64_t> checkDegenerateFaces(
   const int64_t nf = numFaces(faces, verts_per_face);
 
   for (int64_t f = 0; f < nf; ++f) {
+    // Validate bounds for ALL vpf vertices, not just first 3.
+    bool oob = false;
+    for (int k = 0; k < verts_per_face; ++k) {
+      const int64_t idx = faceVertex(faces, verts_per_face, f, k);
+      if (idx < 0 || idx >= num_verts) {
+        oob = true;
+        break;
+      }
+    }
+    if (oob) {
+      result.push_back(f);
+      continue;
+    }
+
+    // Check finiteness of ALL vpf vertices.
+    bool nonfinite = false;
+    for (int k = 0; k < verts_per_face; ++k) {
+      const int64_t idx = faceVertex(faces, verts_per_face, f, k);
+      if (!isFiniteVec3(vertices[static_cast<size_t>(idx)])) {
+        nonfinite = true;
+        break;
+      }
+    }
+    if (nonfinite) {
+      result.push_back(f);
+      continue;
+    }
+
+    // Fan-triangulate: for k=1..vpf-2, check triangle (v0, v[k], v[k+1]).
+    // A face is degenerate if ANY sub-triangle is degenerate.
     const int64_t i0 = faceVertex(faces, verts_per_face, f, 0);
-    const int64_t i1 = faceVertex(faces, verts_per_face, f, 1);
-    const int64_t i2 = faceVertex(faces, verts_per_face, f, 2);
-    if (i0 < 0 || i0 >= num_verts || i1 < 0 || i1 >= num_verts ||
-        i2 < 0 || i2 >= num_verts) {
-      result.push_back(f);
-      continue;
+    const Vec3& p0 = vertices[static_cast<size_t>(i0)];
+    bool degenerate = false;
+
+    for (int k = 1; k <= verts_per_face - 2; ++k) {
+      const int64_t ik = faceVertex(faces, verts_per_face, f, k);
+      const int64_t ik1 = faceVertex(faces, verts_per_face, f, k + 1);
+      const Vec3& pk = vertices[static_cast<size_t>(ik)];
+      const Vec3& pk1 = vertices[static_cast<size_t>(ik1)];
+
+      const Vec3 e0 = pk - p0;
+      const Vec3 e1 = pk1 - p0;
+      const Vec3 e2 = pk1 - pk;
+
+      const Vec3 cross_vec = e0.cross(e1);
+      const double area = 0.5 * cross_vec.length();
+
+      if (!std::isfinite(area) || area < min_area) {
+        degenerate = true;
+        break;
+      }
+
+      const double longest_sq = std::max({e0.length_sq(),
+                                          e1.length_sq(),
+                                          e2.length_sq()});
+      const double aspect = longest_sq / (2.0 * area);
+      if (!std::isfinite(aspect) || aspect > max_aspect_ratio) {
+        degenerate = true;
+        break;
+      }
     }
 
-    const Vec3& v0 = vertices[static_cast<size_t>(i0)];
-    const Vec3& v1 = vertices[static_cast<size_t>(i1)];
-    const Vec3& v2 = vertices[static_cast<size_t>(i2)];
-    if (!isFiniteVec3(v0) || !isFiniteVec3(v1) || !isFiniteVec3(v2)) {
-      result.push_back(f);
-      continue;
-    }
-
-    const Vec3 e0 = v1 - v0;
-    const Vec3 e1 = v2 - v0;
-    const Vec3 e2 = v2 - v1;
-
-    const Vec3 cross_vec = e0.cross(e1);
-    const double area = 0.5 * cross_vec.length();
-
-    if (!std::isfinite(area) || area < min_area) {
-      result.push_back(f);
-      continue;
-    }
-
-    const double longest_sq = std::max({e0.length_sq(),
-                                        e1.length_sq(),
-                                        e2.length_sq()});
-    const double aspect = longest_sq / (2.0 * area);
-    if (!std::isfinite(aspect) || aspect > max_aspect_ratio) {
+    if (degenerate) {
       result.push_back(f);
     }
   }
@@ -549,37 +596,49 @@ std::vector<std::pair<int64_t, int64_t>> checkSelfIntersections(
         continue;
       }
 
-      const Vec3& a0 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fi, 0))];
-      const Vec3& a1 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fi, 1))];
-      const Vec3& a2 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fi, 2))];
-      const Vec3& b0 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fj, 0))];
-      const Vec3& b1 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fj, 1))];
-      const Vec3& b2 = vertices[static_cast<size_t>(
-          faceVertex(faces, verts_per_face, fj, 2))];
-
+      // Collect all vertex positions for face fi and fj.
       // Skip UV / hard-normal split-vertex seam neighbors (1 or 2 coincident
-      // 3D corners, while still flagging 3-vertex duplicate z-fighting faces).
+      // 3D corners, while still flagging vpf-vertex duplicate z-fighting faces).
       constexpr double kSeamEpsSq = 1e-18;
       int shared_pos = 0;
-      const Vec3 tri_a[3] = {a0, a1, a2};
-      const Vec3 tri_b[3] = {b0, b1, b2};
-      for (int pa = 0; pa < 3; ++pa) {
-        for (int pb = 0; pb < 3; ++pb) {
-          const Vec3 diff = tri_a[pa] - tri_b[pb];
+      for (int pa = 0; pa < verts_per_face; ++pa) {
+        const Vec3& va = vertices[static_cast<size_t>(
+            faceVertex(faces, verts_per_face, fi, pa))];
+        for (int pb = 0; pb < verts_per_face; ++pb) {
+          const Vec3& vb = vertices[static_cast<size_t>(
+              faceVertex(faces, verts_per_face, fj, pb))];
+          const Vec3 diff = va - vb;
           if (diff.dot(diff) <= kSeamEpsSq) {
             ++shared_pos;
             break;
           }
         }
       }
-      if (shared_pos == 1 || shared_pos == 2) continue;
+      if (shared_pos >= 1 && shared_pos <= verts_per_face - 1) continue;
 
-      if (trianglesIntersect(a0, a1, a2, b0, b1, b2)) {
+      // Fan-triangulate both faces and test ALL sub-triangle pairs.
+      const Vec3& ai0 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fi, 0))];
+      const Vec3& bi0 = vertices[static_cast<size_t>(
+          faceVertex(faces, verts_per_face, fj, 0))];
+      bool found_intersection = false;
+      for (int ka = 1; ka <= verts_per_face - 2 && !found_intersection; ++ka) {
+        const Vec3& a1 = vertices[static_cast<size_t>(
+            faceVertex(faces, verts_per_face, fi, ka))];
+        const Vec3& a2 = vertices[static_cast<size_t>(
+            faceVertex(faces, verts_per_face, fi, ka + 1))];
+        for (int kb = 1; kb <= verts_per_face - 2; ++kb) {
+          const Vec3& b1 = vertices[static_cast<size_t>(
+              faceVertex(faces, verts_per_face, fj, kb))];
+          const Vec3& b2 = vertices[static_cast<size_t>(
+              faceVertex(faces, verts_per_face, fj, kb + 1))];
+          if (trianglesIntersect(ai0, a1, a2, bi0, b1, b2)) {
+            found_intersection = true;
+            break;
+          }
+        }
+      }
+      if (found_intersection) {
         hit_pairs.emplace(fi, fj);
       }
     }
@@ -667,14 +726,14 @@ GeometricValidationResult validateMeshGeometry(
     return result;
   }
 
-  // --- Manifold check ---
-  result.is_manifold = checkManifold(vertices, faces, verts_per_face);
+  // --- Manifold + Watertight check (shared edge table, single pass) ---
+  auto analysis = analyzeManifold(vertices, faces, verts_per_face);
+  result.is_manifold = analysis.is_manifold;
   if (!result.is_manifold) {
     result.failure_reasons.emplace_back("Mesh is not a valid 2-manifold.");
   }
 
-  // --- Watertight check ---
-  result.is_watertight = checkWatertight(vertices, faces, verts_per_face);
+  result.is_watertight = checkWatertightFromAnalysis(analysis);
   if (require_watertight && !result.is_watertight) {
     result.failure_reasons.emplace_back(
         "Mesh is not watertight (has boundary edges).");

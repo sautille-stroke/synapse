@@ -173,6 +173,44 @@ def _make_non_manifold_triple_edge() -> tuple[np.ndarray, np.ndarray]:
     return verts, faces
 
 
+def _make_quad_degenerate_second_triangle() -> tuple[np.ndarray, np.ndarray]:
+    """Quad where v0,v1,v2 form a healthy sub-tri but v0,v2,v3 is degenerate."""
+    verts = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [2.0, 2.0, 0.0],  # will be made nearly collinear
+        ],
+        dtype=np.float64,
+    )
+    # Make v3 nearly collinear with v0→v2 → degenerate needle for sub-tri (v0,v2,v3)
+    verts[3] = verts[0] + (verts[2] - verts[0]) * 2.0 + np.array([0, 1e-14, 0])
+    faces = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    return verts, faces
+
+
+def _make_quad_self_intersection_second_triangle() -> tuple[np.ndarray, np.ndarray]:
+    """Two quads: first sub-triangles don't intersect but second sub-triangles do."""
+    verts = np.array(
+        [
+            # Quad A: XY plane
+            [-2.0, -1.0, 0.0],   # 0
+            [2.0, -1.0, 0.0],    # 1
+            [2.0, 1.0, 0.0],     # 2
+            [-2.0, 1.0, 0.0],    # 3
+            # Quad B: crosses quad A in XZ plane
+            [0.0, 0.0, -2.0],    # 4
+            [10.0, 0.0, -2.0],   # 5 — far right
+            [10.0, 0.0, 2.0],    # 6 — far right
+            [0.0, 0.0, 2.0],     # 7
+        ],
+        dtype=np.float64,
+    )
+    faces = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int64)
+    return verts, faces
+
+
 # ===================================================================
 # Python Oracle Exactness Tests (always run)
 # ===================================================================
@@ -290,6 +328,96 @@ class TestGeometryOracleExactness:
         # 0.01 * 300 = 3.0; 3 < 3.0 is False -> 0 floating island faces!
         assert res.floating_island_face_indices == []
 
+    def test_quad_degenerate_second_triangle(self) -> None:
+        """Quad where v0,v1,v2 are healthy but v0,v2,v3 form a degenerate needle."""
+        verts = np.array(
+            [
+                [0.0, 0.0, 0.0],   # v0
+                [1.0, 0.0, 0.0],   # v1
+                [1.0, 1.0, 0.0],   # v2 — first sub-tri (v0,v1,v2) is healthy
+                [2.0, 2.0, 0.0],   # v3 — second sub-tri (v0,v2,v3): v0,v2,v3
+            ],
+            dtype=np.float64,
+        )
+        # Make v3 nearly collinear with v0-v2 → degenerate needle sub-triangle
+        # v0 = (0,0,0), v2 = (1,1,0), v3 needs to be on the line v0→v2
+        verts[3] = verts[0] + (verts[2] - verts[0]) * 2.0 + np.array([0, 1e-14, 0])
+        faces = np.array([[0, 1, 2, 3]], dtype=np.int64)
+        result = check_degenerate_faces(verts, faces, min_area=1e-8)
+        assert len(result) >= 1
+        assert 0 in result
+
+    def test_quad_self_intersection_second_triangle(self) -> None:
+        """Two quads where first sub-triangles don't intersect but second sub-triangles do."""
+        # Quad A: vertices 0,1,2,3 in XY plane
+        # Quad B: vertices 4,5,6,7 positioned so only second fan triangles intersect
+        verts = np.array(
+            [
+                # Quad A (z=0 plane)
+                [0.0, 0.0, 0.0],   # 0
+                [2.0, 0.0, 0.0],   # 1
+                [2.0, 2.0, 0.0],   # 2
+                [0.0, 4.0, 0.0],   # 3
+                # Quad B (XZ plane, crossing through quad A's second triangle)
+                [5.0, 5.0, -1.0],  # 4 — far from quad A
+                [6.0, 5.0, -1.0],  # 5 — far from quad A
+                [6.0, 5.0, 1.0],   # 6 — far from quad A
+                [0.5, 3.0, 1.0],   # 7 — in second tri region of quad A
+            ],
+            dtype=np.float64,
+        )
+        # Move quad B so its second triangle (v4,v6,v7) intersects quad A's
+        # second triangle (v0,v2,v3).
+        # Quad B: fan gives (4,5,6) and (4,6,7).
+        # We want (4,6,7) to cross (0,2,3).
+        # Place v4,v6,v7 to cross the XY plane through (0,2,3).
+        verts[4] = [0.5, 3.0, -1.0]  # below z=0
+        verts[5] = [6.0, 5.0, -1.0]  # far away, first sub-tri won't intersect
+        verts[6] = [6.0, 5.0, 1.0]   # far away
+        verts[7] = [0.5, 3.0, 1.0]   # above z=0
+        # Now (4,6,7): v4=(0.5,3,-1), v6=(6,5,1), v7=(0.5,3,1)
+        # This still likely won't intersect A's second tri at (0,2,3)=(0,0,0),(2,2,0),(0,4,0).
+        # Let me use a simpler construction:
+        # Quad A in XY plane, Quad B crosses through it in XZ plane.
+        verts = np.array(
+            [
+                # Quad A: XY plane, fan: (0,1,2) and (0,2,3)
+                [-2.0, -1.0, 0.0],   # 0
+                [2.0, -1.0, 0.0],    # 1
+                [2.0, 1.0, 0.0],     # 2
+                [-2.0, 1.0, 0.0],    # 3
+                # Quad B: XZ plane, fan: (4,5,6) and (4,6,7)
+                # First tri (4,5,6): far from quad A
+                [10.0, 0.0, -1.0],   # 4
+                [12.0, 0.0, -1.0],   # 5
+                [12.0, 0.0, 1.0],    # 6
+                # Second tri (4,6,7): crosses through quad A's second tri
+                [-1.0, 0.0, 1.0],    # 7 — close to origin, above z=0
+            ],
+            dtype=np.float64,
+        )
+        # Tri (4,6,7) = (10,0,-1), (12,0,1), (-1,0,1) — this spans from x=10 to x=-1
+        # and from z=-1 to z=1, crossing z=0 at some point.
+        # But does it overlap with quad A's tri (0,2,3) = (-2,-1,0),(2,1,0),(-2,1,0)?
+        # The y-coordinate of tri B is all y=0, which IS inside quad A's y range [-1,1].
+        # Actually tri-tri intersection will check this properly.
+        # Let me simplify: make the second sub-triangle of B clearly cross A.
+        verts[4] = [0.0, 0.0, -2.0]   # below
+        verts[5] = [10.0, 0.0, -2.0]  # far right, below
+        verts[6] = [10.0, 0.0, 2.0]   # far right, above
+        verts[7] = [0.0, 0.0, 2.0]    # above
+        # Fan B: (4,5,6) = (0,0,-2),(10,0,-2),(10,0,2) — far right, no overlap with A
+        # Fan B: (4,6,7) = (0,0,-2),(10,0,2),(0,0,2) — crosses z=0 at x=0,y=0
+        # Quad A fan: (0,1,2) = (-2,-1,0),(2,-1,0),(2,1,0) and (0,2,3) = (-2,-1,0),(2,1,0),(-2,1,0)
+        # (4,6,7) triangle is in y=0 plane, and cuts through quad A at (0,0,0).
+        # But: both quads share no vertices.
+        # First sub-tri pair: (0,1,2) vs (4,5,6) → (0,1,2) at z=0 vs (4,5,6) far right → no
+        # Second sub-tri pair: (0,2,3) vs (4,6,7) → should intersect!
+        faces = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int64)
+        pairs = check_self_intersections(verts, faces)
+        assert len(pairs) >= 1
+        assert (0, 1) in pairs
+
 
 # ===================================================================
 # C++20 Native <-> Python Oracle 100% Parity Suite
@@ -340,15 +468,47 @@ class TestNativeVsPythonOracleParity:
         assert cpp_res.passed == py_res.passed
 
         # Also verify 1-D flat index buffer and default num_vertices=0 in _c_geometry
+        vpf = int(faces.shape[1])
         flat_faces = faces.ravel()
-        assert _c_geometry.check_manifold(verts, flat_faces, 3) == py_res.is_manifold
+        assert _c_geometry.check_manifold(verts, flat_faces, vpf) == py_res.is_manifold
         assert (
-            _c_geometry.check_watertight(verts, flat_faces, 3)
+            _c_geometry.check_watertight(verts, flat_faces, vpf)
             == py_res.is_watertight
         )
         comps_cpp = _c_geometry.find_connected_components(faces)  # num_vertices=0!
         comps_py = find_connected_components(faces)
         assert [list(c) for c in comps_cpp] == [list(c) for c in comps_py]
+
+    @pytest.mark.parametrize(
+        "mesh_builder",
+        [
+            _make_quad_degenerate_second_triangle,
+            _make_quad_self_intersection_second_triangle,
+        ],
+    )
+    def test_quad_gate_parity(self, mesh_builder: Any) -> None:
+        """Quad-specific parity: validate_mesh_geometry native vs python match."""
+        verts, faces = mesh_builder()
+
+        py_res = validate_mesh_geometry(
+            verts, faces, require_watertight=False, backend="python",
+        )
+        cpp_res = validate_mesh_geometry(
+            verts, faces, require_watertight=False, backend="native",
+        )
+
+        assert cpp_res.is_manifold == py_res.is_manifold
+        assert cpp_res.is_watertight == py_res.is_watertight
+        assert cpp_res.num_vertices == py_res.num_vertices
+        assert cpp_res.num_faces == py_res.num_faces
+        assert cpp_res.degenerate_face_indices == py_res.degenerate_face_indices
+        assert cpp_res.self_intersecting_pairs == py_res.self_intersecting_pairs
+        assert cpp_res.num_connected_components == py_res.num_connected_components
+        assert (
+            cpp_res.floating_island_face_indices
+            == py_res.floating_island_face_indices
+        )
+        assert cpp_res.passed == py_res.passed
 
     def test_empty_and_oob_parity(self) -> None:
         empty_v = np.zeros((0, 3), dtype=np.float64)

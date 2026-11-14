@@ -113,32 +113,24 @@ def validate_mesh_geometry(
 
     if backend == "native":
         verts_per_face = int(f.shape[1]) if f.ndim == 2 and f.shape[1] >= 3 else 3
-        is_manifold: bool = bool(
-            _cg.check_manifold(v, f, verts_per_face=verts_per_face)
-        )
-        is_watertight: bool = bool(
-            _cg.check_watertight(v, f, verts_per_face=verts_per_face)
-        )
-        degen_indices = _cg.check_degenerate_faces(
+        r = _cg.validate_mesh_geometry(
             v,
             f,
             verts_per_face=verts_per_face,
+            require_watertight=require_watertight,
             min_area=min_area,
             max_aspect_ratio=max_aspect_ratio,
+            min_face_ratio=min_face_ratio,
         )
-        si_pairs: list[tuple[int, int]] = [
-            (int(a), int(b))
-            for a, b in _cg.check_self_intersections(
-                v, f, verts_per_face=verts_per_face,
-            )
-        ]
-        components = _cg.find_connected_components(
-            f,
-            verts_per_face=verts_per_face,
-            num_vertices=int(len(v)),
-        )
-        num_faces = int(len(f)) if f.ndim == 2 else int(len(f) // verts_per_face)
+        is_manifold = bool(r["is_manifold"])
+        is_watertight = bool(r["is_watertight"])
+        degenerate_list = [int(i) for i in r["degenerate_face_indices"]]
+        si_pairs = [(int(a), int(b)) for a, b in r["self_intersecting_pairs"]]
+        num_components = int(r["num_connected_components"])
+        floating_island_indices = [int(i) for i in r["floating_island_face_indices"]]
+        num_faces = int(r["num_faces"])
     else:
+        # Python Oracle — for parity testing only, not production use.
         is_manifold = check_manifold(v, f)
         is_watertight = check_watertight(v, f)
         degen_indices = check_degenerate_faces(
@@ -147,13 +139,11 @@ def validate_mesh_geometry(
         si_pairs = check_self_intersections(v, f)
         components = find_connected_components(f) if f.ndim == 2 and len(f) > 0 else []
         num_faces = int(len(f)) if f.ndim == 2 else 0
-
-    num_components = len(components)
-    floating_island_indices = _floating_island_indices_from_components(
-        components, num_faces, min_face_ratio,
-    )
-
-    degenerate_list = [int(i) for i in degen_indices]
+        num_components = len(components)
+        floating_island_indices = _floating_island_indices_from_components(
+            components, num_faces, min_face_ratio,
+        )
+        degenerate_list = [int(i) for i in degen_indices]
 
     if not is_manifold:
         failure_reasons.append("Mesh is not a valid 2-manifold.")

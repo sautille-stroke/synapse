@@ -438,48 +438,61 @@ def check_degenerate_faces(
     ):
         return np.array([], dtype=np.intp)
 
-    tri = f[:, :3]
-    oob_mask = np.any((tri < 0) | (tri >= len(v)), axis=1)
-    safe_tri = np.where(oob_mask[:, None], 0, tri)
+    vpf = f.shape[1]  # vertices per face
 
-    v0 = v[safe_tri[:, 0]]
-    v1 = v[safe_tri[:, 1]]
-    v2 = v[safe_tri[:, 2]]
-    nonfinite_mask = (
-        ~np.all(np.isfinite(v0), axis=1)
-        | ~np.all(np.isfinite(v1), axis=1)
-        | ~np.all(np.isfinite(v2), axis=1)
-    )
+    # For N-gon faces, check bounds and finiteness of ALL vpf vertices,
+    # then fan-triangulate: for k=1..vpf-2, check triangle (v0, v[k], v[k+1]).
+    # A face is degenerate if ANY sub-triangle is degenerate.
+    num_verts = len(v)
+    degenerate_indices: list[int] = []
 
-    e1 = v1 - v0
-    e2 = v2 - v0
-    cross = np.cross(e1, e2)
+    for fi in range(len(f)):
+        face = f[fi]
 
-    # Area = 0.5 * |cross(e1, e2)|
-    area = 0.5 * np.linalg.norm(cross, axis=1)
+        # Check bounds for ALL vpf vertices.
+        if np.any(face < 0) or np.any(face >= num_verts):
+            degenerate_indices.append(fi)
+            continue
 
-    # Edge lengths squared
-    e3 = v2 - v1
-    len_sq_e1 = np.sum(e1 * e1, axis=1)
-    len_sq_e2 = np.sum(e2 * e2, axis=1)
-    len_sq_e3 = np.sum(e3 * e3, axis=1)
-    longest_edge_sq = np.maximum(np.maximum(len_sq_e1, len_sq_e2), len_sq_e3)
+        # Check finiteness of ALL vpf vertices.
+        face_verts = v[face]
+        if not np.all(np.isfinite(face_verts)):
+            degenerate_indices.append(fi)
+            continue
 
-    # Aspect ratio ≈ longest_edge² / (2 * area)
-    safe_area = np.where(area > 0.0, area, 1.0)
-    aspect = longest_edge_sq / (2.0 * safe_area)
-    # If area is zero the aspect is infinite → always degenerate
-    aspect = np.where(area > 0.0, aspect, np.inf)
+        # Fan-triangulate and check each sub-triangle.
+        p0 = face_verts[0]
+        is_degen = False
+        for k in range(1, vpf - 1):
+            pk = face_verts[k]
+            pk1 = face_verts[k + 1]
 
-    mask = (
-        oob_mask
-        | nonfinite_mask
-        | ~np.isfinite(area)
-        | (area < min_area)
-        | ~np.isfinite(aspect)
-        | (aspect > max_aspect_ratio)
-    )
-    return np.nonzero(mask)[0].astype(np.intp)
+            e0 = pk - p0
+            e1 = pk1 - p0
+            e2 = pk1 - pk
+
+            cross_vec = np.cross(e0, e1)
+            area = 0.5 * float(np.linalg.norm(cross_vec))
+
+            if not np.isfinite(area) or area < min_area:
+                is_degen = True
+                break
+
+            len_sq = [
+                float(np.dot(e0, e0)),
+                float(np.dot(e1, e1)),
+                float(np.dot(e2, e2)),
+            ]
+            longest_sq = max(len_sq)
+            aspect = longest_sq / (2.0 * area)
+            if not np.isfinite(aspect) or aspect > max_aspect_ratio:
+                is_degen = True
+                break
+
+        if is_degen:
+            degenerate_indices.append(fi)
+
+    return np.array(degenerate_indices, dtype=np.intp)
 
 
 def check_self_intersections(
@@ -622,18 +635,31 @@ def check_self_intersections(
     # ------------------------------------------------------------------
     # Validate per-face indices & build broad-phase spatial hash
     # ------------------------------------------------------------------
-    tri_indices = f[:, :3]
-    valid_face = ~np.any((tri_indices < 0) | (tri_indices >= num_verts), axis=1)
-    safe_indices = np.where(valid_face[:, None], tri_indices, 0)
-    tri_verts = v[safe_indices]  # (F, 3, 3)
-    valid_face &= np.all(np.isfinite(tri_verts), axis=(1, 2))
+    vpf = f.shape[1]  # vertices per face
+
+    # Validate ALL vpf vertex indices per face and build AABBs over all vertices.
+    valid_face = np.ones(num_faces, dtype=bool)
+    face_all_verts = np.empty((num_faces, vpf, 3), dtype=np.float64)
+    for fi_idx in range(num_faces):
+        face = f[fi_idx]
+        if np.any(face < 0) or np.any(face >= num_verts):
+            valid_face[fi_idx] = False
+            face_all_verts[fi_idx] = 0.0
+        else:
+            fv = v[face]
+            if not np.all(np.isfinite(fv)):
+                valid_face[fi_idx] = False
+                face_all_verts[fi_idx] = 0.0
+            else:
+                face_all_verts[fi_idx] = fv
 
     valid_ids = np.nonzero(valid_face)[0]
     if len(valid_ids) <= 1:
         return []
 
-    tri_min = tri_verts.min(axis=1)
-    tri_max = tri_verts.max(axis=1)
+    # AABB over all vertices per face (not just first 3)
+    tri_min = face_all_verts.min(axis=1)
+    tri_max = face_all_verts.max(axis=1)
 
     global_min = tri_min[valid_ids].min(axis=0) - 1e-6
     global_max = tri_max[valid_ids].max(axis=0) + 1e-6
@@ -688,18 +714,32 @@ def check_self_intersections(
                 ):
                     continue
 
-                # Skip UV / hard-normal split-vertex seam neighbors (1 or 2
-                # coincident 3D corners, while still catching 3-vertex duplicate
-                # z-fighting faces).
+                # Skip UV / hard-normal split-vertex seam neighbors.
+                # Check ALL vpf vertices per face, not just 3.
+                verts_fi = face_all_verts[fi]  # (vpf, 3)
+                verts_fj = face_all_verts[fj]  # (vpf, 3)
                 diff_sq = np.sum(
-                    (tri_verts[fi][:, None, :] - tri_verts[fj][None, :, :]) ** 2,
+                    (verts_fi[:, None, :] - verts_fj[None, :, :]) ** 2,
                     axis=2,
                 )
                 shared_pos = int(np.count_nonzero(np.any(diff_sq <= 1e-18, axis=1)))
-                if shared_pos in (1, 2):
+                if 1 <= shared_pos <= vpf - 1:
                     continue
 
-                if _tri_tri_intersect(tri_verts[fi], tri_verts[fj]):
+                # Fan-triangulate both faces and test ALL sub-triangle pairs.
+                found = False
+                p0_a = verts_fi[0]
+                p0_b = verts_fj[0]
+                for ka in range(1, vpf - 1):
+                    if found:
+                        break
+                    tri_a = np.array([p0_a, verts_fi[ka], verts_fi[ka + 1]])
+                    for kb in range(1, vpf - 1):
+                        tri_b = np.array([p0_b, verts_fj[kb], verts_fj[kb + 1]])
+                        if _tri_tri_intersect(tri_a, tri_b):
+                            found = True
+                            break
+                if found:
                     result.append(pair)
 
     result.sort()

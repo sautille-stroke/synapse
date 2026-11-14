@@ -193,6 +193,21 @@ class TestCheckDegenerateFaces:
         result = check_degenerate_faces(verts, faces)
         assert len(result) == 0
 
+    def test_quad_degenerate_second_triangle(self):
+        """Quad where v0,v1,v2 form a healthy sub-tri but v0,v2,v3 is a degenerate needle."""
+        verts = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [2.0, 2.0, 0.0],
+        ])
+        # Make v3 nearly collinear with v0→v2 → degenerate needle
+        verts[3] = verts[0] + (verts[2] - verts[0]) * 2.0 + np.array([0, 1e-14, 0])
+        faces = np.array([[0, 1, 2, 3]])
+        result = check_degenerate_faces(verts, faces, min_area=1e-8)
+        assert len(result) >= 1
+        assert 0 in result
+
 
 # ===================================================================
 # Tests — check_self_intersections
@@ -233,6 +248,25 @@ class TestCheckSelfIntersections:
         faces = np.zeros((0, 3), dtype=np.int64)
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) == 0
+
+    def test_quad_self_intersection_second_triangle(self):
+        """Two quads: first sub-triangles don't intersect but second sub-triangles do."""
+        verts = np.array([
+            # Quad A: XY plane
+            [-2.0, -1.0, 0.0],   # 0
+            [2.0, -1.0, 0.0],    # 1
+            [2.0, 1.0, 0.0],     # 2
+            [-2.0, 1.0, 0.0],    # 3
+            # Quad B: crosses quad A in XZ plane
+            [0.0, 0.0, -2.0],    # 4
+            [10.0, 0.0, -2.0],   # 5 — far right
+            [10.0, 0.0, 2.0],    # 6 — far right
+            [0.0, 0.0, 2.0],     # 7
+        ])
+        faces = np.array([[0, 1, 2, 3], [4, 5, 6, 7]])
+        pairs = check_self_intersections(verts, faces)
+        assert len(pairs) >= 1
+        assert (0, 1) in pairs
 
 
 # ===================================================================

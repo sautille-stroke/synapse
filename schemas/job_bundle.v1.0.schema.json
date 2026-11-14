@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapse.dervgen.dev/schemas/job_bundle.v1.0.schema.json",
+  "title": "Synapse JobBundle Manifest v1.0",
+  "description": "RFC 0039 Job Bundle manifest describing a single stateless stage execution. Mirrors python/synapse/pipeline/bundle_worker.py::BundleManifest.",
+  "type": "object",
+  "required": ["schema_version", "job_id", "stage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "synapse.job_bundle.v1.0",
+      "description": "Wire-format version identifier."
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique job identifier from the upstream scheduler."
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Registered stage name to execute (e.g. 'fgpp_validate', 'neural_video_generate')."
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {},
+      "description": "Mapping of logical input names to file paths / URIs."
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": {},
+      "description": "Mapping of logical output names to file paths / URIs."
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {},
+      "description": "Stage-specific parameter overrides."
+    },
+    "hardware_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "free_vram_gb": {
+          "type": "number",
+          "default": 24.0,
+          "description": "Available GPU VRAM in GiB."
+        },
+        "max_cpu_cores": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8,
+          "description": "Maximum CPU cores the worker may use."
+        }
+      },
+      "description": "Hardware resource budget for a single job execution."
+    },
+    "traceparent": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Optional W3C traceparent header value."
+    },
+    "tracestate": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Optional W3C tracestate header value."
+    }
+  }
+}

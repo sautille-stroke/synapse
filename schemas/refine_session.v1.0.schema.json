@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapse.dervgen.dev/schemas/refine_session.v1.0.schema.json",
+  "title": "Synapse Refine Session v1.0",
+  "description": "Wire-format schema for anatomical local refinement sessions (RFC 0061). Mirrors python/synapse/refine/pipeline.py::RefineSessionPayload.",
+  "type": "object",
+  "required": ["schema_version", "session_id"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "synapse.refine_session.v1.0",
+      "description": "Must be 'synapse.refine_session.v1.0'."
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique session identifier."
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["HAND", "FACE", "FOOT", "HAIR", "FULL_BODY"]
+      },
+      "default": ["HAND", "FACE"],
+      "description": "List of anatomical regions to refine."
+    },
+    "fusion_method": {
+      "type": "string",
+      "enum": [
+        "LAPLACIAN_FREQUENCY",
+        "CASCADE",
+        "LATENT_TIMESTEP_SWITCH",
+        "UNCERTAINTY_WEIGHTED",
+        "POISSON_GRADIENT"
+      ],
+      "default": "LAPLACIAN_FREQUENCY",
+      "description": "Multi-model fusion strategy."
+    },
+    "max_elapsed_seconds": {
+      "type": "number",
+      "minimum": 0.0,
+      "default": 900.0,
+      "description": "HITL circuit breaker budget in seconds (RFC 0044 15-min limit)."
+    },
+    "command_ir_records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": [],
+      "description": "CommandIR entries from upstream forgekit sessions."
+    }
+  }
+}

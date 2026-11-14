@@ -103,19 +103,19 @@ ParsedFaces facesFromNumpy(const Int64Array& arr, int default_vpf) {
 bool pyCheckManifold(const DoubleArray& vertices,
                      const Int64Array& faces,
                      int verts_per_face) {
+  auto verts = verticesFromNumpy(vertices);
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  return checkManifold(verticesFromNumpy(vertices),
-                       parsed.span,
-                       parsed.verts_per_face);
+  py::gil_scoped_release release;
+  return checkManifold(verts, parsed.span, parsed.verts_per_face);
 }
 
 bool pyCheckWatertight(const DoubleArray& vertices,
                        const Int64Array& faces,
                        int verts_per_face) {
+  auto verts = verticesFromNumpy(vertices);
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  return checkWatertight(verticesFromNumpy(vertices),
-                         parsed.span,
-                         parsed.verts_per_face);
+  py::gil_scoped_release release;
+  return checkWatertight(verts, parsed.span, parsed.verts_per_face);
 }
 
 py::array_t<int64_t> pyCheckDegenerateFaces(
@@ -124,12 +124,14 @@ py::array_t<int64_t> pyCheckDegenerateFaces(
     int verts_per_face,
     double min_area,
     double max_aspect_ratio) {
+  auto verts = verticesFromNumpy(vertices);
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  auto vec = checkDegenerateFaces(verticesFromNumpy(vertices),
-                                  parsed.span,
-                                  parsed.verts_per_face,
-                                  min_area,
-                                  max_aspect_ratio);
+  std::vector<int64_t> vec;
+  {
+    py::gil_scoped_release release;
+    vec = checkDegenerateFaces(verts, parsed.span, parsed.verts_per_face,
+                               min_area, max_aspect_ratio);
+  }
   py::array_t<int64_t> out(static_cast<py::ssize_t>(vec.size()));
   if (!vec.empty()) {
     auto out_buf = out.request();
@@ -143,10 +145,10 @@ std::vector<std::pair<int64_t, int64_t>> pyCheckSelfIntersections(
     const DoubleArray& vertices,
     const Int64Array& faces,
     int verts_per_face) {
+  auto verts = verticesFromNumpy(vertices);
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  return checkSelfIntersections(verticesFromNumpy(vertices),
-                                parsed.span,
-                                parsed.verts_per_face);
+  py::gil_scoped_release release;
+  return checkSelfIntersections(verts, parsed.span, parsed.verts_per_face);
 }
 
 py::list pyFindConnectedComponents(
@@ -154,9 +156,12 @@ py::list pyFindConnectedComponents(
     int verts_per_face,
     int64_t num_vertices) {
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  auto comps = findConnectedComponents(parsed.span,
-                                       parsed.verts_per_face,
-                                       num_vertices);
+  std::vector<std::vector<int64_t>> comps;
+  {
+    py::gil_scoped_release release;
+    comps = findConnectedComponents(parsed.span, parsed.verts_per_face,
+                                    num_vertices);
+  }
   py::list out;
   for (const auto& comp : comps) {
     py::array_t<int64_t> arr(static_cast<py::ssize_t>(comp.size()));
@@ -177,14 +182,15 @@ py::dict pyValidateMeshGeometry(
     double min_area,
     double max_aspect_ratio,
     double min_face_ratio) {
+  auto verts = verticesFromNumpy(vertices);
   auto parsed = facesFromNumpy(faces, verts_per_face);
-  auto r = validateMeshGeometry(verticesFromNumpy(vertices),
-                                parsed.span,
-                                parsed.verts_per_face,
-                                require_watertight,
-                                min_area,
-                                max_aspect_ratio,
-                                min_face_ratio);
+  GeometricValidationResult r;
+  {
+    py::gil_scoped_release release;
+    r = validateMeshGeometry(verts, parsed.span, parsed.verts_per_face,
+                             require_watertight, min_area, max_aspect_ratio,
+                             min_face_ratio);
+  }
 
   py::list si_pairs;
   for (const auto& [a, b] : r.self_intersecting_pairs) {
