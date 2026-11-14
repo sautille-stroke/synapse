@@ -13,6 +13,7 @@ const { ShmFrameReader, DEFAULT_SHM_NAME } = require('./shm-reader');
 const ALLOWED_COMMAND_TYPES = new Set([
   'camera',
   'set_debug_view',
+  'switch_view',
   'set_entity_visible',
   'export_screenshot',
   'load_bundle',
@@ -20,7 +21,15 @@ const ALLOWED_COMMAND_TYPES = new Set([
 ]);
 
 const ALLOWED_CAMERA_ACTIONS = new Set(['orbit', 'pan', 'zoom']);
-const ALLOWED_DEBUG_MODES = new Set(['lit', 'wireframe', 'normal', 'uv']);
+const ALLOWED_DEBUG_MODES = new Set([
+  'lit',
+  'wireframe',
+  'normal',
+  'uv',
+  'depth',
+  'cryptomatte',
+  'rgb',
+]);
 
 /**
  * Validate a command object before serialising it to the native process stdin.
@@ -50,11 +59,14 @@ function validateNativeCommand(cmd) {
         command: { type: 'camera', action: cmd.action, dx: cmd.dx, dy: cmd.dy },
       };
     }
+    case 'switch_view':
     case 'set_debug_view': {
-      if (!ALLOWED_DEBUG_MODES.has(cmd.mode)) {
-        return { ok: false, error: `Invalid debug view mode: '${String(cmd.mode)}'` };
+      const mode = cmd.mode || cmd.view;
+      if (!ALLOWED_DEBUG_MODES.has(mode)) {
+        return { ok: false, error: `Invalid debug view mode: '${String(mode)}'` };
       }
-      return { ok: true, command: { type: 'set_debug_view', mode: cmd.mode } };
+      const normMode = mode === 'rgb' ? 'lit' : mode;
+      return { ok: true, command: { type: 'set_debug_view', mode: normMode } };
     }
     case 'set_entity_visible': {
       if (typeof cmd.name !== 'string' || cmd.name.length === 0 || cmd.name.length > 256 ||
@@ -319,5 +331,6 @@ module.exports = {
   InspectorProcessManager,
   validateNativeCommand,
   ALLOWED_COMMAND_TYPES,
+  ALLOWED_DEBUG_MODES,
   DEFAULT_SHM_NAME,
 };
