@@ -104,6 +104,11 @@ else
 fi
 
 echo ""
+echo ">>> Staging Starter Benchmark Datasets (RFC 0063 ~250MB suite)..."
+python3 scripts/prepare_benchmark_assets.py --tier starter --target-dir "${DERVGEN_DRIVE_ROOT}/data/benchmarks" || \
+python3 scripts/prepare_benchmark_assets.py --tier starter --target-dir /content/datasets/benchmarks
+
+echo ""
 echo "======================================================================"
 echo ">>> [6/6] Executing Synapse GPU Environment Auto-Detection..."
 echo "======================================================================"

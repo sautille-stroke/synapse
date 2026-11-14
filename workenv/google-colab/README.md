@@ -68,6 +68,9 @@ Colab 环境无需编译 C++ 引擎，直接加载标准化 **FGPP v1.0 黄金�
 3. **元数据与完整性清单**：
    - `metadata.json`：符合 `fgpp.v1.0` Schema，相机矩阵强制为**列主序**且行列式为 $+1.0$。
    - `golden_dataset_manifest.json`：全文件 SHA256 校验和。
+4. **RFC 0063 行业权威基准评测数据集 (Benchmarks)**：
+   - 详细清单见 [`benchmarks.json`](benchmarks.json)，涵盖 Google Scanned Objects (GSO)、Objaverse-LVIS、VBench 16 维 Prompts 与 Mixamo 骨骼动力学资产；
+   - 包含 Starter (~250 MB)、Standard (~2.5 GB) 与 Full (~35 GB) 三级分档，可通过 `python3 scripts/prepare_benchmark_assets.py --tier starter` 一键自动装配。
 
 ---
 

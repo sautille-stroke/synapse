@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SynapseColabBenchmarkDatasetRegistry",
+  "version": "1.0.0",
+  "description": "Standardized registry of industry benchmark datasets for Synapse evaluation on Google Colab and cloud instances (RFC 0063 compliant).",
+  "storage_contract": {
+    "colab_local_dir": "/content/datasets/benchmarks",
+    "drive_ssot_root": "data/benchmarks",
+    "dev_local_root": "data/benchmarks"
+  },
+  "tiers": {
+    "starter_dev": {
+      "name": "Starter Development Set",
+      "total_size_mb": 250.0,
+      "description": "Lightweight, zero-GPU starter set for quick local verification, CI smoke tests, and basic algorithm gate assertions."
+    },
+    "standard_eval": {
+      "name": "Standard Benchmark Evaluation Set",
+      "total_size_mb": 2500.0,
+      "description": "Comprehensive statistical evaluation set with 100+ assets for rigorous Track-A/Track-B quality gate validation."
+    },
+    "full_industrial": {
+      "name": "Full Industrial Comparison Suite",
+      "total_size_mb": 35000.0,
+      "description": "Full datasets including multi-model neural evaluators (VBench, ChronoMagic, full Objaverse-LVIS test split)."
+    }
+  },
+  "datasets": [
+    {
+      "id": "gso_starter_20",
+      "name": "Google Scanned Objects (20 Golden Assets)",
+      "category": "3d_reconstruction",
+      "tier": "starter_dev",
+      "source_type": "huggingface",
+      "hf_repo_id": "google/google_scanned_objects",
+      "size_mb": 110.0,
+      "format": "obj_png",
+      "target_dir": "gso_starter",
+      "target_metrics": ["chamfer_mm", "f_score_1mm", "normal_angular_error_deg"],
+      "description": "20 representative watertight scanned objects (furniture, tools, toys) with physical metric ground truth."
+    },
+    {
+      "id": "gso_standard_100",
+      "name": "Google Scanned Objects (100 Benchmark Assets)",
+      "category": "3d_reconstruction",
+      "tier": "standard_eval",
+      "source_type": "huggingface",
+      "hf_repo_id": "google/google_scanned_objects",
+      "size_mb": 1200.0,
+      "format": "obj_png",
+      "target_dir": "gso_standard",
+      "target_metrics": ["chamfer_mm", "f_score_1mm", "normal_angular_error_deg"],
+      "description": "Industry-standard 100-asset evaluation split for direct comparison with Microsoft TRELLIS and Tencent Hunyuan3D-2.0."
+    },
+    {
+      "id": "objaverse_lvis_eval_10",
+      "name": "Objaverse-LVIS Starter Submesh (10 Clean GLBs)",
+      "category": "3d_reconstruction",
+      "tier": "starter_dev",
+      "source_type": "huggingface",
+      "hf_repo_id": "allenai/objaverse-xl",
+      "size_mb": 65.0,
+      "format": "glb",
+      "target_dir": "objaverse_eval",
+      "target_metrics": ["volume_breathing_pct", "silhouette_iou"],
+      "description": "10 curated manifold GLB meshes with diverse topologies for rapid non-manifold and watertightness testing."
+    },
+    {
+      "id": "objaverse_lvis_eval_100",
+      "name": "Objaverse-LVIS Benchmark Split (100 Evaluated Assets)",
+      "category": "3d_reconstruction",
+      "tier": "standard_eval",
+      "source_type": "huggingface",
+      "hf_repo_id": "allenai/objaverse-xl",
+      "size_mb": 1500.0,
+      "format": "glb",
+      "target_dir": "objaverse_eval_100",
+      "target_metrics": ["chamfer_mm", "silhouette_iou", "volume_breathing_pct"],
+      "description": "100 official test split assets from CVPR 2023 Objaverse-LVIS benchmark."
+    },
+    {
+      "id": "mixamo_dynamics_5",
+      "name": "Mixamo Humanoid Kinematics Starter (5 Core Motions)",
+      "category": "actor_dynamics",
+      "tier": "starter_dev",
+      "source_type": "local_or_mirror",
+      "hf_repo_id": "DervGen/mixamo-benchmark-motions",
+      "size_mb": 70.0,
+      "format": "fbx_bvh",
+      "target_dir": "mixamo_dynamics",
+      "target_metrics": ["foot_sliding_cm", "bone_length_drift_pct"],
+      "description": "5 canonical rigged motions (Idle, Walk Frontal, Run 180, Jump Down, Turn Left) with zero-slip contact ground truth."
+    },
+    {
+      "id": "vbench_prompt_suite",
+      "name": "VBench Official Prompt & Trajectory Suite (CVPR 2024)",
+      "category": "video_generation",
+      "tier": "starter_dev",
+      "source_type": "github_json",
+      "url": "https://raw.githubusercontent.com/Vchitect/VBench/main/prompts/prompts_per_dimension.json",
+      "size_mb": 5.0,
+      "format": "json",
+      "target_dir": "vbench_prompts",
+      "target_metrics": ["fvd", "temporal_warp_error", "flicker_score"],
+      "description": "16 evaluation dimensions with 2,000+ standardized prompts for temporal consistency, camera motion, and object coherence."
+    },
+    {
+      "id": "vbench_eval_models",
+      "name": "VBench Auxiliary Neural Evaluator Weights",
+      "category": "video_generation",
+      "tier": "full_industrial",
+      "source_type": "huggingface",
+      "hf_repo_id": "Vchitect/VBench-2.0",
+      "size_mb": 9500.0,
+      "format": "pth_bin",
+      "target_dir": "vbench_weights",
+      "target_metrics": ["fvd", "temporal_warp_error", "flicker_score"],
+      "description": "ViCLIP, RAFT optical flow, and DINOv2 feature extractor weights for automated video quality scoring."
+    },
+    {
+      "id": "chronomagic_physics_50",
+      "name": "ChronoMagic-Bench Physical Causality Core (50 Cases)",
+      "category": "physics_conservation",
+      "tier": "standard_eval",
+      "source_type": "huggingface",
+      "hf_repo_id": "PKU-YuanGroup/ChronoMagic-Bench",
+      "size_mb": 1500.0,
+      "format": "mp4_json",
+      "target_dir": "chronomagic_core",
+      "target_metrics": ["temporal_warp_error", "light_dir_error_deg"],
+      "description": "50 high-frame-rate physical video scenarios testing gravity, collisions, and liquid time-arrow irreversibility."
+    }
+  ]
+}
