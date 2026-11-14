@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InspectionBundle Manifest v1.0",
+  "description": "Schema for Synapse inspection bundle manifest (bundle.json). Validates the self-contained directory packaging format used by Synapse-Bench evaluation pipeline.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "synapse.bundle.v1.0",
+      "description": "Wire-format version identifier."
+    },
+    "bundle_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique bundle identifier (UUID4 hex)."
+    },
+    "scenario_name": {
+      "type": "string",
+      "description": "Human-readable scenario label."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC creation timestamp."
+    },
+    "sources": {
+      "type": "object",
+      "description": "Map of logical source names to SourceEntry objects. Must not contain bare strings.",
+      "additionalProperties": {
+        "$ref": "#/$defs/SourceEntry"
+      },
+      "minProperties": 1
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "SourceEntry": {
+      "type": "object",
+      "description": "A single source artefact referenced by the bundle manifest.",
+      "required": [
+        "path",
+        "media_type"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!\\.\\./|/)(?!.*\\.\\./)",
+          "description": "Relative POSIX-style path within the bundle directory. Must not contain '..' traversal or be absolute."
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "IANA media (MIME) type, e.g. 'model/gltf-binary'."
+        },
+        "sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Optional hex-encoded SHA-256 digest for integrity verification."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

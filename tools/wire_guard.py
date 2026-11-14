@@ -106,7 +106,7 @@ def _check_internal() -> list[str]:
 # Normative PixelType contract — mirrors aether::fgpp::PixelType expectations.
 # Cryptomatte.ID: UINT32 (never interpolated/filtered)
 # CameraLinearDepth.Z: FLOAT (32-bit)
-# WorldNormal.{X,Y,Z}: HALF or FLOAT
+# WorldNormal.{X,Y,Z}: HALF only (locks 34 B/px contract)
 # BaseColor.{R,G,B}: HALF
 # Roughness/Metallic (RoughnessMetallic.{R,G}): HALF
 # DirectRadiance.{R,G,B}: HALF
@@ -115,9 +115,9 @@ def _check_internal() -> list[str]:
 _EXPECTED_PIXEL_TYPES: dict[str, set[PixelType]] = {
     "Cryptomatte.ID": {PixelType.UINT32},
     "CameraLinearDepth.Z": {PixelType.FLOAT},
-    "WorldNormal.X": {PixelType.HALF, PixelType.FLOAT},
-    "WorldNormal.Y": {PixelType.HALF, PixelType.FLOAT},
-    "WorldNormal.Z": {PixelType.HALF, PixelType.FLOAT},
+    "WorldNormal.X": {PixelType.HALF},
+    "WorldNormal.Y": {PixelType.HALF},
+    "WorldNormal.Z": {PixelType.HALF},
     "BaseColor.R": {PixelType.HALF},
     "BaseColor.G": {PixelType.HALF},
     "BaseColor.B": {PixelType.HALF},
@@ -217,6 +217,35 @@ def _check_style_profile() -> list[str]:
     except Exception as e:
         errors.append(f"StyleProfile v2.0.0: cannot instantiate default: {e}")
 
+    # Cross-repo aether style header validation (gracefully skip if unavailable)
+    _aether_style_probes = [
+        _REPO_ROOT.parent / "aether" / "style" / "include" / "aether" / "style" / "style_types.h",
+        Path("../aether/style/include/aether/style/style_types.h"),
+    ]
+    aether_style_path = None
+    for probe in _aether_style_probes:
+        if probe.exists():
+            aether_style_path = probe
+            break
+
+    if aether_style_path is not None:
+        try:
+            header_text = aether_style_path.read_text(encoding="utf-8")
+            # Check that Python StyleDescriptor field names appear in the C++ header
+            # (as struct member names or enum values)
+            for field_name in expected_fields:
+                # Convert Python snake_case to potential C++ camelCase/snake_case variants
+                if field_name not in header_text and field_name.replace("_", "") not in header_text.lower():
+                    # Relaxed check: just look for the base concept name
+                    base_name = field_name.split("_")[0]
+                    if base_name not in header_text.lower():
+                        errors.append(
+                            f"StyleProfile v2.0.0: field '{field_name}' "
+                            f"not found in aether style header"
+                        )
+        except OSError:
+            pass  # Cannot read header — skip silently
+
     return errors
 
 
@@ -243,6 +272,10 @@ _SCHEMA_FILES: dict[str, dict[str, str]] = {
         "expected_version_field": "schema_version",
         "expected_version_value": "synapse.refine_session.v1.0",
     },
+    "bundle.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "synapse.bundle.v1.0",
+    },
 }
 
 # Map schema file to (Python module path, class name, expected required fields)
@@ -268,6 +301,11 @@ _SCHEMA_PYTHON_ALIGNMENT: dict[str, tuple[str, str, list[str]]] = {
         "synapse.refine.pipeline",
         "RefineSessionPayload",
         ["schema_version", "session_id"],
+    ),
+    "bundle.v1.0.schema.json": (
+        "synapse.bench.bundle_exporter",
+        "InspectionBundleManifest",
+        ["schema_version", "bundle_id", "sources"],
     ),
 }
 
@@ -395,6 +433,7 @@ def _parse_header(path: Path) -> dict:
         "channel_names": channel_names,
         "min_verts": None,
         "anchor_interval": None,
+        "pixel_type_values": {},
     }
 
     m = _RE_MIN_VERTS.search(text)
@@ -404,6 +443,11 @@ def _parse_header(path: Path) -> dict:
     m = _RE_ANCHOR_INTERVAL.search(text)
     if m:
         result["anchor_interval"] = int(m.group(1))
+
+    # Extract PixelType enum values from C++ header
+    for pt_match in _RE_PIXEL_TYPE.finditer(text):
+        if pt_match.group(1) and pt_match.group(2):
+            result["pixel_type_values"][pt_match.group(1)] = int(pt_match.group(2))
 
     return result
 
@@ -438,6 +482,16 @@ def _check_against_header(header_path: Path) -> list[str]:
                 f"kDefaultPhysicalAnchorIntervalFrames: C++={parsed['anchor_interval']}, "
                 f"Python={DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES}"
             )
+
+    # PixelType enum values
+    cpp_pt = parsed.get("pixel_type_values", {})
+    if cpp_pt:
+        py_pt = {e.name: e.value for e in PixelType}
+        for name, cpp_val in cpp_pt.items():
+            if name in py_pt and py_pt[name] != cpp_val:
+                errors.append(
+                    f"PixelType.{name}: C++={cpp_val}, Python={py_pt[name]}"
+                )
 
     return errors
 

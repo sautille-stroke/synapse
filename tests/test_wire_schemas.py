@@ -97,11 +97,11 @@ class TestPixelTypeValidation:
             f"Expected CameraLinearDepth.Z PixelType error, got: {errors}"
         )
 
-    def test_pixel_type_world_normal_accepts_half_and_float(self) -> None:
-        """WorldNormal channels accept both HALF and FLOAT."""
+    def test_pixel_type_world_normal_rejects_float(self) -> None:
+        """WorldNormal channels accept HALF only; FLOAT must be rejected."""
         from synapse.fgpp.schema import PixelType
 
-        # Test with FLOAT — should also be fine
+        # Test with FLOAT — should be rejected (34 B/px strict contract)
         float_specs = [
             (name, PixelType.FLOAT if name.startswith("WorldNormal.") else pt, group)
             for name, pt, group in wire_guard.FGPP_CHANNEL_SPECS
@@ -109,8 +109,34 @@ class TestPixelTypeValidation:
         with mock.patch.object(wire_guard, "FGPP_CHANNEL_SPECS", float_specs):
             errors = wire_guard._check_pixel_types()
         normal_errors = [e for e in errors if "WorldNormal" in e]
-        assert normal_errors == [], (
-            f"WorldNormal.FLOAT should be accepted, got: {normal_errors}"
+        assert len(normal_errors) == 3, (
+            f"Expected 3 WorldNormal errors for FLOAT, got: {normal_errors}"
+        )
+
+    def test_expected_pixel_types_world_normal_is_half_only(self) -> None:
+        """_EXPECTED_PIXEL_TYPES for WorldNormal.X/Y/Z must be exactly {HALF}."""
+        from synapse.fgpp.schema import PixelType
+
+        for axis in ("X", "Y", "Z"):
+            channel = f"WorldNormal.{axis}"
+            allowed = wire_guard._EXPECTED_PIXEL_TYPES[channel]
+            assert allowed == {PixelType.HALF}, (
+                f"{channel}: expected {{HALF}}, got {allowed}"
+            )
+
+    def test_pixel_type_tampered_world_normal_x_caught(self) -> None:
+        """A tampered copy where WorldNormal.X is FLOAT must be caught."""
+        from synapse.fgpp.schema import PixelType
+
+        tampered = dict(wire_guard._EXPECTED_PIXEL_TYPES)
+        tampered["WorldNormal.X"] = {PixelType.FLOAT}
+
+        # With the original FGPP_CHANNEL_SPECS (WorldNormal.X = HALF),
+        # a tampered contract that expects FLOAT should fail.
+        with mock.patch.object(wire_guard, "_EXPECTED_PIXEL_TYPES", tampered):
+            errors = wire_guard._check_pixel_types()
+        assert any("WorldNormal.X" in e for e in errors), (
+            f"Expected WorldNormal.X mismatch, got: {errors}"
         )
 
 
@@ -137,6 +163,7 @@ _SCHEMA_FILENAMES = [
     "lora.v1.0.schema.json",
     "inspection.v1.0.schema.json",
     "refine_session.v1.0.schema.json",
+    "bundle.v1.0.schema.json",
 ]
 
 
