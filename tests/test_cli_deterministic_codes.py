@@ -184,6 +184,7 @@ class TestFgppCliExrValidation:
         code, out, err = _capture_synapse([
             "--json", "fgpp", "validate", str(out_dir), "--check-exr",
         ])
+        print("OUT:", out, "ERR:", err)
         assert code == 0
         payload = json.loads(out)
         assert payload["status"] == "ok"
