@@ -102,6 +102,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **局部解剖智能修正与多模型融合设计规范 (RFC 0061)**：[RFC 0061 规范](docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
 - **ForgeKit 解剖局部精修工具链设计规范**：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
 - **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (RFC 0062)**：[RFC 0062 规范](docs/RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
+- **质量保障、测试验证机制与行业横向评测基准规范 (RFC 0063)**：[RFC 0063 规范](docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 

@@ -1,0 +1,681 @@
+{
+  "version": "1.0.0",
+  "rfc": "RFC-0063",
+  "tier": "starter",
+  "total_assets": 112,
+  "total_size_mb": 197.73,
+  "assets": [
+    {
+      "category": "video_generation",
+      "relative_path": "data/benchmarks/vbench_prompts/prompts_per_dimension.json",
+      "size_bytes": 2035,
+      "sha256": "07c94a4aab06568eb776fd4256beabbcc36e194c7016c5e1bbb8b4ae5a70b541"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/gso_starter/stanford_bunny.obj",
+      "size_bytes": 2408417,
+      "sha256": "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/gso_starter/utah_teapot.obj",
+      "size_bytes": 210614,
+      "sha256": "1b5396fedd74b577e32cef41146582c2f2e1a050d5b4915193c0ac1ad4187ed4"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/gso_starter/spot_cow.obj",
+      "size_bytes": 330624,
+      "sha256": "0738b5e8608fed74e5e8c7aa8dd0af97b4b74f9f6cbf7aac84cd7e40b2e44a75"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/gso_starter/stanford_armadillo.obj",
+      "size_bytes": 4634780,
+      "sha256": "d2fd040334c12b16804fbcb9962391232cc24708244617f931baaa871210563e"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/gso_starter/stanford_dragon.obj",
+      "size_bytes": 11817802,
+      "sha256": "5d7106b58f2ac0d017758480fe607c5b6bf7d6201d930d2dd1ba7022c4d281c0"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/adjustable_wrench/adjustable_wrench.bin",
+      "size_bytes": 189556,
+      "sha256": "6a61050c0eb32f4139c49168fe403f04d255e9ca9255bc293e4cd4f503bd5883"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/adjustable_wrench/adjustable_wrench_2k.gltf",
+      "size_bytes": 5659,
+      "sha256": "26526a199d5feea6b06cfb10461d73afd250f70fc14725f39658e9102b46659e"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/adjustable_wrench/textures/adjustable_wrench_arm_2k.jpg",
+      "size_bytes": 3372817,
+      "sha256": "efbf43d2a3f34347e37531a030c0fdec94bb6e4c3204102014de1dea8bf1b93b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/adjustable_wrench/textures/adjustable_wrench_diff_2k.jpg",
+      "size_bytes": 3052831,
+      "sha256": "9162708b7d4604c8d81eb77d999b3e1fc57f554427963f7153e8f7d19af2a858"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/adjustable_wrench/textures/adjustable_wrench_nor_gl_2k.jpg",
+      "size_bytes": 3070765,
+      "sha256": "94f140336908d6d4eb6a29279c20be265703e1fd25520a9317b9157a8f8c496a"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/alarm_clock_01/alarm_clock_01.bin",
+      "size_bytes": 284408,
+      "sha256": "74b589dc31596fe9350e8ef6d123571955d58cee9955060d831fa0f3055758c6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/alarm_clock_01/alarm_clock_01_2k.gltf",
+      "size_bytes": 10056,
+      "sha256": "d721cd6a93da98ffe1097fe6089b58ff8a83373b6f8c4f16e3dfdd9080d350e6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/alarm_clock_01/textures/alarm_clock_01_arm_2k.jpg",
+      "size_bytes": 1752727,
+      "sha256": "ad695b48ecbf07767653632463c4c5d794eb47420de5a459e5723d5c2e49714d"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/alarm_clock_01/textures/alarm_clock_01_diff_2k.jpg",
+      "size_bytes": 1254506,
+      "sha256": "077228e3132c61f92982c06b74fbb59d3e7164c915cdd41577c556322b163a67"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/alarm_clock_01/textures/alarm_clock_01_nor_gl_2k.jpg",
+      "size_bytes": 1386574,
+      "sha256": "dcb311b01962916dc43faf9e05a96e98e6e632aa4587e9cd4c9961aea2882398"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/all_purpose_cleaner/all_purpose_cleaner.bin",
+      "size_bytes": 117216,
+      "sha256": "d6778f2b88314bce956824f419a31a3333b988ddf6a0360b5045a06c6c20c3a2"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/all_purpose_cleaner/all_purpose_cleaner_2k.gltf",
+      "size_bytes": 3211,
+      "sha256": "782458853ea1abba3b2b74c4d98d4764656d7db0e857e1edab9d7b522ef74c91"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/all_purpose_cleaner/textures/all_purpose_cleaner_arm_2k.jpg",
+      "size_bytes": 1427910,
+      "sha256": "c55ae710c157cefaa8caecad2bd8bca033d4a3474d787b4eff78b6afc5f924c5"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/all_purpose_cleaner/textures/all_purpose_cleaner_diff_2k.jpg",
+      "size_bytes": 1212507,
+      "sha256": "d5c1c9e8222b35ecf6013c058ca29330109be5f2f69898ec4ba6fc64036ee4e6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/all_purpose_cleaner/textures/all_purpose_cleaner_nor_gl_2k.jpg",
+      "size_bytes": 413206,
+      "sha256": "c6c58c6fbb933eb7f37364427001721b3d4b416d1afb649b96d77c3488fe3481"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/american_football/american_football.bin",
+      "size_bytes": 140192,
+      "sha256": "1c1cade78cbb0c857fb8bae9a5d773c6c868a72b36af9f65ffc5c80aa9b9606a"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/american_football/american_football_2k.gltf",
+      "size_bytes": 2816,
+      "sha256": "33c37ca5c4cecfc12b7a930b7f9d620d1f164db3e5503f07adbce6d1943c0b64"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/american_football/textures/american_football_arm_2k.jpg",
+      "size_bytes": 2043504,
+      "sha256": "19a6a494bec9b74eb6595bbd6d900ffe7ffae7af1ebe4b18e8db939e9aa7ff98"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/american_football/textures/american_football_diff_2k.jpg",
+      "size_bytes": 2388905,
+      "sha256": "87e3af05d787ddb6737ad3f446c7f115c789c7bc300ff5356b013380060185a6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/american_football/textures/american_football_nor_gl_2k.jpg",
+      "size_bytes": 5262250,
+      "sha256": "51914b7f835faa772774ebd61fa0c128904582e0969c9f60c6714fac47ed6baa"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ammo_box/ammo_box.bin",
+      "size_bytes": 153588,
+      "sha256": "7f7211c643fe5fc4e7ec033e644e4fdea18188e15bc55a27972b72e6ff7e1d03"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ammo_box/ammo_box_2k.gltf",
+      "size_bytes": 8802,
+      "sha256": "f8dfec6fbc95e3cb86aa87e28333cda6fec0a89aa9d6d47425f34da44030672b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ammo_box/textures/ammo_box_arm_2k.jpg",
+      "size_bytes": 2013349,
+      "sha256": "26b0ae21903beadd4c85957774e4bf0269fafdd62142e57dc415bf9f2ede688d"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ammo_box/textures/ammo_box_diff_2k.jpg",
+      "size_bytes": 1628874,
+      "sha256": "a5782ad5b5466e9586b5ed2cbb5cd8db37d6527fafcd2adbdfde4d1aa7e29572"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ammo_box/textures/ammo_box_nor_gl_2k.jpg",
+      "size_bytes": 1162417,
+      "sha256": "34cd0856aeeeadca304ad8cc229ab847c4cedb824f728a10d482f4c8d11463e3"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_ceramic_vase_01/antique_ceramic_vase_01.bin",
+      "size_bytes": 217216,
+      "sha256": "ff3224b67b0a20e5033e651c405382fbfcc26ceb034f8dc59065ea0e0b6b708e"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_ceramic_vase_01/antique_ceramic_vase_01_2k.gltf",
+      "size_bytes": 2789,
+      "sha256": "08c2254b19143c7b2896ff484104b5c7c9fdc67b94550427abe21d397ac01221"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_ceramic_vase_01/textures/antique_ceramic_vase_01_arm_2k.jpg",
+      "size_bytes": 244006,
+      "sha256": "be7908d396587e9eaed4a7a9620865e9546c53dac435f80bfa7f17f2ee639829"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_ceramic_vase_01/textures/antique_ceramic_vase_01_diff_2k.jpg",
+      "size_bytes": 590090,
+      "sha256": "e93f8729d3d7271c85ef11833f5027aff3757af876638a2ac4248519a8211517"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_ceramic_vase_01/textures/antique_ceramic_vase_01_nor_gl_2k.jpg",
+      "size_bytes": 110396,
+      "sha256": "c49167b796d4cad7411b1b60bcff06367348ddd802031c49c8d00eeaea0649b6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_estoc/antique_estoc.bin",
+      "size_bytes": 226660,
+      "sha256": "ef986112b317dd667f0bc8ca80647621572e82b04dacddbe4eed078121af89d7"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_estoc/antique_estoc_2k.gltf",
+      "size_bytes": 2884,
+      "sha256": "c7940c12286ba6dd535538c1c6bef403c4cdc7d35f6d5a6f8e29891ff1125bfa"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_estoc/textures/antique_estoc_arm_2k.jpg",
+      "size_bytes": 3084198,
+      "sha256": "243d925940c2ebaa2f3fa809f98a5aa9583d1cbb6c264985b0b72063ffd98701"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_estoc/textures/antique_estoc_diff_2k.jpg",
+      "size_bytes": 2383312,
+      "sha256": "2fbeb5dbb0dd1704fc4832cd2329e903bc7b1c50e46df2c1f6838fe3ec48882b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_estoc/textures/antique_estoc_nor_gl_2k.jpg",
+      "size_bytes": 2736110,
+      "sha256": "5d89ec5d463e1586d4f1c888cad69dae8c23988e3fbc31e7f5a03d062eac8f47"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_katana_01/antique_katana_01.bin",
+      "size_bytes": 221940,
+      "sha256": "8ad394f302068d4d639bc611335e396f97e2cc551beb42c7ab004b79d19b8a6c"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_katana_01/antique_katana_01_2k.gltf",
+      "size_bytes": 2718,
+      "sha256": "95f5b33432e6ebd007d0cf50d6fd9c71894522bb0f4099e6064f75e996dae53b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_katana_01/textures/antique_katana_01_arm_2k.jpg",
+      "size_bytes": 511518,
+      "sha256": "ee9c11714448a3f8f84494bfc034d2abce2f82e0b2e000848ea28197feb64f6e"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_katana_01/textures/antique_katana_01_diff_2k.jpg",
+      "size_bytes": 518998,
+      "sha256": "5e0a0a23ac0bc6a83e1b340cb8f1c5592f315e2f532752b21d2977d2f794b9da"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/antique_katana_01/textures/antique_katana_01_nor_gl_2k.jpg",
+      "size_bytes": 340391,
+      "sha256": "95a27676151412c1a6c854fe0257e39df2a7f40252ad761be4397a592c487ac8"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ArmChair_01/ArmChair_01.bin",
+      "size_bytes": 154012,
+      "sha256": "42a4206ea8bb3f7c3c1500ca3e408e084e8687cd3cc9cbf095b3344e215e0db6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ArmChair_01/ArmChair_01_2k.gltf",
+      "size_bytes": 2643,
+      "sha256": "fef57c24069f77767605f865332cb6b4bfa4b78352b230ce75ee66ed5566a9eb"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ArmChair_01/textures/Armchair_01_arm_2k.jpg",
+      "size_bytes": 442886,
+      "sha256": "9f5011595cfc5ba523ac385b0bf978c5e455dcf9f9fb6f53d4bfcb4159224e39"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ArmChair_01/textures/Armchair_01_diff_2k.jpg",
+      "size_bytes": 723200,
+      "sha256": "d45d6f6328a924b5099deb7ed88023ab066128a376ee2d16f48149872cec47de"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/ArmChair_01/textures/Armchair_01_nor_gl_2k.jpg",
+      "size_bytes": 1482566,
+      "sha256": "0bce11bc21a3259e13429e65bedc1cf28d2a672fc6dde6dc86f45e8b8f8a9af4"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/anthurium_botany_01/anthurium_botany_01.bin",
+      "size_bytes": 1744256,
+      "sha256": "6a23daf128e297ad99e984bec11bdea3c6eab64e52d07cbdc948ace5a05b2e25"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/anthurium_botany_01/anthurium_botany_01_2k.gltf",
+      "size_bytes": 10675,
+      "sha256": "ecee0d5cdf4b80b001ba59388ea9cd8b2d1e5d9c89ec070f000605747518aa95"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/anthurium_botany_01/textures/anthurium_botany_01_arm_2k.jpg",
+      "size_bytes": 1833646,
+      "sha256": "81bcc96fa59e09169df48cf2eb930361c4df157a8114e7f3149c97934d47aadc"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/anthurium_botany_01/textures/anthurium_botany_01_diff_2k.jpg",
+      "size_bytes": 1565878,
+      "sha256": "7ef41c8fb14951c8fb74e9924a60ce6b2fc8c150b8f0c21e59af29b88df36762"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/anthurium_botany_01/textures/anthurium_botany_01_nor_gl_2k.jpg",
+      "size_bytes": 1900025,
+      "sha256": "515f9168577d727bd208d8f8e521c8c6ac318fc9d5c65f29510a5b861608c639"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/BarberShopChair_01/BarberShopChair_01.bin",
+      "size_bytes": 268464,
+      "sha256": "39ecebfef975af4e812134b7f056e243f6404ce60c4dc2e9dec30930802ea24b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/BarberShopChair_01/BarberShopChair_01_2k.gltf",
+      "size_bytes": 2706,
+      "sha256": "70e1c0270984d508e24f553458050e799e53e27e3c03b7b0f5b6d5f900e703d9"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/BarberShopChair_01/textures/BarberShopChair_01_arm_2k.jpg",
+      "size_bytes": 688585,
+      "sha256": "0b4461ae9d1477ca4e061569cf8a9d506ce0da3210732b8d877767c4bd88ea32"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/BarberShopChair_01/textures/BarberShopChair_01_diff_2k.jpg",
+      "size_bytes": 520691,
+      "sha256": "51d7d0c9194f8cfd80e44ad8ce37a3fa35fe165319431085a8d2172e6856101c"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/BarberShopChair_01/textures/BarberShopChair_01_nor_gl_2k.jpg",
+      "size_bytes": 702892,
+      "sha256": "12357ebf18fbfe85fe02a69fa325d2a1411f3f94649d44d16e357bbc3a22c2e7"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/Barrel_01/Barrel_01.bin",
+      "size_bytes": 81756,
+      "sha256": "fe8369c1ac796059b62a091c0db7367dc420aa2cee212672e48f991f4208da98"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/Barrel_01/Barrel_01_2k.gltf",
+      "size_bytes": 2711,
+      "sha256": "1b9f9774879a071146045bb0d3557b06a97f4f9c360e3c57664cfe723e1c55e9"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/Barrel_01/textures/Barrel_01_explosive_arm_2k.jpg",
+      "size_bytes": 814101,
+      "sha256": "3f6fdb68391e4369e551d90f8577b0899c30589b532ebd416e996170279cd852"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/Barrel_01/textures/Barrel_01_explosive_diff_2k.jpg",
+      "size_bytes": 613078,
+      "sha256": "09da9d519d87d34c0318da3bb293296071ce2e09c78415befe1157949a644b8b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/Barrel_01/textures/Barrel_01_explosive_nor_gl_2k.jpg",
+      "size_bytes": 875565,
+      "sha256": "050d5dfcf86b37172708637d1c1939010dd1837ed503b7e5561b5b1e67cb0379"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/barrel_stove/barrel_stove.bin",
+      "size_bytes": 267680,
+      "sha256": "09d7eb63b75a4a214fdb9f03349e5ddf990ea9865b3fbfb3fede6e5ccfa19e68"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/barrel_stove/barrel_stove_2k.gltf",
+      "size_bytes": 2747,
+      "sha256": "abfb2510abcb5eaf15d6867d3967df640a4d91c2a94aa82ad7faa841777a22ef"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/barrel_stove/textures/barrel_stove_arm_2k.jpg",
+      "size_bytes": 2937259,
+      "sha256": "42d5b6c4e966d9272e6fdaed5435bfea8d883ee266404711385aeb5a7b8ce99c"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/barrel_stove/textures/barrel_stove_diff_2k.jpg",
+      "size_bytes": 3451677,
+      "sha256": "92a0cdddf46a589d8c26bbe284d06a11d6631e55517b37dbfc739a2c5f518e3a"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/barrel_stove/textures/barrel_stove_nor_gl_2k.jpg",
+      "size_bytes": 694414,
+      "sha256": "a8a17a3223bf8c12e5426ec4b0d5bd31239444f87556cfc389b97b5792304b95"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/baseball_bat/baseball_bat.bin",
+      "size_bytes": 74048,
+      "sha256": "884a4120d81c38e9370861f21c36a6fb3e53ad0d72eb0833ce9f9b9853e5199b"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/baseball_bat/baseball_bat_2k.gltf",
+      "size_bytes": 2874,
+      "sha256": "678f08d717c471bb56aabdfcdadd12ad6751e9edf3f6493e5c1478b5e51e8679"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/baseball_bat/textures/baseball_bat_arm_2k.jpg",
+      "size_bytes": 2956132,
+      "sha256": "c6f6501b03871c2347ef0365de5e61a35f3cd355e64463c5f47a26a795155e9c"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/baseball_bat/textures/baseball_bat_diff_2k.jpg",
+      "size_bytes": 1456474,
+      "sha256": "4508b6dd505e158fd082bba9d2a78c26d70dc6fb663cec498417a62f2b186004"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/baseball_bat/textures/baseball_bat_nor_gl_2k.jpg",
+      "size_bytes": 1729845,
+      "sha256": "aa71f7b037732c80435e8cbbc44b0759a0a8cdde6ddda8e6f251899dcacd4ee6"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/bananas/bananas.bin",
+      "size_bytes": 1088376,
+      "sha256": "c98b7dbabd8ceb70c9b8ea92611c7c7833dd86c118c8013b941eb379bee26774"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/bananas/bananas_2k.gltf",
+      "size_bytes": 8796,
+      "sha256": "fc2aef01104e4bf7d1738a80c8ccbf0c5006175533c68ef29d1b073c426781d8"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/bananas/textures/bananas_arm_2k.jpg",
+      "size_bytes": 1835465,
+      "sha256": "46cd08e7965ce2da88c68eee128571b600fe2563808dcbca667d9b25548e20fa"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/bananas/textures/bananas_diff_2k.jpg",
+      "size_bytes": 1698730,
+      "sha256": "d0727524b53b5a6f5aa5f661eed95269ed563252d0b022097ae6f5f219af1bb2"
+    },
+    {
+      "category": "3d_reconstruction_pbr",
+      "relative_path": "data/benchmarks/gso_starter/bananas/textures/bananas_nor_gl_2k.jpg",
+      "size_bytes": 937611,
+      "sha256": "e3df19df3911ef00ce4158ff9587463e70510ffe9d0ef74f60f1c9b1829ae472"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/01ca4c1d54a04428ae8b4fec45d38071.glb",
+      "size_bytes": 8491388,
+      "sha256": "6be70679de892c088943c51a64089358164027b09d8695d063014e78764872c0"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/023975ca1dbf4c4db82b07c9153da2a7.glb",
+      "size_bytes": 5046020,
+      "sha256": "6d2447240a3ee58e7d3d632b2984d205f30a2a289e9d9c58c9381d287ce8f2ba"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/04e056fc338346d4850143b71e7923d4.glb",
+      "size_bytes": 170996,
+      "sha256": "e1d8ce8f437a3dfec5cb739adb70572716910db58fdc5e0a6e3d8e6df78ad769"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/060911a8a1a6491686ab27517d9b8c3c.glb",
+      "size_bytes": 344328,
+      "sha256": "5dc1c976822c0f2f8f415541d4f70d743303968f3ca2ed6f64f54f3e21a96952"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/067fb8650b14441e8d193f66740aa704.glb",
+      "size_bytes": 567936,
+      "sha256": "2fe8677bc15089eae366b3ef41cfad59e0bf5180ca359df3f752d1c9acf3f493"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0815329d1c0641d597a3a8de3dc83e4d.glb",
+      "size_bytes": 1942252,
+      "sha256": "c04e4bbe343a4062fd114ef3fca6475855296371a69f53208ff595696dd49b2a"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/092bb80346414104abd5cace71892752.glb",
+      "size_bytes": 2222932,
+      "sha256": "379923c74ab5f7ca32595430f4ac1c44a8531fba602f43be65666cea49f89ea1"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0a99f6301a02450090dad490c1daa9a5.glb",
+      "size_bytes": 172504,
+      "sha256": "684564039d96cb150665963f707c5c7a616bd5a91c98e5d22de40b625a743d6f"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0ac411adc5aa4eb682f34b2b868076d3.glb",
+      "size_bytes": 175948,
+      "sha256": "77de4bc8fbd0b93e38d948fb88ce5cc16f149bf94dfcff5363617b2a3c52509e"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0c0d404a08604ec0966de31ae11d65cb.glb",
+      "size_bytes": 9101512,
+      "sha256": "f270887573a360cb34e93197d108d17a4a920488a4907cd2a959d2bb05778ff6"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0d1ea839bd6348efaf62afd146e1b1e4.glb",
+      "size_bytes": 2804,
+      "sha256": "b34b52d6d023f5d54368b6363a2866f5caaddafa496b46269f2671d47a64185c"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0d71a058290344e3aa13ce69d9393d38.glb",
+      "size_bytes": 8046572,
+      "sha256": "77ef9c52b1c48096b830e8467f61210fba522c9569ee3b0c57acc90ca885259e"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0dc3d31d2c4c4e9794ed040478014bf4.glb",
+      "size_bytes": 1009572,
+      "sha256": "abc9ef8e49ee4a8c033256324dc0db521665921ed61f0d47d1fa53f3efec36f3"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0e53a38a3c92499e81f28d0e1c6207ce.glb",
+      "size_bytes": 14016004,
+      "sha256": "670aec9750ce0d276c40cc91e2676509fdedf56bae5e5cc0cca070afb03f0939"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/0e9d0a055dde4d83b7fd53d8b7465916.glb",
+      "size_bytes": 1798956,
+      "sha256": "e29f7eaeece02c0ef0d8619252b0dc6ac97a1250beda8b80c72524ae7f57da89"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/1087bbd5bc0643988a545d74311cd175.glb",
+      "size_bytes": 6550496,
+      "sha256": "8460fab8f327af9bc06d0fadc1c178720fdc1cb851ee6499939ef3a2424dffda"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/10891952bdd0488d9269852e0a42df78.glb",
+      "size_bytes": 173068,
+      "sha256": "0cc4415b08b1503eadc8192d8a7e619ccf838f306fbac708d8d3eaf7d0f932a5"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/116027be119d45019224a2c31c2f1b19.glb",
+      "size_bytes": 2217340,
+      "sha256": "89ad22e957859737239a7366ea6b73b459c4002272325fd63b3b11fb3ed123d4"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/124515cdbe234139bfdc1ca66c68441c.glb",
+      "size_bytes": 933308,
+      "sha256": "f7f846c48c0feea11c163e30e4a51bd376cee17d5df133db8d90303531a7e784"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/12b8439bb0b24c38a49b47d0b5021f51.glb",
+      "size_bytes": 8554200,
+      "sha256": "303a145d9f2845efd51ed5bf4bec66ed3479ba11e1579607282fd1bc6a687c1d"
+    },
+    {
+      "category": "3d_reconstruction",
+      "relative_path": "data/benchmarks/objaverse_eval/12d318025da24476a64a857ad27eddae.glb",
+      "size_bytes": 33687592,
+      "sha256": "0fc0b1ded2d100e72b6a14ee058b6ed7ed8296f8d19db41caed2eb30f3263824"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Action_Idle_To_Standing_Idle.fbx",
+      "size_bytes": 366976,
+      "sha256": "f31ea8d840012b1e47bf3dfe92e382b44e6671605ab39cb65852c51c81036d0e"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/180_Turn_W_Briefcase.fbx",
+      "size_bytes": 442032,
+      "sha256": "6da6ff74dc21de12fd1116e416c1bce0d6b97dca5bb3a3088b14d923daca7872"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Action_Idle_To_Fight_Idle.fbx",
+      "size_bytes": 374528,
+      "sha256": "6c3b7765108f07c4678c542f1743f93af0bdc13e74e536583cde2edf71b028e7"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Aerial_Evade.fbx",
+      "size_bytes": 676944,
+      "sha256": "7d00f87dd26468268cb8ecb1600298e683081a88c9f9caadd43ea4e53678604e"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Administering_Cpr.fbx",
+      "size_bytes": 990416,
+      "sha256": "536bd653c4afb8ff9d63e569e39ae77f3659e07e4193101ec53822d2cebb2db5"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Agony.fbx",
+      "size_bytes": 552848,
+      "sha256": "99d5b6ea610137471a282cd57c2978c585bdda993b9752e1c9161b91649d90c0"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Agreeing.fbx",
+      "size_bytes": 685120,
+      "sha256": "82e7f4b11d926fa538b3d956fa1483054f8d922fc40d43be32d667df5930edd6"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/Acknowledging.fbx",
+      "size_bytes": 480368,
+      "sha256": "be2a29e234a5449fa5dfd9396e05153fcf942afa43337a9da94c9bfc4258e7cf"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/2hand_Idle.fbx",
+      "size_bytes": 568032,
+      "sha256": "3769f5bf8bf65c2d0a6e2c0d73b500c82b0d591e1608c75f87187c588c733cac"
+    },
+    {
+      "category": "actor_dynamics",
+      "relative_path": "data/benchmarks/mixamo_dynamics/180_Turn_W_Briefcase_2.fbx",
+      "size_bytes": 444736,
+      "sha256": "35d98640ea144f4dde3ad7c39e49e4ea154c0e03e947d3adfd6412d8ecaf3d7f"
+    }
+  ]
+}

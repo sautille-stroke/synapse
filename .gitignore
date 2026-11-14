@@ -55,6 +55,7 @@ data/downloads/
 output/
 tmp/
 data/datasets/
+data/benchmarks/
 
 # Synapse-generated session data
 data/sessions/
