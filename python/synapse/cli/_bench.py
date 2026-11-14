@@ -6,10 +6,8 @@ from synapse.cli.common import (
     Any,
     AssetNotFoundError,
     Path,
-    QualityGateError,
     _run_with_json_mode,
     argparse,
-    json,
 )
 
 

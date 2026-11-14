@@ -4,7 +4,7 @@
 Provides five heterogeneous fusion strategies for merging candidate
 refinement outputs from different generative models into a single
 high-quality patch.  All operations are **pure NumPy** on **float32
-ACEScg** tensors â€?no ``torch`` or ``scipy`` dependency at import
+ACEScg** tensors  -- no ``torch`` or ``scipy`` dependency at import
 time.
 
 The five strategies are intentionally **orthogonal** to the spatial
@@ -104,7 +104,7 @@ def _fuse_cascade(
     resolutions, producing a result that draws structure from the most
     trusted candidate while incorporating detail from others.
     """
-    # Sort candidates by weight (ascending) â€?lowest weight contributes
+    # Sort candidates by weight (ascending)  -- lowest weight contributes
     # coarse structure, highest weight contributes fine detail.
     order = np.argsort(weights)
     h, w, c = candidates[0].shape

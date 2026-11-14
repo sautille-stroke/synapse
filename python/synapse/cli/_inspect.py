@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from synapse.cli.common import (
     Any, AssetNotFoundError, ContractValidationError, ExitCode,
-    Literal, NotImplementedStageError, Path, QualityGateError,
+    NotImplementedStageError, Path, QualityGateError,
     SynapseError, _run_with_json_mode, argparse, json, sys,
 )
 
@@ -42,9 +42,7 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
             )
 
     raw_backend = str(getattr(args, "backend", "native"))
-    backend: Literal["native", "python"] = (
-        "python" if raw_backend == "python" else "native"
-    )
+    backend = "python" if raw_backend == "python" else "native"
     result = validate_mesh_geometry(
         vertices, faces,
         require_watertight=bool(getattr(args, "require_watertight", False)),
@@ -130,9 +128,7 @@ def _cmd_inspect_evaluate(args: argparse.Namespace) -> dict[str, Any]:
     json_mode = bool(getattr(args, "json", False))
     ref_raw = getattr(args, "reference_dir", None)
     eval_backend_raw = str(getattr(args, "backend", "native"))
-    eval_backend: Literal["native", "python"] = (
-        "python" if eval_backend_raw == "python" else "native"
-    )
+    eval_backend = "python" if eval_backend_raw == "python" else "native"
     data = evaluate_3d_models_directory(
         input_dir=Path(args.input_dir),
         output_dir=Path(args.output_dir),
@@ -185,7 +181,7 @@ def _cmd_inspect_export_rl_data(args: argparse.Namespace) -> dict[str, Any]:
     from synapse.inspect.flywheel_exporter import export_rl_flywheel_dataset
 
     raw_fmt = str(getattr(args, "format", "dpo"))
-    fmt: Literal["prm", "dpo"] = "prm" if raw_fmt == "prm" else "dpo"
+    fmt = "prm" if raw_fmt == "prm" else "dpo"
     return export_rl_flywheel_dataset(
         log_dir=Path(args.log_dir),
         output_path=Path(args.output),

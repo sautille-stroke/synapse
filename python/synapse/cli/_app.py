@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 import sys
-from typing import Any
 
 from synapse.cli._bench import (
     dispatch_bench,
