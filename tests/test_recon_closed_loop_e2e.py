@@ -13,7 +13,11 @@ Covers:
 
 from __future__ import annotations
 
+import io
 import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -176,20 +180,43 @@ def test_closed_loop_result_to_dict_json() -> None:
 # -------------------------------------------------------------------
 
 
-def test_recon_closed_loop_cli_json() -> None:
-    """``synapse --json recon closed-loop`` returns exit 0."""
+def test_recon_closed_loop_cli_no_input_returns_contract_error() -> None:
+    """``synapse --json recon closed-loop`` without --video returns exit 10 (AUD-P0-01)."""
     from synapse.cli import main_synapse
 
-    rc = main_synapse(["--json", "recon", "closed-loop"])
-    assert rc == 0
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        rc = main_synapse(["--json", "recon", "closed-loop"])
+    assert rc == 10
+    payload = json.loads(captured.getvalue().strip())
+    assert payload["status"] == "error"
+    assert payload["exit_code"] == 10
+    assert payload["error_type"] == "ContractValidationError"
+    assert "agent_fix_hint" in payload
+
+
+def test_recon_closed_loop_cli_json() -> None:
+    """``synapse --json recon closed-loop`` with valid --video returns exit 0."""
+    from synapse.cli import main_synapse
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        video_path = Path(tmp_dir) / "test_frames.npy"
+        # T=5 satisfies Wan 2.1 T=4k+1 phase lock
+        np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
+        rc = main_synapse(["--json", "recon", "closed-loop", "--video", str(video_path), "--max-iterations", "2"])
+        assert rc == 0
 
 
 def test_recon_closed_loop_cli_human() -> None:
-    """``synapse recon closed-loop`` returns exit 0 in human mode."""
+    """``synapse recon closed-loop`` with valid --video returns exit 0 in human mode."""
     from synapse.cli import main_synapse
 
-    rc = main_synapse(["recon", "closed-loop"])
-    assert rc == 0
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        video_path = Path(tmp_dir) / "test_frames.npy"
+        # T=5 satisfies Wan 2.1 T=4k+1 phase lock
+        np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
+        rc = main_synapse(["recon", "closed-loop", "--video", str(video_path), "--max-iterations", "2"])
+        assert rc == 0
 
 
 # -------------------------------------------------------------------
