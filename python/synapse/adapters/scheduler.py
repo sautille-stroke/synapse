@@ -220,7 +220,8 @@ class DiscontinuityDetector:
         mag1 = np.sqrt(np.sum(n1 * n1, axis=-1))
         denom = mag0 * mag1
         safe = denom > 1e-8
-        cos_sim = np.where(safe, dot / denom, 1.0)
+        safe_denom = np.where(safe, denom, 1.0)
+        cos_sim = np.where(safe, dot / safe_denom, 1.0)
         mean_cos = float(np.mean(cos_sim))
         return float(np.clip(1.0 - mean_cos, 0.0, 1.0))
 
