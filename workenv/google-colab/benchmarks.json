@@ -129,6 +129,20 @@
       "target_dir": "chronomagic_core",
       "target_metrics": ["temporal_warp_error", "light_dir_error_deg"],
       "description": "50 high-frame-rate physical video scenarios testing gravity, collisions, and liquid time-arrow irreversibility."
+    },
+    {
+      "id": "human36m_mocap_dataset",
+      "name": "Human3.6M Large-Scale 3D Human Pose & Mocap Dataset (HuggingFace Mirror)",
+      "category": "actor_dynamics",
+      "tier": "standard_eval",
+      "source_type": "huggingface",
+      "hf_repo_id": "ryushinn/Human3.6M",
+      "url": "https://huggingface.co/datasets/ryushinn/Human3.6M",
+      "size_mb": 4500.0,
+      "format": "hf_dataset",
+      "target_dir": "human36m",
+      "target_metrics": ["foot_sliding_cm", "bone_length_drift_pct"],
+      "description": "World-standard Human3.6M 3D pose and motion dataset (S1, S5, S6, S7, S8, S9, S11) for foot-sliding and bone-drift evaluation."
     }
   ]
 }
