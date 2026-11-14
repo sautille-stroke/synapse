@@ -174,7 +174,8 @@ static void testCleanFastDestruction() {
     cfg.headless = true;
 
     InspectorApp app(cfg);
-    app.init();
+    bool ok = app.init();
+    assert(ok);
     app.requestQuit();
   }
   auto t1 = std::chrono::steady_clock::now();

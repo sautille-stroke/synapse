@@ -90,7 +90,8 @@ void InspectorApp::initDefaultMesh() {
 }
 
 bool InspectorApp::loadObjMesh(std::string_view objPath) {
-  std::ifstream ifs(std::string(objPath));
+  const std::string pathStr(objPath);
+  std::ifstream ifs(pathStr);
   if (!ifs.is_open()) return false;
 
   std::vector<float> loadedVerts;
@@ -112,14 +113,13 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
       std::string s0, s1, s2;
       if (iss >> s0 >> s1 >> s2) {
         auto parseIndex = [](const std::string& token) -> uint32_t {
-          int idx = std::stoi(token);
+          char* endPtr = nullptr;
+          long idx = std::strtol(token.c_str(), &endPtr, 10);
           return idx > 0 ? static_cast<uint32_t>(idx - 1) : 0u;
         };
-        try {
-          loadedFaces.push_back(parseIndex(s0));
-          loadedFaces.push_back(parseIndex(s1));
-          loadedFaces.push_back(parseIndex(s2));
-        } catch (...) {}
+        loadedFaces.push_back(parseIndex(s0));
+        loadedFaces.push_back(parseIndex(s1));
+        loadedFaces.push_back(parseIndex(s2));
       }
     }
   }
@@ -396,7 +396,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
   const float cy_screen = h * 0.5f;
 
   // Transform 3D points to screen space
-  auto projectPoint = [&](float x, float y, float z, float& sx, float& sy, float& camZ) -> bool {
+  auto projectPoint = [&](float x, float y, float z, float& outSx, float& outSy, float& outCamZ) -> bool {
     // Rotate Y (yaw)
     const float x1 = cy * x + sy * z;
     const float y1 = y;
@@ -410,12 +410,12 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     const float yc = y2 + m_panY;
     const float zc = z2 + m_orbitDistance;
 
-    camZ = zc;
+    outCamZ = zc;
     if (zc <= 0.2f) return false;
 
-    sx = cx + (xc / zc) * fovScale;
-    sy = cy_screen - (yc / zc) * fovScale;
-    return (sx >= 0.0f && sx < static_cast<float>(w) && sy >= 0.0f && sy < static_cast<float>(h));
+    outSx = cx + (xc / zc) * fovScale;
+    outSy = cy_screen - (yc / zc) * fovScale;
+    return (outSx >= 0.0f && outSx < static_cast<float>(w) && outSy >= 0.0f && outSy < static_cast<float>(h));
   };
 
   // Bresenham's 2D line drawer
