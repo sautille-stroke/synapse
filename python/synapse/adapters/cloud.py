@@ -105,9 +105,9 @@ def _frame_to_srgb_u8(radiance: np.ndarray) -> np.ndarray:
     linear_srgb = acescg_to_linear_srgb(radiance)
     srgb = linear_to_srgb(linear_srgb)
     srgb_clipped = np.clip(srgb, 0.0, 1.0)
-    return np.clip(
-        np.round(srgb_clipped * 255.0), 0, 255
-    ).astype(np.uint8)
+    return np.asarray(
+        np.clip(np.round(srgb_clipped * 255.0), 0, 255).astype(np.uint8)
+    )
 
 
 def _encode_png_bytes(image_u8: np.ndarray) -> bytes:

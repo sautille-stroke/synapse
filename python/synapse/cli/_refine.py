@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -169,7 +171,7 @@ def register_refine_subparser(
         ],
         help="Fusion strategy (default: LAPLACIAN_FREQUENCY)",
     )
-    return refine_parser
+    return cast(argparse.ArgumentParser, refine_parser)
 
 
 def dispatch_refine(

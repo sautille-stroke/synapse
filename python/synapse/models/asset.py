@@ -34,11 +34,11 @@ class ModelAsset:
 
     @property
     def num_vertices(self) -> int:
-        return self.vertices.shape[0]
+        return int(self.vertices.shape[0])
 
     @property
     def num_faces(self) -> int:
-        return self.faces.shape[0]
+        return int(self.faces.shape[0])
 
     def bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Compute axis-aligned bounding box (min_corner, max_corner)."""
@@ -49,7 +49,7 @@ class ModelAsset:
     def centroid(self) -> np.ndarray:
         """Compute center of axis-aligned bounding box."""
         min_c, max_c = self.bounding_box()
-        return (min_c + max_c) * 0.5
+        return np.asarray((min_c + max_c) * 0.5, dtype=np.float32)
 
     def bounding_sphere(self) -> tuple[np.ndarray, float]:
         """Compute center and radius of bounding sphere."""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -310,7 +312,7 @@ def register_rsi_subparser(
         "--strict", action="store_true", default=False,
         help="Fail closed with exit code 40 if candidate is not promoted",
     )
-    return rsi_parser
+    return cast(argparse.ArgumentParser, rsi_parser)
 
 
 def dispatch_rsi(

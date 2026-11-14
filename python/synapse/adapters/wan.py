@@ -20,7 +20,7 @@ around each ``generate()`` call when Cryptomatte IDs are present.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -221,7 +221,7 @@ class LocalCallableBackend(WanBackendTransport):
         Returns:
             ``[T, H, W, 3]`` uint8 sRGB frames.
         """
-        return self._fn(payload, config)
+        return cast(np.ndarray, self._fn(payload, config))
 
     def is_available(self) -> bool:
         """Local backend is always available."""

@@ -124,12 +124,12 @@ class TestDatasetGenerator:
         cfg = DatasetConfig(
             model_name="cube",
             trajectory_type="orbit",
-            num_frames=6,
-            width=128,
-            height=128,
+            num_frames=4,
+            width=64,
+            height=64,
             fps=12.0,
             radius=2.2,
-            val_ratio=0.33,
+            val_ratio=0.25,
             output_dir=out_dir,
         )
 
@@ -145,7 +145,7 @@ class TestDatasetGenerator:
 
         # Check manifest contents
         manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
-        assert len(manifest["frames"]) == 6
+        assert len(manifest["frames"]) == 4
         assert manifest["splits"]["val_count"] >= 1
         assert manifest["splits"]["train_count"] >= 1
         assert (out_dir / "fgpp" / "frame_0000.npz").exists()

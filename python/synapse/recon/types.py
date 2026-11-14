@@ -110,7 +110,7 @@ class MeshGeometry:
         """Whether the majority of faces are quadrilaterals."""
         if self.faces.ndim < 2:
             return False
-        return self.faces.shape[1] == 4
+        return bool(self.faces.shape[1] == 4)
 
 
 @dataclass

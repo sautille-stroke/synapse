@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     ExitCode,
@@ -28,7 +30,7 @@ def register_worker_subparser(
         "--bundle", required=True,
         help="Path to bundle directory or manifest JSON file",
     )
-    return worker_parser
+    return cast(argparse.ArgumentParser, worker_parser)
 
 
 def dispatch_worker(

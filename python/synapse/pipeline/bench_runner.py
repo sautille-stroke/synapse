@@ -587,5 +587,5 @@ def _load_array_dir(dir_path: Path) -> np.ndarray | None:
 def _try_load_npy(path: Path) -> np.ndarray | None:
     """Load a NumPy file if it exists, else ``None``."""
     if path.is_file():
-        return np.load(str(path))
+        return np.asarray(np.load(str(path)))
     return None

@@ -20,6 +20,8 @@ import numpy as np
 
 from synapse.render_core.morphology import (
     binary_dilation as _binary_dilation,
+)
+from synapse.render_core.morphology import (
     circular_structuring_element as _circular_structuring_element,
 )
 
@@ -70,7 +72,7 @@ def _distance_transform(mask: np.ndarray) -> np.ndarray:
     """
     try:
         from scipy.ndimage import distance_transform_edt
-        return distance_transform_edt(~mask).astype(np.float32)
+        return np.asarray(distance_transform_edt(~mask).astype(np.float32))
     except ImportError:
         pass
 
@@ -166,7 +168,7 @@ def generate_surgical_mask(
 
     # 4. Soft alpha with cosine feathering.
     if feather_width <= 0 or not np.any(combined):
-        return combined.astype(np.float32)
+        return np.asarray(combined.astype(np.float32))
 
     dist = _distance_transform(combined)
     alpha = np.ones_like(dist)

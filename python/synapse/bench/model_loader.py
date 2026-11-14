@@ -34,12 +34,12 @@ class MeshData:
     @property
     def num_vertices(self) -> int:
         """Number of vertices."""
-        return self.vertices.shape[0]
+        return int(self.vertices.shape[0])
 
     @property
     def num_faces(self) -> int:
         """Number of triangular faces."""
-        return self.faces.shape[0]
+        return int(self.faces.shape[0])
 
     def normalize(self, target_radius: float = 1.0) -> MeshData:
         """Center at origin and scale to *target_radius*."""

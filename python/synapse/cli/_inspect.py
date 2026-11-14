@@ -254,7 +254,7 @@ def register_inspect_subparser(
     rl.add_argument("--output", required=True, help="Output JSONL file path")
     rl.add_argument("--format", default="dpo", choices=["dpo", "prm"],
                      help="Export format (default: dpo)")
-    return p
+    return cast(argparse.ArgumentParser, p)
 
 
 # -------------------------------------------------------------------

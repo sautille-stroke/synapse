@@ -22,7 +22,7 @@ def circular_structuring_element(radius: int) -> np.ndarray:
         Boolean array of shape ``(2*radius + 1, 2*radius + 1)``.
     """
     yy, xx = np.ogrid[-radius : radius + 1, -radius : radius + 1]
-    return (xx * xx + yy * yy) <= radius * radius
+    return np.asarray((xx * xx + yy * yy) <= radius * radius, dtype=bool)
 
 
 def binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
@@ -41,7 +41,7 @@ def binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     try:
         from scipy.ndimage import binary_dilation as scipy_binary_dilation
 
-        return scipy_binary_dilation(mask, structure=se).astype(bool)
+        return np.asarray(scipy_binary_dilation(mask, structure=se).astype(bool))
     except ImportError:
         pass
 
@@ -75,9 +75,9 @@ def binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     try:
         from scipy.ndimage import binary_erosion as scipy_binary_erosion
 
-        return scipy_binary_erosion(mask, structure=se).astype(bool)
+        return np.asarray(scipy_binary_erosion(mask, structure=se).astype(bool))
     except ImportError:
         pass
 
     bool_mask = mask.astype(bool)
-    return ~binary_dilation(~bool_mask, se)
+    return np.asarray(~binary_dilation(~bool_mask, se))

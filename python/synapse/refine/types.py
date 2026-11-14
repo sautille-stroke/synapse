@@ -67,7 +67,7 @@ class RefinementROI:
             12.92 * linear,
             1.055 * np.power(linear, 1.0 / 2.4) - 0.055,
         )
-        return (srgb * 255.0).astype(np.uint8)
+        return np.asarray((srgb * 255.0).astype(np.uint8))
 
 
 @dataclass

@@ -61,11 +61,11 @@ class CameraParams:
 
     def position(self) -> np.ndarray:
         """Camera position in world space."""
-        return self.world_matrix[:3, 3].copy()
+        return np.asarray(self.world_matrix[:3, 3].copy())
 
     def forward(self) -> np.ndarray:
         """Camera forward direction (negative Z axis in camera space)."""
-        return -self.world_matrix[:3, 2].copy()
+        return np.asarray(-self.world_matrix[:3, 2].copy())
 
     def projection_matrix(self) -> np.ndarray:
         """Compute 4×4 perspective projection matrix.
@@ -167,11 +167,11 @@ class FGPPFrame:
 
     @property
     def height(self) -> int:
-        return self.depth.shape[0]
+        return int(self.depth.shape[0])
 
     @property
     def width(self) -> int:
-        return self.depth.shape[1]
+        return int(self.depth.shape[1])
 
     def available_channels(self) -> list[str]:
         """Return names of non-None channels."""

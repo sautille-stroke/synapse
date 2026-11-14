@@ -75,7 +75,7 @@ def _estimate_exposure_ev(rgb_linear: np.ndarray) -> float:
         return 0.0
     median_log_lum = float(np.median(np.log2(lum_positive)))
     # 18% grey ≈ 0.18 → log2(0.18) ≈ -2.474
-    return median_log_lum - np.log2(0.18)
+    return float(median_log_lum - np.log2(0.18))
 
 
 def _estimate_grain_sigma(rgb_linear: np.ndarray) -> float:

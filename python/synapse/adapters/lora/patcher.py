@@ -9,7 +9,7 @@ Heavy dependencies (``torch``) are lazy-imported inside methods.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from synapse.adapters.lora.manager import MultiLoRAManager
 from synapse.adapters.lora.manifest import LoRAManifest
@@ -70,7 +70,7 @@ class LoRAPatchHook:
                 while m.dim() < lora_contrib.dim():
                     m = m.unsqueeze(-1)
                 lora_contrib = lora_contrib * m
-            return output + lora_contrib
+            return cast(torch.Tensor, output + lora_contrib)
 
         self._handle = module.register_forward_hook(_hook)
 

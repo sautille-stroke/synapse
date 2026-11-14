@@ -47,8 +47,8 @@ def _pil_to_rgb_array(img: Any) -> np.ndarray | None:
         if img.ndim == 2:
             return np.stack([img] * 3, axis=-1)
         if img.shape[-1] == 4:
-            return img[:, :, :3]
-        return img
+            return np.asarray(img[:, :, :3])
+        return np.asarray(img)
     return None
 
 

@@ -50,7 +50,7 @@ def _sobel_gradient_magnitude(image: np.ndarray) -> np.ndarray:
             + img[2:, :-2] + 2.0 * img[2:, 1:-1] + img[2:, 2:]
         )
 
-    return np.sqrt(gx * gx + gy * gy).astype(np.float32)
+    return np.asarray(np.sqrt(gx * gx + gy * gy), dtype=np.float32)
 
 
 def _rgb_to_lab_approx(rgb: np.ndarray) -> np.ndarray:

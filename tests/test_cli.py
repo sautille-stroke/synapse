@@ -16,6 +16,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+import pytest
 from synapse.errors import (
     AssetNotFoundError,
     BackendUnavailableError,
@@ -423,6 +424,7 @@ class TestBenchCommands:
         assert isinstance(data["scenarios"], list)
         assert "count" in data
 
+    @pytest.mark.slow
     def test_bench_export_fgpp_json_mode(self, tmp_path: Path) -> None:
         out_dir = tmp_path / "exported_fgpp"
         code, out, err = _capture_main_bench(

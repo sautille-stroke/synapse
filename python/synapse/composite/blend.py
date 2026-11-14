@@ -85,7 +85,7 @@ def _box_filter(src: np.ndarray, radius: int) -> np.ndarray:
         Box-filtered array (each pixel = local mean in the window).
     """
     if radius <= 0:
-        return src.copy()
+        return np.asarray(src.copy())
 
     arr = src.astype(np.float64)
     h, w = arr.shape[:2]
@@ -125,11 +125,11 @@ def _box_filter(src: np.ndarray, radius: int) -> np.ndarray:
         sums_hi = sums_hi.reshape(shape_out)
         sums_lo = sums_lo.reshape(shape_out)
 
-        return (sums_hi - sums_lo) / np.maximum(counts_b, 1.0)
+        return np.asarray((sums_hi - sums_lo) / np.maximum(counts_b, 1.0))
 
     result = _cumsum_mean_1d(arr, axis=0)
     result = _cumsum_mean_1d(result, axis=1)
-    return result
+    return np.asarray(result)
 
 
 def _guided_filter_box(
@@ -187,7 +187,7 @@ def _guided_filter_box(
 
     if squeeze:
         result = result[..., 0]
-    return result
+    return np.asarray(result)
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def border_ring_lab_match(
 
     # Handle degenerate cases.
     if not np.any(mask):
-        return patch_srgb.copy()
+        return np.asarray(patch_srgb.copy())
 
     # Build structuring element for ring extraction.
     se = _circular_structuring_element(ring_width_px)
@@ -245,7 +245,7 @@ def border_ring_lab_match(
 
     # If rings are empty fall back to the full regions.
     if not np.any(outer_ring) or not np.any(inner_band):
-        return patch_srgb.copy()
+        return np.asarray(patch_srgb.copy())
 
     # Convert to CIE LAB via linear RGB.
     patch_linear = srgb_to_linear(patch_f)
@@ -291,8 +291,8 @@ def border_ring_lab_match(
 
     if is_uint8:
         output_f = np.clip(output_f * 255.0, 0.0, 255.0)
-        return output_f.astype(np.uint8)
-    return np.clip(output_f, 0.0, 1.0).astype(src_dtype)
+        return np.asarray(output_f.astype(np.uint8))
+    return np.asarray(np.clip(output_f, 0.0, 1.0).astype(src_dtype))
 
 
 def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:
@@ -334,7 +334,7 @@ def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:
     linear_rgb = np.clip(linear_rgb, 0.0, None)
 
     srgb = linear_to_srgb(linear_rgb)
-    return np.clip(srgb, 0.0, 1.0)
+    return np.asarray(np.clip(srgb, 0.0, 1.0))
 
 
 # ---------------------------------------------------------------------------
@@ -396,8 +396,8 @@ def laplacian_pyramid_blend(
     result = np.clip(result, 0.0, 1.0)
 
     if is_uint8:
-        return (result * 255.0).astype(np.uint8)
-    return result.astype(src_dtype)
+        return np.asarray((result * 255.0).astype(np.uint8))
+    return np.asarray(result.astype(src_dtype))
 
 
 # ---------------------------------------------------------------------------

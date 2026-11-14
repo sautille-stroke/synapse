@@ -143,7 +143,7 @@ def linear_to_log_normalized_depth(
 
     log_ratio = np.log(z_far_m / z_near_m)
     result = np.log(z / z_near_m) / log_ratio
-    return np.clip(result, 0.0, 1.0)
+    return np.asarray(np.clip(result, 0.0, 1.0))
 
 
 def log_normalized_to_linear_depth(
@@ -176,7 +176,7 @@ def log_normalized_to_linear_depth(
 
     z_n = np.asarray(z_norm, dtype=np.float64)
     log_ratio = np.log(z_far_m / z_near_m)
-    return z_near_m * np.exp(z_n * log_ratio)  # type: ignore[return-value]
+    return np.asarray(z_near_m * np.exp(z_n * log_ratio))
 
 
 # ---------------------------------------------------------------------------
