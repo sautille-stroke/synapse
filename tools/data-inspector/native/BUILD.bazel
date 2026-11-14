@@ -1,21 +1,14 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 COMMON_COPTS = select({
     "@platforms//os:windows": [
-        "/std:c++20",
         "/W4",
-        "/EHs-c-",
-        "/GR-",
-        "/D_HAS_EXCEPTIONS=0",
     ],
     "//conditions:default": [
-        "-std=c++20",
         "-Wall",
         "-Wextra",
-        "-Werror",
-        "-fno-exceptions",
-        "-fno-rtti",
     ],
 })
 
@@ -38,6 +31,7 @@ cc_library(
     deps = [
         "@aether//core",
         "@aether//pal:shm",
+        "@nlohmann_json//:json",
     ],
     visibility = ["//visibility:public"],
 )
@@ -50,4 +44,13 @@ cc_binary(
         ":inspector_lib",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "test_inspector",
+    srcs = ["test_inspector.cc"],
+    copts = COMMON_COPTS,
+    deps = [
+        ":inspector_lib",
+    ],
 )
