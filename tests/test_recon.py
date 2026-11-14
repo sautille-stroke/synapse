@@ -248,6 +248,10 @@ class TestReconDelight:
         res = decompose_intrinsic(radiance)
         assert isinstance(res, DelightResult)
         assert res.albedo.shape == (16, 16, 3)
+
+    def test_delight_multiview_albedo_callable(self) -> None:
+        """delight_multiview_albedo callable contract."""
+        assert callable(delight_multiview_albedo)
         assert res.shading.shape == (16, 16, 3)
         assert res.specular.shape == (16, 16, 3)
         assert res.ambient_sh.shape == (9, 3)
