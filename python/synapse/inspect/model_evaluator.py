@@ -32,7 +32,6 @@ from synapse.inspect.geometry_gate import validate_mesh_geometry
 # -------------------------------------------------------------------
 # Gate profiles (dynamically derived from synapse.metrics.profiles)
 # -------------------------------------------------------------------
-
 from synapse.metrics.profiles import (
     RSI_PROMOTION,
     RSI_PROMOTION_TARGET,

@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import pytest
-
-from synapse.bench.model_loader import MeshData, load_mesh
+from synapse.bench.model_loader import load_mesh
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.inspect.model_evaluator import (
     GATE_PROFILES,
@@ -23,7 +20,6 @@ from synapse.metrics.profiles import (
     TRACK_A_ASSET,
     TRACK_B_VIDEO,
 )
-
 
 try:
     import synapse._c_geometry  # noqa: F401

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import pytest
-
 from synapse.adapters.mock import MockVideoAdapter
 from synapse.bench.scenario import list_scenarios
 from synapse.pipeline.bench_runner import BenchPipelineRunner
-
 
 pytestmark = pytest.mark.slow
 
