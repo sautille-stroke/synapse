@@ -33,6 +33,7 @@ class CameraTrajectoryType(str, Enum):
     TRACKING = "tracking"
     DOLLY = "dolly"
     STATIC = "static"
+    FIXED = "fixed"
     ARC = "arc"
     PAN = "pan"
 
@@ -333,6 +334,7 @@ _GENERATORS: dict[CameraTrajectoryType, Callable[..., list[CameraParams]]] = {
     CameraTrajectoryType.TRACKING: _generate_tracking,
     CameraTrajectoryType.DOLLY: _generate_dolly,
     CameraTrajectoryType.STATIC: _generate_static,
+    CameraTrajectoryType.FIXED: _generate_static,
     CameraTrajectoryType.ARC: _generate_arc,
     CameraTrajectoryType.PAN: _generate_pan,
 }

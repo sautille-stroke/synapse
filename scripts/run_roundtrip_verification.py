@@ -262,6 +262,8 @@ def run_single_pipeline(
     from synapse.metrics.image_quality import psnr_db, ssim
     from synapse.metrics.roundtrip import chamfer_mm
     from synapse.recon.pipeline import ReconPipeline
+    from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+    from synapse.render_core.rasterizer import SoftwareRasterizer
 
     pipeline = ReconPipeline(target_quad_faces=500)
     result = pipeline.run(video_frames=frames)
@@ -271,11 +273,52 @@ def run_single_pipeline(
 
     cd = chamfer_mm(recon_verts, gt) / 1000.0  # mm → m for threshold
 
-    # Render simple comparison: use mean frame as proxy
-    mean_frame = np.mean(frames, axis=0)
-    # Create a "rendered" image from reconstructed mesh (simplified: solid colour)
+    # Render reconstructed geometry using SoftwareRasterizer for comparison
     h, w = frames.shape[1], frames.shape[2]
-    rendered = np.full((h, w, 3), 0.5, dtype=np.float32)  # placeholder
+    mean_frame = np.mean(frames, axis=0)
+
+    faces = result.mesh.faces
+    if faces.ndim == 2 and faces.shape[1] == 4:
+        tri_faces = np.concatenate(
+            [faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0
+        ).astype(np.int32)
+    else:
+        tri_faces = faces.astype(np.int32)
+
+    normals = result.mesh.normals
+    if normals is None or len(normals) != len(recon_verts):
+        v0 = recon_verts[tri_faces[:, 0]]
+        v1 = recon_verts[tri_faces[:, 1]]
+        v2 = recon_verts[tri_faces[:, 2]]
+        fn = np.cross(v1 - v0, v2 - v0)
+        vn = np.zeros_like(recon_verts)
+        for j in range(3):
+            np.add.at(vn, tri_faces[:, j], fn)
+        norm_len = np.linalg.norm(vn, axis=1, keepdims=True)
+        norm_len = np.where(norm_len < 1e-12, 1.0, norm_len)
+        normals = vn / norm_len
+    else:
+        normals = normals.astype(np.float64)
+
+    cams = generate_cameras(
+        CameraTrajectoryType.ORBIT,
+        num_frames=1,
+        radius=2.0,
+        elevation_deg=15.0,
+        width=w,
+        height=h,
+    )
+    rasterizer = SoftwareRasterizer(width=w, height=h)
+    frame_res = rasterizer.render(
+        vertices=recon_verts,
+        faces=tri_faces,
+        normals=normals,
+        camera=cams[0],
+        entity_name="recon_mesh",
+    )
+    rendered = np.clip(
+        np.asarray(frame_res.direct_radiance, dtype=np.float32), 0.0, 1.0
+    )
 
     p = psnr_db(rendered, mean_frame)
     s = ssim(rendered, mean_frame)

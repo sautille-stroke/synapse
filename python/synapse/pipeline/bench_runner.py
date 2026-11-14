@@ -56,10 +56,16 @@ class ScenarioRunReport:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the report to a JSON-friendly dict."""
+        metrics_dict: dict[str, Any] = dict(self.metrics)
+        if "depth_rmse_m" not in metrics_dict:
+            metrics_dict["depth_rmse_m"] = "N/A (not_produced)"
+        if "normal_angular_error_deg" not in metrics_dict:
+            metrics_dict["normal_angular_error_deg"] = "N/A (not_produced)"
+
         d: dict[str, Any] = {
             "scenario_name": self.scenario_name,
             "adapter_id": self.adapter_id,
-            "metrics": self.metrics,
+            "metrics": metrics_dict,
             "timings": self.timings,
             "num_frames": self.num_frames,
             "resolution": list(self.resolution),
@@ -188,7 +194,13 @@ class BenchPipelineRunner:
             height=height,
         )
 
-        mesh = load_mesh(scenario.asset.id, normalize=True)
+        from synapse.bench.registry import AssetRegistry
+
+        try:
+            asset_path = AssetRegistry().resolve(scenario.asset.id)
+            mesh = load_mesh(str(asset_path), normalize=True)
+        except Exception:
+            mesh = load_mesh(scenario.asset.id, normalize=True)
         rasterizer = SoftwareRasterizer(width=width, height=height)
 
         fgpp_frames: list[FGPPFrame] = []
@@ -345,40 +357,30 @@ def evaluate_bundle(
         gen_float = gen_frames.astype(np.float32) / 255.0
         metrics["flicker_score"] = flicker_score(gen_float)
 
-    if gt_depth is not None and gen_frames is not None:
+    pred_depth = _try_load_npy(frames_dir / "depth.npy") or _try_load_npy(
+        bundle_dir / "depth.npy"
+    )
+    pred_normals = _try_load_npy(frames_dir / "normals.npy") or _try_load_npy(
+        bundle_dir / "normals.npy"
+    )
+
+    if gt_depth is not None and pred_depth is not None:
         from synapse.metrics.fgpp_fidelity import depth_rmse_m
 
-        # Use average luminance as proxy depth from generated frames
-        if gen_frames.ndim == 4:
-            gen_lum = np.mean(
-                gen_frames.astype(np.float32) / 255.0, axis=-1,
-            )
-            # Use only the first frame for depth comparison
-            if gen_lum.shape[0] > 0 and gt_depth.ndim >= 2:
-                gt_d = gt_depth
-                if gt_depth.ndim == 3:
-                    gt_d = gt_depth[0]
-                pred_d = gen_lum[0]
-                if gt_d.shape == pred_d.shape:
-                    metrics["depth_rmse_m"] = depth_rmse_m(
-                        pred_d, gt_d,
-                    )
+        gt_d = gt_depth[0] if gt_depth.ndim == 3 else gt_depth
+        p_d = pred_depth[0] if pred_depth.ndim == 3 else pred_depth
+        if gt_d.shape == p_d.shape:
+            metrics["depth_rmse_m"] = float(depth_rmse_m(p_d, gt_d))
 
-    if gt_normals is not None and gen_frames is not None:
+    if gt_normals is not None and pred_normals is not None:
         from synapse.metrics.fgpp_fidelity import normal_angular_error_deg
 
-        # Use normalized RGB as proxy normals
-        if gen_frames.ndim == 4 and gen_frames.shape[0] > 0:
-            pred_n = (
-                gen_frames[0].astype(np.float32) / 127.5 - 1.0
+        gt_n = gt_normals[0] if gt_normals.ndim == 4 else gt_normals
+        p_n = pred_normals[0] if pred_normals.ndim == 4 else pred_normals
+        if p_n.shape == gt_n.shape:
+            metrics["normal_angular_error_deg"] = float(
+                normal_angular_error_deg(p_n, gt_n)
             )
-            gt_n = gt_normals
-            if gt_normals.ndim == 4:
-                gt_n = gt_normals[0]
-            if pred_n.shape == gt_n.shape:
-                metrics["normal_angular_error_deg"] = (
-                    normal_angular_error_deg(pred_n, gt_n)
-                )
 
     if gt_mask is not None and gen_frames is not None:
         from synapse.metrics.fgpp_fidelity import silhouette_iou
@@ -476,25 +478,33 @@ def _compute_metrics(
     de00_scores: list[float] = []
     lpips_scores: list[float] = []
 
+    # Extract genuine depth/normal sequences if provided by the adapter
+    pred_depth_seq = getattr(video_result, "depth", None)
+    if pred_depth_seq is None and isinstance(video_result.metadata, dict):
+        pred_depth_seq = video_result.metadata.get("depth")
+
+    pred_normal_seq = getattr(video_result, "world_normal", None)
+    if pred_normal_seq is None and isinstance(video_result.metadata, dict):
+        pred_normal_seq = (
+            video_result.metadata.get("world_normal")
+            or video_result.metadata.get("normals")
+        )
+
     for i in range(n_frames):
         gt = fgpp_frames[i]
         gen_f = gen_float[i]  # [H, W, 3]
 
-        # Depth RMSE: compare GT depth with luminance proxy from gen
-        if gt.depth is not None:
+        # Depth RMSE: compare genuine depth if produced
+        if gt.depth is not None and pred_depth_seq is not None:
             gt_depth = gt.depth.astype(np.float32)
-            pred_lum = np.mean(gen_f, axis=-1)  # luminance proxy
+            pred_d = np.asarray(pred_depth_seq[i], dtype=np.float32)
+            if gt_depth.shape == pred_d.shape:
+                depth_errors.append(depth_rmse_m(pred_d, gt_depth))
 
-            # Resize if shapes differ
-            if gt_depth.shape == pred_lum.shape:
-                depth_errors.append(depth_rmse_m(pred_lum, gt_depth))
-
-        # Normal angular error
-        if gt.world_normal is not None:
+        # Normal angular error: compare genuine normals if produced
+        if gt.world_normal is not None and pred_normal_seq is not None:
             gt_n = gt.world_normal.astype(np.float32)
-            # Use gen RGB remapped to [-1,1] as proxy normals
-            pred_n = gen_f * 2.0 - 1.0
-
+            pred_n = np.asarray(pred_normal_seq[i], dtype=np.float32)
             if gt_n.shape == pred_n.shape:
                 normal_errors.append(
                     normal_angular_error_deg(pred_n, gt_n),
