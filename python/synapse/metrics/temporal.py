@@ -13,8 +13,6 @@ See: https://github.com/sautille-stroke/synapse/issues/34
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 
 __all__ = [
@@ -30,6 +28,8 @@ __all__ = [
 try:
     from aether.metrics import (  # type: ignore[import-not-found]
         temporal_flicker_score as _native_flicker_score,
+    )
+    from aether.metrics import (
         temporal_warp_error as _native_temporal_warp_error,
     )
 

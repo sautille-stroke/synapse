@@ -10,8 +10,6 @@ See: https://github.com/sautille-stroke/synapse/issues/34
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 
 __all__ = [
@@ -31,10 +29,20 @@ __all__ = [
 try:
     from aether.color import (  # type: ignore[import-not-found]
         acescg_to_linear_srgb as _native_acescg_to_linear_srgb,
+    )
+    from aether.color import (
         ciede2000_delta_e as _native_ciede2000_delta_e,
+    )
+    from aether.color import (
         linear_srgb_to_acescg as _native_linear_srgb_to_acescg,
+    )
+    from aether.color import (
         linear_to_srgb as _native_linear_to_srgb,
+    )
+    from aether.color import (
         rgb_to_cielab as _native_rgb_to_cielab,
+    )
+    from aether.color import (
         srgb_to_linear as _native_srgb_to_linear,
     )
 
