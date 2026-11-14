@@ -18,6 +18,8 @@ from typing import Any
 
 import numpy as np
 
+from synapse.fgpp.schema import DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES
+
 # -----------------------------------------------------------------------
 # WindowSlice — describes a single causal generation window
 # -----------------------------------------------------------------------
@@ -124,18 +126,20 @@ class CausalWindowPlan:
 
 @dataclass
 class ReanchorRequest:
-    """Request to re-anchor conditioning at a discontinuity.
+    """Request to re-anchor conditioning at a discontinuity or physical anchor.
 
     Attributes:
-        frame_index: Frame index where kappa exceeded the threshold.
+        frame_index: Frame index where kappa exceeded the threshold or physical anchor occurred.
         subframe_window: Tuple ``(left, right)`` relative to
             ``frame_index`` defining the re-anchor context window.
         kappa: Discontinuity score at this frame.
+        is_physical_anchor: Whether this frame is a scheduled 48-frame physical ground-truth anchor.
     """
 
     frame_index: int
     subframe_window: tuple[int, int] = (-2, 2)
     kappa: float = 0.0
+    is_physical_anchor: bool = False
 
 
 # -----------------------------------------------------------------------
@@ -378,20 +382,23 @@ class ScheduledWindow:
 
 class ConditionScheduler:
     """Orchestrator that combines window planning with discontinuity
-    detection.
+    detection and periodic physical reanchoring (RFC 0044 §3.2).
 
     Args:
         plan: The causal window partition plan.
         detector: Discontinuity detector instance.
+        anchor_interval: Interval between physical ground-truth anchors (default 48).
     """
 
     def __init__(
         self,
         plan: CausalWindowPlan,
         detector: DiscontinuityDetector,
+        anchor_interval: int = DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
     ) -> None:
         self._plan = plan
         self._detector = detector
+        self._anchor_interval = anchor_interval
 
     @property
     def plan(self) -> CausalWindowPlan:
@@ -402,6 +409,11 @@ class ConditionScheduler:
     def detector(self) -> DiscontinuityDetector:
         """The discontinuity detector."""
         return self._detector
+
+    @property
+    def anchor_interval(self) -> int:
+        """The physical anchor frame interval."""
+        return self._anchor_interval
 
     def schedule(
         self,
@@ -423,6 +435,24 @@ class ConditionScheduler:
         reanchor_by_frame: dict[int, ReanchorRequest] = {
             r.frame_index: r for r in reanchors
         }
+
+        # Add physical anchor frames
+        frames = getattr(fgpp_sequence, "frames", [])
+        for aidx, f in enumerate(frames):
+            is_anchor = (
+                (self._anchor_interval > 0 and aidx % self._anchor_interval == 0)
+                or getattr(f, "is_physical_anchor", False)
+            )
+            if is_anchor:
+                if aidx in reanchor_by_frame:
+                    reanchor_by_frame[aidx].is_physical_anchor = True
+                else:
+                    reanchor_by_frame[aidx] = ReanchorRequest(
+                        frame_index=aidx,
+                        subframe_window=(-2, 2),
+                        kappa=1.0,
+                        is_physical_anchor=True,
+                    )
 
         scheduled: list[ScheduledWindow] = []
         for idx, w in enumerate(windows):

@@ -366,3 +366,53 @@ def lpips(
 
     score = total_dist / max(weight_sum, 1e-12)
     return float(np.clip(score, 0.0, 1.0))
+
+
+def validate_output_non_degenerate(
+    frames: np.ndarray,
+    min_variance: float = 1e-4,
+) -> None:
+    """Validate that generated video frames are non-degenerate (Tier-2 quality gate).
+
+    Ensures that output frames:
+    1. Are finite (no NaN or Inf values).
+    2. Are not completely all-zero / blank.
+    3. Have spatial-temporal variance Var(X) > min_variance (preventing flat constant frames).
+
+    Args:
+        frames: Video frames array ``[T, H, W, C]`` or ``[H, W, C]``.
+        min_variance: Variance floor in normalized ``[0, 1]`` space (default 1e-4).
+
+    Raises:
+        QualityGateError: If frames contain NaN/Inf, are all zero, or have
+            variance <= min_variance (exit code 40).
+    """
+    from synapse.errors import QualityGateError
+
+    arr = np.asarray(frames)
+    if not np.all(np.isfinite(arr)):
+        raise QualityGateError(
+            "Generated video frames contain NaN or Inf values.",
+            agent_fix_hint="Check model weights and activations for numerical instability.",
+            details={"min_variance": min_variance},
+        )
+
+    if arr.size == 0 or np.all(arr == 0):
+        raise QualityGateError(
+            "Generated video frames are completely all-zero / black.",
+            agent_fix_hint="Check conditioning inputs, prompt, and model checkpoint weights.",
+            details={"min_variance": min_variance},
+        )
+
+    if arr.dtype == np.uint8:
+        arr_norm = arr.astype(np.float64) / 255.0
+    else:
+        arr_norm = arr.astype(np.float64)
+
+    variance = float(np.var(arr_norm))
+    if variance <= min_variance:
+        raise QualityGateError(
+            f"Generated video frames are degenerate: variance {variance:.6e} <= floor {min_variance:.6e}.",
+            agent_fix_hint="Ensure model produces varied textures and dynamic motion instead of constant color.",
+            details={"measured_variance": variance, "min_variance": min_variance},
+        )

@@ -413,13 +413,14 @@ class WanAdapter(VideoModelAdapter):
         per_frame_tensors: list[np.ndarray] = []
 
         for frame in fgpp_sequence.frames:
-            # 1. Depth — log-normalised
-            depth_raw = frame.depth.astype(np.float32)
-            depth_norm = linear_to_log_normalized_depth(
-                depth_raw,
+            # 1. Depth — log-normalised in float64 precision
+            depth_raw_f64 = frame.depth.astype(np.float64)
+            depth_norm_f64 = linear_to_log_normalized_depth(
+                depth_raw_f64,
                 z_near_m=frame.camera.z_near,
                 z_far_m=frame.camera.z_far,
-            ).astype(np.float32)
+            )
+            depth_norm = depth_norm_f64.astype(np.float32)
 
             # 2. Normals — world → camera
             if frame.world_normal is not None:
@@ -453,10 +454,18 @@ class WanAdapter(VideoModelAdapter):
             stacked, (1, 0, 2, 3),
         )  # [C, T, H, W]
 
-        # Build metadata for flow bias / occlusion
+        # 48-frame physical anchor indexing (RFC 0044 §3.2)
+        physical_anchor_indices = [
+            i for i, f in enumerate(fgpp_sequence.frames)
+            if i % 48 == 0 or getattr(f, "is_physical_anchor", False)
+        ]
+
+        # Build metadata for flow bias / occlusion / anchors
         flow_meta: dict[str, Any] = {
             "flow_bias_gamma": self._gamma_flow_bias,
             "occlusion_mask": None,
+            "physical_anchor_indices": physical_anchor_indices,
+            "anchor_interval": 48,
         }
 
         return PreparedConditionPayload(
@@ -464,12 +473,62 @@ class WanAdapter(VideoModelAdapter):
             extra=flow_meta,
         )
 
+    def reanchor_physical_frame(
+        self,
+        frame: Any,  # FGPPFrame
+        frame_index: int = 0,
+    ) -> np.ndarray:
+        """Extract ground-truth physical conditioning slice for an anchor frame.
+
+        Re-anchors depth, camera normals, and radiance directly from the physical
+        FGPP ground-truth frame, eliminating drift.
+
+        Args:
+            frame: Source FGPPFrame with depth, normals, and radiance.
+            frame_index: Frame index in the sequence.
+
+        Returns:
+            ``[7, H, W]`` float32 ControlNeXt condition tensor.
+        """
+        from synapse.fgpp.schema import linear_to_log_normalized_depth
+        from synapse.style.aces_color import soft_knee_inverse_tonemap
+
+        h, w = frame.height, frame.width
+
+        # 1. Depth (float64 calculation -> float32 tensor)
+        depth_norm_f64 = linear_to_log_normalized_depth(
+            frame.depth.astype(np.float64),
+            z_near_m=frame.camera.z_near,
+            z_far_m=frame.camera.z_far,
+        )
+        depth_norm = depth_norm_f64.astype(np.float32)
+
+        # 2. Camera Normals
+        if frame.world_normal is not None:
+            wn = frame.world_normal.astype(np.float32)
+        else:
+            wn = np.zeros((h, w, 3), dtype=np.float32)
+        cam_normals = _world_normal_to_camera(wn, frame.camera.view_matrix)
+
+        # 3. Radiance
+        if frame.direct_radiance is not None:
+            rad = frame.direct_radiance.astype(np.float64)
+        else:
+            rad = np.zeros((h, w, 3), dtype=np.float64)
+        rad_tonemapped = soft_knee_inverse_tonemap(rad)
+        rad_norm = np.clip(
+            rad_tonemapped / _RADIANCE_NORM_MAX, 0.0, 1.0,
+        ).astype(np.float32)
+
+        return _build_control_tensor(depth_norm, cam_normals, rad_norm)
+
     def generate(
         self,
         conditions: PreparedConditionPayload,
         config: VideoGenerationConfig,
         model: Any | None = None,
         fgpp_frames: list | None = None,
+        check_non_degenerate: bool = True,
     ) -> VideoResult:
         """Generate video frames via the configured backend transport.
 
@@ -528,6 +587,11 @@ class WanAdapter(VideoModelAdapter):
         finally:
             if _lora_applied and self._lora_manager is not None:
                 self._lora_manager.restore_base_weights(model)
+
+        if check_non_degenerate:
+            from synapse.metrics.image_quality import validate_output_non_degenerate
+
+            validate_output_non_degenerate(raw_frames)
 
         return VideoResult(
             frames_srgb_u8=raw_frames,
