@@ -8,6 +8,7 @@
 /// the full Tier-0 mesh validation pipeline.
 
 #include <aether/math/dvec.h>  // aether::DVec3
+#include <aether/geo/mesh_checks.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -71,35 +72,9 @@ struct AABB {
 };
 
 // ---------------------------------------------------------------------------
-// GeometricValidationResult — aggregate output of validateMeshGeometry()
+// GeometricValidationResult — alias for aether::geo::MeshValidationResult
 // ---------------------------------------------------------------------------
 
-struct GeometricValidationResult {
-  bool is_manifold = false;
-  bool is_watertight = false;
-
-  int64_t num_vertices = 0;
-  int64_t num_faces = 0;
-
-  /// Indices of faces whose area is below the minimum threshold or whose
-  /// aspect ratio exceeds the maximum allowed value.
-  std::vector<int64_t> degenerate_face_indices;
-
-  /// Pairs of face indices whose triangles geometrically intersect.
-  std::vector<std::pair<int64_t, int64_t>> self_intersecting_pairs;
-
-  /// Number of topologically disconnected components.
-  int64_t num_connected_components = 0;
-
-  /// Face indices belonging to "floating island" components (any component
-  /// whose face count is below `min_face_ratio * num_faces`).
-  std::vector<int64_t> floating_island_face_indices;
-
-  /// Overall pass/fail verdict.
-  bool passed = false;
-
-  /// Human-readable explanations for each failing criterion.
-  std::vector<std::string> failure_reasons;
-};
+using GeometricValidationResult = aether::geo::MeshValidationResult;
 
 }  // namespace synapse::geometry
