@@ -92,113 +92,41 @@ flowchart TD
 
 ---
 
-## 4. 核心子系统详细设计规范 (Subsystem Specifications)
+## 4. 核心子系统架构契约与关键决策 (Subsystem Specifications & Architecture Contracts)
 
-### 4.1 Layer 1: 时空 ROI 追踪与 Tile-based Bypass 调度器
+### 4.1 四层子系统职责与边界
 
-*   **设计原则**：最大化显存与算力效率，避免对无瑕疵区域进行无效计算。
-*   **瓦片化调度机制**：
-    1. **实体与解剖区域定位**：
-       - 若存在 FGPP：直接利用 `Cryptomatte.ID` 锁定角色的头颈与手腕部件；
-       - 若无 FGPP（纯视频反演 Track）：调用 DWPose WholeBody 关键点定位眼睛双瞳中点与手腕关节点。
-    2. **时序平滑卡尔曼 Bounding Box（Kalman BBox Filter）**：
-       - 严禁逐帧硬抓取外接矩形（会引入微小抖动放大为视频高频晃动）；
-       - 采用带有匀速运动假设的卡尔曼滤波器，对检测框中心 $(c_x, c_y)$ 与尺度 $s$ 进行时序滤波，并向外扩张 $25\%$ 作为安全上下文冗余边界；
-    3. **仿射对齐矩阵 $\mathbf{M}$**：
-       - 将平滑后的倾斜/旋转 ROI 通过双三次插值（Bicubic）变换为统一的正交 $512 \times 512$ 像素切片，记录仿射矩阵 $\mathbf{M}$ 及其逆矩阵 $\mathbf{M}^{-1}$。
+| 层级 | 子系统模块 | 核心职责 | 关键契约与输出 |
+|---|---|---|---|
+| **Layer 1** | 时空 ROI 追踪与 Tile Bypass (`synapse.refine.roi_tracker`, `tiled_executor.py`) | 实体定位、卡尔曼平滑 BBox 与背景直通 | 仅对缺陷时空 ROI 提取 $512 \times 512$ 标准切片，记录仿射矩阵 $\mathbf{M}$ 与 $\mathbf{M}^{-1}$；背景直通（Bypass）不消耗 GPU |
+| **Layer 2** | 解剖几何硬先验投影体系 (`synapse.refine.hand`, `synapse.refine.face`, `hair_groom.py`, `body_garment.py`) | 3D 骨骼/深度/法线先验注入与身份画廊 | 手部 FGPP 3D 深度/法线直通（或 MANO 3D Mesh）；面部 4 机位正交锚定画廊；毛发头皮生长场与发流导引线；人体与衣物分层解耦与 SDF 零穿模（$\delta \ge 2.0\,\text{mm}$） |
+| **Layer 3** | 多模型协同融合矩阵核 (`synapse.refine.fusion`) | 异构专修模型输出频域与空域融合 | 频域分解（拉普拉斯金字塔）、串行级联、采样轨迹解耦、空间置信度加权以及泊松梯度域融合，输出高质量 $512 \times 512$ 融合图块 |
+| **Layer 4** | 物理级手术刀逆向缝合器 (`synapse.refine.stitcher`, `gates.py`) | 逆向仿射变换、色彩传递与时序阻尼 | $\mathbf{M}^{-1}$ 逆仿射、16px 运动自适应余弦羽化掩膜、边界环 CIE LAB 色彩空间传递（$\Delta E_{00} \le 2.0$）、ACEScg 浮点光学增量叠加与光流/EMA 时序高频抖动阻尼 |
 
-### 4.2 Layer 2: 解剖几何硬先验投影体系 (Hard Priors)
+### 4.2 核心解剖硬约束与先验注入决策
+1. **手部绝对几何硬门禁**：Track B（FGPP 直通模式，首选）直接提取 `CameraLinearDepth.Z` 与 `WorldNormal.XYZ`，白模已具备 21 关节骨骼绑定，生成模型在此硬掩膜下**在几何上完全杜绝 6 指**；Track A（野生视频模式）调用 `HandRefiner` 拟合 MANO 3D 参数化手部网格兜底。
+2. **面部正交锚定画廊（Canonical Anchor Gallery）**：角色资产预置 4 机位（正视、左右 45°、微仰）ArcFace 512 维特征向量，根据头部法线朝向角球面加权合成当前机位目标身份向量，注入 Cross-Attention 杜绝转头身份漂移。
+3. **毛发/毛皮专属模型与头皮生长场**：通过 FGPP `Cryptomatte.ID` 精准切分发丝与皮肤，结合头皮毛囊生长域约束（Scalp Follicle Mask）杜绝发丝长入颅骨；反演 500~1500 根 3D 导引曲线簇（Guide Strands），支持曲线轨（Strand-based Curves）与游戏发片轨（Auto Hair Cards）双轨导出。
+4. **人体与衣物分层解耦与 SDF 防穿模**：严格执行“内层标准解剖裸模基底 + 外层分层独立衣物”规范。外层衣物所有顶点受身体裸模符号距离场约束 $\Phi_{\text{body}}(\mathbf{v}_{\text{cloth}}) \ge 2.0\,\text{mm}$，物理硬推离穿透顶点，彻底消灭穿模。
 
-#### 手部硬约束注入 (Hand Constraints)
-*   **Track B (FGPP 直通模式，首选)**：
-    - 直接从 `fulgur` 导出的 15 通道 OpenEXR 中切出对应的 `CameraLinearDepth.Z` 与 `WorldNormal.XYZ`；
-    - `CameraLinearDepth.Z` 经 `synapse.fgpp.schema.linear_to_log_normalized_depth` 对数映射至 $[0, 1]$，`WorldNormal.XYZ` 经 `synapse.adapters.wan._world_normal_to_camera` 变换到相机空间后由 $[-1, 1] \to [0, 1]$（即 $0.5(N_{\text{cam}}+1)$）作为 ControlNet / DiT 辅助通道的绝对硬输入。由于 3D 白模已经具备严格的 21 关节骨骼绑定，生成模型在此硬掩膜下**在几何上完全不可能画出 6 根手指**；
-*   **Track A (野生视频反演模式)**：
-    - 运行 `HandRefiner` (MeshGraphormer)，拟合 MANO 3D 参数化手部网格，生成虚拟深度图与法线图兜底。
+### 4.3 五大多模型协同融合范式
+RFC 0061 规范化五种融合算子的执行策略：
+1. **频域分解融合 (Laplacian Pyramid Multi-Band)**：4 层拉普拉斯金字塔分解，高频层采用微观增强模型（CodeFormer / 手部细节 LoRA），低频层采用全局底模生成物保留真实环境光照与肤色基调；
+2. **串行几何-纹理分阶级联 (Hierarchical Cascade)**：Stage 1 几何硬矫正（骨架与深度）➔ Stage 2 语义生成（光影与形态）➔ Stage 3 感知超分与 ID 锁定；
+3. **采样轨迹潜在空间动态调度 (Latent Timestep Switch)**：高噪声大结构步数（$T=1000 \sim 500$）使用结构模型，低噪声微细节步数（$T=500 \sim 0$）切换为质感模型；
+4. **空间置信度距离场加权 (Uncertainty-Aware Spatial Blending)**：核心五官/指尖全权信任专修，边缘向原图平滑羽化衰减；
+5. **泊松梯度域融合 (Poisson Gradient Editing)**：求解带狄利克雷边界条件的泊松偏微分方程，无缝克隆皮肤纹理，宿主边界强制约束明暗与色温。
 
-#### 脸部硬约束与锚定画廊 (Face Constraints & Anchor Gallery)
-*   **正交锚定画廊（Canonical Anchor Gallery）**：
-    - 每个角色资产预置 4 个标准机位特征：正视（0°）、左侧（45°）、右侧（45°）、微仰（15°）；
-    - 提取各机位下的 ArcFace 512 维特征向量与 DINOv2 局部 Patch Embedding，构成矩阵 $\mathbf{A}_{\text{gallery}} \in \mathbb{R}^{4 \times 512}$；
-*   **视角自适应插值检索**：
-    - 根据头部当前法线朝向角 $\theta_{\text{yaw}}, \theta_{\text{pitch}}$，计算画廊各锚点的球面距离权重：
-      $$w_i = \frac{\exp(-\|\mathbf{v}_{\text{cam}} - \mathbf{v}_i\|^2 / 2\sigma^2)}{\sum_j \exp(-\|\mathbf{v}_{\text{cam}} - \mathbf{v}_j\|^2 / 2\sigma^2)}$$
-    - 加权合成当前机位的目标身份向量 $\mathbf{f}_{\text{id}} = \sum w_i \mathbf{A}_i$，注入 PulID / FaceID Cross-Attention，确保转头过程中面部五官具有坚不可摧的身份一致性。
+### 4.4 物理级手术刀逆向缝合决策
+1. **逆向仿射变换**：利用 $\mathbf{M}^{-1}$ 将 $512 \times 512$ 融合图块重采样回全画幅原始坐标；
+2. **16px 运动自适应余弦羽化掩膜**：在运动矢量方向进行前向非对称膨胀，边缘采用 16px 余弦软衰减；
+3. **边界环 CIE LAB 色彩空间传递**：提取掩膜边界外侧 16px 环状区域色彩统计量，做仿射色彩映射，使边界色差满足 `border_ring_ciede2000 <= 2.0`；
+4. **ACEScg 浮点光学增量叠加**：全合成链路采用 FP16/FP32 场景线性 ACEScg 张量，叠加 FGPP 接触阴影与焦散增量，确保物理光影不被 AI 抹平；
+5. **跨帧光流 EMA 抖动阻尼器**：光流引导对齐历史帧累加（高速运动光流模长 $>15\text{px}$ 时自适应降低 EMA 权重至 0.3，微小动作提升至 0.85），彻底压制相邻帧闪烁。
 
-#### 毛发/毛皮专属模型约束与导引流场 (Hair & Fur Groom Constraints & Guide Strands)
-*   **病理归因与解耦必然性**：
-    - 通用 2-Manifold 水密网格与体素隐式场在潜空间下采样中必然将微米级一维曲线簇（$0.05 \sim 0.1\,\text{mm}$ 纤细发丝）黏连融合成“塑料黏土头盔”，且无法承载 Marschner BSDF 各向异性双重高光（$R, TT, TRT$）；
-    - 必须引入专用的毛发/毛皮生成模型（`HairGroomRefiner`），与头骨表面网格彻底解耦，独立预测发流与导引曲线。
-*   **Track B (FGPP 直通模式，首选)**：
-    - **Cryptomatte 实体解耦**：利用 FGPP 的 `Cryptomatte.ID` 精准切分 `Entity:Scalp_Hair` 与 `Entity:Head_Skin`，防止发丝高频遮挡边缘污染面部五官的法线反演；
-    - **头皮毛囊生长域约束（Scalp Follicle Mask）**：从 FLAME / SMPL-X 白模的头皮 UV 区域提取发际线与毛囊密度贴图，强制规定所有发丝根节点（Root Points）的附着拓扑与法线朝向，从数学上杜绝“发丝悬浮”或“发丝长入颅骨/面颊”；
-    - **Fulgur 物理着色参数注入**：读取原生 Groom 资产中的各向异性切线矢量 $\mathbf{T}$、纵向粗糙度 $\beta_R$、方位角粗糙度 $\beta_{TT}$ 与黑色素（Melanin）浓度，作为毛发扩散修复通道的物理引导。
-*   **Track A (野生视频单目反演模式)**：
-    - **2D/3D 发流方向场估计（Orientation Field）**：利用微距卷积算子抽取表面发流切线场 $\mathbf{V}_{\text{flow}}(x, y) \in \mathbb{R}^2$ 与深度置信度；
-    - **稀疏导引曲线反演（Guide Strands, 500~1500 根）**：采用专用头发几何模型（对标 NeuralHaircut / HairNet / Perm 范式），直接回归带 3D 样条控制点（B-Spline Control Points）的宏观发束导引线；
-    - **下游双轨导出桥接**：
-      1. *影视级曲线轨（Strand-based Curves）*：导出为 OpenUSD Hydra / Alembic (`.abc`) 曲线束，供下游过程式插值至 $10^5$ 根微观发丝并由 Marschner 着色器渲染；
-      2. *游戏级发片轨（Auto Hair Cards）*：将导引线聚簇生成层次化多边形卡带（Strip Ribbons，LOD0~LOD3），自动烘焙 Alpha、切线、深度与各向异性贴图。
-
-#### 人体与衣物解耦专属模型与碰撞硬约束 (Decoupled Body & Garment Constraints)
-*   **解耦的物理必然性（Layered Separation Rule）**：
-    - 严禁输出“衣肉一体（Fused Single Mesh）”。一体化模型在肢体屈伸时由于缺乏内部真实骨肉支撑，必然导致衣服像彩绘一样拉扯穿模，且无法进行次级布料动力学解算与换装重定向；
-    - 系统必须严格遵循“**内层标准裸模基底 + 外层分层独立衣物**”的解耦规范。
-*   **Track B (FGPP 直通模式，首选)**：
-    - **Cryptomatte 严格分层分层**：基于 `Cryptomatte.ID` 独立拆分 `Entity:Human_Body_Base` 与 `Entity:Garment_Outer`；
-    - **SDF 零穿模几何硬门禁（Zero-Penetration Gate）**：
-      - 计算身体裸模的符号距离场 $\Phi_{\text{body}}(\mathbf{x})$；
-      - 强制约束衣物外层网格的所有顶点 $\mathbf{v}_{\text{cloth}}$ 满足：
-        $$\Phi_{\text{body}}(\mathbf{v}_{\text{cloth}}) \ge \delta_{\text{clearance}} \quad (\delta_{\text{clearance}} = 2.0\,\text{mm})$$
-      - 任何穿透入体内的顶点触发几何投影惩罚 $\mathbf{v}' = \mathbf{v} + (\delta - \Phi(\mathbf{v})) \nabla \Phi(\mathbf{v})$，在几何反演层彻底消灭穿模；
-    - **材质与物理参数解耦**：身体表面分配皮肤次表面散射材质（Skin SSS），衣物表面分配 OpenPBR Fabric 织物材质（含微纤维 Sheen 与织物拉伸/抗弯物理刚度）。
-*   **Track A (野生视频反演模式)**：
-    - **两阶段解耦反演（Two-Stage Inverse Fitting）**：
-      1. *Stage 1 (裸模估计)*：利用 HMR2.0 / SMPL-X 骨架穿透衣物估计内部核心解剖裸模网格，锁定人体 53 关节运动学姿态与体态参数；
-      2. *Stage 2 (衣物多边形壳/裁片恢复)*：采用 TailorNet / SNUG 范式反演外部衣物裁片与 3D 壳体，通过物理驱动的无监督能量优化贴合在 Stage 1 裸模之上，形成天然重力悬垂折叠褶皱。
-
-### 4.3 Layer 3: 多模型协同融合矩阵核 (MultiModelRefineFusion)
-
-本 RFC 规范化五种融合算子的数学表达与执行策略：
-
-```
-                ┌── 1. 频域分解融合 (Laplacian Pyramid) ── 结构取自扩散底模，高频毛孔/发丝取自 CodeFormer
-                ├── 2. 串行级联融合 (Hierarchical Cascade) ─ Stage 1 拓扑 ➔ Stage 2 光影 ➔ Stage 3 超分
-多模型融合五大核 ┼── 3. 潜在轨迹解耦 (Latent Timestep Switch) 步数 T=1000~500 结构模型，T=500~0 质感模型
-                ├── 4. 空域置信度加权 (Uncertainty & Spatial) ─ 核心区全权信任专修，边缘区向原图羽化过渡
-                └── 5. 泊松梯度域融合 (Poisson Gradient Editing) ─ 求解 Δf = div(v)，抹平接缝光照色差
-```
-
-#### 算子 1: 拉普拉斯金字塔频域分解 (Laplacian Pyramid Multi-Band)
-*   **与现有空间羽化算子的界定**：`synapse.composite.blend.laplacian_pyramid_blend(fg, bg, alpha)` 仅实现“前景/背景按 Alpha 掩膜空域混合”，而非本 RFC 所需的“双源高频/低频频带交叉重组”；因此由 `synapse.refine.fusion` 提供独立的 `_fuse_laplacian_frequency` 算子。
-*   构建 4 层高斯与拉普拉斯金字塔：
-    $$L_k(I) = G_k(I) - \text{Expand}(G_{k+1}(I)), \quad k \in \{0, 1, 2, 3\}$$
-*   高频层 $k \in \{0, 1\}$ 采用微观增强模型（CodeFormer / 手部细节 LoRA），低频层 $k \in \{2, 3\}$ 采用全局底模生成物，重构图像：
-    $$I_{\text{fused}} = \sum_{k=0}^{1} L_k(I_{\text{detail}}) + \sum_{k=2}^{3} L_k(I_{\text{base}}) + \text{Expand}(G_4(I_{\text{base}}))$$
-
-#### 算子 2: 空间置信度距离场加权 (Distance-Field Uncertainty Blending)
-*   基于解剖学核心部件（眼睛、嘴唇、指尖）的距离变换场 $D(x, y)$ 计算自适应融合权重：
-    $$\alpha(x, y) = \text{clamp}\left(1.0 - \frac{D(x, y)}{R_{\text{feather}}}, 0.0, 1.0\right)$$
-    在关键解剖核心区 $\alpha=1.0$，在边缘向原画平滑衰减，避免硬拼缝。
-
-#### 算子 3: 泊松梯度域融合 (Poisson Gradient Editing)
-*   在局部修正区域 $\Omega$ 内部，求解带狄利克雷边界条件的泊松方程：
-    $$\nabla^2 I_{\text{poisson}} = \nabla \cdot (\nabla I_{\text{detail}}) \quad \text{s.t.} \quad I_{\text{poisson}}|_{\partial \Omega} = I_{\text{host}}|_{\partial \Omega}$$
-    完美将修整后的皮肤/指甲细节纹理克隆进宿主环境，且整体明暗和色温被宿主边界强制约束，杜绝光晕。
-
-### 4.4 Layer 4: 物理级手术刀逆向缝合器 (Scalpel Stitcher)
-
-*   **逆向仿射变换**：利用 $\mathbf{M}^{-1}$ 将 $512 \times 512$ 的 $I_{\text{fused}}$ 重采样回全画幅原始坐标；
-*   **$16\text{px}$ 运动自适应余弦羽化掩膜**：
-    - 复用 `synapse.composite.mask`，在运动矢量方向进行前向非对称膨胀，边缘采用 $16\text{px}$ 余弦软衰减：
-      $$W_{\text{cosine}}(d) = \frac{1}{2}\left(1 + \cos\left(\frac{\pi d}{16}\right)\right), \quad d \in [0, 16]$$
-*   **边界环 CIE LAB 色彩空间传递（Border-ring Match）**：
-    - 复用 `synapse.composite.blend.border_ring_lab_match`（默认 `ring_width_px=16`），提取掩膜边界外侧环状区域的色度与明度均值/标准差，对修正图块做仿射色彩映射，使 `border_ring_ciede2000 <= 2.0`；
-*   **ACEScg 浮点光学增量叠加（Optical Increments）**：
-    - 全合成链路底层采用 FP16/FP32 场景线性 **ACEScg** 张量（仅在需要送入 LAB / 2D 专修模型边界处显式调用色调映射转 Display sRGB `uint8`）；
-    - 调用 `synapse.composite.blend.composite_optical_increments`，从 FGPP 中提取接触阴影与焦散增量，确保物理光影不被 AI 抹平；
-*   **跨帧光流 EMA 抖动阻尼器（Temporal EMA Damper）**：
-    - 调用 `synapse.composite.blend.composite_surgical_sequence`（须在 `PR-36` 激活 `motion_vectors` 非空时的真实前向光流 Warp 路径），以基准系数 $\alpha=0.85$（高速运动光流模长 $>15\text{px}$ 时自适应降为 $0.30$）进行历史帧对齐累加，彻底压制相邻帧之间的闪烁。
+> [!NOTE]
+> **详细设计与算法实现指引**：
+> 各层的详细数学推导（拉普拉斯金字塔重构、球面高斯加权公式、泊松偏微分方程）、专修模型规格矩阵、核心数据契约（`RefinementROI`, `HandRefineCondition`, `ScalpelStitchResult`）及 Python 类签名完整详见 Layer B 技术规范：**[docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)**。
 
 ---
 

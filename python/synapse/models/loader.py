@@ -193,7 +193,7 @@ def load_model(
         asset = _generate_procedural_teapot()
         return asset.normalize(target_radius) if normalize else asset
     elif name_str in ("sphere", "cube", "torus", "cylinder"):
-        from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
+        from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
         pm = generate_procedural_mesh(ProceduralMeshType(name_str))
         asset = ModelAsset(
             name=name_str,

@@ -1,6 +1,8 @@
 # Synapse LoRA & PEFT 微调流水线设计规范 (LoRA & PEFT Pipeline Specification)
 
-- **文档状态**: `Draft v1.0`
+- **文档状态**: `Approved Technical Spec (v1.1)`
+- **关联实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`M5: PR-16 ~ PR-19`)
+- **关联对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-02`, `RV-03`)
 - **关联仓库**: `synapse`（执行核心与评测 SDK）、`fulgur`（3D 合成数据与渲染引擎）、`aether`（FGPP 与 StyleProfile SSOT）、`foundary`（GPU 训练容器调度）
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
@@ -425,5 +427,5 @@ flowchart LR
 - **验收**：在单卡环境运行 100 步 Mock 数据训练，验证 loss 正常下降且权重可导出为合法 `.safetensors`。
 
 ### PR-L04：`feat(lora): integrate automated Synapse-Bench gatekeeping and CLI tooling`
-- **内容**：实现 `synapse-lora` CLI 命令集与 `lora_evaluator.py`，串联身份相似度、几何法线误差及退化检查，实现退出码 `40` 的自动化工程熔断。
+- **内容**：实现 `synapse lora` CLI 命令集与 `lora_evaluator.py`，串联身份相似度、几何法线误差及退化检查，实现退出码 `40` 的自动化工程熔断。
 - **验收**：构造一组注入人为退化（如严重偏色、多肢形变）的权重，验证评测器精确触发熔断拦截并输出修复建议 `agent_fix_hint`。

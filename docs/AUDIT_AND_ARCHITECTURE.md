@@ -1,9 +1,10 @@
 # Synapse 整体目标审查与生态架构定界报告 (Architecture & Goal Audit)
 
-- **文档状态**: Accepted Baseline (`v1.0`)
-- **审查范围**: `synapse` 仓库整体目标、当前 `v0.1.0` 基线代码、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
-- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v2.0`, M1–M8 30 PRs)
-- **关联跨文档评审与对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-01~RV-10` 契约锁死)
+- **文档状态**: Accepted Baseline (`v1.1 — Horizon-3 & Horizon-4 Aligned`)
+- **审查范围**: `synapse` 仓库整体目标、代码基线架构、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
+- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.1`, M1–M16 58 PRs)
+- **关联跨文档评审与对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-01~RV-17` 契约锁死)
+- **关联重构后深度审计**: [docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)
 - **关联设计规范**:
   - **行业差距与代偿设计规范**: [docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
   - **全系统设计增强规范**: [docs/DESIGN_SYSTEM_ENHANCEMENT.md](DESIGN_SYSTEM_ENHANCEMENT.md)
@@ -11,6 +12,9 @@
   - **数据检查器方案**: [docs/DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md)
   - **3D 质检与精修飞轮**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
   - **递归自我提升 RSI 飞轮**: [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md)
+  - **3D 逆向反演 (RFC 0060)**: [docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
+  - **局部解剖精修 (RFC 0061)**: [docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md) · [docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
+  - **可微闭环 (RFC 0062)**: [docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
   - **RFC 0043**: 全生态同场景多风格渲染架构与 `aether//style` `StyleProfile` SSOT
@@ -19,6 +23,9 @@
   - **RFC 0052**: Forge 工具链矩阵收敛（`grand-studio` / `scene-forge` / `asset-forge`）
   - **RFC 0057**: 全生态统一世界图谱协议 (`wgp`)
   - **RFC 0058**: OpenUSD Hydra、MaterialX / OpenPBR 1.0 与 ACEScg 跨平台架构
+  - **RFC 0060**: 真实视频逆向 3D 动态数字孪生与联合反演架构规范
+  - **RFC 0061**: 局部解剖智能修正、多模型协同融合与手术刀逆向缝合规范
+  - **RFC 0062**: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环规范
 
 ---
 
@@ -285,14 +292,16 @@ synapse/
 2. **48 帧物理强锚点与因果光流积分 (`Physical Anchors & Latent Flow Warping`)**：以 48 帧硬性重置截断误差累积，以 $W=97, S=64, \Delta=33$ 因果滑动窗口突破时间限制；
 3. **同位解耦多通道与 Visual Jev 强类型质检门禁 (`Decoupled Macro Jev QA`)**：视锥微距放大聚焦，百毫秒 Logits 校准置信度，守死 RFC 0044 §4.4 反投防呆门禁；
 4. **双曲正切软肩逆色调映射 (`Soft-Knee HDR Guard`)**：软约束最大辐射度在 12.0 内，保持全链路 ACEScg 辐射能量守恒，杜绝高光溢出与 NaN/Inf 浮点污染；
-5. **无状态自洽作业闭包与自愈总线 (`Stateless JobBundle & Remediation Bus`)**：坚守 Rule 11（Server-side Zero-Python），确立 `0/10/20/30/40` 确定性退出状态码与可操作 `agent_fix_hint`；
+5. **无状态自洽作业闭包与自愈总线 (`Stateless JobBundle & Remediation Bus`)**：坚守 Rule 11（Server-side Zero-Python），确立 `0/10/20/30/40/50` 确定性退出状态码与可操作 `agent_fix_hint`；
 6. **现存具体工程实现缺陷修补规范 (`Concrete Defect Remediation`)**：全量锁死 `camera.py` 360° 环绕无重复、仰角 $\pm 90^\circ$ 正交非奇异、Conditions 因子绑定、Wan 2.1 $T=4k+1$ 与 Wheel 打包资源多级寻址规范。
 
 ---
 
-## 7. 全域架构对齐与分阶段落地总纲 (`v2.0` Master Plan)
+## 7. 全域架构对齐、重构后审计与分阶段落地总纲 (`v3.1` Master Plan)
 
-针对多篇专项设计演进过程中产生的跨文档契约冲突与孤立规划问题，全仓通过以下三层治理体系完成架构收口与原子化排期：
+针对多篇专项设计与重构演进过程中产生的跨文档契约对齐与架构硬化问题，全仓通过以下四层治理体系完成架构收口与原子化排期：
 
-- **全域设计审查与契约对齐总纲**：**[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（识别并解决 `RV-01` ~ `RV-10` 共 10 项关键架构隐患，锁定唯一目录树、双入口 CLI 语法、8 阶段 `JobBundleWorker` 契约与三档分级评测门禁）。
-- **两期八阶段 30-PR 主实施计划 (`v2.0`)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 5 份子计划（覆盖 `M1`–`M8`，共 `30` 个可独立合入的原子 PR 与 7-Wave 多 Agent 并行执行矩阵）。
+- **全域设计审查与契约对齐总纲**：**[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（识别并解决 `RV-01` ~ `RV-17` 共 17 项关键架构决议，锁定唯一目录树、双入口 CLI 语法、`JobBundleWorker` 契约与三级分级评测门禁）。
+- **重构后全库架构与技术债务深度审计报告**：**[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)**（针对 Horizon 1–3 全量代码基线的多维 AST 静态审计与技术债务诊断）。
+- **全景十六阶段 58-PR 实施总计划 (`v3.1`)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 7 份精细化子计划（覆盖 `M1`–`M16`，共 `58` 个可独立合入的原子 PR 与 15-Wave 多 Agent 并行执行矩阵）。
+- **重构后解耦与工程硬化子计划**：**[docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**（覆盖 M13–M16 共 14 个原子 PR，全面落实防静默失败清零、包级 DAG 解耦、原生多边形算子修复与严苛 CI 门禁）。

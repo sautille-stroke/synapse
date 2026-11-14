@@ -1,6 +1,6 @@
 # 细分执行计划 1：Phase M1–M2 地基归正、FGPP 跨语言契约闭环与双轨视频生成适配 (`PR-01` ~ `PR-08`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v2.0` Horizon 1)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 1: M1–M2)
 - **前置对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-01`, `RV-02`, `RV-05`, `RV-06`, `RV-08`, `RV-10`)
 - **覆盖范围**: `PR-01` ~ `PR-08`（共 8 个原子 PR，预估 10.5 人天）
 - **测试主力环境**: `ssh ubuntu24 "cd ~/work/dervgen/synapse && pytest ... && mypy --strict python/synapse && ruff check python/ tests/"`

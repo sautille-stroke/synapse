@@ -122,4 +122,4 @@ from synapse.inspect.eval_report import (
 ### 4. 测试覆盖
 `tests/test_eval_report.py`、`tests/test_geometry_oracle_parity.py` 与 `tests/test_metrics_image_quality.py` 全面覆盖数据模型、C++/Python 双轨几何一致性、雷达图正向归一化、多视角画质指标与 CLI 确定性退出码。
 
-> 完整交付清单与 Review 指南：[docs/REVIEW_3D_EVAL_DELIVERY.md](../../../docs/REVIEW_3D_EVAL_DELIVERY.md)
+> 完整交付清单与 Review 指南：[docs/archive/REVIEW_3D_EVAL_DELIVERY.md](../../../docs/archive/REVIEW_3D_EVAL_DELIVERY.md)

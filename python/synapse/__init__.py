@@ -14,6 +14,8 @@ Submodules:
     training    LoRA training pipeline
     rsi         Recursive Self-Improvement flywheel
     recon       Video-to-3D inverse reconstruction & asset distillation
+    refine      Local anatomical refinement & multi-model fusion
+    render_core Tier-0 shared rendering primitives, rasterizer, and conditions
     bridge      Cross-package thin bridge layer (foundary, hitl, vg)
     cli         CLI tools
 """
@@ -48,10 +50,10 @@ from synapse import (
 # numba (generators/rasterizer.py), or trimesh (models/loader.py) at import
 # time.  Deferring them avoids ImportError in environments that only need the
 # lightweight core (e.g. FGPP SDK, bench scenarios, CLI list).
-_LAZY_SUBMODULES = {"generators", "models", "viewer"}
+_LAZY_SUBMODULES = {"generators", "models", "refine", "render_core", "viewer"}
 
 if TYPE_CHECKING:  # pragma: no cover — static analysis only
-    from synapse import generators, models, viewer
+    from synapse import generators, models, refine, render_core, viewer
 
 
 def __getattr__(name: str):
@@ -74,6 +76,8 @@ __all__ = [
     "models",
     "pipeline",
     "recon",
+    "refine",
+    "render_core",
     "rsi",
     "style",
     "training",

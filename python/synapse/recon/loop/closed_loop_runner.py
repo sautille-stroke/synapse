@@ -39,8 +39,14 @@ from synapse.recon.loop.texture_extractor import (
     extract_and_pack_pbr_textures,
 )
 from synapse.recon.loop.types import ForwardGuideResult, LoopConfig
-from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
-from synapse.refine.types import AnatomicalRegion, FusionMethod, RefinementResult
+
+# NOTE: synapse.refine imports are deferred to method bodies to break the
+# recon → refine → bridge → recon circular dependency (P0-ARCH-01).
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synapse.refine.stitcher import ScalpelStitcher, StitchConfig, StitchReport
+    from synapse.refine.types import AnatomicalRegion, FusionMethod, RefinementResult
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -119,9 +125,14 @@ class ClosedLoopRunner:
         optim_config: InverseOptimConfig | None = None,
         stitch_config: StitchConfig | None = None,
     ) -> None:
+        import importlib
+
+        _stitcher_mod = importlib.import_module("synapse.refine.stitcher")
+        _StitchConfig = _stitcher_mod.StitchConfig
+
         self._loop_config = loop_config or LoopConfig()
         self._optim_config = optim_config or InverseOptimConfig()
-        self._stitch_config = stitch_config or StitchConfig()
+        self._stitch_config = stitch_config or _StitchConfig()
 
     def run(
         self,
@@ -213,6 +224,11 @@ class ClosedLoopRunner:
         # Step 5: Scalpel Patching — stitch re-rendered onto source
         # ---------------------------------------------------------------
         t4 = time.monotonic()
+        import importlib
+
+        _stitcher_mod = importlib.import_module("synapse.refine.stitcher")
+        ScalpelStitcher = _stitcher_mod.ScalpelStitcher
+
         stitcher = ScalpelStitcher(self._stitch_config)
 
         # Build per-frame RefinementResults for the stitcher
@@ -334,6 +350,13 @@ class ClosedLoopRunner:
 
         Each frame gets a single FULL_BODY region covering the whole image.
         """
+        import importlib
+
+        _refine_types = importlib.import_module("synapse.refine.types")
+        AnatomicalRegion = _refine_types.AnatomicalRegion
+        FusionMethod = _refine_types.FusionMethod
+        RefinementResult = _refine_types.RefinementResult
+
         t_count, h, w, _ = source.shape
         refinements: list[list[RefinementResult]] = []
 

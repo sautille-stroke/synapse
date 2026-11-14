@@ -131,7 +131,7 @@
 
 > [!IMPORTANT]
 > **跨文档指标全景对齐声明**：本节定义的所有指标均已纳入 [DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md §6](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) 的全景评估矩阵。包括实现状态、四层递进门禁阈值、场景指标名称映射表及外部数据集接入规范。新增指标时必须同步更新两份文档。
-- 完整交付清单与实施验证: [REVIEW_3D_EVAL_DELIVERY.md](REVIEW_3D_EVAL_DELIVERY.md)
+- 完整交付清单与实施验证（归档）: [archive/REVIEW_3D_EVAL_DELIVERY.md](archive/REVIEW_3D_EVAL_DELIVERY.md)
 流水线的每一个流转节点均受量化指标约束，禁止通过模糊经验放行。
 
 ### 3.0 Stage 0：几何拓扑硬门禁指标（Tier 0 零容忍物理红线）
@@ -270,7 +270,7 @@ from pydantic import BaseModel, Field
 
 class CameraPose(BaseModel):
     position: list[float] = Field(..., min_length=3, max_length=3, description="世界空间相机位置 [x, y, z]")
-    rotation: list[float] = Field(..., min_length=4, max_length=9, description="列主序 3x3 旋转矩阵(9)或四元数 [x, y, z, w](4)")
+    rotation: list[float] = Field(..., min_length=4, max_length=9, description="列主序 3x3 旋转矩阵(9)或四元数 [x, y, z, w]（4 元组）")
     fov_deg: float = Field(..., gt=0.0, le=180.0)
     resolution: tuple[int, int] = (512, 512)
 

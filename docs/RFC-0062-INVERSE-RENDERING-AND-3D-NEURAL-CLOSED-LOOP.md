@@ -206,12 +206,8 @@ python/synapse/recon/loop/
 └── closed_loop_runner.py  # 5 步闭环端到端驱动 + RFC 0061 手术刀回接
 ```
 
-### 核心接口契约摘要 (`synapse.recon.loop`) & CLI 入口
-
-```python
-class InverseOptimizerProtocol(Protocol):
-    def optimize_material_from_video(self, target_srgb: np.ndarray, uv_visibility: np.ndarray | None = None) -> OptimizedMaterialResult: ...
-```
+### 核心求解器契约与双轨分层
+- **接口契约**: 核心类遵循 `InverseOptimizerProtocol`（方法 `optimize_material_from_video`），完整类型定义见 Layer B 规范 `DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md §3`。
 - **GPU 高精轨道 (`[invrender]`)**：`MitsubaInverseOptimizer` 调用 `mitsuba>=3.5`（`cuda_ad_rgb` / `llvm_ad_rgb`）。
 - **CPU 确定性代理 (`ubuntu24`)**：`AnalyticUVInverseOptimizer` 纯 NumPy 解析 UV 微分求解，实现零 GPU CI 回归。
 - **CLI 与 Worker 契约**：统一暴露 `synapse recon closed-loop --json` 及 `JobBundle` Stage `inverse_render_loop`（遵守 `ExitCode 0/10/20/30/40/50`）。

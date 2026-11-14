@@ -1,0 +1,11 @@
+# Bazel workspace ignore file (tools/data-inspector/native)
+# Exclude convenience symlinks, build artifacts, environments, and non-Bazel directories.
+bazel-*
+bazel-native
+bazel-bin
+bazel-out
+bazel-testlogs
+node_modules
+.venv
+dist
+build

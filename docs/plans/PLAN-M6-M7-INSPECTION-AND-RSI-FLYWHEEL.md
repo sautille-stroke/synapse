@@ -1,6 +1,6 @@
 # 细分执行计划 4：Phase M6–M7 3D 智能微距质检、Visual Jev 判别与物理驱动 RSI 自演进飞轮 (`PR-20` ~ `PR-25`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v2.0` Horizon 2)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M6–M7)
 - **前置设计文档**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) · [docs/DESIGN_RSI_FLYWHEEL.md](../DESIGN_RSI_FLYWHEEL.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-04`, `RV-09`)
 - **覆盖范围**: `PR-20` ~ `PR-25`（共 6 个原子 PR，预估 8.5 人天）
 - **跨仓边界红线**:

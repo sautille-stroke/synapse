@@ -55,7 +55,7 @@ train = [
     "pyyaml>=6.0",
 ]
 full = [
-    "synapse[image,metrics,gpu,mesh,jit,train,dev]",
+    "synapse[image,metrics,gpu,mesh,invrender,jit,train,dev]",
 ]
 
 [project.scripts]

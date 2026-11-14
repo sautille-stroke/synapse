@@ -17,7 +17,7 @@
   7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` 📋）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
-  - ↳ **[PLAN-REVIEW-PR17-PR18](plans/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅）
+  - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
   - ↳ **[PLAN-3D-ROUNDTRIP-VERIFICATION](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)** (`v1.1`)：3D 多视角生成与逆向重建 `>= 3.0x` 差分验证计划（绑定 `M9 PR-30~31`）
   - ↳ **[RFC 0060](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)** · **[DESIGN (RFC 0060)](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：真实视频逆向 3D 动态数字孪生 (`M9`)
   - ↳ **[RFC 0061](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)** · **[DESIGN (RFC 0061)](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)** · **[ForgeKit Tooling](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)**：局部解剖修正与手术刀缝合 (`M10`)
@@ -39,7 +39,7 @@
 
 ---
 
-## 2. 全局 12 阶段 44-PR 依赖拓扑图 (Global Dependency DAG)
+## 2. 全局 16 阶段 58-PR 依赖拓扑图 (Global Dependency DAG)
 
 ```mermaid
 flowchart LR
@@ -120,6 +120,31 @@ flowchart LR
         end
     end
 
+    subgraph H4 ["Horizon 4: 架构解耦、防静默失败清零与工程硬化 (Waves 12–15, 14 PRs 📋)"]
+        subgraph M13 ["M13: P0 防静默失败止血"]
+            PR44["PR-44: bundle_worker/stages/cli 假成功清零"]
+            PR45["PR-45: refine Pipeline 接线 & 900s 熔断透传"]
+            PR46["PR-46: ScalpelStitcher M⁻¹ & 光流Warp/composite复用"]
+            PR47["PR-47: Recon 视觉深度替代薄壳 & UV优化器梯度"]
+        end
+        subgraph M14 ["M14: 架构 DAG 解耦与原生打包"]
+            PR48["PR-48: 抽离 render_core & 斩断3包循环+AST门禁"]
+            PR49["PR-49: 清理 vg_bridge 遗留 & 导出 refine/invrender"]
+            PR50["PR-50: Bazelignore/Colab 原生 _c_geometry 打包闭环"]
+            PR51["PR-51: viewer 静态 HTML & 回环端口安全收口"]
+        end
+        subgraph M15 ["M15: C++ 多边形修复、CLI 拆分与 SSOT"]
+            PR52["PR-52: csrc/geometry N-gon 单次 FFI 与 GIL 释放"]
+            PR53["PR-53: cli/__init__.py 2211 行按领域模块化拆分"]
+            PR54["PR-54: wire_guard 全契约扩围 & RFC 0060-0062 治理归位"]
+        end
+        subgraph M16 ["M16: 检查器收口与严苛 CI"]
+            PR55["PR-55: data-inspector 真实视口/低拷 IPC 桥接"]
+            PR56["PR-56: 消除重复金字塔 & 修正虚构弃用告警"]
+            PR57["PR-57: pytest 快慢分层 & 严格 mypy/ruff CI 门禁"]
+        end
+    end
+
     PR01 --> PR04
     PR02 --> PR03 --> PR04
     PR03 --> PR05 --> PR06 --> PR07
@@ -144,6 +169,12 @@ flowchart LR
     PR36 --> PR40
     PR15 & PR17 --> PR41
     PR18 & PR13 --> PR43
+
+    PR32 & PR37 & PR40 & PR43 --> PR44 & PR45 & PR46 & PR47
+    PR44 & PR45 & PR46 & PR47 --> PR48
+    PR48 --> PR49 & PR50 & PR51
+    PR48 & PR49 & PR50 --> PR52 & PR53 & PR54
+    PR52 & PR53 & PR54 --> PR55 & PR56 & PR57
 ```
 
 ---
@@ -165,10 +196,14 @@ flowchart LR
 | **Wave 9** | `PR-31` (`roundtrip`) ∥ `PR-34→35` (`hand/face+fusion`) ∥ `PR-38` (`loop/guide`) ∥ `PR-43` (`losses+profiles`) | 核心算子、`>= 3.0x` 真差门禁、VAE 相位锁定及 `temporal_warp_error` 量纲收口 |
 | **Wave 10** | `PR-32` (`invert-video CLI`) ∥ `PR-36` (`blend` 光流 Warp + 手术刀/门禁) ∥ `PR-39` (双轨可微反演) | `M9` 收官、光流 Warp 激活及 CPU/GPU 双轨反演求解就绪 |
 | **Wave 11** | `PR-37` (`synapse refine` + `forgekit` Wire) ∥ `PR-40` (`ClosedLoopRunner` + 手术刀回接) | **Horizon 3 全线收官**：三大 RFC 闭环与 ForgeKit 会话联调落地 |
+| **Wave 12** | `PR-44` (`bundle_worker/stages`) ∥ `PR-45` (`refine` 熔断透传) ∥ `PR-46` (`stitcher` M⁻¹/Warp) ∥ `PR-47` (`recon` 深度/优化器) | M13 收官：P0 防静默失败清零与假成功止血 |
+| **Wave 13** | `PR-48` (`render_core` 抽离/DAG guard) ∥ `PR-49` (`vg_bridge` 清理/导出) ∥ `PR-50` (Bazelignore/Colab 原生打包) ∥ `PR-51` (`viewer` 静态收口) | M14 收官：斩断三角循环依赖与原生打包闭环 |
+| **Wave 14** | `PR-52` (`csrc/geometry` N-gon/GIL 释放) ∥ `PR-53` (`cli` 模块化拆分) ∥ `PR-54` (`wire_guard` 全契约扩围) | M15 收官：原生几何核硬化与 CLI 领域模块化 |
+| **Wave 15** | `PR-55` (`data-inspector` 真实视口/IPC) ∥ `PR-56` (消除重复金字塔/虚构弃用告警) ∥ `PR-57` (快慢分层/严格 mypy/ruff CI 收口) | **Horizon 4 全线收官**：生产级工程硬化合龙 📋 |
 
 ---
 
-## 4. 全量 44-PR 落地追踪与“防静默失败三问”验收总表
+## 4. 全量 58-PR 落地追踪与“防静默失败三问”验收总表
 
 ### 4.1 Horizon 1：核心互操作 SDK、无状态 Worker 与 `Synapse-Bench`（M1–M4，共 16 PRs，约 21.5 人天）
 
@@ -269,7 +304,7 @@ flowchart LR
 
 ## 6. 计划外已交付增量与架构演进 (Out-of-Band Delivered Increments & Architectural Enhancements)
 
-> 以下交付在原 30-PR 规划之后进一步演进并已全量合入 `main`（全仓 765+ 测试全绿）：
+> 以下交付在原 30-PR 规划之后进一步演进并已全量合入 `main`（全仓 961 测试 / 951 passed 全绿）：
 
 | 交付项目 | 合入时间 / Commit | 核心交付摘要 | 涉及模块与文件 | 验收状态 |
 | :--- | :---: | :--- | :--- | :---: |

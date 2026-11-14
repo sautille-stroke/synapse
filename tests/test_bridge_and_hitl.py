@@ -17,7 +17,7 @@ from synapse.bridge.hitl import (
 )
 from synapse.bridge.vg_bridge import (
     MockVgBackend,
-    NativeVgBackend,
+    VgBackend,
     enforce_distillation_geometry_gate,
     get_vg_backend,
 )
@@ -83,45 +83,30 @@ class TestVgBridge:
         backend = get_vg_backend(mock=True)
         assert isinstance(backend, MockVgBackend)
 
-    def test_native_backend_import_error(self) -> None:
-        """NativeVgBackend methods raise BackendUnavailableError."""
-        backend = NativeVgBackend()
-        albedo = np.zeros((4, 4, 3), dtype=np.float32)
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            backend.delight(albedo, albedo, albedo)
-        assert exc_info.value.exit_code == 30
+    def test_get_backend_production_returns_recon_backend(self) -> None:
+        """get_vg_backend(mock=False) returns SynapseReconBackend (P1-ARCH-02)."""
+        backend = get_vg_backend(mock=False)
+        assert isinstance(backend, VgBackend)
+        assert backend.__class__.__name__ == "SynapseReconBackend"
 
-    def test_native_backend_quad_remesh_import_error(self) -> None:
-        """NativeVgBackend.quad_remesh raises on missing vg."""
-        backend = NativeVgBackend()
-        v = np.zeros((3, 3))
-        f = np.array([[0, 1, 2]])
-        with pytest.raises(BackendUnavailableError):
-            backend.quad_remesh(v, f, 10)
+    def test_native_vg_backend_removed(self) -> None:
+        """NativeVgBackend has been removed from synapse.bridge and vg_bridge."""
+        import synapse.bridge as bridge_pkg
+        import synapse.bridge.vg_bridge as vg_mod
 
-    def test_native_backend_check_manifold_import_error(self) -> None:
-        """NativeVgBackend.check_manifold raises on missing vg."""
-        backend = NativeVgBackend()
-        with pytest.raises(BackendUnavailableError):
-            backend.check_manifold(np.zeros((3, 3)), np.array([[0, 1, 2]]))
+        assert not hasattr(bridge_pkg, "NativeVgBackend")
+        assert not hasattr(vg_mod, "NativeVgBackend")
 
-    def test_native_backend_solve_ik_import_error(self) -> None:
-        """NativeVgBackend.solve_zero_slip_ik raises on missing vg."""
-        backend = NativeVgBackend()
-        with pytest.raises(BackendUnavailableError):
-            backend.solve_zero_slip_ik({}, np.zeros((1, 2)))
+    def test_no_vg_import_attempted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_vg_backend does not attempt to import 'vg' (external vg-core dead branch removed)."""
+        import sys
 
-    def test_native_backend_refine_pose_import_error(self) -> None:
-        """NativeVgBackend.refine_pose_6dof raises on missing vg."""
-        backend = NativeVgBackend()
-        with pytest.raises(BackendUnavailableError):
-            backend.refine_pose_6dof(np.zeros((3, 3)), np.zeros((3, 3)))
-
-    def test_get_backend_native_unavailable(self) -> None:
-        """get_vg_backend(mock=False) raises when vg not installed."""
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            get_vg_backend(mock=False)
-        assert "vg-core" in str(exc_info.value)
+        # Block 'vg' import explicitly
+        monkeypatch.setitem(sys.modules, "vg", None)
+        # get_vg_backend should succeed and not attempt to import vg
+        backend = get_vg_backend(mock=False)
+        assert isinstance(backend, VgBackend)
+        assert backend.__class__.__name__ == "SynapseReconBackend"
 
 
 # ===================================================================

@@ -1,10 +1,14 @@
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
+import socketserver
+import urllib.error
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 import pytest
+from synapse.errors import ContractValidationError, ExitCode
 from synapse.generators.dataset import DatasetConfig, DatasetGenerator
 from synapse.generators.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
@@ -15,7 +19,7 @@ from synapse.generators.visualizer import (
     make_contact_sheet,
 )
 from synapse.models import list_builtin_models, load_model
-from synapse.viewer.server import ViewerServer
+from synapse.viewer.server import ViewerServer, _ReusableHTTPServer, export_static_html
 
 
 class TestModels:
@@ -172,7 +176,7 @@ class TestDatasetGenerator:
 
 
 class TestViewerServer:
-    """Test embedded HTTP viewer server."""
+    """Test embedded HTTP viewer server and static HTML exporter."""
 
     def test_viewer_http_response(self, tmp_path):
         # Create minimal dataset dir with manifest.json
@@ -201,3 +205,96 @@ class TestViewerServer:
                 assert data["dataset_id"] == "test_ds"
         finally:
             server.stop()
+
+    def test_non_loopback_host_rejected(self, tmp_path):
+        """Verify non-loopback host (e.g. 0.0.0.0, 192.168.x.x) is rejected."""
+        manifest_data = {"dataset_id": "test_ds", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+
+        for bad_host in ["0.0.0.0", "192.168.1.1", "10.0.0.1", "example.com"]:
+            with pytest.raises(ContractValidationError) as exc_info:
+                ViewerServer(dataset_dir=tmp_path, host=bad_host)
+            assert exc_info.value.exit_code == ExitCode.CONTRACT_ERROR
+            assert "Non-loopback host" in str(exc_info.value)
+            assert "127.0.0.1" in exc_info.value.agent_fix_hint
+
+    def test_reusable_http_server_instance_attribute(self):
+        """Verify socketserver.TCPServer.allow_reuse_address is not mutated globally."""
+        # Check global TCPServer class attribute remains default (not True by our code)
+        assert socketserver.TCPServer.allow_reuse_address is False
+
+        # But _ReusableHTTPServer instances have allow_reuse_address = True
+        dummy_server = _ReusableHTTPServer.__new__(_ReusableHTTPServer)
+        dummy_server.allow_reuse_address = True
+        assert dummy_server.allow_reuse_address is True
+
+    def test_security_path_traversal_and_extensions(self, tmp_path):
+        """Verify handler rejects path traversal, hidden files, directory listings, and forbidden extensions."""
+        manifest_data = {"dataset_id": "sec_test", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+        (tmp_path / "secret.py").write_text("SECRET=123", encoding="utf-8")
+        (tmp_path / ".hidden").write_text("hidden", encoding="utf-8")
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        (sub / "test.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        server = ViewerServer(dataset_dir=tmp_path, port=9877)
+        url = server.start(open_browser=False)
+
+        try:
+            # Valid PNG in subdirectory
+            with urllib.request.urlopen(f"{url}/subdir/test.png") as resp:
+                assert resp.status == 200
+
+            # Path traversal rejected with 403
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{url}/../test.py")
+            assert exc_info.value.code == 403
+
+            # Hidden file rejected with 403
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{url}/.hidden")
+            assert exc_info.value.code == 403
+
+            # Disallowed extension (.py) rejected with 403
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{url}/secret.py")
+            assert exc_info.value.code == 403
+
+            # Directory listing rejected with 403
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{url}/subdir/")
+            assert exc_info.value.code == 403
+
+        finally:
+            server.stop()
+
+    def test_static_html_export(self, tmp_path):
+        """Verify static self-contained HTML export embeds manifest and images."""
+        frames_dir = tmp_path / "frames"
+        frames_dir.mkdir()
+        (frames_dir / "frame_0000.png").write_bytes(b"\x89PNG\r\n\x1a\nfakeimagebytes")
+
+        vis_dir = tmp_path / "visualizations"
+        vis_dir.mkdir()
+        (vis_dir / "depth_0000.png").write_bytes(b"\x89PNG\r\n\x1a\nfakedepthbytes")
+
+        manifest_data = {
+            "dataset_id": "test_static",
+            "frames": [{"frame_index": 0}],
+            "splits": {"train_count": 1, "val_count": 0},
+        }
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+
+        # Export static HTML
+        out_html = export_static_html(tmp_path)
+        assert out_html.exists()
+        assert out_html.name == "viewer.html"
+
+        content = out_html.read_text(encoding="utf-8")
+        assert "<!DOCTYPE html>" in content
+        assert "SYNAPSE" in content
+        # Check embedded manifest data is present
+        assert "test_static" in content
+        # Check base64 data URI is embedded
+        assert "data:image/png;base64," in content

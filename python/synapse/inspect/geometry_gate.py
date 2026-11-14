@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from synapse.errors import BackendUnavailableError
 from synapse.inspect.schemas import GeometricValidationResult
 
 
@@ -73,8 +74,8 @@ def validate_mesh_geometry(
         A :class:`GeometricValidationResult` with all gate results.
 
     Raises:
-        ImportError: If ``backend="native"`` and the C++ extension
-            ``synapse._c_geometry`` is not available.
+        BackendUnavailableError: If ``backend="native"`` and the C++ extension
+            ``synapse._c_geometry`` is not available (exit_code=30).
         ValueError: If ``backend`` is not one of the accepted values.
     """
     if backend not in ("native", "python"):
@@ -83,7 +84,13 @@ def validate_mesh_geometry(
         )
 
     if backend == "native":
-        import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+        try:
+            import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise BackendUnavailableError(
+                "synapse._c_geometry C++20 extension is not compiled or available",
+                agent_fix_hint="Run: python scripts/build_native.py",
+            ) from exc
     else:
         # Python Oracle — for parity testing only, not production use.
         from synapse.recon.geometry import (

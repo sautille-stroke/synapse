@@ -27,7 +27,6 @@ from synapse.bridge.hitl import (
 )
 from synapse.bridge.vg_bridge import (
     MockVgBackend,
-    NativeVgBackend,
     SynapseReconBackend,
     VgBackend,
     enforce_distillation_geometry_gate,
@@ -44,7 +43,6 @@ __all__ = [
     "HttpFoundaryTransport",
     "MockFoundaryTransport",
     "MockVgBackend",
-    "NativeVgBackend",
     "OperatorIdentity",
     "SynapseReconBackend",
     "VgBackend",

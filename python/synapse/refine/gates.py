@@ -160,7 +160,7 @@ def evaluate_refinement_gates(
     verdict.tier_results["tier2_neural"] = tier2_pass
 
     # -- Tier 3: HITL circuit breaker --
-    from synapse.bridge.hitl import evaluate_hitl_circuit_breaker
+    from synapse.errors import evaluate_hitl_circuit_breaker
 
     # This raises CircuitBreakerError if elapsed_seconds > max
     evaluate_hitl_circuit_breaker(

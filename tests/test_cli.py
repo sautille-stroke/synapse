@@ -570,3 +570,78 @@ class TestAntiSilentFailureCLI:
         assert code == 0
         data = json.loads(out)
         assert data["status"] == "ok"
+
+
+# ===================================================================
+# Test: View command (PR-51)
+# ===================================================================
+
+
+class TestCliView:
+    """Verify synapse view command behavior, safety gates, and static HTML export."""
+
+    def test_view_default_exports_static_html(self, tmp_path: Path) -> None:
+        """synapse view <dir> defaults to static HTML export without running server."""
+        manifest = {"dataset_id": "cli_test", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        code, out, err = _capture_main_synapse(["view", str(tmp_path)])
+        assert code == 0
+        assert "[Synapse Viewer] Exported self-contained HTML viewer to:" in out
+        expected_html = tmp_path / "viewer.html"
+        assert expected_html.is_file()
+        assert "<!DOCTYPE html>" in expected_html.read_text(encoding="utf-8")
+
+    def test_view_json_mode_returns_output_path(self, tmp_path: Path) -> None:
+        """synapse --json view <dir> returns structured JSON with output_path."""
+        manifest = {"dataset_id": "cli_json_test", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        code, out, err = _capture_main_synapse(["--json", "view", str(tmp_path)])
+        assert code == 0
+        data = json.loads(out)
+        assert data["status"] == "ok"
+        assert data["exit_code"] == 0
+        assert "output_path" in data
+        assert Path(data["output_path"]).is_file()
+
+    def test_view_serve_local_json_rejected_with_exit_code_10(
+        self, tmp_path: Path
+    ) -> None:
+        """Combining --serve-local with --json must be rejected with exit code 10."""
+        manifest = {"dataset_id": "cli_mutex_test", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+        code, out, err = _capture_main_synapse(
+            ["--json", "view", str(tmp_path), "--serve-local"]
+        )
+        assert code == ExitCode.CONTRACT_ERROR
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.CONTRACT_ERROR
+        assert data["error_type"] == "ContractValidationError"
+        assert "agent_fix_hint" in data
+        assert "serve-local" in data["agent_fix_hint"].lower()
+
+    def test_view_missing_dataset_exits_20(self, tmp_path: Path) -> None:
+        """synapse view with nonexistent directory exits with code 20."""
+        code, out, err = _capture_main_synapse(
+            ["--json", "view", str(tmp_path / "nonexistent")]
+        )
+        assert code == ExitCode.RESOURCE_MISSING
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.RESOURCE_MISSING
+
+    def test_view_custom_output_path(self, tmp_path: Path) -> None:
+        """synapse view with explicit --output exports to specified file."""
+        manifest = {"dataset_id": "cli_out_test", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        custom_out = tmp_path / "custom_viewer_report.html"
+
+        code, out, err = _capture_main_synapse(
+            ["--json", "view", str(tmp_path), "--output", str(custom_out)]
+        )
+        assert code == 0
+        data = json.loads(out)
+        assert data["output_path"] == str(custom_out)
+        assert custom_out.is_file()
+

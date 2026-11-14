@@ -305,7 +305,7 @@ class TestReconPipelineEndToEnd:
         for t in range(num_frames):
             frames[t][circle] = 200
 
-        pipeline = ReconPipeline(target_quad_faces=500)
+        pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
         # Synthetic frames still produce degenerate (0°) camera angular
         # separation. Patch the minimum threshold to allow the test to
         # exercise the full 5-stage pipeline without real video input.
@@ -346,7 +346,7 @@ class TestReconPipelineEndToEnd:
             joint_pos[t, 8] = [0.15, 0.0, 0.0]     # right foot
         skeleton_template = {"joint_positions": joint_pos}
 
-        pipeline = ReconPipeline(target_quad_faces=500)
+        pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
         with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
             res = pipeline.run(frames, skeleton_template=skeleton_template, fps=30.0)
 

@@ -1,7 +1,9 @@
 # Synapse Data Inspector — 训练数据可视化工具设计方案
 
-- **文档状态**: `Draft v1.0`
+- **文档状态**: `Approved Design Specification (v1.1)`
 - **关联仓库**: `synapse`（宿主）, `fulgur`（渲染引擎）, `aether`（基础层）
+- **关联实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`M8: PR-26 ~ PR-29` & `M16: PR-55`)
+- **关联子计划**: [docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)
 - **前置依赖**: fulgur `explorer/` Electron↔C++ SHM 集成架构、`@dervgen/tecton-*` 设计系统
 - **目标产物**: `synapse/tools/data-inspector/` — 独立 Electron 桌面应用
 

@@ -1,14 +1,14 @@
 # Synapse 整体架构设计深度评审与跨文档对齐决议 (Design Review & Cross-Spec Alignment)
 
-- **文档状态**: `Approved Review & Alignment Baseline (v3.0 — Horizon-3 Aligned)`
-- **评审日期**: 2026-11-13
+- **文档状态**: `Approved Review & Alignment Baseline (v3.1 — Horizon-3 & Horizon-4 Aligned)`
+- **评审日期**: 2026-11-14
 - **操作模型标识**: `[gemini4]`
 - **评审范围**:
-  - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`REVIEW_3D_EVAL_DELIVERY.md`、`RFC-0060` / `DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md`、`RFC-0061` / `DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md` / `DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md`、`RFC-0062` / `DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md`、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
+  - 仓内全部架构与专项设计文档（`AUDIT_AND_ARCHITECTURE.md`、`DESIGN_SYSTEM_ENHANCEMENT.md`、`DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md`、`INDUSTRY_TRACKING_AND_TRENDS.md`、`DESIGN_LORA_PIPELINE.md`、`DESIGN_3D_INSPECTION_AND_REFINEMENT.md`、`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`、`archive/REVIEW_3D_EVAL_DELIVERY.md`、`RFC-0060` / `DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md`、`RFC-0061` / `DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md` / `DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md`、`RFC-0062` / `DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md`、`DESIGN_RSI_FLYWHEEL.md`、`DESIGN_DATA_INSPECTOR.md`、`PLAN-ALGO-TRAINING-DATA-PIPELINE.md`）；
   - 仓内代码基线（`python/synapse/**`、`csrc/geometry/**`、`tools/data-inspector/**`、`pyproject.toml`、`tests/**`、`../forgekit/packages/anatomical-refine/**`）；
   - 同级跨仓契约真值源：`@aether//fgpp`、`@aether//style`、`fulgur`、`caelum-core` 及生态架构规约（RFC 0039 / 0043 / 0044 / 0048 / 0050 / 0052 / 0053 / 0058 / 0060 / 0061 / 0062）。
-- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.0`, M1–M12 共 44 个原子 PR) · [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)
-- **关联专项复核计划**: [docs/plans/PLAN-REVIEW-PR17-PR18.md](plans/PLAN-REVIEW-PR17-PR18.md) · [docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
+- **关联主实施计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.1`, M1–M16 共 58 个原子 PR) · [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)
+- **关联专项复核与审计**: [docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md) · [docs/archive/PLAN-REVIEW-PR17-PR18.md](archive/PLAN-REVIEW-PR17-PR18.md) · [docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 
 ---
 
@@ -117,7 +117,7 @@
   1. **原生算子核 (`csrc/geometry/`)**：以纯现代 C++20 编写核心几何拓扑检查（`checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections`），使用 Bazel 统一构建并仅依赖 Layer 0 `@aether//math`（`DVec3`），毫秒级完成十万面网格质检；
   2. **Python Oracle (`synapse.recon.geometry`)**：作为零编译依赖的标准基准（Ground Truth Oracle），与 C++ 算子在 `tests/test_geometry_tier0.py` 实现 100% 互验；
   3. **逆向反演全套管线 (`synapse.recon`)**：提供自包含的 4D 点追踪、6-DoF 运镜解算、流形闭合校验、Quad 重拓扑、足底防滑零位移 IK 与 Retinex/球谐去光照；
-  4. **桥接解耦 (`synapse.bridge.vg_bridge`)**：`vg-core` 降级为生产级重拓扑与高级 IK 的可选桥接，内建 `MockVgBackend`，脱离外部 C++ 库时全仓 765+ 项测试 100% 跑通。
+  4. **桥接解耦 (`synapse.bridge.vg_bridge`)**：`vg-core` 降级为生产级重拓扑与高级 IK 的可选桥接，内建 `MockVgBackend`，脱离外部 C++ 库时全仓 951+ 项测试 100% 跑通。
 
 #### [RV-12 | P0] 确定性退出码 50、Fail-Closed 门禁硬拦截与 Stage 适配器解耦
 - **问题定位**：`PLAN-REVIEW-PR17-PR18` 审计暴露三处关键工程漏洞：
@@ -272,7 +272,7 @@ synapse/
 │   └── cli/                             # 统一 CLI 路由层
 │       ├── __init__.py                  # `synapse` 与 `synapse-bench` 双入口分发
 │       └── ...                          # 按子域拆分的命令处理器
-├── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件 (765+ 测试全绿)
+├── tests/                               # 单元、跨语言黄金契约与端到端 Mock 回归套件 (951+ 测试全绿，951 passed, 10 skipped)
 └── scripts/
     ├── evaluate_3d_models.py             # 3D 模型评估 CLI (OBJ 扫描→拓扑检查→多视角截图→6 维指标→三级门禁→HTML 报告)
     ├── prepare_datasets.py               # FGPP 黄金数据集准备

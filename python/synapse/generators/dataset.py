@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from synapse.bench.camera import CameraTrajectoryType, generate_cameras
+from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.generators.rasterizer import SoftwareRasterizer
 from synapse.generators.visualizer import (
@@ -51,7 +51,7 @@ def _generate_spiral_cameras(
     rotations: float = 2.0,
 ) -> list[CameraParams]:
     """Generate a rising spiral camera trajectory around target."""
-    from synapse.bench.camera import _make_camera
+    from synapse.render_core.camera import _make_camera
 
     cameras = []
     target = np.array([0.0, 0.0, 0.0])
@@ -86,7 +86,7 @@ def _generate_hemisphere_cameras(
     rings: int = 3,
 ) -> list[CameraParams]:
     """Generate a multi-ring upper-hemisphere camera trajectory around target."""
-    from synapse.bench.camera import _make_camera
+    from synapse.render_core.camera import _make_camera
 
     cameras: list[CameraParams] = []
     target = np.array([0.0, 0.0, 0.0])

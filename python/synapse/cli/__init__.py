@@ -123,13 +123,14 @@ def main_data_gen(args: list[str] | None = None) -> int:
 
 
 def main_viewer(args: list[str] | None = None) -> int:
-    """CLI tool: Launch interactive web viewer for a dataset."""
-    from synapse.viewer.server import launch_viewer
+    """CLI tool: Launch interactive web viewer or export static HTML for a dataset."""
+    from synapse.viewer.server import export_static_html, launch_viewer
 
     parser = argparse.ArgumentParser(
         prog="synapse-viewer",
         description=(
-            "Launch interactive web viewer for a Synapse multi-angle dataset."
+            "View a Synapse multi-angle dataset (default: static HTML export; "
+            "--serve-local: loopback preview)."
         ),
     )
     parser.add_argument(
@@ -137,8 +138,20 @@ def main_viewer(args: list[str] | None = None) -> int:
         help="Path to dataset directory (containing manifest.json)",
     )
     parser.add_argument(
+        "--output", "-o", default=None,
+        help="Output HTML path for static export (default: <dataset>/viewer.html)",
+    )
+    parser.add_argument(
+        "--serve-local", action="store_true", default=False,
+        help="Start local loopback HTTP preview server instead of static HTML export",
+    )
+    parser.add_argument(
         "--port", "-p", type=int, default=8765,
         help="Local port to serve HTTP viewer (default: 8765)",
+    )
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Loopback host address (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--no-browser", action="store_true",
@@ -154,13 +167,78 @@ def main_viewer(args: list[str] | None = None) -> int:
         )
         return 1
 
-    launch_viewer(
-        dataset_path,
-        port=parsed.port,
-        open_browser=not parsed.no_browser,
-        block=True,
-    )
+    if parsed.serve_local:
+        launch_viewer(
+            dataset_path,
+            port=parsed.port,
+            host=parsed.host,
+            open_browser=not parsed.no_browser,
+            block=True,
+        )
+        return 0
+
+    out_path = Path(parsed.output) if parsed.output else dataset_path / "viewer.html"
+    result_path = export_static_html(dataset_path, output_path=out_path)
+    print(f"[Synapse Viewer] Exported self-contained HTML viewer to: {result_path}")
     return 0
+
+
+def _cmd_view(args: argparse.Namespace) -> dict[str, Any]:
+    """Handle 'synapse view' sub-command.
+
+    Default: Export static self-contained HTML file (zero persistent process).
+    --serve-local: Launch local loopback HTTP preview server.
+    --serve-local with --json: Rejected with ContractValidationError (exit_code=10).
+    """
+    from synapse.viewer.server import export_static_html, launch_viewer
+
+    json_mode = bool(getattr(args, "json", False))
+    serve_local = bool(getattr(args, "serve_local", False))
+
+    if json_mode and serve_local:
+        raise ContractValidationError(
+            "Combining '--serve-local' with '--json' is forbidden. "
+            "Background preview servers conflict with headless agent JSON execution.",
+            agent_fix_hint="Omit '--serve-local' when running with '--json' to export static HTML.",
+        )
+
+    dataset_path = Path(args.dataset)
+    if not dataset_path.exists():
+        raise AssetNotFoundError(
+            f"Dataset directory '{dataset_path}' does not exist.",
+            agent_fix_hint=f"Ensure '{dataset_path}' exists and contains manifest.json.",
+        )
+
+    if serve_local:
+        host = getattr(args, "host", "127.0.0.1")
+        port = int(getattr(args, "port", 8765))
+        no_browser = bool(getattr(args, "no_browser", False))
+        launch_viewer(
+            dataset_path,
+            port=port,
+            host=host,
+            open_browser=not no_browser,
+            block=True,
+        )
+        return {
+            "status": "served",
+            "dataset": str(dataset_path),
+            "host": host,
+            "port": port,
+        }
+
+    # Default mode: export self-contained static HTML
+    out_path = getattr(args, "output", None)
+    output_path = Path(out_path) if out_path else dataset_path / "viewer.html"
+    result_path = export_static_html(dataset_path, output_path=output_path)
+
+    if not json_mode:
+        print(f"[Synapse Viewer] Exported self-contained HTML viewer to: {result_path}")
+
+    return {
+        "output_path": str(result_path),
+        "dataset": str(dataset_path),
+    }
 
 
 # -------------------------------------------------------------------
@@ -1415,13 +1493,32 @@ def main_synapse(args: list[str] | None = None) -> int:
 
     # --- view ---
     view_parser = subparsers.add_parser(
-        "view", help="Launch interactive web viewer",
+        "view", help="View dataset (default: static HTML export; --serve-local: loopback preview)",
     )
     view_parser.add_argument(
         "dataset", nargs="?", default="./data/datasets/sample",
+        help="Path to dataset directory (containing manifest.json)",
     )
-    view_parser.add_argument("--port", "-p", type=int, default=8765)
-    view_parser.add_argument("--no-browser", action="store_true")
+    view_parser.add_argument(
+        "--output", "-o", default=None,
+        help="Output HTML path for static export (default: <dataset>/viewer.html)",
+    )
+    view_parser.add_argument(
+        "--serve-local", action="store_true", default=False,
+        help="Start local loopback HTTP preview server instead of static HTML export",
+    )
+    view_parser.add_argument(
+        "--port", "-p", type=int, default=8765,
+        help="Port for preview server (default: 8765)",
+    )
+    view_parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Loopback host address (default: 127.0.0.1)",
+    )
+    view_parser.add_argument(
+        "--no-browser", action="store_true", default=False,
+        help="Do not auto-open web browser in --serve-local mode",
+    )
 
     # --- worker ---
     worker_parser = subparsers.add_parser(
@@ -1833,14 +1930,10 @@ def main_synapse(args: list[str] | None = None) -> int:
         return main_data_gen(gen_args)
 
     elif parsed.command == "view":
-        view_args = []
-        if parsed.dataset:
-            view_args.append(parsed.dataset)
-        if parsed.port != 8765:
-            view_args.extend(["--port", str(parsed.port)])
-        if parsed.no_browser:
-            view_args.append("--no-browser")
-        return main_viewer(view_args)
+        parsed.json = json_mode
+        return _run_with_json_mode(
+            _cmd_view, parsed, json_mode, trace_ctx,
+        )
 
     elif parsed.command == "worker":
         worker_cmd = getattr(parsed, "worker_command", None)

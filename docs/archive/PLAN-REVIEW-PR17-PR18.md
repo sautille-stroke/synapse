@@ -181,7 +181,7 @@
 
 ### 2.6 文档
 
-- [PLAN-ALGO-TRAINING-DATA-PIPELINE.md](../../docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)：§0.3 正确识别出了阈值矛盾，但 CR-01 的裁决是「以文档为准，profiles.py 当作远期目标」，**却没有给出代码层面怎么落地**，于是 PR18 走了硬编码的路子。HP-03（β=500，号称「和原论文量级一致」）没有说明 reduction 方式，HP-02 没有说明 `L_normal` 在潜空间里怎么计算。§3.2 里把 `pair_builder` 标成「✅ 工程就绪」，**这个标记过于乐观**。
+- [PLAN-ALGO-TRAINING-DATA-PIPELINE.md](../PLAN-ALGO-TRAINING-DATA-PIPELINE.md)：§0.3 正确识别出了阈值矛盾，但 CR-01 的裁决是「以文档为准，profiles.py 当作远期目标」，**却没有给出代码层面怎么落地**，于是 PR18 走了硬编码的路子。HP-03（β=500，号称「和原论文量级一致」）没有说明 reduction 方式，HP-02 没有说明 `L_normal` 在潜空间里怎么计算。§3.2 里把 `pair_builder` 标成「✅ 工程就绪」，**这个标记过于乐观**。
 - 新增的 `INDUSTRY_TRACKING_AND_TRENDS.md`（286 行）是调研性质的文档，本次评审没有深读，建议单独发 PR 评审。
 
 ---

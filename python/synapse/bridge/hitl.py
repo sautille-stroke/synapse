@@ -4,6 +4,12 @@ Implements the 15-minute engineering circuit breaker from RFC 0044 §4.4:
 any single asset or shot that exceeds the maximum manual-refinement
 budget triggers a :class:`~synapse.errors.CircuitBreakerError` with a
 domain-specific fallback recommendation.
+
+.. note::
+
+   ``evaluate_hitl_circuit_breaker`` has been moved to :mod:`synapse.errors`
+   (Tier-0) to break the ``refine → bridge`` circular dependency.
+   This module re-exports it for backward compatibility.
 """
 
 from __future__ import annotations
@@ -12,6 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from synapse.errors import CircuitBreakerError
+# Backward-compatible re-export from Tier-0 location
+from synapse.errors import evaluate_hitl_circuit_breaker  # noqa: F401
 
 # -----------------------------------------------------------------------
 # Operator identity
@@ -86,58 +94,7 @@ FallbackAction = Literal[
 
 
 # -----------------------------------------------------------------------
-# Circuit breaker
+# Circuit breaker — canonical implementation moved to synapse.errors
 # -----------------------------------------------------------------------
 
-_DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes
-
-
-def evaluate_hitl_circuit_breaker(
-    elapsed_seconds: float,
-    domain: Literal["video_shot", "asset_3d"],
-    max_seconds: float = _DEFAULT_MAX_SECONDS,
-) -> FallbackAction | None:
-    """Evaluate the HITL 15-minute circuit breaker.
-
-    If the elapsed time exceeds *max_seconds*, a
-    :class:`~synapse.errors.CircuitBreakerError` is raised with a
-    domain-appropriate fallback hint.
-
-    Args:
-        elapsed_seconds: Cumulative wall-clock time spent on manual /
-            agent refinement for this single asset or shot.
-        domain: ``"video_shot"`` or ``"asset_3d"`` — determines the
-            fallback action and fix hint.
-        max_seconds: Budget ceiling in seconds (default 900 = 15 min).
-
-    Returns:
-        ``None`` if the budget has **not** been exceeded.
-
-    Raises:
-        CircuitBreakerError: If ``elapsed_seconds > max_seconds``
-            (exit_code=40).
-    """
-    if elapsed_seconds <= max_seconds:
-        return None
-
-    msg = (
-        f"HITL circuit breaker: {elapsed_seconds:.1f}s > "
-        f"{max_seconds:.1f}s limit for {domain}"
-    )
-
-    if domain == "video_shot":
-        raise CircuitBreakerError(
-            msg,
-            agent_fix_hint=(
-                "Fallback to FGPP re-bake from updated 3D. "
-                "Reduce complexity or accept quality trade-off."
-            ),
-        )
-    else:  # asset_3d
-        raise CircuitBreakerError(
-            msg,
-            agent_fix_hint=(
-                "Fallback to single-view decal projection or "
-                "procedural material. Skip manual refinement."
-            ),
-        )
+_DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes (kept for backward compat)

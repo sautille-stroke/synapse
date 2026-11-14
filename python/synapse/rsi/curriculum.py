@@ -17,7 +17,7 @@ import random
 
 from pydantic import BaseModel, Field
 
-from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
+from synapse.render_core.conditions import RENDERING_CONDITION_FACTORS
 
 # -------------------------------------------------------------------
 # Factor definitions (SSOT from synapse.bench.conditions)

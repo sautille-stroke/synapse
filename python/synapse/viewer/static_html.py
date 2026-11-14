@@ -362,6 +362,9 @@ VIEWER_HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
 
   <script>
+    const EMBEDDED_MANIFEST = /*__EMBEDDED_MANIFEST__*/ null;
+    const EMBEDDED_IMAGES = /*__EMBEDDED_IMAGES__*/ {};
+
     let manifest = null;
     let currentFrame = 0;
     let isPlaying = false;
@@ -376,11 +379,15 @@ VIEWER_HTML_TEMPLATE = r"""<!DOCTYPE html>
     const canvasTraj = document.getElementById('trajectory-canvas');
     const ctxTraj = canvasTraj.getContext('2d');
 
-    // Fetch manifest.json
+    // Fetch or load embedded manifest
     async function init() {
       try {
-        const resp = await fetch('manifest.json');
-        manifest = await resp.json();
+        if (typeof EMBEDDED_MANIFEST !== 'undefined' && EMBEDDED_MANIFEST !== null) {
+          manifest = EMBEDDED_MANIFEST;
+        } else {
+          const resp = await fetch('manifest.json');
+          manifest = await resp.json();
+        }
         setupUI();
         renderFrame(0);
         drawTrajectory();
@@ -412,11 +419,24 @@ VIEWER_HTML_TEMPLATE = r"""<!DOCTYPE html>
       const f = manifest.frames[idx];
       const padIdx = String(idx).padStart(4, '0');
 
+      // Resolve image path: check embedded base64 first, fallback to relative URL
+      function resolveImg(relPath) {
+        if (typeof EMBEDDED_IMAGES !== 'undefined' && EMBEDDED_IMAGES && EMBEDDED_IMAGES[relPath]) {
+          return EMBEDDED_IMAGES[relPath];
+        }
+        return relPath;
+      }
+
       // Update images
-      document.getElementById('img-rgb').src = `frames/frame_${padIdx}.png`;
-      document.getElementById('img-depth').src = `visualizations/depth_${padIdx}.png`;
-      document.getElementById('img-normal').src = `visualizations/normal_${padIdx}.png`;
-      document.getElementById('img-flow').src = `visualizations/flow_${padIdx}.png`;
+      document.getElementById('img-rgb').src = resolveImg(`frames/frame_${padIdx}.png`);
+      document.getElementById('img-depth').src = resolveImg(`visualizations/depth_${padIdx}.png`);
+      document.getElementById('img-normal').src = resolveImg(`visualizations/normal_${padIdx}.png`);
+      document.getElementById('img-flow').src = resolveImg(`visualizations/flow_${padIdx}.png`);
+
+      const contactEl = document.getElementById('link-contact');
+      if (contactEl && typeof EMBEDDED_IMAGES !== 'undefined' && EMBEDDED_IMAGES['contact_sheet.png']) {
+        contactEl.href = EMBEDDED_IMAGES['contact_sheet.png'];
+      }
 
       // Update metadata
       const isVal = f.split === 'val';

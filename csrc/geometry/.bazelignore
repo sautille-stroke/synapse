@@ -1,0 +1,11 @@
+# Bazel workspace ignore file (csrc/geometry)
+# Exclude convenience symlinks, build artifacts, environments, and non-Bazel directories.
+bazel-*
+bazel-geometry
+bazel-bin
+bazel-out
+bazel-testlogs
+node_modules
+.venv
+dist
+build

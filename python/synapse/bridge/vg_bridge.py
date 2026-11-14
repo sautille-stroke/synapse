@@ -1,11 +1,16 @@
-"""Thin bridge to vg-core native pybind11 extensions.
+"""Thin bridge to geometry and material processing backends.
 
-This module defines abstract and concrete backends for calling into the
-``vg-core`` C++/pybind11 geometry and material processing library.  The
-:class:`MockVgBackend` is always available for testing; the
-:class:`NativeVgBackend` delegates to ``import vg`` and raises
-:class:`~synapse.errors.BackendUnavailableError` if the native package is
-not installed.
+This module defines abstract and concrete backends for geometry and material
+processing operations. The :class:`MockVgBackend` is always available for
+testing; production routes to :class:`~synapse.recon.backend.SynapseReconBackend`
+which is self-contained with native C++20 geometry operators and Python Oracle.
+
+.. note::
+
+   ``SynapseReconBackend`` and ``get_recon_backend`` have been moved to
+   :mod:`synapse.recon.backend` to break the ``bridge → recon`` circular
+   dependency (P0-ARCH-01). This module re-exports them for backward
+   compatibility.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from synapse.errors import BackendUnavailableError, ContractValidationError
+from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     MIN_CHARACTER_WHITEBOX_VERTICES,
     validate_whitebox_coarseness_floor,
@@ -24,11 +29,9 @@ from synapse.fgpp.schema import (
 
 
 class VgBackend(ABC):
-    """Abstract interface for vg-core geometry / material operations.
+    """Abstract interface for geometry / material operations.
 
     Every concrete backend must implement the five core methods below.
-    Heavy native dependencies (``vg``) are lazy-imported only by
-    :class:`NativeVgBackend`, keeping the base class dependency-free.
     """
 
     @abstractmethod
@@ -169,160 +172,18 @@ class MockVgBackend(VgBackend):
 
 
 # -----------------------------------------------------------------------
-# Native backend — delegates to the real ``vg`` pybind11 module
+# Synapse Native Recon Backend — moved to synapse.recon.backend
 # -----------------------------------------------------------------------
 
-_VG_IMPORT_HINT = (
-    "Install vg-core native extension: pip install vg-core"
-)
+# Backward-compatible re-exports are provided via __getattr__ using
+# importlib to avoid creating an AST-visible import edge bridge → recon.
 
-
-class NativeVgBackend(VgBackend):
-    """Native backend delegating to ``vg`` pybind11 C++ extension.
-
-    Each method lazy-imports ``vg`` so that the bridge module itself
-    remains importable without the native package installed.
-    """
-
-    @staticmethod
-    def _import_vg() -> Any:
-        """Lazy-import the ``vg`` native module or raise."""
-        try:
-            import vg  # type: ignore[import-untyped]
-        except ImportError as exc:
-            raise BackendUnavailableError(
-                "vg-core native extension is not installed",
-                agent_fix_hint=_VG_IMPORT_HINT,
-            ) from exc
-        return vg
-
-    def delight(
-        self,
-        albedo: np.ndarray,
-        normal: np.ndarray,
-        radiance: np.ndarray,
-    ) -> np.ndarray:
-        """Delegate to ``vg.material.delight``."""
-        vg = self._import_vg()
-        return vg.material.delight(albedo, normal, radiance)  # type: ignore[no-any-return]
-
-    def quad_remesh(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-        target_faces: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Delegate to ``vg.geometry.quad_remesh``."""
-        vg = self._import_vg()
-        return vg.geometry.quad_remesh(vertices, faces, target_faces)  # type: ignore[no-any-return]
-
-    def check_manifold(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-    ) -> bool:
-        """Delegate to ``vg.geometry.check_manifold``."""
-        vg = self._import_vg()
-        return vg.geometry.check_manifold(vertices, faces)  # type: ignore[no-any-return]
-
-    def solve_zero_slip_ik(
-        self,
-        skeleton_data: dict[str, Any],
-        foot_contacts: np.ndarray,
-    ) -> dict[str, Any]:
-        """Delegate to ``vg.ik.solve_zero_slip``."""
-        vg = self._import_vg()
-        return vg.ik.solve_zero_slip(skeleton_data, foot_contacts)  # type: ignore[no-any-return]
-
-    def refine_pose_6dof(
-        self,
-        vertices: np.ndarray,
-        target_points: np.ndarray,
-    ) -> np.ndarray:
-        """Delegate to ``vg.geometry.refine_pose_6dof``."""
-        vg = self._import_vg()
-        return vg.geometry.refine_pose_6dof(vertices, target_points)  # type: ignore[no-any-return]
-
-
-# -----------------------------------------------------------------------
-# Synapse Native Recon Backend — self-contained geometric reconstruction
-# -----------------------------------------------------------------------
-
-
-class SynapseReconBackend(VgBackend):
-    """Native Python/algorithmic backend using synapse.recon.
-
-    Provides fully working, self-contained implementations for de-lighting,
-    quad remeshing, manifold verification, foot-planting IK, and 6-DoF alignment.
-    Does not depend on external vg-core C++ extension.
-    """
-
-    def delight(
-        self,
-        albedo: np.ndarray,
-        normal: np.ndarray,
-        radiance: np.ndarray,
-    ) -> np.ndarray:
-        """De-light radiance image using synapse.recon.delight."""
-        from synapse.recon.delight import delight as recon_delight
-
-        return recon_delight(albedo, normal, radiance)
-
-    def quad_remesh(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-        target_faces: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Remesh to quad-dominant mesh using synapse.recon.geometry."""
-        from synapse.recon.geometry import quad_remesh as recon_quad_remesh
-
-        return recon_quad_remesh(vertices, faces, target_faces)
-
-    def check_manifold(
-        self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
-    ) -> bool:
-        """Check 2-manifold status using synapse.recon.geometry."""
-        from synapse.recon.geometry import check_manifold as recon_check_manifold
-
-        return recon_check_manifold(vertices, faces)
-
-    def solve_zero_slip_ik(
-        self,
-        skeleton_data: dict[str, Any],
-        foot_contacts: np.ndarray,
-    ) -> dict[str, Any]:
-        """Solve foot zero-slip IK using synapse.recon.kinematics."""
-        from synapse.recon.kinematics import solve_zero_slip_ik as recon_solve_ik
-
-        return recon_solve_ik(skeleton_data, foot_contacts)
-
-    def refine_pose_6dof(
-        self,
-        vertices: np.ndarray,
-        target_points: np.ndarray,
-    ) -> np.ndarray:
-        """Align 6-DoF pose using Kabsch/ICP via synapse.recon.geometry."""
-        from synapse.recon.geometry import refine_pose_6dof as recon_refine_pose
-
-        return recon_refine_pose(vertices, target_points)
-
-
-def get_recon_backend(mock: bool = False) -> VgBackend:
-    """Obtain a self-contained :class:`SynapseReconBackend` instance.
-
-    Args:
-        mock: If ``True`` (or env var ``SYNAPSE_VG_MOCK=1``), return a
-            :class:`MockVgBackend`.
-
-    Returns:
-        A ready-to-use backend instance backed by ``synapse.recon``.
-    """
-    if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
-        return MockVgBackend()
-    return SynapseReconBackend()
+def __getattr__(name: str) -> object:
+    if name in ("SynapseReconBackend", "get_recon_backend"):
+        import importlib
+        _rb = importlib.import_module("synapse.recon.backend")
+        return getattr(_rb, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # -----------------------------------------------------------------------
@@ -330,38 +191,28 @@ def get_recon_backend(mock: bool = False) -> VgBackend:
 # -----------------------------------------------------------------------
 
 
-def get_vg_backend(mock: bool = False, fallback_to_recon: bool = False) -> VgBackend:
+def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBackend:
     """Obtain a :class:`VgBackend` instance.
+
+    Synapse is self-contained with native C++20 geometry operators and
+    the :class:`SynapseReconBackend`. External ``vg-core`` is deprecated and
+    removed.
 
     Args:
         mock: If ``True`` (or env var ``SYNAPSE_VG_MOCK=1``), return a
-            :class:`MockVgBackend` without attempting native import.
-        fallback_to_recon: If ``True`` (or env var ``SYNAPSE_USE_RECON=1``),
-            fall back to :class:`SynapseReconBackend` when native ``vg`` is not installed.
+            :class:`MockVgBackend`.
+        fallback_to_recon: Maintained for backward compatibility. Always
+            delegates to :class:`SynapseReconBackend`.
 
     Returns:
         A ready-to-use backend instance.
-
-    Raises:
-        BackendUnavailableError: If the native ``vg`` package cannot
-            be imported, *mock* is ``False``, and *fallback_to_recon* is ``False``.
     """
     if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
         return MockVgBackend()
 
-    use_recon = fallback_to_recon or os.environ.get("SYNAPSE_USE_RECON", "") == "1"
-
-    # Probe native availability
-    try:
-        import vg  # type: ignore[import-untyped]  # noqa: F401
-        return NativeVgBackend()
-    except ImportError as exc:
-        if use_recon:
-            return SynapseReconBackend()
-        raise BackendUnavailableError(
-            "vg-core native extension is not installed",
-            agent_fix_hint=_VG_IMPORT_HINT + " (or use get_recon_backend() / fallback_to_recon=True)",
-        ) from exc
+    import importlib
+    _rb = importlib.import_module("synapse.recon.backend")
+    return _rb.SynapseReconBackend()
 
 
 # -----------------------------------------------------------------------

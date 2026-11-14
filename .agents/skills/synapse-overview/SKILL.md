@@ -29,6 +29,7 @@ description: >-
 | :--- | :--- | :--- |
 | `csrc/geometry/` | `checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections` | 现代 C++20 原生几何拓扑算子核（Bazel 构建，使用 `@aether//math` DVec3），单线程极速毫秒级流形/闭合/自交校验。 |
 | `synapse.recon` | `ReconPipeline`, `check_manifold`, `check_watertight`, `solve_camera_trajectory`, `solve_zero_slip_ik`, `delight` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK 与本征去光照。 |
+| `synapse.refine` | `RefinementROI`, `roi_tracker`, `tiled_executor`, `hand`, `face`, `MultiModelRefineFusion`, `ScalpelStitcher`, `LocalRefinementPipeline` | 局部解剖智能修正与多模型手术刀融合（RFC 0061）：MANO 手部先验、Canonical 肖像面部 ID 保持、5 大模型融合算子、512x512 瓦片与光流 Warp 手术刀逆向缝合。 |
 | `synapse.bridge` | `VgBackend`, `MockVgBackend`, `NativeVgBackend`, `FoundaryClient`, `HITLSession` | 跨库/跨容器薄桥接层，含 15 分钟（900s）HITL 熔断状态机与无外部依赖 Mock 回退。 |
 | `synapse.fgpp` | `FGPPFrame`, `FGPPSequence`, `CameraParams`, `export_fgpp`, `import_fgpp`, `sanitize_fgpp_frame`, `resize_fgpp_frame`, `validate_whitebox_coarseness_floor` | 15 通道 OpenEXR 读写、通道净化、分辨率缩放、PyTorch 张量桥接与白模底线门禁（$\ge 1500$ 顶点 + 铰接四肢）。 |
 | `synapse.adapters` | `WanAdapter`, `MockVideoAdapter`, `KlingAdapter`, `SeedanceAdapter`, `VeoAdapter`, `ConditionScheduler`, `CausalWindowPlan`, `DiscontinuityDetector`, `fuse_overlapping_latents` | 视频生成模型适配器、7 通道控制张量构建（`[7, T, H, W]`）、$W=97, S=64, \Delta=33$ 因果滑窗调度、潜空间保方差 Sigmoid 融合与切镜 $\kappa$ 重锚定。 |

@@ -6,12 +6,12 @@ zero-slip foot kinematics distillation, and intrinsic material de-lighting.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
 from synapse.recon.delight import decompose_intrinsic
-from synapse.recon.geometry import check_manifold, compute_normals, quad_remesh
+from synapse.recon.geometry import compute_normals, quad_remesh
 from synapse.recon.kinematics import solve_zero_slip_ik
 from synapse.recon.tracking import solve_camera_trajectory, solve_point_tracks
 from synapse.recon.types import (
@@ -32,13 +32,20 @@ class ReconPipeline:
     5. Intrinsic albedo de-lighting (Spherical Harmonics cast-shadow removal)
     """
 
-    def __init__(self, target_quad_faces: int = 1500) -> None:
+    def __init__(
+        self,
+        target_quad_faces: int = 1500,
+        geometry_backend: Literal["native", "python"] = "native",
+    ) -> None:
         """Initialize the reconstruction pipeline.
 
         Args:
             target_quad_faces: Desired target face count for quad remeshing.
+            geometry_backend: Execution backend for topology gate validation
+                ('native' in production, 'python' Oracle for dual-track testing).
         """
         self.target_quad_faces = target_quad_faces
+        self.geometry_backend = geometry_backend
 
     def run(
         self,
@@ -92,7 +99,13 @@ class ReconPipeline:
             active_mesh.vertices, active_mesh.faces, target_faces=self.target_quad_faces
         )
         normals = compute_normals(remeshed_v, remeshed_f)
-        is_manifold = check_manifold(remeshed_v, remeshed_f)
+        # Validate surface manifoldness via Tier 0 geometry gate (native in production)
+        import importlib
+        _gate_mod = importlib.import_module("synapse.inspect.geometry_gate")
+        gate_res = _gate_mod.validate_mesh_geometry(
+            remeshed_v, remeshed_f, backend=self.geometry_backend
+        )
+        is_manifold = gate_res.is_manifold
 
         final_mesh = MeshGeometry(
             vertices=remeshed_v,

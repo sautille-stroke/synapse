@@ -17,7 +17,7 @@ Exit code mapping::
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Any
+from typing import Any, Literal
 
 
 class ExitCode(IntEnum):
@@ -190,5 +190,60 @@ class NotImplementedStageError(SynapseError):
             exit_code=ExitCode.NOT_IMPLEMENTED,
             agent_fix_hint=agent_fix_hint,
             details=details,
+        )
+
+
+# ---------------------------------------------------------------------------
+# HITL circuit breaker (Tier-0 — moved here to break refine → bridge cycle)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes
+
+
+def evaluate_hitl_circuit_breaker(
+    elapsed_seconds: float,
+    domain: Literal["video_shot", "asset_3d"],
+    max_seconds: float = _DEFAULT_MAX_SECONDS,
+) -> None:
+    """Evaluate the HITL 15-minute circuit breaker (RFC 0044 §4.4).
+
+    If the elapsed time exceeds *max_seconds*, a
+    :class:`CircuitBreakerError` is raised with a domain-appropriate
+    fallback hint.
+
+    Args:
+        elapsed_seconds: Cumulative wall-clock time spent on manual /
+            agent refinement for this single asset or shot.
+        domain: ``"video_shot"`` or ``"asset_3d"`` — determines the
+            fallback action and fix hint.
+        max_seconds: Budget ceiling in seconds (default 900 = 15 min).
+
+    Raises:
+        CircuitBreakerError: If ``elapsed_seconds > max_seconds``
+            (exit_code=40).
+    """
+    if elapsed_seconds <= max_seconds:
+        return
+
+    msg = (
+        f"HITL circuit breaker: {elapsed_seconds:.1f}s > "
+        f"{max_seconds:.1f}s limit for {domain}"
+    )
+
+    if domain == "video_shot":
+        raise CircuitBreakerError(
+            msg,
+            agent_fix_hint=(
+                "Fallback to FGPP re-bake from updated 3D. "
+                "Reduce complexity or accept quality trade-off."
+            ),
+        )
+    else:  # asset_3d
+        raise CircuitBreakerError(
+            msg,
+            agent_fix_hint=(
+                "Fallback to single-view decal projection or "
+                "procedural material. Skip manual refinement."
+            ),
         )
 

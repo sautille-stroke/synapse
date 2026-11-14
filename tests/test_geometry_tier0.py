@@ -397,3 +397,16 @@ class TestValidateMeshGeometry:
         verts, faces = tetrahedron
         with pytest.raises(ValueError, match="Invalid backend"):
             validate_mesh_geometry(verts, faces, backend="auto")  # type: ignore[arg-type]
+
+    def test_native_backend_unavailable_raises(self, tetrahedron):
+        """Native backend raises BackendUnavailableError(exit_code=30) when _c_geometry missing (P1-ARCH-03)."""
+        import sys
+        from unittest.mock import patch
+        from synapse.errors import BackendUnavailableError
+
+        verts, faces = tetrahedron
+        with patch.dict(sys.modules, {"synapse._c_geometry": None}):
+            with pytest.raises(BackendUnavailableError) as exc_info:
+                validate_mesh_geometry(verts, faces, backend="native")
+            assert exc_info.value.exit_code == 30
+            assert "python scripts/build_native.py" in exc_info.value.agent_fix_hint

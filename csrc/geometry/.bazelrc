@@ -7,7 +7,9 @@ try-import %workspace%/../../../all-overview/devenv-skills/templates/bazel/cpp-c
 
 # 1. Bzlmod Registry & Platform Auto-Detection
 common --registry=https://bcr.bazel.build
-common --enable_platform_specific_config
+# Prevent duplicate expansion of unix-common when --config=linux (or other platform configs)
+# is explicitly passed, resolving [P1-ARCH-03] Bazel configuration warnings.
+common --noenable_platform_specific_config
 
 # 2. C++20 Standard (propagated across Bzlmod boundaries for @aether//math)
 build:macos --cxxopt=-std=c++20

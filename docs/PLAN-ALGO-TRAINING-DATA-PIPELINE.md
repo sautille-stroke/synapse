@@ -5,7 +5,7 @@
 - **修订日期**: 2026-11-13
 - **定位**: 本文档是对 `IMPLEMENTATION_PLAN.md` 中 **M2/M3/M5/M6–M7 实跑闭环** 与 **M12（`PR-41 ~ PR-43`）** 遗留算法工程项的专项聚焦执行计划，侧重于在真实权重与千级规模数据集上跑通端到端训练与 RSI 数据飞轮。
 - **关联文档**:
-  - [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — 全局 M1–M12 总计划
+  - [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — 全局 M1–M16 实施总计划 (`v3.1`)
   - [docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) — Horizon-3 落地详案 (`M12: PR-41 ~ PR-43`)
   - [docs/DESIGN_LORA_PIPELINE.md](DESIGN_LORA_PIPELINE.md) — LoRA 微调设计规范
   - [docs/DESIGN_RSI_FLYWHEEL.md](DESIGN_RSI_FLYWHEEL.md) — 物理驱动 RSI 自演进规范

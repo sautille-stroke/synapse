@@ -1,6 +1,6 @@
 # 细分执行计划 5：Phase M8 `InspectionBundle` 契约与 Electron + `fulgur` 原生可视化检查器 (`PR-26` ~ `PR-29`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v2.0` Horizon 2)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M8，真视口收口见 M16 PR-55)
 - **前置设计文档**: [docs/DESIGN_DATA_INSPECTOR.md](../DESIGN_DATA_INSPECTOR.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-02`, `RV-03`)
 - **覆盖范围**: `PR-26` ~ `PR-29`（共 4 个原子 PR，预估 7.0 人天）
 - **核心架构约束**:

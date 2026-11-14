@@ -55,6 +55,11 @@ python3 -m pip install --quiet \
     "sentencepiece>=0.2.0" \
     "webdataset>=0.2.86"
 
+# Build and install native C++20 geometry kernel (_c_geometry)
+echo ">>> Building native _c_geometry extension kernel..."
+python3 scripts/build_native.py
+python3 -c "from synapse._c_geometry import validate_mesh_geometry; print('native OK')"
+
 echo ""
 echo "======================================================================"
 echo ">>> [4/6] Verifying Python & C Extensions Import Integrity..."

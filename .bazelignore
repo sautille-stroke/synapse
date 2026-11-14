@@ -1,0 +1,15 @@
+# Bazel workspace ignore file (synapse repo root)
+# Exclude convenience symlinks, build artifacts, environments, and non-Bazel directories.
+bazel-*
+bazel-synapse
+bazel-bin
+bazel-out
+bazel-testlogs
+node_modules
+.venv
+dist
+build
+python
+tests
+docs
+tools/data-inspector

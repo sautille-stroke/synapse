@@ -2,16 +2,16 @@
 
 .. deprecated:: 1.0
     This module is a compatibility shim.  The canonical software rasterizer
-    lives in :mod:`synapse.bench.rasterizer`.  This module preserves the
+    lives in :mod:`synapse.render_core.rasterizer`.  This module preserves the
     legacy ``SoftwareRasterizer(mesh, camera)`` interface while delegating
-    the rasterization core to ``synapse.bench.rasterizer``.
+    the rasterization core to ``synapse.render_core.rasterizer``.
 
     ``generators.rasterizer`` was identified as an internal duplication of
     ``bench.rasterizer`` in the cross-repo dedup audit (354 vs 318 lines of
     nearly identical scanline rasterization).
     See https://github.com/sautille-stroke/synapse/issues/34
 
-    Direct consumers should migrate to ``synapse.bench.rasterizer``.
+    Direct consumers should migrate to ``synapse.render_core.rasterizer``.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ __all__ = [
 
 _DEPRECATION_MSG = (
     "synapse.generators.rasterizer is deprecated; use "
-    "synapse.bench.rasterizer instead.  "
+    "synapse.render_core.rasterizer instead.  "
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 
@@ -55,18 +55,18 @@ class RenderResult:
 
 
 class SoftwareRasterizer:
-    """Compatibility shim — delegates to :class:`synapse.bench.rasterizer.SoftwareRasterizer`.
+    """Compatibility shim — delegates to :class:`synapse.render_core.rasterizer.SoftwareRasterizer`.
 
     Accepts ``ModelAsset`` objects and returns ``RenderResult``, converting
-    internally to/from the bench rasterizer's raw-array + ``FGPPFrame`` interface.
+    internally to/from the render_core rasterizer's raw-array + ``FGPPFrame`` interface.
 
     .. deprecated:: 1.0
-        Use ``synapse.bench.rasterizer.SoftwareRasterizer`` directly.
+        Use ``synapse.render_core.rasterizer.SoftwareRasterizer`` directly.
     """
 
     def __init__(self, width: int = 512, height: int = 512):
         warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
-        from synapse.bench.rasterizer import (
+        from synapse.render_core.rasterizer import (
             SoftwareRasterizer as _BenchRasterizer,
         )
 

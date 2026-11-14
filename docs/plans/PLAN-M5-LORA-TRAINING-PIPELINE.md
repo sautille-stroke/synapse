@@ -1,6 +1,6 @@
 # 细分执行计划 3：Phase M5 合成数据潜空间缓存与五维正交解耦 LoRA 微调流水线 (`PR-16` ~ `PR-19`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v2.0` Horizon 2)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M5)
 - **前置设计文档**: [docs/DESIGN_LORA_PIPELINE.md](../DESIGN_LORA_PIPELINE.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-02`, `RV-03`)
 - **覆盖范围**: `PR-16` ~ `PR-19`（共 4 个原子 PR，预估 5.5 人天）
 - **核心原则**: 训练与推理严格解耦（重型 3D VAE / T5 离线预编码）、五维 LoRA 正交隔离（`style` / `identity` / `control` / `whitebox` / `motion`）、`Cryptomatte.ID` 前后景空间掩膜防串色、Safetensors 唯一安全格式（严禁 `.bin` pickle）。

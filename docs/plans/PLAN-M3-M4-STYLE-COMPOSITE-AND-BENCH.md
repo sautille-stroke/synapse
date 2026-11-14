@@ -1,6 +1,6 @@
 # 细分执行计划 2：Phase M3–M4 风格对齐、局部手术刀合成、`vg-core` 桥接与 30 场景基准 (`PR-09` ~ `PR-15`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v2.0` Horizon 1)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 1: M3–M4)
 - **前置对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-02`, `RV-07`, `RV-09`)
 - **覆盖范围**: `PR-09` ~ `PR-15`（含 `PR-14a`, `PR-14b`，共 8 个原子 PR，预估 11.0 人天）
 - **测试主力环境**: `ssh ubuntu24 "cd ~/work/dervgen/synapse && pytest ... && mypy --strict python/synapse && ruff check python/ tests/"`

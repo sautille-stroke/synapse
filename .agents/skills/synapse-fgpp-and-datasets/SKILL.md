@@ -67,7 +67,7 @@ result = export_fgpp_sequence(
 
 ## 三、一键生成标准黄金数据集与 Colab 离线包
 
-在 `ubuntu24` 上运行 [`scripts/prepare_datasets.py`](scripts/prepare_datasets.py)，自动完成 Track-B（`17f` + `97f`）与 Track-A（`17f`）数据集构建、SHA256 清单更新及 Colab `.tar.gz` 归档：
+在 `ubuntu24` 上运行 [`scripts/prepare_datasets.py`](../../../scripts/prepare_datasets.py)，自动完成 Track-B（`17f` + `97f`）与 Track-A（`17f`）数据集构建、SHA256 清单更新及 Colab `.tar.gz` 归档：
 
 ```bash
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts/prepare_datasets.py"
@@ -76,4 +76,4 @@ ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts
 产出路径速查：
 - **数据集根目录（`ubuntu24`）**：`/root/work/datasets/synapse/`
 - **Colab 便携归档包（`ubuntu24`）**：`/root/work/datasets/synapse/synapse_colab_bundle_v1.tar.gz`（约 `12.8 MB`）
-- **Git 锁定的 SHA256 清单**：[`data/manifests/golden_dataset_manifest.json`](data/manifests/golden_dataset_manifest.json)
+- **Git 锁定的 SHA256 清单**：[`data/manifests/golden_dataset_manifest.json`](../../../data/manifests/golden_dataset_manifest.json)

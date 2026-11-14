@@ -186,8 +186,8 @@ def render_orbit_views(
     num_views: int,
 ) -> tuple[np.ndarray, list[str], list[str]]:
     """Render orbit multi-view RGB images, base64 PNGs, and view labels."""
-    from synapse.bench.camera import CameraTrajectoryType, generate_cameras
-    from synapse.bench.rasterizer import SoftwareRasterizer
+    from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+    from synapse.render_core.rasterizer import SoftwareRasterizer
 
     cameras = generate_cameras(
         CameraTrajectoryType.ORBIT,
