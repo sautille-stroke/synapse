@@ -6,6 +6,9 @@
 - **修订日期**: `2026-11-14`
 - **操作模型标识**: `[gemini4]`
 
+> [!WARNING]
+> **Horizon 4 落地后审计核验结论（`2026-11-14`, `b98c6e5`）**：尽管 `PR #49` 在总计划中将 `PR-44 ~ PR-57` 统一标记为 `✅ 已合入`，但经对照 [AUDIT-RFC0063-AND-CODEBASE-2026-11.md](../audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md) 逐项审计：`PR-51` 已完整落地；**`PR-55`（`data-inspector` 真实视口 / 低拷贝 IPC / Bazel 私服）尚未实施**；其余 PR 尚存遗留防静默回退、DAG `importlib` 绕过、快测试超时（~144s–152s）及 `#47/#48` 引发的原生编译与 Colab 必崩缺口。所有未闭环事项已统一收口至 Horizon 5：[PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md](PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)（`PR-58 ~ PR-73`）。
+
 ---
 
 ## 1. Horizon-4 总体编排、并行波次与执行铁律 (Wave 12 – Wave 15)
