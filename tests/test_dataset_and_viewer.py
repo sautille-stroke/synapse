@@ -65,7 +65,8 @@ class TestRasterizer:
         from synapse.bench.camera import CameraTrajectoryType, generate_cameras
 
         cameras = generate_cameras(CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128)
-        rasterizer = SoftwareRasterizer(width=128, height=128)
+        with pytest.deprecated_call():
+            rasterizer = SoftwareRasterizer(width=128, height=128)
 
         res = rasterizer.render(model, cameras[1], cameras[0])
 

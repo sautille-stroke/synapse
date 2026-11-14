@@ -1,10 +1,9 @@
 """ACEScg color science utilities — upstream-first with pure NumPy fallback.
 
-When ``fulgur_metrics`` (the aether C++/pybind11 native extension) is
-installed, all colour-space conversions and CIEDE2000 delegate to the
-SIMD-accelerated implementation from ``@aether//color`` and
-``@aether//metrics``.  Otherwise the module falls back to the local
-pure-NumPy implementations.
+When native bindings from ``@aether//color`` and ``@aether//metrics``
+are available, all colour-space conversions and CIEDE2000 delegate to the
+SIMD-accelerated implementation. Otherwise the module falls back to the
+local pure-NumPy implementations without emitting runtime warnings.
 
 See: https://github.com/sautille-stroke/synapse/issues/34
 """
@@ -26,33 +25,16 @@ __all__ = [
 ]
 
 # ---------------------------------------------------------------------------
-# Upstream native extension probe
+# Upstream native extension probe (@aether//color)
 # ---------------------------------------------------------------------------
 
-_DEPRECATION_MSG = (
-    "synapse.style.aces_color: using pure-NumPy fallback.  "
-    "A future @aether//color native extension will provide "
-    "SIMD-accelerated color science.  "
-    "See https://github.com/sautille-stroke/synapse/issues/34"
-)
-
 try:
-    from fulgur_metrics.color import (  # type: ignore[import-not-found]
+    from aether.color import (  # type: ignore[import-not-found]
         acescg_to_linear_srgb as _native_acescg_to_linear_srgb,
-    )
-    from fulgur_metrics.color import (
         ciede2000_delta_e as _native_ciede2000_delta_e,
-    )
-    from fulgur_metrics.color import (
         linear_srgb_to_acescg as _native_linear_srgb_to_acescg,
-    )
-    from fulgur_metrics.color import (
         linear_to_srgb as _native_linear_to_srgb,
-    )
-    from fulgur_metrics.color import (
         rgb_to_cielab as _native_rgb_to_cielab,
-    )
-    from fulgur_metrics.color import (
         srgb_to_linear as _native_srgb_to_linear,
     )
 
@@ -66,20 +48,15 @@ except ImportError:
     _native_rgb_to_cielab = None
     _native_ciede2000_delta_e = None
 
-_warned = False
-
 
 def _warn_fallback() -> None:
-    """Emit a single deprecation warning per process lifetime."""
-    global _warned  # noqa: PLW0603
-    if not _warned:
-        warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=3)
-        _warned = True
+    """Fallback notification helper (silent to avoid runtime warning noise)."""
+    pass
 
 
 # ===================================================================
 #  Pure-NumPy fallback implementations
-#  (preserved verbatim for environments without fulgur_metrics)
+#  (preserved verbatim for environments without @aether//color native binding)
 # ===================================================================
 
 # --- sRGB ↔ Linear (IEC 61966-2-1 piecewise) ----------------------

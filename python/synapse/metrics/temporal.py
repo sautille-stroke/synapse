@@ -1,9 +1,9 @@
 """Temporal consistency metrics — upstream-first with pure NumPy fallback.
 
-When ``fulgur_metrics`` (the aether C++/pybind11 native extension) is
-installed, temporal warp error and flicker score delegate to the
-SIMD-accelerated implementation from ``@aether//metrics/temporal.h``.
-Otherwise the module falls back to the local pure-NumPy implementations.
+When native bindings from ``@aether//metrics`` are available, temporal warp
+error and flicker score delegate to the SIMD-accelerated implementation.
+Otherwise the module falls back to the local pure-NumPy implementations
+without emitting runtime warnings.
 
 ``fvd_feature_distance`` is a synapse-original contribution (scipy-based
 Frechet Video Distance) with no upstream equivalent.
@@ -24,21 +24,12 @@ __all__ = [
 ]
 
 # ---------------------------------------------------------------------------
-# Upstream native extension probe
+# Upstream native extension probe (@aether//metrics)
 # ---------------------------------------------------------------------------
 
-_DEPRECATION_MSG = (
-    "synapse.metrics.temporal: using pure-NumPy fallback for temporal "
-    "metrics.  A future @aether//metrics native extension will provide "
-    "SIMD-accelerated temporal analysis.  "
-    "See https://github.com/sautille-stroke/synapse/issues/34"
-)
-
 try:
-    from fulgur_metrics.metrics import (  # type: ignore[import-not-found]
+    from aether.metrics import (  # type: ignore[import-not-found]
         temporal_flicker_score as _native_flicker_score,
-    )
-    from fulgur_metrics.metrics import (
         temporal_warp_error as _native_temporal_warp_error,
     )
 
@@ -48,15 +39,10 @@ except ImportError:
     _native_temporal_warp_error = None
     _native_flicker_score = None
 
-_warned = False
-
 
 def _warn_fallback() -> None:
-    """Emit a single deprecation warning per process lifetime."""
-    global _warned  # noqa: PLW0603
-    if not _warned:
-        warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=3)
-        _warned = True
+    """Fallback notification helper (silent to avoid runtime warning noise)."""
+    pass
 
 
 # ===================================================================
