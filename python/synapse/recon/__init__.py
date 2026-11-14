@@ -23,6 +23,7 @@ from synapse.recon.geometry import (
     prune_floating_islands,
     quad_remesh,
     refine_pose_6dof,
+    validate_recon_mesh_manifold,
 )
 from synapse.recon.kinematics import (
     solve_two_bone_ik,
@@ -70,4 +71,5 @@ __all__ = [
     "solve_point_tracks",
     "solve_two_bone_ik",
     "solve_zero_slip_ik",
+    "validate_recon_mesh_manifold",
 ]

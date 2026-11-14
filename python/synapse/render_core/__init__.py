@@ -8,6 +8,7 @@ This package may only import from: ``synapse.errors``, ``synapse.telemetry``,
 ``synapse.fgpp``, standard library, and ``numpy``.
 """
 
+from synapse.render_core.backend import MockVgBackend, VgBackend
 from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
 from synapse.render_core.conditions import (
     CROSS_CONDITIONS,
@@ -49,6 +50,8 @@ __all__ = [
     "generate_cameras",
     "generate_humanoid_proxy",
     "generate_procedural_mesh",
+    "MockVgBackend",
+    "VgBackend",
     "build_gaussian_pyramid",
     "build_laplacian_pyramid",
     "downsample2x",

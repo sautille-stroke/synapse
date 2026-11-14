@@ -11,7 +11,11 @@ from typing import Any, Literal
 import numpy as np
 
 from synapse.recon.delight import decompose_intrinsic
-from synapse.recon.geometry import compute_normals, quad_remesh
+from synapse.recon.geometry import (
+    compute_normals,
+    quad_remesh,
+    validate_recon_mesh_manifold,
+)
 from synapse.recon.kinematics import solve_zero_slip_ik
 from synapse.recon.tracking import solve_camera_trajectory, solve_point_tracks
 from synapse.recon.types import (
@@ -99,13 +103,10 @@ class ReconPipeline:
             active_mesh.vertices, active_mesh.faces, target_faces=self.target_quad_faces
         )
         normals = compute_normals(remeshed_v, remeshed_f)
-        # Validate surface manifoldness via Tier 0 geometry gate (native in production)
-        import importlib
-        _gate_mod = importlib.import_module("synapse.inspect.geometry_gate")
-        gate_res = _gate_mod.validate_mesh_geometry(
+        # Validate surface manifoldness via Tier 0 geometry check (native or python oracle)
+        is_manifold = validate_recon_mesh_manifold(
             remeshed_v, remeshed_f, backend=self.geometry_backend
         )
-        is_manifold = gate_res.is_manifold
 
         final_mesh = MeshGeometry(
             vertices=remeshed_v,

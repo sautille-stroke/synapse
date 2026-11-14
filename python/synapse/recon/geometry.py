@@ -874,3 +874,40 @@ def prune_floating_islands(
     cleaned_faces = inverse.reshape(kept_faces.shape)
 
     return cleaned_vertices, cleaned_faces, kept_face_mask
+
+
+def validate_recon_mesh_manifold(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    backend: str = "native",
+) -> bool:
+    """Check whether a mesh is 2-manifold using native C++ or Python oracle.
+
+    Args:
+        vertices: Vertex positions, shape (V, 3).
+        faces: Triangle indices, shape (F, 3).
+        backend: Execution backend — "native" (synapse._c_geometry) or "python".
+
+    Returns:
+        True if the mesh is 2-manifold.
+    """
+    if backend == "native":
+        try:
+            import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+
+            v = np.ascontiguousarray(vertices, dtype=np.float64)
+            f = np.ascontiguousarray(faces, dtype=np.int64)
+            if v.ndim == 1 and len(v) == 0:
+                v = v.reshape((0, 3))
+            if f.ndim == 1 and len(f) == 0:
+                f = f.reshape((0, 3))
+            verts_per_face = int(f.shape[1]) if f.ndim == 2 and f.shape[1] >= 3 else 3
+            res = _cg.validate_mesh_geometry(
+                v, f, verts_per_face=verts_per_face, require_watertight=False
+            )
+            return bool(res.is_manifold)
+        except (ImportError, AttributeError):
+            pass
+    return bool(check_manifold(vertices, faces))
+

@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from synapse.bridge.vg_bridge import MockVgBackend, VgBackend
+from synapse.render_core.backend import MockVgBackend, VgBackend
 
 
 class SynapseReconBackend(VgBackend):
