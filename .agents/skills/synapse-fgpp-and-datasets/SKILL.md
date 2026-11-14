@@ -74,6 +74,6 @@ ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts
 ```
 
 产出路径速查：
-- **数据集根目录（`ubuntu24`）**：`/root/work/datasets/synapse/`
-- **Colab 便携归档包（`ubuntu24`）**：`/root/work/datasets/synapse/synapse_colab_bundle_v1.tar.gz`（约 `12.8 MB`）
+- **数据集根目录**：环境变量 `$SYNAPSE_DATASET_ROOT`（默认 `data/datasets/`，或 `ubuntu24` 云端 `/root/work/datasets/synapse/`）
+- **Colab 便携归档包**：`$SYNAPSE_DATASET_ROOT/synapse_colab_bundle_v1.tar.gz`（约 `12.8 MB`）
 - **Git 锁定的 SHA256 清单**：[`data/manifests/golden_dataset_manifest.json`](../../../data/manifests/golden_dataset_manifest.json)

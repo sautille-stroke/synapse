@@ -17,7 +17,7 @@ description: >-
 | **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style`) | Layer 0 C++20 定义 `FGPP` 15 标量 EXR 通道布局（`34 B/px`）、`metadata.json` (`fgpp.v1.0`) 与 `StyleProfile` (`2.0.0`)；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死。 |
 | **实时光栅 FGPP 生产端 (Track B)** | `fulgur` (`//engine/fgpp_export`) | 导出 15 通道 OpenEXR 序列 + `metadata.json`；当开启 `--export-fgpp` 时，`SampleApp` 自动挂载 `PickingPass` (`Editor_PickingEntityId`, `R32_UINT`) 生成非零 `Cryptomatte.ID`。 |
 | **离线光追 FGPP + 真值生产端 (Track A)** | `caelum-core` (`caelum.camera.fgpp_exporter`) | 将路径追踪 `AOVBuffer` 与 `Camera` 导出为 15 通道 `frame_XXXXXX.exr` (`render_track = "offline_pathtraced"`) + 配对路径追踪 `beauty_XXXXXX.exr` Ground Truth。 |
-| **全仓自包含原生算法与逆向重建核** | `synapse` (`csrc/geometry/` + `synapse.recon`) | 自包含现代 C++20 几何算子（Bazel + `@aether//math`，`synapse._c_geometry`）与 Python Ground Truth Oracle（`synapse.recon.geometry`）100% 双轨互验；实现 2-流形/水密闭合校验、简并面剔除、共面 2D SAT + Möller–Trumbore 自穿插检测、4D 点追踪、6-DoF 运镜解算、足底防滑零位移 IK 与本征去光照（RFC 0060）。 |
+| **全仓自包含原生算法与逆向重建核** | `synapse` (`csrc/geometry/` + `synapse.recon`) | 现代 C++20 原生几何算子（Bazel 委托 `@aether//geo` / `@aether//math`，含 `scripts/build_native.py` 纯 C++ 编译分发）与 Python Ground Truth Oracle（`synapse.recon.geometry`）100% 双轨互验；实现 2-流形/水密闭合校验、简并面剔除、共面 2D SAT + Möller–Trumbore 自穿插检测、4D 点追踪、6-DoF 运镜解算、足底防滑零位移 IK 与本征去光照（RFC 0060）。 |
 | **跨仓 FFI 与 DCC 精修委托** | `synapse.bridge` (`vg_bridge`, `foundary_client`, `hitl`) | 通过薄桥接层按需调用 `foundary`（TRELLIS/SAM2）或 `vg-core` 生产级重拓扑；内建 `MockVgBackend` 保证脱离外部 C++ 库时全套测试与门禁 100% 跑通；实现 15 分钟 HITL 熔断状态机。 |
 | **分布式调度与上层创作工坊** | `render-farm` / `foundary` / `grand-studio` | 服务端由 Go 承载；`synapse` 仅作为纯算法 SDK 与单次执行即退出的无状态 CLI Worker（遵循 Server-side Zero-Python 铁律）。 |
 
@@ -27,7 +27,7 @@ description: >-
 
 | 模块路径 | 核心类 / 函数 | 职责说明 |
 | :--- | :--- | :--- |
-| `csrc/geometry/` | `checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections` | 现代 C++20 原生几何拓扑算子核（Bazel 构建，使用 `@aether//math` DVec3），单线程极速毫秒级流形/闭合/自交校验。 |
+| `csrc/geometry/` | `checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections` | 现代 C++20 原生几何拓扑算子核（Bazel 委托 `@aether//geo` / `@aether//math`，亦可通过 `scripts/build_native.py` 免 Bazel 直编），单线程极速毫秒级流形/闭合/自交校验。 |
 | `synapse.render_core` | `SoftwareRasterizer`, `CameraParams`, `procedural`, `pyramid` (Gaussian/Laplacian), `conditions` | 纯 CPU 离线软光栅核、相机投影数学模型、拉普拉斯多分辨率金字塔无损分解/重构算子、几何基元与评测环境基底。 |
 | `synapse.cli` | `_app`, `_bench`, `_fgpp`, `_generate`, `_inspect`, `_lora`, `_recon`, `_refine`, `_rsi`, `_worker`, `common` | 模块化解耦 CLI 领域分发核（11 个轻量模块），遵循确定性退出状态码与机器可读 `--json` 信封。 |
 | `synapse.recon` | `ReconPipeline`, `check_manifold`, `check_watertight`, `solve_camera_trajectory`, `solve_zero_slip_ik`, `delight` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK 与本征去光照。 |
@@ -52,7 +52,7 @@ description: >-
 
 | 环境节点 | 角色定位 | 标准执行命令 |
 | :--- | :--- | :--- |
-| **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (< 30s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy python/synapse && /root/venv-synapse/bin/python tools/wire_guard.py --check && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd csrc/geometry && bazel test //... --config=linux)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py` |
+| **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (Tier-1 <= 30s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -n auto -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy python/synapse && /root/venv-synapse/bin/python tools/wire_guard.py --check && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd csrc/geometry && bazel test //... --config=linux)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py` |
 | **Google Colab / win-dev (P1 GPU)** | **重型视频大模型 (Wan 2.1) 推理与 LoRA 微调实验**<br>详见 `workenv/google-colab/` 一站式环境套件（含 `setup_colab.sh`、`models.json`、`io_spec.md` 及 Notebook），使用 `ubuntu24` 导出的 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `bash workenv/google-colab/setup_colab.sh && python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all/checkpoints --exp all` |
 | **macOS 本地开发机** | **代码主控与 Git Worktree 管理**<br>严禁在本地拉起视频大模型或跑全量重型套件 | `pytest tests/test_bench.py -k "test_scenario_create" -v` |
 
@@ -65,5 +65,5 @@ description: >-
 - `10`：参数或 `FGPP` / `StyleProfile` 契约校验失败（`ContractValidationError`）；
 - `20`：输入场景、资产或 EXR 文件缺失 / SHA256 校验不匹配（`AssetNotFoundError`）；
 - `30`：GPU 显存不足或下游推理后端不可达（`BackendUnavailableError`）；
-- `40`：触发 HITL 15 分钟人工精修超时熔断或质量门禁未达标（`QualityGateCircuitBreakerError`）；
+- `40`：触发 HITL 15 分钟人工精修超时熔断或质量门禁未达标（`CircuitBreakerError` / `QualityGateError`）；
 - `50`：命令或 Stage 尚未实现（严禁未实现桩代码以 `0` 退出）。

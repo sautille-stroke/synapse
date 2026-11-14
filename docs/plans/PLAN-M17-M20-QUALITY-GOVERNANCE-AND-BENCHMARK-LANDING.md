@@ -1,11 +1,11 @@
 # 细分实施计划：Horizon-5 质量治理、架构收口与 RFC-0063 基准落地 (M17–M20: PR-58 ~ PR-73)
 
-- **计划版本**: `Active Quality & Benchmark Landing Blueprint (v1.0)`
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 5 / Waves 16–19，**M17–M20** 共 4 大里程碑、**16 个原子 PR**，预估约 24.5 人天）
-- **问题源头审计**: [docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](../audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)（基线 `b98c6e5`，覆盖 `5×P0 + 8×P1 + 5×P2` 及 `PR-44~57` 遗留欠账）
-- **关联规范**: [docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)
-- **修订日期**: `2026-11-14`
-- **操作模型标识**: `[gemini4]`
+- **计划版本**: `Completed Horizon-5 Landing Blueprint (v1.1) - 100% Merged & Verified`
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 5 / Waves 16–19，**M17–M20** 共 4 大里程碑、**16 个原子 PR**，已全量收官）
+- **问题源头审计**: [docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](../audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)（基线 `b98c6e5`，全量 `5×P0 + 8×P1 + 5×P2` 缺陷已 100% 修复闭环）
+- **关联规范**: [docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（状态已更新为 `Implemented`）
+- **修订日期**: `2026-11-15`
+- **操作模型标识**: `[gemini3.8]`
 
 ---
 
@@ -53,12 +53,12 @@ flowchart LR
 
 ### 并行 Worktree 开发波次表
 
-| 执行波次 | 并行 PR 组合（各自独立 `/tmp/synapse-wt-<pr>`） | 阻塞前置 | 波次里程碑产出 |
-| :---: | :--- | :---: | :--- |
-| **Wave 16** | `PR-58` ∥ `PR-59` ∥ `PR-60` ∥ `PR-61` | `main` | RFC 编号碰撞登记表、全覆盖线守卫、CLI/Refine 零伪输入、逆向核心正确性修复 |
-| **Wave 17** | `PR-62` ∥ `PR-63` ∥ `PR-64` → `PR-65` | Wave 16 | Colab `_c_geometry` 恢复可用、零 `importlib` DAG 环路、`PR-55` (`data-inspector`) 完整闭环 |
-| **Wave 18** | `PR-66` ∥ `PR-67` ∥ `PR-68` ∥ `PR-69` ∥ `PR-70` | Wave 16, `PR-62`, `PR-63` | 符合生态 `RFC 0062` 的资产分发与 Colab 开箱运行、`RFC-0063` 4 轨道评测真实执行 |
-| **Wave 19** | `PR-71` ∥ `PR-72` → `PR-73` | Wave 17, Wave 18 | 零 `warn_return_any`、`pytest -m 'not slow' <= 30s`、全生态文档与技能全同步 |
+| 执行波次 | 并行 PR 组合（各自独立 `/tmp/synapse-wt-<pr>`） | 阻塞前置 | 波次里程碑产出 | 最终状态 |
+| :---: | :--- | :---: | :--- | :---: |
+| **Wave 16** | `PR-58` ∥ `PR-59` ∥ `PR-60` ∥ `PR-61` | `main` | RFC 编号碰撞登记表、全覆盖线守卫、CLI/Refine 零伪输入、逆向核心正确性修复 | ✅ 100% 已合入 (#51, #53, #54, #55) |
+| **Wave 17** | `PR-62` ∥ `PR-63` ∥ `PR-64` → `PR-65` | Wave 16 | Colab `_c_geometry` 恢复可用、零 `importlib` DAG 环路、`PR-55` (`data-inspector`) 完整闭环 | ✅ 100% 已合入 (#56, #57, #58, #59) |
+| **Wave 18** | `PR-66` ∥ `PR-67` ∥ `PR-68` ∥ `PR-69` ∥ `PR-70` | Wave 16, `PR-62`, `PR-63` | 符合生态 `RFC 0062` 的资产分发与 Colab 开箱运行、`RFC-0063` 4 轨道评测真实执行 | ✅ 100% 已合入 (#61, #62, #63, #64, #65) |
+| **Wave 19** | `PR-71` ∥ `PR-72` → `PR-73` | Wave 17, Wave 18 | 零 `warn_return_any`、`pytest -m 'not slow' <= 30s`、全生态文档与技能全同步 | ✅ 100% 已合入 (#67, #68, #69) |
 
 ---
 
@@ -409,7 +409,7 @@ flowchart LR
   6. `/root/venv-synapse/bin/python tools/import_dag_guard.py --check`
   7. `cd csrc/geometry && bazel test //... --config=linux`
   8. `cd tools/data-inspector/native && bazel test //... --config=linux`
-  9. `node tools/data-inspector/tests/test-bundle-loading.js`
+  9. `node tools/data-inspector/test/test-bundle-loading.js`
 
 ---
 

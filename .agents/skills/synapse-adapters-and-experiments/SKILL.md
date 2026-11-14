@@ -80,4 +80,4 @@ python scripts/colab_runner.py \
   --exp all
 ```
 
-> **注意**：`colab_runner.py --exp all` 当前执行 **E1、E2、E4** 三个阶段。E3（97 帧长时序滑窗）和 E5（Synapse-Bench 30 场景基准）仅在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 无卡验证；Colab GPU 版将在后续迭代中支持。
+> **说明**：`colab_runner.py --exp all` 支持 **E1、E2、E3、E4** 四个实验阶段（含 `--mode {auto,mock,real-gpu}` 自动降级与断点续跑），且每 48 帧强制标记物理锚点；E5（Synapse-Bench 30 场景基准）在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 验证。

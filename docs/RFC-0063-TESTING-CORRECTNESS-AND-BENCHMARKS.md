@@ -3,7 +3,7 @@
 > **Namespace Alias**: `SYN-RFC-0063` (repo-local). Ecosystem canonical: `all-overview/rfcs/0063`.
 
 - **RFC 编号**: `RFC 0063`
-- **文档状态**: `Accepted (v1.1)`
+- **文档状态**: `Implemented (v1.1)`
 - **作者**: sautille-stroke / DervGen 核心架构组
 - **创建日期**: 2026-10
 - **最后更新**: 2026-11-14
