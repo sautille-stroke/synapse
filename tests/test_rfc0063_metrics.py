@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.metrics.roundtrip import (
     chamfer_mm,
     f_score_1mm,
