@@ -46,8 +46,10 @@ from synapse.metrics.roundtrip import (
     bone_length_drift_pct,
     chamfer_mm,
     f_score_1mm,
+    f_score_5mm,
     foot_sliding_cm,
     volume_breathing_pct,
+    watertight_pct,
 )
 from synapse.metrics.style_consistency import (
     border_ring_ciede2000,
@@ -56,6 +58,7 @@ from synapse.metrics.style_consistency import (
     tone_curve_rmse,
 )
 from synapse.metrics.temporal import (
+    compute_fvd_from_videos,
     flicker_score,
     fvd_feature_distance,
     temporal_warp_error,
@@ -78,6 +81,7 @@ __all__ = [
     "temporal_warp_error",
     "flicker_score",
     "fvd_feature_distance",
+    "compute_fvd_from_videos",
     # fgpp_fidelity
     "depth_rmse_m",
     "scale_invariant_depth_error",
@@ -92,6 +96,8 @@ __all__ = [
     # roundtrip
     "chamfer_mm",
     "f_score_1mm",
+    "f_score_5mm",
+    "watertight_pct",
     "volume_breathing_pct",
     "foot_sliding_cm",
     "bone_length_drift_pct",

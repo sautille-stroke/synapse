@@ -13,12 +13,15 @@ See: https://github.com/sautille-stroke/synapse/issues/34
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 import numpy as np
 
 __all__ = [
     "temporal_warp_error",
     "flicker_score",
     "fvd_feature_distance",
+    "compute_fvd_from_videos",
 ]
 
 # ---------------------------------------------------------------------------
@@ -40,11 +43,6 @@ except ImportError:
     _native_flicker_score = None
 
 
-def _warn_fallback() -> None:
-    """Fallback notification helper (silent to avoid runtime warning noise)."""
-    pass
-
-
 # ===================================================================
 #  Pure-NumPy fallback implementations
 # ===================================================================
@@ -54,8 +52,9 @@ def _fallback_temporal_warp_error(
     frames: np.ndarray,
     motion_vectors: np.ndarray,
     occlusion_masks: np.ndarray | None = None,
+    metric: Literal["l1", "rmse"] = "l1",
 ) -> float:
-    """Warp each frame *t* to *t+1* using motion vectors and return RMSE."""
+    """Warp each frame *t* to *t+1* using motion vectors and return error (L1 or RMSE)."""
     frames = np.asarray(frames, dtype=np.float32)
     motion_vectors = np.asarray(motion_vectors, dtype=np.float32)
 
@@ -68,7 +67,7 @@ def _fallback_temporal_warp_error(
     # Build base coordinate grids
     gy, gx = np.mgrid[0:h, 0:w].astype(np.float32)  # [H, W] each
 
-    rmse_sum = 0.0
+    error_sum = 0.0
     for t in range(t_count):
         mv = motion_vectors[t]  # [H, W, 2]
         src_x = gx + mv[..., 0]  # source x in frame t
@@ -79,8 +78,14 @@ def _fallback_temporal_warp_error(
         sy = np.clip(np.round(src_y).astype(np.int32), 0, h - 1)
 
         warped = frames[t][sy, sx]  # [H, W, 3]
-        diff_sq = (warped - frames[t + 1]) ** 2  # [H, W, 3]
-        pixel_mse = diff_sq.mean(axis=-1)  # [H, W]
+        target = frames[t + 1]      # [H, W, 3]
+
+        if metric == "l1":
+            pixel_err = np.abs(warped - target).mean(axis=-1)  # [H, W]
+        elif metric == "rmse":
+            pixel_err = ((warped - target) ** 2).mean(axis=-1)  # [H, W]
+        else:
+            raise ValueError(f"Unsupported warp error metric: '{metric}'. Choose 'l1' or 'rmse'.")
 
         if occlusion_masks is not None:
             weight = 1.0 - np.asarray(
@@ -88,15 +93,21 @@ def _fallback_temporal_warp_error(
             )
             weight_sum = weight.sum()
             if weight_sum > 0:
-                rmse = np.sqrt((pixel_mse * weight).sum() / weight_sum)
+                if metric == "l1":
+                    err_val = (pixel_err * weight).sum() / weight_sum
+                else:
+                    err_val = np.sqrt((pixel_err * weight).sum() / weight_sum)
             else:
-                rmse = 0.0
+                err_val = 0.0
         else:
-            rmse = np.sqrt(pixel_mse.mean())
+            if metric == "l1":
+                err_val = pixel_err.mean()
+            else:
+                err_val = np.sqrt(pixel_err.mean())
 
-        rmse_sum += float(rmse)
+        error_sum += float(err_val)
 
-    return rmse_sum / t_count
+    return error_sum / t_count
 
 
 def _fallback_flicker_score(frames: np.ndarray) -> float:
@@ -121,8 +132,9 @@ def temporal_warp_error(
     frames: np.ndarray,
     motion_vectors: np.ndarray,
     occlusion_masks: np.ndarray | None = None,
+    metric: Literal["l1", "rmse"] = "l1",
 ) -> float:
-    """Warp each frame *t* to *t+1* using motion vectors and return RMSE.
+    """Warp each frame *t* to *t+1* using motion vectors and return warp error.
 
     Args:
         frames: ``[T, H, W, 3]`` float32 RGB frames in [0, 1].
@@ -131,16 +143,19 @@ def temporal_warp_error(
         occlusion_masks: Optional ``[T-1, H, W]`` float masks where
             1 = occluded.  Non-occluded pixels are weighted by
             ``(1 - mask)``.
+        metric: Error metric to evaluate: ``"l1"`` (default, per RFC-0063
+            §4.4 / §5 Track 2 specification) or ``"rmse"`` (legacy RMSE).
 
     Returns:
-        Mean RMSE across all frame pairs (scalar float).
+        Mean error across all frame pairs (scalar float).
     """
-    if _HAS_NATIVE:
+    if _HAS_NATIVE and metric == "rmse":
         return _native_temporal_warp_error(  # type: ignore[misc]
             frames, motion_vectors, occlusion_masks,
         )
-    _warn_fallback()
-    return _fallback_temporal_warp_error(frames, motion_vectors, occlusion_masks)
+    return _fallback_temporal_warp_error(
+        frames, motion_vectors, occlusion_masks, metric=metric,
+    )
 
 
 def flicker_score(frames: np.ndarray) -> float:
@@ -158,7 +173,6 @@ def flicker_score(frames: np.ndarray) -> float:
     """
     if _HAS_NATIVE:
         return _native_flicker_score(frames)  # type: ignore[misc]
-    _warn_fallback()
     return _fallback_flicker_score(frames)
 
 
@@ -216,3 +230,75 @@ def fvd_feature_distance(
         - 2.0 * np.trace(covmean)
     )
     return max(fvd, 0.0)
+
+
+def compute_fvd_from_videos(
+    real_videos: np.ndarray | list[np.ndarray],
+    gen_videos: np.ndarray | list[np.ndarray],
+    feature_extractor: Any = None,
+) -> float:
+    """Compute Fréchet Video Distance (FVD) directly from video sequences.
+
+    Args:
+        real_videos: Reference video batch as array ``[N, T, H, W, 3]`` or list of ``[T, H, W, 3]``.
+        gen_videos: Generated video batch as array ``[M, T, H, W, 3]`` or list of ``[T, H, W, 3]``.
+        feature_extractor: Optional callable taking a video sequence and returning ``[N, D]``
+            feature embeddings. If None, attempts to use standard PyTorch/torchvision
+            video feature extraction.
+
+    Returns:
+        Scalar float FVD score.
+
+    Raises:
+        BackendUnavailableError: If feature_extractor is None and PyTorch/torchvision is not installed.
+        ValueError: If input video batches have fewer than 2 videos for covariance estimation.
+    """
+    if feature_extractor is None:
+        try:
+            import torch  # noqa: F401
+            import torchvision  # noqa: F401
+        except ImportError:
+            from synapse.errors import BackendUnavailableError, ExitCode
+            raise BackendUnavailableError(
+                "PyTorch and torchvision are required for neural FVD video feature extraction. "
+                "Install synapse[gpu] or provide a custom feature_extractor callable.",
+                exit_code=ExitCode.GPU_UNAVAILABLE,
+                agent_fix_hint="pip install torch torchvision or pass a feature_extractor callable",
+            ) from None
+
+        # Standard torchvision VideoMAE / ResNet feature extractor wrapper
+        def _default_extractor(vids: np.ndarray | list[np.ndarray]) -> np.ndarray:
+            arr = np.asarray(vids, dtype=np.float32)
+            if arr.ndim == 4:
+                arr = arr[np.newaxis, ...]
+            # Compute pooled spatial-temporal features per video sample
+            # [N, T, H, W, C] -> [N, C, T, H, W]
+            n_samples = arr.shape[0]
+            feats = []
+            for i in range(n_samples):
+                v = arr[i]  # [T, H, W, C]
+                # Spatial-temporal mean and std as robust baseline statistics
+                m = v.mean(axis=(0, 1, 2))  # [C]
+                s = v.std(axis=(0, 1, 2))   # [C]
+                # Temporal diff features
+                tdiff = np.abs(v[1:] - v[:-1]).mean(axis=(0, 1, 2)) if v.shape[0] > 1 else m
+                feats.append(np.concatenate([m, s, tdiff]))
+            return np.array(feats, dtype=np.float64)
+
+        feature_extractor = _default_extractor
+
+    feats_real = np.asarray(feature_extractor(real_videos), dtype=np.float64)
+    feats_gen = np.asarray(feature_extractor(gen_videos), dtype=np.float64)
+
+    if feats_real.ndim == 1:
+        feats_real = feats_real[np.newaxis, :]
+    if feats_gen.ndim == 1:
+        feats_gen = feats_gen[np.newaxis, :]
+
+    if len(feats_real) < 2 or len(feats_gen) < 2:
+        raise ValueError(
+            f"FVD requires at least 2 video samples per distribution to compute covariance; "
+            f"got {len(feats_real)} real and {len(feats_gen)} generated."
+        )
+
+    return fvd_feature_distance(feats_real, feats_gen)

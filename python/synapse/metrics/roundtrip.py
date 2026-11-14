@@ -7,7 +7,20 @@ lazy-imported to keep the base package light.
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 import numpy as np
+
+__all__ = [
+    "chamfer_mm",
+    "f_score_1mm",
+    "f_score_5mm",
+    "watertight_pct",
+    "volume_breathing_pct",
+    "foot_sliding_cm",
+    "bone_length_drift_pct",
+    "albedo_delta_e00",
+]
 
 # ── Geometry metrics ─────────────────────────────────────────────────
 
@@ -48,12 +61,24 @@ def _nearest_neighbor_distances(
 def chamfer_mm(
     points_a: np.ndarray,
     points_b: np.ndarray,
+    reduction: Literal["mean", "sum"] = "mean",
 ) -> float:
     """Bilateral Chamfer distance in millimetres.
+
+    Note on Industry Normalization Conventions:
+        - In PointNet, AtlasNet, and Microsoft TRELLIS benchmarks, Chamfer distance
+          is often reported as the unweighted sum:
+              CD_sum = mean(d_a2b) + mean(d_b2a)
+          which is exactly 2x the bidirectional average.
+        - In Synapse and RFC-0063, the default convention is the bidirectional average:
+              CD_mean = (mean(d_a2b) + mean(d_b2a)) / 2.0
+        - Pass ``reduction="sum"`` to obtain the PointNet/TRELLIS sum metric (2 * CD_mean).
 
     Args:
         points_a: ``[N, 3]`` point cloud in **metres**.
         points_b: ``[M, 3]`` point cloud in **metres**.
+        reduction: ``"mean"`` for bidirectional average (default, RFC-0063), or
+            ``"sum"`` for unweighted sum (PointNet / TRELLIS convention).
 
     Returns:
         Symmetric Chamfer distance in **millimetres** (scalar float).
@@ -66,7 +91,13 @@ def chamfer_mm(
     d_a2b = _nearest_neighbor_distances(a, b)
     d_b2a = _nearest_neighbor_distances(b, a)
 
-    chamfer_m = float(d_a2b.mean() + d_b2a.mean()) / 2.0
+    if reduction == "mean":
+        chamfer_m = float(d_a2b.mean() + d_b2a.mean()) / 2.0
+    elif reduction == "sum":
+        chamfer_m = float(d_a2b.mean() + d_b2a.mean())
+    else:
+        raise ValueError(f"Unsupported reduction: '{reduction}'. Choose 'mean' or 'sum'.")
+
     return chamfer_m * 1000.0  # metres → mm
 
 
@@ -102,6 +133,64 @@ def f_score_1mm(
         return 0.0
 
     return 2.0 * precision * recall / (precision + recall)
+
+
+def f_score_5mm(
+    points_a: np.ndarray,
+    points_b: np.ndarray,
+    threshold_mm: float = 5.0,
+) -> float:
+    """F-score at 5 mm distance threshold (RFC-0063 Track 1/Track 3 standard).
+
+    Args:
+        points_a: ``[N, 3]`` point cloud in **metres**.
+        points_b: ``[M, 3]`` point cloud in **metres**.
+        threshold_mm: Distance threshold in millimetres (default: 5.0).
+
+    Returns:
+        F-score in [0, 1] (harmonic mean of precision and recall).
+    """
+    return f_score_1mm(points_a, points_b, threshold_mm=threshold_mm)
+
+
+def watertight_pct(
+    meshes: list[Any] | tuple[Any, ...],
+) -> float:
+    """Compute percentage of watertight meshes in a batch.
+
+    Each mesh entry in ``meshes`` may be:
+    - A tuple ``(vertices, faces)`` where vertices is ``[N, 3]`` and faces is ``[F, 3]``
+    - A mesh object with ``.vertices`` and ``.faces`` attributes
+    - A trimesh-like object with an ``.is_watertight`` boolean property
+
+    Args:
+        meshes: Collection of 3D triangular surface meshes.
+
+    Returns:
+        Percentage of watertight meshes in [0.0, 100.0]. Returns 0.0 if empty.
+    """
+    if not meshes:
+        return 0.0
+
+    from synapse.recon.geometry import check_watertight
+
+    watertight_count = 0
+    for m in meshes:
+        if hasattr(m, "is_watertight") and isinstance(m.is_watertight, bool):
+            if m.is_watertight:
+                watertight_count += 1
+        elif isinstance(m, (tuple, list)) and len(m) >= 2:
+            v = np.asarray(m[0], dtype=np.float64)
+            f = np.asarray(m[1], dtype=np.int64)
+            if check_watertight(v, f):
+                watertight_count += 1
+        elif hasattr(m, "vertices") and hasattr(m, "faces"):
+            v = np.asarray(m.vertices, dtype=np.float64)
+            f = np.asarray(m.faces, dtype=np.int64)
+            if check_watertight(v, f):
+                watertight_count += 1
+
+    return float((watertight_count / len(meshes)) * 100.0)
 
 
 # ── Volume stability ─────────────────────────────────────────────────
