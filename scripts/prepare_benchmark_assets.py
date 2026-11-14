@@ -298,7 +298,7 @@ def main() -> int:
         json.dump(manifest_data, f, indent=2)
 
     print("\n======================================================================")
-    print(f"🎉 Benchmark Dataset Staging Complete!")
+    print("🎉 Benchmark Dataset Staging Complete!")
     print(f"   Total Staged Files: {len(all_records)}")
     print(f"   Total Size: {total_bytes / (1024*1024):.2f} MB")
     print(f"   Integrity Manifest: {manifest_path}")
