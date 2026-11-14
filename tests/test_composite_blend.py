@@ -489,3 +489,72 @@ class TestGuidedFilter:
 
         assert result.shape == (h, w, c)
         assert np.all(np.isfinite(result))
+
+
+class TestMorphologyAndPyramidShared:
+    """Validate shared morphology and pyramid kernels between blend, mask, and fusion."""
+
+    def test_morphology_shared_primitives(self) -> None:
+        from synapse.composite.blend import (
+            _binary_dilation,
+            _binary_erosion,
+            _circular_structuring_element,
+        )
+        from synapse.render_core.morphology import (
+            binary_dilation,
+            binary_erosion,
+            circular_structuring_element,
+        )
+
+        assert _circular_structuring_element is circular_structuring_element
+        assert _binary_dilation is binary_dilation
+        assert _binary_erosion is binary_erosion
+
+        se = circular_structuring_element(3)
+        assert se.shape == (7, 7)
+        assert se[3, 3] is True or se[3, 3] == 1
+
+        mask = np.zeros((15, 15), dtype=bool)
+        mask[7, 7] = True
+        dilated = binary_dilation(mask, se)
+        assert int(np.sum(dilated)) > 1
+        eroded = binary_erosion(dilated, se)
+        assert bool(eroded[7, 7]) is True
+
+    def test_pyramid_shared_primitives(self) -> None:
+        from synapse.composite.blend import (
+            _build_gaussian_pyramid,
+            _build_laplacian_pyramid,
+            _downsample2x,
+            _reconstruct_laplacian_pyramid,
+            _upsample2x,
+        )
+        from synapse.render_core.pyramid import (
+            build_gaussian_pyramid,
+            build_laplacian_pyramid,
+            downsample2x,
+            reconstruct_laplacian_pyramid,
+            upsample2x,
+        )
+
+        assert _downsample2x is downsample2x
+        assert _upsample2x is upsample2x
+        assert _build_gaussian_pyramid is build_gaussian_pyramid
+        assert _build_laplacian_pyramid is build_laplacian_pyramid
+        assert _reconstruct_laplacian_pyramid is reconstruct_laplacian_pyramid
+
+        # Test tuple shape support in upsample2x
+        img = np.ones((8, 8, 3), dtype=np.float32)
+        up_tuple = upsample2x(img, (16, 16))
+        up_dims = upsample2x(img, 16, 16)
+        assert up_tuple.shape == (16, 16, 3)
+        assert up_dims.shape == (16, 16, 3)
+        np.testing.assert_allclose(up_tuple, up_dims)
+
+    def test_colab_runner_experiments_registry(self) -> None:
+        from scripts.colab_runner import EXPERIMENTS
+
+        assert "e1" in EXPERIMENTS
+        assert "e2" in EXPERIMENTS
+        assert "e3" in EXPERIMENTS
+        assert "e4" in EXPERIMENTS

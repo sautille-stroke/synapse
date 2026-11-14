@@ -108,25 +108,35 @@ def downsample2x(img: np.ndarray) -> np.ndarray:
     return blurred[::2, ::2]
 
 
-def upsample2x(img: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+def upsample2x(
+    img: np.ndarray,
+    target_h: int | tuple[int, ...],
+    target_w: int | None = None,
+) -> np.ndarray:
     """Upsample by ~2× via bilinear interpolation to ``(target_h, target_w, ...)``.
 
     Args:
         img: ``(H, W)`` or ``(H, W, C)`` array.
-        target_h: Output height.
-        target_w: Output width.
+        target_h: Output height or tuple shape ``(th, tw, ...)``.
+        target_w: Output width (optional if *target_h* is a shape tuple).
 
     Returns:
-        Upsampled array with shape ``(target_h, target_w, ...)`` and same dtype.
+        Upsampled array with target spatial dimensions and same dtype.
     """
+    if isinstance(target_h, (tuple, list)):
+        th, tw = int(target_h[0]), int(target_h[1])
+    else:
+        th = int(target_h)
+        tw = int(target_w) if target_w is not None else th
+
     h, w = img.shape[:2]
     if img.ndim == 2:
-        out = np.zeros((target_h, target_w), dtype=img.dtype)
+        out = np.zeros((th, tw), dtype=img.dtype)
     else:
-        out = np.zeros((target_h, target_w, img.shape[2]), dtype=img.dtype)
+        out = np.zeros((th, tw, img.shape[2]), dtype=img.dtype)
 
-    row_idx = np.arange(target_h, dtype=np.float64) * (h - 1) / max(target_h - 1, 1)
-    col_idx = np.arange(target_w, dtype=np.float64) * (w - 1) / max(target_w - 1, 1)
+    row_idx = np.arange(th, dtype=np.float64) * (h - 1) / max(th - 1, 1)
+    col_idx = np.arange(tw, dtype=np.float64) * (w - 1) / max(tw - 1, 1)
 
     r0 = np.floor(row_idx).astype(np.intp)
     r1 = np.minimum(r0 + 1, h - 1)
@@ -137,11 +147,11 @@ def upsample2x(img: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     cf = (col_idx - c0).astype(np.float64)
 
     if img.ndim == 2:
-        for i in range(target_h):
+        for i in range(th):
             top = (1.0 - rf[i]) * img[r0[i], :] + rf[i] * img[r1[i], :]
             out[i, :] = (1.0 - cf) * top[c0] + cf * top[c1]
     else:
-        for i in range(target_h):
+        for i in range(th):
             top = (1.0 - rf[i]) * img[r0[i], :, :] + rf[i] * img[r1[i], :, :]
             out[i, :, :] = (
                 (1.0 - cf)[:, np.newaxis] * top[c0, :]

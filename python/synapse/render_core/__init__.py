@@ -24,6 +24,11 @@ from synapse.render_core.procedural import (
     generate_procedural_mesh,
 )
 
+from synapse.render_core.morphology import (  # noqa: F401
+    binary_dilation,
+    binary_erosion,
+    circular_structuring_element,
+)
 # Re-export pyramid primitives used by composite/blend and refine/fusion.
 from synapse.render_core.pyramid import (  # noqa: F401
     build_gaussian_pyramid,
@@ -52,6 +57,9 @@ __all__ = [
     "generate_procedural_mesh",
     "MockVgBackend",
     "VgBackend",
+    "binary_dilation",
+    "binary_erosion",
+    "circular_structuring_element",
     "build_gaussian_pyramid",
     "build_laplacian_pyramid",
     "downsample2x",

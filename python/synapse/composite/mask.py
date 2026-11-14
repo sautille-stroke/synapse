@@ -18,18 +18,14 @@ import math
 
 import numpy as np
 
+from synapse.render_core.morphology import (
+    binary_dilation as _binary_dilation,
+    circular_structuring_element as _circular_structuring_element,
+)
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _circular_structuring_element(radius: int) -> np.ndarray:
-    """Create a circular (disk) structuring element of given radius.
-
-    Returns a bool array of shape ``(2*radius+1, 2*radius+1)``.
-    """
-    yy, xx = np.ogrid[-radius:radius + 1, -radius:radius + 1]
-    return (xx * xx + yy * yy) <= radius * radius
 
 
 def _directional_structuring_element(
@@ -64,35 +60,6 @@ def _directional_structuring_element(
             se[y, x] = True
 
     return se
-
-
-def _binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
-    """Dilate a bool mask with a structuring element.
-
-    Uses ``scipy.ndimage.binary_dilation`` when available, otherwise
-    falls back to a pure-NumPy pad-shift-or implementation.
-    """
-    try:
-        from scipy.ndimage import binary_dilation
-        return binary_dilation(
-            mask, structure=se
-        ).astype(bool)
-    except ImportError:
-        pass
-
-    # Pure NumPy fallback: pad, then logical-OR shifted copies.
-    sh, sw = se.shape
-    ph, pw = sh // 2, sw // 2
-    padded = np.pad(mask, ((ph, ph), (pw, pw)), constant_values=False)
-    result = np.zeros_like(padded)
-    ys, xs = np.nonzero(se)
-    for dy, dx in zip(ys, xs):
-        oy = dy - ph
-        ox = dx - pw
-        shifted = np.roll(np.roll(padded, oy, axis=0), ox, axis=1)
-        result |= shifted
-    # Crop back to original size.
-    return result[ph:ph + mask.shape[0], pw:pw + mask.shape[1]]
 
 
 def _distance_transform(mask: np.ndarray) -> np.ndarray:

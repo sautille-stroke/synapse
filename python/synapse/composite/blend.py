@@ -21,6 +21,20 @@ from __future__ import annotations
 
 import numpy as np
 
+from synapse.render_core.morphology import (
+    binary_dilation,
+    binary_erosion,
+    circular_structuring_element,
+)
+from synapse.render_core.pyramid import (
+    build_gaussian_pyramid,
+    build_laplacian_pyramid,
+    downsample2x,
+    gaussian_kernel_1d,
+    reconstruct_laplacian_pyramid,
+    separable_gaussian,
+    upsample2x,
+)
 from synapse.style.aces_color import (
     acescg_to_linear_srgb,
     linear_srgb_to_acescg,
@@ -40,169 +54,19 @@ _SCALE_CLAMP_HI: float = 2.0
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers — morphology
+# Internal helpers — morphology & pyramid delegation to render_core
 # ---------------------------------------------------------------------------
 
-
-def _circular_structuring_element(radius: int) -> np.ndarray:
-    """Create a circular (disk) structuring element of given radius.
-
-    Returns a bool array of shape ``(2*radius+1, 2*radius+1)``.
-    """
-    yy, xx = np.ogrid[-radius:radius + 1, -radius:radius + 1]
-    return (xx * xx + yy * yy) <= radius * radius
-
-
-def _binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
-    """Dilate a bool mask with a structuring element.
-
-    Uses ``scipy.ndimage.binary_dilation`` when available, otherwise
-    falls back to a pure-NumPy pad-shift-or implementation.
-    """
-    try:
-        from scipy.ndimage import binary_dilation
-        return binary_dilation(mask, structure=se).astype(bool)
-    except ImportError:
-        pass
-
-    sh, sw = se.shape
-    ph, pw = sh // 2, sw // 2
-    padded = np.pad(mask, ((ph, ph), (pw, pw)), constant_values=False)
-    result = np.zeros_like(padded)
-    ys, xs = np.nonzero(se)
-    for dy, dx in zip(ys, xs):
-        oy = dy - ph
-        ox = dx - pw
-        shifted = np.roll(np.roll(padded, oy, axis=0), ox, axis=1)
-        result |= shifted
-    return result[ph:ph + mask.shape[0], pw:pw + mask.shape[1]]
-
-
-def _binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
-    """Erode a bool mask with a structuring element.
-
-    Uses ``scipy.ndimage.binary_erosion`` when available, otherwise
-    falls back to dilation of the inverse.
-    """
-    try:
-        from scipy.ndimage import binary_erosion
-        return binary_erosion(mask, structure=se).astype(bool)
-    except ImportError:
-        pass
-
-    # Erosion(A, B) = complement(Dilation(complement(A), B))
-    return ~_binary_dilation(~mask, se)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers — Gaussian convolution
-# ---------------------------------------------------------------------------
-
-
-def _gaussian_kernel_1d(sigma: float, radius: int) -> np.ndarray:
-    """Create a normalised 1-D Gaussian kernel."""
-    x = np.arange(-radius, radius + 1, dtype=np.float64)
-    k = np.exp(-0.5 * (x / max(sigma, _EPS)) ** 2)
-    return k / k.sum()
-
-
-def _separable_gaussian(
-    img: np.ndarray,
-    sigma: float,
-) -> np.ndarray:
-    """Apply separable Gaussian blur to a float64 image.
-
-    Uses ``scipy.ndimage.gaussian_filter`` when available, otherwise
-    falls back to a manual separable convolution via cumsum tricks.
-
-    Args:
-        img: ``[H, W]`` or ``[H, W, C]`` float64 array.
-        sigma: Standard deviation of the Gaussian kernel.
-
-    Returns:
-        Blurred array with the same shape and dtype.
-    """
-    if sigma < 0.5:
-        return img.copy()
-
-    try:
-        from scipy.ndimage import gaussian_filter
-        return gaussian_filter(
-            img, sigma=sigma, mode="reflect",
-        ).astype(np.float64)
-    except ImportError:
-        pass
-
-    # Pure NumPy separable convolution.
-    radius = max(int(round(3.0 * sigma)), 1)
-    kernel = _gaussian_kernel_1d(sigma, radius)
-
-    def _convolve_axis(arr: np.ndarray, axis: int) -> np.ndarray:
-        pad_widths = [(0, 0)] * arr.ndim
-        pad_widths[axis] = (radius, radius)
-        padded = np.pad(arr, pad_widths, mode="reflect")
-        shape = list(padded.shape)
-        n = shape[axis]
-        out_n = n - 2 * radius
-        result = np.zeros_like(arr)
-        for i, w in enumerate(kernel):
-            slices_src = [slice(None)] * arr.ndim
-            slices_src[axis] = slice(i, i + out_n)
-            result += w * padded[tuple(slices_src)]
-        return result
-
-    out = _convolve_axis(img, axis=0)
-    out = _convolve_axis(out, axis=1)
-    return out
-
-
-def _downsample2x(img: np.ndarray) -> np.ndarray:
-    """Downsample by 2x with Gaussian pre-filter."""
-    blurred = _separable_gaussian(img, sigma=1.0)
-    return blurred[::2, ::2]
-
-
-def _upsample2x(img: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
-    """Upsample by 2x with bilinear interpolation to *target_shape*."""
-    th, tw = target_shape[:2]
-    h, w = img.shape[:2]
-    if img.ndim == 2:
-        out = np.zeros((th, tw), dtype=img.dtype)
-    else:
-        out = np.zeros((th, tw, img.shape[2]), dtype=img.dtype)
-
-    # Simple bilinear upsample via index mapping.
-    row_idx = np.arange(th, dtype=np.float64) * (h - 1) / max(th - 1, 1)
-    col_idx = np.arange(tw, dtype=np.float64) * (w - 1) / max(tw - 1, 1)
-
-    r0 = np.floor(row_idx).astype(np.intp)
-    r1 = np.minimum(r0 + 1, h - 1)
-    rf = (row_idx - r0).astype(np.float64)
-
-    c0 = np.floor(col_idx).astype(np.intp)
-    c1 = np.minimum(c0 + 1, w - 1)
-    cf = (col_idx - c0).astype(np.float64)
-
-    if img.ndim == 2:
-        # [th] x [tw] outer product interpolation
-        for i in range(th):
-            row_frac = rf[i]
-            top = (1.0 - row_frac) * img[r0[i], :] + row_frac * img[r1[i], :]
-            out[i, :] = (
-                (1.0 - cf) * top[c0] + cf * top[c1]
-            )
-    else:
-        for i in range(th):
-            row_frac = rf[i]
-            top = (
-                (1.0 - row_frac) * img[r0[i], :, :]
-                + row_frac * img[r1[i], :, :]
-            )
-            out[i, :, :] = (
-                (1.0 - cf)[:, np.newaxis] * top[c0, :]
-                + cf[:, np.newaxis] * top[c1, :]
-            )
-    return out
+_circular_structuring_element = circular_structuring_element
+_binary_dilation = binary_dilation
+_binary_erosion = binary_erosion
+_gaussian_kernel_1d = gaussian_kernel_1d
+_separable_gaussian = separable_gaussian
+_downsample2x = downsample2x
+_upsample2x = upsample2x
+_build_gaussian_pyramid = build_gaussian_pyramid
+_build_laplacian_pyramid = build_laplacian_pyramid
+_reconstruct_laplacian_pyramid = reconstruct_laplacian_pyramid
 
 
 # ---------------------------------------------------------------------------
@@ -534,47 +398,6 @@ def laplacian_pyramid_blend(
     if is_uint8:
         return (result * 255.0).astype(np.uint8)
     return result.astype(src_dtype)
-
-
-def _build_gaussian_pyramid(
-    img: np.ndarray,
-    num_levels: int,
-) -> list[np.ndarray]:
-    """Build a Gaussian pyramid with *num_levels* + 1 entries."""
-    pyramid = [img.copy()]
-    current = img.copy()
-    for _ in range(num_levels):
-        current = _downsample2x(current)
-        pyramid.append(current)
-    return pyramid
-
-
-def _build_laplacian_pyramid(
-    img: np.ndarray,
-    num_levels: int,
-) -> list[np.ndarray]:
-    """Build a Laplacian pyramid with *num_levels* + 1 entries.
-
-    The last entry is the low-pass residual (Gaussian level).
-    """
-    gauss = _build_gaussian_pyramid(img, num_levels)
-    laplacian: list[np.ndarray] = []
-    for i in range(num_levels):
-        upsampled = _upsample2x(gauss[i + 1], gauss[i].shape)
-        laplacian.append(gauss[i] - upsampled)
-    laplacian.append(gauss[-1])  # residual
-    return laplacian
-
-
-def _reconstruct_laplacian_pyramid(
-    pyramid: list[np.ndarray],
-) -> np.ndarray:
-    """Reconstruct an image from its Laplacian pyramid."""
-    current = pyramid[-1].copy()
-    for i in range(len(pyramid) - 2, -1, -1):
-        upsampled = _upsample2x(current, pyramid[i].shape)
-        current = pyramid[i] + upsampled
-    return current
 
 
 # ---------------------------------------------------------------------------
