@@ -258,11 +258,10 @@ def compute_fvd_from_videos(
             import torch  # noqa: F401
             import torchvision  # noqa: F401
         except ImportError:
-            from synapse.errors import BackendUnavailableError, ExitCode
+            from synapse.errors import BackendUnavailableError
             raise BackendUnavailableError(
                 "PyTorch and torchvision are required for neural FVD video feature extraction. "
                 "Install synapse[gpu] or provide a custom feature_extractor callable.",
-                exit_code=ExitCode.GPU_UNAVAILABLE,
                 agent_fix_hint="pip install torch torchvision or pass a feature_extractor callable",
             ) from None
 
