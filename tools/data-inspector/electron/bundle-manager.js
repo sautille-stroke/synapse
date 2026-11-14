@@ -5,7 +5,37 @@ const fs = require('fs');
 const path = require('path');
 
 const SCHEMA_VERSION = 'inspection.v1.0';
+const ACCEPTED_SCHEMA_VERSIONS = new Set([
+  'inspection.v1.0',
+  'synapse.bundle.v1.0',
+]);
 const MANIFEST_FILENAME = 'bundle.json';
+
+/**
+ * Extract relative path from a source entry, which can be either a string
+ * or a SourceEntry object ({ path: '...', media_type: '...' }).
+ * @param {unknown} entry
+ * @returns {string|null}
+ */
+function extractEntryPath(entry) {
+  if (!entry) return null;
+  if (typeof entry === 'string') return entry;
+  if (typeof entry === 'object') {
+    if (typeof entry.path === 'string') return entry.path;
+    if (typeof entry.url === 'string') return entry.url;
+  }
+  return null;
+}
+
+/**
+ * Check if a path string contains traversal segments or is absolute.
+ * @param {unknown} p
+ * @returns {boolean}
+ */
+function isUnsafePath(p) {
+  if (typeof p !== 'string') return false;
+  return p.includes('..') || path.isAbsolute(p) || /^[a-zA-Z]:[/\\]/.test(p);
+}
 
 class BundleManager {
   constructor() {
@@ -48,41 +78,65 @@ class BundleManager {
     }
 
     // Validate schema version.
-    if (manifest.schema_version !== SCHEMA_VERSION) {
+    if (!ACCEPTED_SCHEMA_VERSIONS.has(manifest.schema_version)) {
       return {
         ok: false,
-        error: `Schema version mismatch: expected '${SCHEMA_VERSION}', ` +
+        error: `Schema version mismatch: expected one of [${Array.from(ACCEPTED_SCHEMA_VERSIONS).join(', ')}], ` +
                `got '${manifest.schema_version || 'undefined'}'`,
       };
     }
 
     // Validate required source_model path.
     const sources = manifest.sources || {};
-    const sourceModel = sources.source_model;
-    if (!sourceModel) {
+    let sourceModelEntry = null;
+    if (Array.isArray(sources)) {
+      sourceModelEntry = sources.find(s =>
+        s && (s.label === 'source_model' || s.name === 'source_model' || s.modality === 'source_model' ||
+              (typeof s.path === 'string' && s.path.includes('model.')))
+      ) || sources[0];
+    } else if (typeof sources === 'object') {
+      sourceModelEntry = sources.source_model || sources.model || sources['source/model'];
+    }
+
+    const sourceModelPath = extractEntryPath(sourceModelEntry);
+    if (!sourceModelPath) {
       return { ok: false, error: 'Missing required sources.source_model in manifest' };
     }
 
     // Security: reject path traversal.
-    for (const [key, val] of Object.entries(sources)) {
-      if (typeof val === 'string') {
-        if (val.includes('..') || path.isAbsolute(val)) {
-          return { ok: false, error: `Unsafe path in sources.${key}: '${val}'` };
+    if (Array.isArray(sources)) {
+      for (let i = 0; i < sources.length; i++) {
+        const p = extractEntryPath(sources[i]);
+        if (p && isUnsafePath(p)) {
+          return { ok: false, error: `Unsafe path in sources[${i}]: '${p}'` };
         }
       }
-      if (Array.isArray(val)) {
-        for (const entry of val) {
-          if (typeof entry === 'string' && (entry.includes('..') || path.isAbsolute(entry))) {
-            return { ok: false, error: `Unsafe path in sources.${key}: '${entry}'` };
+    } else if (typeof sources === 'object') {
+      for (const [key, val] of Object.entries(sources)) {
+        if (typeof val === 'string') {
+          if (isUnsafePath(val)) {
+            return { ok: false, error: `Unsafe path in sources.${key}: '${val}'` };
+          }
+        } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const p = extractEntryPath(val);
+          if (p && isUnsafePath(p)) {
+            return { ok: false, error: `Unsafe path in sources.${key}: '${p}'` };
+          }
+        } else if (Array.isArray(val)) {
+          for (const entry of val) {
+            const p = extractEntryPath(entry);
+            if (p && isUnsafePath(p)) {
+              return { ok: false, error: `Unsafe path in sources.${key}: '${p}'` };
+            }
           }
         }
       }
     }
 
     // Check source model file exists.
-    const modelPath = path.join(bundlePath, sourceModel);
+    const modelPath = path.join(bundlePath, sourceModelPath);
     if (!fs.existsSync(modelPath)) {
-      return { ok: false, error: `Source model not found: ${sourceModel}` };
+      return { ok: false, error: `Source model not found: ${sourceModelPath}` };
     }
 
     // Build inventory.
@@ -141,4 +195,11 @@ class BundleManager {
   }
 }
 
-module.exports = { BundleManager, SCHEMA_VERSION, MANIFEST_FILENAME };
+module.exports = {
+  BundleManager,
+  SCHEMA_VERSION,
+  ACCEPTED_SCHEMA_VERSIONS,
+  MANIFEST_FILENAME,
+  extractEntryPath,
+  isUnsafePath,
+};

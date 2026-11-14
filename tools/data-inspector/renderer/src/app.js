@@ -189,6 +189,14 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
       t.classList.remove('active'));
     tab.classList.add('active');
     currentView = tab.dataset.view;
+
+    if (nativeRunning) {
+      const mode = currentView === 'rgb' ? 'lit' : currentView;
+      window.inspectorAPI.nativeSendCommand({
+        type: 'set_debug_view',
+        mode,
+      });
+    }
   });
 });
 

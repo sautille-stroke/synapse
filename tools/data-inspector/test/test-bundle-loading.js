@@ -9,7 +9,12 @@ const os = require('os');
 const assert = require('assert');
 const { spawnSync } = require('child_process');
 
-const { BundleManager, SCHEMA_VERSION } = require('../electron/bundle-manager');
+const {
+  BundleManager,
+  SCHEMA_VERSION,
+  ACCEPTED_SCHEMA_VERSIONS,
+  extractEntryPath,
+} = require('../electron/bundle-manager');
 const {
   InspectorProcessManager,
   validateNativeCommand,
@@ -245,9 +250,95 @@ test('rejects missing source model file', () => {
   fs.rmSync(missingDir, { recursive: true, force: true });
 });
 
-// Test 10: Schema version constant is correct.
-test('schema version constant matches expected value', () => {
+// Test 10: Schema version constant and accepted versions are correct.
+test('schema version constants match expected values', () => {
   assert.strictEqual(SCHEMA_VERSION, 'inspection.v1.0');
+  assert.ok(ACCEPTED_SCHEMA_VERSIONS.has('inspection.v1.0'));
+  assert.ok(ACCEPTED_SCHEMA_VERSIONS.has('synapse.bundle.v1.0'));
+});
+
+// Test 10b: Load bundle where sources.source_model is a SourceEntry object.
+test('loads bundle with SourceEntry object for source_model', () => {
+  const objDir = path.join(FIXTURES_DIR, 'source-entry-obj');
+  const sourceDir = path.join(objDir, 'source');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
+  fs.writeFileSync(
+    path.join(objDir, 'bundle.json'),
+    JSON.stringify({
+      schema_version: 'inspection.v1.0',
+      bundle_id: 'test_source_entry_obj',
+      sources: {
+        source_model: {
+          path: 'source/model.glb',
+          media_type: 'model/gltf-binary',
+          sha256: 'a'.repeat(64),
+        },
+      },
+    }),
+  );
+  try {
+    const result = mgr.loadBundle(objDir);
+    assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
+    assert.strictEqual(result.manifest.bundle_id, 'test_source_entry_obj');
+  } finally {
+    fs.rmSync(objDir, { recursive: true, force: true });
+  }
+});
+
+// Test 10c: Load bundle with synapse.bundle.v1.0 schema.
+test('loads bundle with synapse.bundle.v1.0 schema version', () => {
+  const v1Dir = path.join(FIXTURES_DIR, 'synapse-bundle-v1');
+  const sourceDir = path.join(v1Dir, 'source');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
+  fs.writeFileSync(
+    path.join(v1Dir, 'bundle.json'),
+    JSON.stringify({
+      schema_version: 'synapse.bundle.v1.0',
+      bundle_id: 'test_synapse_bundle_v1',
+      sources: {
+        source_model: {
+          path: 'source/model.glb',
+          media_type: 'model/gltf-binary',
+        },
+      },
+    }),
+  );
+  try {
+    const result = mgr.loadBundle(v1Dir);
+    assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
+    assert.strictEqual(result.manifest.schema_version, 'synapse.bundle.v1.0');
+  } finally {
+    fs.rmSync(v1Dir, { recursive: true, force: true });
+  }
+});
+
+// Test 10d: Reject path traversal when source entry is an object.
+test('rejects path traversal when source entry is an object', () => {
+  const badObjDir = path.join(FIXTURES_DIR, 'bad-source-obj');
+  const sourceDir = path.join(badObjDir, 'source');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
+  fs.writeFileSync(
+    path.join(badObjDir, 'bundle.json'),
+    JSON.stringify({
+      schema_version: 'inspection.v1.0',
+      sources: {
+        source_model: {
+          path: '../../etc/passwd',
+          media_type: 'model/gltf-binary',
+        },
+      },
+    }),
+  );
+  try {
+    const result = mgr.loadBundle(badObjDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('Unsafe path'));
+  } finally {
+    fs.rmSync(badObjDir, { recursive: true, force: true });
+  }
 });
 
 // Test 11: validateNativeCommand whitelist and schema checks.
@@ -260,6 +351,20 @@ test('validateNativeCommand enforces command whitelist and schemas', () => {
     validateNativeCommand({ type: 'set_debug_view', mode: 'wireframe' }).ok,
     true,
   );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'set_debug_view', mode: 'depth' }).ok,
+    true,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'set_debug_view', mode: 'cryptomatte' }).ok,
+    true,
+  );
+  const rgbNorm = validateNativeCommand({ type: 'set_debug_view', mode: 'rgb' });
+  assert.strictEqual(rgbNorm.ok, true);
+  assert.strictEqual(rgbNorm.command.mode, 'lit');
+  const switchViewCmd = validateNativeCommand({ type: 'switch_view', view: 'normal' });
+  assert.strictEqual(switchViewCmd.ok, true);
+  assert.strictEqual(switchViewCmd.command.mode, 'normal');
   assert.strictEqual(
     validateNativeCommand({ type: 'set_entity_visible', name: 'hero_mesh', visible: false }).ok,
     true,
