@@ -606,6 +606,15 @@ bool InspectorApp::exportScreenshotPpm(std::string_view outputPath) const {
 }
 
 void InspectorApp::handleCommand(std::string_view jsonStr) {
+  // Strip trailing whitespace or carriage returns
+  while (!jsonStr.empty() && (jsonStr.back() == '\r' || jsonStr.back() == '\n' || jsonStr.back() == ' ')) {
+    jsonStr.remove_suffix(1);
+  }
+  while (!jsonStr.empty() && (jsonStr.front() == ' ' || jsonStr.front() == '\t')) {
+    jsonStr.remove_prefix(1);
+  }
+  if (jsonStr.empty()) return;
+
   auto j = nlohmann::json::parse(jsonStr, nullptr, false);
   if (j.is_discarded()) {
     std::cout << "{\"type\":\"ack\",\"command\":\"unknown\",\"ok\":false}\n";

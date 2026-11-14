@@ -48,6 +48,7 @@ cc_binary(
 
 cc_test(
     name = "test_inspector",
+    size = "small",
     srcs = ["test_inspector.cc"],
     copts = COMMON_COPTS,
     deps = [
