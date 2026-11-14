@@ -5,6 +5,7 @@ from __future__ import annotations
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
+    ContractValidationError,
     ExitCode,
     Path,
     SynapseError,
@@ -88,13 +89,25 @@ def _cmd_recon_closed_loop(
     max_iterations = int(getattr(args, "max_iterations", 5))
     n_preroll = int(getattr(args, "n_preroll", 0))
 
-    # Load or synthesize frames
+    # Load frames — require real input (AUD-P0-01: no fake synthesis)
     video_path_raw = getattr(args, "video", None)
-    if video_path_raw and Path(video_path_raw).is_file():
-        frames = np.load(video_path_raw).astype(np.float32)
-    else:
-        rng = np.random.default_rng(42)
-        frames = rng.random((5, 64, 64, 3), dtype=np.float32)
+    if not video_path_raw:
+        raise ContractValidationError(
+            "Missing required '--video' argument for closed-loop",
+            agent_fix_hint=(
+                "Provide '--video <path>' pointing to a valid .npy "
+                "file of shape (T, H, W, 3) float32."
+            ),
+        )
+    if not Path(video_path_raw).is_file():
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path_raw!r}",
+            agent_fix_hint=(
+                "Provide '--video <path>' pointing to an existing .npy "
+                "file of shape (T, H, W, 3) float32."
+            ),
+        )
+    frames = np.load(video_path_raw).astype(np.float32)
 
     t_count, h, w, _ = frames.shape
 

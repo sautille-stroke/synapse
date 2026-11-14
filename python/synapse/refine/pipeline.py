@@ -127,6 +127,8 @@ class RefinePipelineResult:
     num_patches_fused: int = 0
     hard_negatives_count: int = 0
     elapsed_seconds: float = 0.0
+    bypassed: bool = False
+    bypass_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-safe dict."""
@@ -138,6 +140,8 @@ class RefinePipelineResult:
             "elapsed_seconds": self.elapsed_seconds,
             "mean_border_psnr_db": self.stitch_report.mean_border_psnr_db,
             "mean_border_ciede2000": self.stitch_report.mean_border_ciede2000,
+            "bypassed": self.bypassed,
+            "bypass_reasons": self.bypass_reasons,
         }
 
 
@@ -311,6 +315,15 @@ class LocalRefinementPipeline:
             else time.monotonic() - t_start
         )
 
+        # PR-60 (AUD-P0-04): Extract real original and refined patches for gate evaluation
+        first_orig_patch: np.ndarray | None = None
+        first_ref_patch: np.ndarray | None = None
+        for t in range(t_count):
+            if refinements[t] and rois_per_frame[t]:
+                first_orig_patch = rois_per_frame[t][0].crop_acescg
+                first_ref_patch = refinements[t][0].refined_acescg
+                break
+
         # --- PR-45 fix #3 & #4: Consume GateVerdict and propagate
         # CircuitBreakerError ---
         try:
@@ -319,6 +332,8 @@ class LocalRefinementPipeline:
                 border_ciede2000=stitch_report.mean_border_ciede2000,
                 elapsed_seconds=elapsed,
                 thresholds=self.gate_thresholds,
+                original_patch=first_orig_patch,
+                refined_patch=first_ref_patch,
             )
         except CircuitBreakerError:
             # PR-45 fix #4: NEVER swallow CircuitBreakerError — the
@@ -353,13 +368,18 @@ class LocalRefinementPipeline:
                     details={"verdict": verdict.metrics},
                 )
             else:
-                # Non-strict: fall back to original frames
+                # Non-strict: keep refined result but flag as bypassed
+                # (AUD-P0-04: do NOT silently copy original as output)
                 logger.warning(
-                    "Quality gates failed (%s); falling back to "
-                    "original frames in non-strict mode.",
+                    "Quality gates failed (%s); keeping refined output "
+                    "with bypassed=True in non-strict mode.",
                     ", ".join(verdict.failure_reasons),
                 )
-                result_frames = frames_acescg.copy()
+                gate_bypassed = True
+                gate_bypass_reasons = list(verdict.failure_reasons)
+        else:
+            gate_bypassed = False
+            gate_bypass_reasons = []
 
         # Export hard negatives
         hn_count = 0
@@ -374,4 +394,6 @@ class LocalRefinementPipeline:
             num_patches_fused=total_fused,
             hard_negatives_count=hn_count,
             elapsed_seconds=elapsed,
+            bypassed=gate_bypassed,
+            bypass_reasons=gate_bypass_reasons,
         )
