@@ -1,7 +1,12 @@
 # RFC 0063: Synapse 质量保障、测试验证机制与行业横向评测基准规范
 
+> **Namespace Alias**: `SYN-RFC-0063` (repo-local). Ecosystem canonical: `all-overview/rfcs/0063`.
+
 - **RFC 编号**: `RFC 0063`
-- **文档状态**: `Proposed (v1.0)`
+- **文档状态**: `Accepted (v1.1)`
+- **作者**: sautille-stroke / DervGen 核心架构组
+- **创建日期**: 2026-10
+- **最后更新**: 2026-11-14
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联详细设计 (Layer B)**: [DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)
 - **关联架构审计**: [audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md) · [audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
@@ -76,7 +81,7 @@
 - **消除假成功回退**：彻底移除缺失输入时的 `np.random` 随机假帧生成逻辑，强制抛出 `AssetNotFoundError(20)` 或 `ContractValidationError(10)`。
 - **执行问张量方差校验**：算子输出必须满足 $\mathrm{Var}(X) > 10^{-4}$，拒绝全黑、全灰假通过。
 - **优化器残差单调下降**：逆向反演与精修算子处理后，要求关键区域 $\Delta E_{00}$ 或 Chamfer 距离具备单调下降断言，严禁无梯度的纯 TV 伪拟合。
-- **工程熔断穿透断言**：人工精修介入超过 900 秒必须穿透抛出 `CircuitBreakerError(40)`，禁止被宽泛 `except` 静默捕获。
+- **工程熔断穿透断言**：人工精修介入超过 900 秒必须穿透抛出 `CircuitBreakerError` / `QualityGateError`（确定性退出码 `40`），禁止被宽泛 `except` 静默捕获。
 
 ### 3.4 Tier-3：Synapse-Bench 黄金基准套件与分层
 - **30 个黄金场景矩阵**：涵盖 T1 刚体几何、T2 运动轨迹、T3 复杂遮挡、T4 极限光影与 T5 97 帧长时序运镜。
@@ -92,7 +97,7 @@
 | :--- | :--- | :--- | :--- |
 | **契约层** | 跨语言线格式 SSOT | `fgpp/schema.py`<br>`tools/wire_guard.py` | 15 通道 / 34 B/px / 列主序 $4\times 4$ 矩阵无偏差 |
 | **算法层** | 双轨几何算子对抗 | `csrc/geometry/`<br>`recon/geometry.py` | C++20 与 Python Oracle 对退化/共面网格判定 100% 对齐 |
-| **物理层** | 48 帧物理强锚点截断 | `fgpp/schema.py`<br>`adapters/wan_adapter.py` | $T=97$ 时第 `0, 48, 96` 帧注入渲染真值，切断蠕动累积 |
+| **物理层** | 48 帧物理强锚点截断 | `fgpp/schema.py`<br>`adapters/wan.py` | $T=97$ 时第 `0, 48, 96` 帧注入渲染真值，切断蠕动累积 |
 | **光学层** | ACEScg 软肩逆色调映射 | `style/aces_color.py`<br>`composite/blend.py` | 双曲正切平滑过渡，能量守恒，消除高光除零与溢出 |
 | **执行层** | 确定性状态码与防静默三问 | `errors.py`<br>`telemetry.py` | 严格区分 `0/10/20/30/40/50`，包含 `agent_fix_hint` |
 
@@ -120,7 +125,7 @@
   2. **时序扭曲误差 (Temporal Warp Error)**：利用光流反向重投影计算相邻帧光度残差：$E_{\text{warp}} = \frac{1}{T-1}\sum_{t} \|I_t - \mathcal{W}(I_{t+1}, V_{t\to t+1})\|_1$；
   3. **高频闪烁得分 (Flicker Score)**：相邻帧拉普拉斯算子响应的高频方差波动；
   4. **足底滑步位移 (Foot-sliding)**：角色步态支撑相中足底接地点相对世界坐标的最大位移（$\text{cm}$）。
-- **门禁基线**：Track-B 视频门禁要求 $\text{FVD} \le 150.0$，$E_{\text{warp}} \le 0.015$，$\text{Foot-sliding} \le 0.3\text{ cm}$。
+- **门禁基线**：Track-B 视频门禁要求 $\text{FVD} \le 300.0$，$E_{\text{warp}} \le 0.020$，$\text{Foot-sliding} \le 0.5\text{ cm}$（Track-A 对应 $\text{FVD} \le 150.0$，$E_{\text{warp}} \le 0.015$，$\text{Foot-sliding} \le 0.3\text{ cm}$）。
 
 ### 5.3 赛道 3：动作捕捉与数字替身动力学
 - **行业对标 SOTA**：Autodesk Wonder Studio、Move.ai、DeepMotion。
@@ -137,8 +142,9 @@
   1. **漫反射色差**：$\text{Albedo } \Delta E_{00}$（CIEDE2000 色差公式）；
   2. **手术刀拼接色差**：$\text{Border-ring } \Delta E_{00}$（16px 缝合过渡环带色差）；
   3. **估计主光角误差**：反演主光源向量与物理相机光照真值的角距离（$\text{deg}$）；
-  4. **深度均方根误差**：$\text{Depth RMSE}$（米制空间）。
-- **门禁基线**：Track-A 门禁要求 $\text{Albedo } \Delta E_{00} \le 2.5$，$\text{Border } \Delta E_{00} \le 2.5$，主光误差 $\le 10.0^\circ$。
+  4. **深度均方根误差**：$\text{Depth RMSE}$（米制空间，对应键名 `depth_rmse_m`）；
+  5. **手术刀过渡环带色差**：$\text{Border-ring } \Delta E_{00}$（对应规范键名 `border_ring_ciede2000`）。
+- **门禁基线**：Track-B 要求 $\text{Depth RMSE} \le 0.05\text{ m}$，$\text{Border-ring } \Delta E_{00} \le 3.0$；Track-A 门禁要求 $\text{Depth RMSE} \le 0.04\text{ m}$，$\text{Border-ring } \Delta E_{00} \le 2.5$，$\text{Albedo } \Delta E_{00} \le 2.5$，主光误差 $\le 10.0^\circ$。
 
 ---
 

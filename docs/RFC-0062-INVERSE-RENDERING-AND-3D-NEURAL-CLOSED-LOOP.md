@@ -1,6 +1,8 @@
 # RFC 0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范
 # (3D-Guided Generation, Differentiable Inverse Rendering & Local Patching Closed-Loop Specification)
 
+> **Namespace Alias**: `SYN-RFC-0062` (repo-local). Ecosystem canonical: `all-overview/rfcs/0062`.
+
 - **RFC 编号**: `RFC 0062`
 - **文档状态**: `Accepted (v1.1 — Aligned with M11)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`)

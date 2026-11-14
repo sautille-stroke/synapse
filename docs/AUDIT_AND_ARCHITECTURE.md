@@ -305,3 +305,16 @@ synapse/
 - **重构后全库架构与技术债务深度审计报告**：**[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)**（针对 Horizon 1–3 全量代码基线的多维 AST 静态审计与技术债务诊断）。
 - **全景十六阶段 58-PR 实施总计划 (`v3.1`)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 7 份精细化子计划（覆盖 `M1`–`M16`，共 `58` 个可独立合入的原子 PR 与 15-Wave 多 Agent 并行执行矩阵）。
 - **重构后解耦与工程硬化子计划**：**[docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**（覆盖 M13–M16 共 14 个原子 PR，全面落实防静默失败清零、包级 DAG 解耦、原生多边形算子修复与严苛 CI 门禁）。
+
+---
+
+## 8. RFC 编号对照与跨仓别名登记表 (RFC Cross-Reference Registry)
+
+为消除仓内针对性专项 RFC（`SYN-RFC-0061 ~ 0063`）与生态顶层权威标准（`all-overview/rfcs/0061 ~ 0063`）之间的命名冲突，建立如下对应关系与权威映射：
+
+| 仓内本地别名 | 生态权威编号 | 规约文档文件名 | 权威状态 | 核心规约职责 |
+|---|---|---|---|---|
+| `SYN-RFC-0061` | `all-overview/rfcs/0061` | [RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) | Accepted | 局部解剖智能修正、多模型协同融合与手术刀逆向缝合规范 |
+| `SYN-RFC-0062` | `all-overview/rfcs/0062` | [RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) | Accepted | 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 |
+| `SYN-RFC-0063` | `all-overview/rfcs/0063` | [RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) | Accepted (v1.1) | 质量保障、测试验证机制与行业横向评测基准规范（承接 Horizon-5 落地） |
+
