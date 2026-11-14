@@ -110,6 +110,11 @@ class ForwardGuide:
         # --- κ re-anchoring --------------------------------------------------
         actual_preroll = cfg.n_preroll
         if actual_preroll > 0 and actual_preroll < total_locked:
+            if actual_preroll >= frames.shape[0]:
+                raise IndexError(
+                    f"Preroll index {actual_preroll} out of bounds for "
+                    f"frames with {frames.shape[0]} total frames."
+                )
             preroll_segment = frames[:actual_preroll]
             production_first = frames[actual_preroll]
             frames[:actual_preroll] = apply_kappa_reanchor(

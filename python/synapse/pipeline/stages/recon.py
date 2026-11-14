@@ -80,7 +80,7 @@ def handle_video_to_3d_invert(
     if result.mesh is not None and result.mesh.normals is not None:
         albedo = delight_multiview_albedo(
             frames=frames,
-            cameras=[],
+            cameras=result.camera_trajectory.extrinsics if result.camera_trajectory else [],
             mesh=result.mesh,
         )
         albedo_path = manifest.outputs.get(
