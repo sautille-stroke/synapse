@@ -529,7 +529,6 @@ if (nativeBin) {
         '--rhi=null',
         '--width=32',
         '--height=32',
-        '--frames=3',
         `--shm-name=${shmName}`,
         '--keep-shm',
         `--bundle=${MINIMAL_BUNDLE}`,
