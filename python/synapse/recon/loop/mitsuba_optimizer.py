@@ -21,6 +21,8 @@ from typing import Any
 
 import numpy as np
 
+from synapse.recon.loop.texture_extractor import compute_tv_gradient
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -242,24 +244,9 @@ class AnalyticUVInverseOptimizer:
                 photo_grad[:, :, c][valid_photo] /= photo_weight[valid_photo]
 
             # --- TV gradient (symmetric divergence) ---
-            # The gradient of isotropic TV is the negative divergence of the
-            # normalised gradient field.  Using un-normalised (L2) TV for
-            # simplicity, the divergence at pixel (i,j) is:
-            #   div_x = (a[i,j] - a[i,j-1]) + (a[i,j] - a[i,j+1])
-            #   div_y = (a[i,j] - a[i-1,j]) + (a[i,j] - a[i+1,j])
-            # This is equivalent to adding the forward difference at [:-1]
-            # and subtracting the backward difference at [1:], which
-            # guarantees ∑ grad_tv == 0 (conservation / zero-sum).
-            alb_f64 = albedo.astype(np.float64)
-            tv_grad = np.zeros_like(albedo, dtype=np.float64)
-            # Vertical (row) axis — forward differences along axis 0
-            dy_fwd = alb_f64[:-1, :, :] - alb_f64[1:, :, :]
-            tv_grad[:-1, :, :] += dy_fwd   # positive at source
-            tv_grad[1:, :, :]  -= dy_fwd   # negative at destination
-            # Horizontal (column) axis — forward differences along axis 1
-            dx_fwd = alb_f64[:, :-1, :] - alb_f64[:, 1:, :]
-            tv_grad[:, :-1, :] += dx_fwd   # positive at source
-            tv_grad[:, 1:, :]  -= dx_fwd   # negative at destination
+            # Uses the canonical shared implementation from texture_extractor
+            # to ensure a single source of truth for the TV gradient.
+            tv_grad = compute_tv_gradient(albedo)
             tv_grad *= self.config.tv_weight
 
             # Combined gradient: photometric + TV regularisation

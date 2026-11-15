@@ -7,6 +7,7 @@ closed loop (RFC 0062 §3).  It ensures that:
 2. ``n_preroll ∈ {0, 4, 8}`` only.
 3. κ = 1.0 hard-cut re-anchoring is applied at the preroll → production
    boundary to prevent 5500 K studio-lighting contamination.
+4. ``extract_main_take`` trims preroll frames with bounds-safe pre-checks.
 """
 
 from __future__ import annotations
@@ -152,10 +153,36 @@ class ForwardGuide:
     def _spatial_dims(
         conditioning: dict[str, np.ndarray],
     ) -> tuple[int, int]:
-        """Infer ``(H, W)`` from the first conditioning array."""
+        """Infer ``(H, W)`` from the first conditioning array.
+
+        Handles multiple tensor layouts:
+
+        - ``[T, H, W, C]`` (4-D video): return ``(shape[1], shape[2])``.
+          Prevents the frame count *T* from being misread as height *H*.
+        - ``[H, W, C]`` (3-D, channels-last, ``C ∈ {1,2,3,4}``):
+          return ``(shape[0], shape[1])``.
+        - ``[C, H, W]`` (3-D, channels-first, ``C ∈ {1,2,3,4}``):
+          return ``(shape[1], shape[2])``.
+        - ``[H, W]`` (2-D single-channel): return ``(shape[0], shape[1])``.
+        """
         for arr in conditioning.values():
-            if arr.ndim >= 3:
-                return int(arr.shape[-3]), int(arr.shape[-2])
+            if arr.ndim == 4:
+                # [T, H, W, C] — video sequence
+                return int(arr.shape[1]), int(arr.shape[2])
+            if arr.ndim == 3:
+                # Distinguish channels-last [H, W, C] from channels-first
+                # [C, H, W].  Standard FGPP channel counts are 1–4, so if
+                # the *last* dim is ≤ 4 we treat it as channels-last;
+                # otherwise if the *first* dim is ≤ 4 we treat it as
+                # channels-first.
+                if arr.shape[2] <= 4:
+                    # channels-last: [H, W, C]
+                    return int(arr.shape[0]), int(arr.shape[1])
+                if arr.shape[0] <= 4:
+                    # channels-first: [C, H, W]
+                    return int(arr.shape[1]), int(arr.shape[2])
+                # Ambiguous — fall through to channels-last heuristic
+                return int(arr.shape[0]), int(arr.shape[1])
             if arr.ndim == 2:
                 return int(arr.shape[0]), int(arr.shape[1])
         return 64, 64  # Fallback for empty / scalar conditioning.
@@ -210,3 +237,47 @@ class ForwardGuide:
             adapter(conditioning, total_frames, h, w),
             dtype=np.float32,
         )
+
+
+def extract_main_take(
+    frames: np.ndarray,
+    n_preroll: int,
+) -> np.ndarray:
+    """Trim *n_preroll* warm-up frames and return the production-only take.
+
+    Performs a bounds-safe pre-check: if *n_preroll* equals or exceeds the
+    number of frames in the sequence, a :class:`ContractValidationError` is
+    raised instead of silently returning an empty or wrong-frame array.
+
+    Args:
+        frames: ``(T, H, W, C)`` or ``(T, H, W)`` array of generated frames.
+        n_preroll: Number of preroll frames to trim from the start.
+
+    Returns:
+        ``frames[n_preroll:]`` — the production sub-sequence.
+
+    Raises:
+        ContractValidationError:
+            When ``n_preroll >= T`` (would yield an empty or
+            out-of-bounds result).
+    """
+    if n_preroll < 0:
+        raise ContractValidationError(
+            f"n_preroll must be non-negative, got {n_preroll}.",
+            agent_fix_hint="Set n_preroll to 0, 4, or 8.",
+        )
+    if frames.ndim < 1:
+        raise ContractValidationError(
+            "frames must have at least one dimension (T).",
+            agent_fix_hint="Pass a (T, H, W, C) or (T, H, W) array.",
+        )
+    n_total = frames.shape[0]
+    if n_preroll >= n_total:
+        raise ContractValidationError(
+            f"n_preroll ({n_preroll}) >= total frame count ({n_total}); "
+            f"trimming would yield an empty or invalid sequence.",
+            agent_fix_hint=(
+                f"Reduce n_preroll to < {n_total}, or generate more frames."
+            ),
+        )
+    return frames[n_preroll:]

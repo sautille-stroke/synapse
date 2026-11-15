@@ -17,6 +17,8 @@ from synapse.recon.loop.mitsuba_optimizer import (
 )
 from synapse.recon.loop.texture_extractor import (
     PBRTextureSet,
+    bake_uv_normal_map,
+    compute_tv_gradient,
     extract_and_pack_pbr_textures,
 )
 
@@ -364,19 +366,113 @@ def test_no_approx_ciede2000_in_optimizer() -> None:
 
 
 def test_tv_gradient_symmetric_divergence_sum_zero() -> None:
-    """PR-61: TV gradient divergence must sum to 0 across the entire UV domain."""
+    """PR-61 / H6-P1-10: TV gradient from production compute_tv_gradient sums to 0.
+
+    Calls the *canonical* ``compute_tv_gradient()`` from
+    ``synapse.recon.loop.texture_extractor`` — NOT a local reimplementation —
+    so the test exercises the actual production code path.
+    """
     rng = np.random.default_rng(123)
     albedo = rng.uniform(0.0, 1.0, (64, 64, 3)).astype(np.float64)
 
-    alb_f64 = albedo.astype(np.float64)
-    tv_grad = np.zeros_like(albedo, dtype=np.float64)
-    dy_fwd = alb_f64[:-1, :, :] - alb_f64[1:, :, :]
-    tv_grad[:-1, :, :] += dy_fwd
-    tv_grad[1:, :, :] -= dy_fwd
-    dx_fwd = alb_f64[:, :-1, :] - alb_f64[:, 1:, :]
-    tv_grad[:, :-1, :] += dx_fwd
-    tv_grad[:, 1:, :] -= dx_fwd
+    tv_grad = compute_tv_gradient(albedo)
 
     assert abs(float(tv_grad.sum())) < 1e-10, (
         f"TV gradient sum should be 0 within float precision, got: {tv_grad.sum()}"
     )
+
+
+def test_tv_gradient_step_reduces_tv_loss() -> None:
+    """H6-P1-10: A single gradient descent step on TV gradient must reduce TV loss.
+
+    This verifies that the production compute_tv_gradient actually produces
+    a valid descent direction — not an always-true self-referential test.
+    """
+    rng = np.random.default_rng(456)
+    # Create a noisy image with high TV
+    albedo = rng.uniform(0.0, 1.0, (32, 32, 3)).astype(np.float64)
+
+    def _tv_loss(img: np.ndarray) -> float:
+        """Compute isotropic (L2) total variation loss."""
+        dy = img[1:, :, :] - img[:-1, :, :]
+        dx = img[:, 1:, :] - img[:, :-1, :]
+        return float(np.sum(dy ** 2) + np.sum(dx ** 2))
+
+    tv_before = _tv_loss(albedo)
+
+    # One gradient descent step using the production TV gradient
+    tv_grad = compute_tv_gradient(albedo)
+    lr = 0.05
+    albedo_after = albedo - lr * tv_grad
+
+    tv_after = _tv_loss(albedo_after)
+
+    assert tv_after < tv_before, (
+        f"TV loss should decrease after one gradient step: "
+        f"before={tv_before:.6f}, after={tv_after:.6f}"
+    )
+    # Verify meaningful reduction (not just numerical noise)
+    reduction_pct = (tv_before - tv_after) / tv_before * 100.0
+    assert reduction_pct > 1.0, (
+        f"TV loss reduction should be > 1%, got {reduction_pct:.2f}%"
+    )
+
+
+def test_tv_gradient_uniform_image_is_zero() -> None:
+    """TV gradient of a uniform image must be exactly zero."""
+    uniform = np.full((16, 16, 3), 0.42, dtype=np.float64)
+    tv_grad = compute_tv_gradient(uniform)
+    np.testing.assert_array_equal(
+        tv_grad, np.zeros_like(tv_grad),
+        err_msg="TV gradient of uniform image should be all zeros",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests: UV normal map baking
+# ---------------------------------------------------------------------------
+
+
+def test_bake_uv_normal_map_flat_surface() -> None:
+    """Flat surface normals [0,0,1] bake to tangent-space [0,0,1]."""
+    h, w, res = 16, 16, 32
+    normals = np.zeros((h, w, 3), dtype=np.float32)
+    normals[..., 2] = 1.0  # z-up
+
+    uv = np.zeros((h, w, 2), dtype=np.float32)
+    for row in range(h):
+        for col in range(w):
+            uv[row, col, 0] = col / max(w - 1, 1)
+            uv[row, col, 1] = row / max(h - 1, 1)
+
+    normal_map = bake_uv_normal_map(normals, uv, resolution=res)
+
+    assert normal_map.shape == (res, res, 3)
+    assert normal_map.dtype == np.float32
+    # Tangent-space Z should be close to 1.0 for flat surfaces
+    # (covered texels only)
+    covered = np.any(normal_map != 0.0, axis=-1)
+    if np.any(covered):
+        z_vals = normal_map[covered, 2]
+        np.testing.assert_allclose(z_vals, 1.0, atol=0.05)
+
+
+def test_bake_uv_normal_map_multi_view() -> None:
+    """Multi-view baking produces a valid normal map."""
+    n_views, h, w, res = 3, 8, 8, 16
+    normals = np.zeros((n_views, h, w, 3), dtype=np.float32)
+    normals[..., 2] = 1.0
+
+    uv = np.zeros((n_views, h, w, 2), dtype=np.float32)
+    for v in range(n_views):
+        for row in range(h):
+            for col in range(w):
+                uv[v, row, col, 0] = col / max(w - 1, 1)
+                uv[v, row, col, 1] = row / max(h - 1, 1)
+
+    normal_map = bake_uv_normal_map(normals, uv, resolution=res)
+
+    assert normal_map.shape == (res, res, 3)
+    # All normals should be unit length
+    norms = np.linalg.norm(normal_map, axis=-1)
+    np.testing.assert_allclose(norms, 1.0, atol=0.01)

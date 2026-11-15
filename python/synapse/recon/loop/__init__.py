@@ -17,7 +17,7 @@ Import explicitly::
 from __future__ import annotations
 
 from synapse.recon.loop.closed_loop_runner import ClosedLoopResult, ClosedLoopRunner
-from synapse.recon.loop.forward_guide import ForwardGuide
+from synapse.recon.loop.forward_guide import ForwardGuide, extract_main_take
 from synapse.recon.loop.mitsuba_optimizer import (
     AnalyticUVInverseOptimizer,
     InverseOptimConfig,
@@ -32,6 +32,8 @@ from synapse.recon.loop.radiometric import (
 )
 from synapse.recon.loop.texture_extractor import (
     PBRTextureSet,
+    bake_uv_normal_map,
+    compute_tv_gradient,
     extract_and_pack_pbr_textures,
 )
 from synapse.recon.loop.types import ForwardGuideResult, LoopConfig
@@ -48,8 +50,11 @@ __all__ = [
     "PBRTextureSet",
     "acescg_to_linear",
     "apply_kappa_reanchor",
+    "bake_uv_normal_map",
+    "compute_tv_gradient",
     "enforce_phase_lock",
     "extract_and_pack_pbr_textures",
+    "extract_main_take",
     "linear_to_acescg",
     "validate_frame_count_phase",
 ]
