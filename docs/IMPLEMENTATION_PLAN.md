@@ -405,7 +405,7 @@ flowchart LR
 
 | PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M21-M24](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
-| **[PR-74](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-74)** | M21 | EXR 原生 `UINT32` 写出与 `cli/_fgpp` 严苛化、`wire_guard` C++ `PixelType` 解析、统一 `synapse.bundle.v1.0` | PR-73 | ~420 行 | 1.5d | `wire_guard.py --check` + `tests/test_fgpp_io.py` (`UINT` bit 零误差) | 📋 已规划 |
+| **[PR-74](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-74)** | M21 | EXR 原生 `UINT32` 写出与 `cli/_fgpp` 严苛化、`wire_guard` C++ `PixelType` 解析、统一 `synapse.bundle.v1.0` | PR-73 | ~420 行 | 1.5d | `wire_guard.py --check` + `tests/test_fgpp_io.py` (`UINT` bit 零误差) | ✅ 已合入 (#71) |
 | **[PR-75](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-75)** | M21 | `bundle_worker` 改用 `import_fgpp()`、`run_worker_cli` 错误信封、后置 `--json`、`_bench.py` 门禁 exit `40`、`viewer` XSS | PR-74 | ~380 行 | 1.5d | `tests/test_bundle_worker.py` + `tests/test_cli.py` + `tests/test_dataset_and_viewer.py` | 📋 已规划 |
 | **[PR-76](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-76)** | M21 | `MultiLoRAManager` 加载真 `.safetensors`+SHA256、`LoRAPatchHook` `bf16` & 掩膜、`FoundaryHttp` 3D 载荷、48f+`float64` | PR-74 | ~540 行 | 2.0d | `tests/test_lora_manager.py` + `tests/test_wan_lora_wiring.py` + `tests/test_condition_scheduler.py` | 📋 已规划 |
 | **[PR-77](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-77)** | M21 | `FeatureStoreBuilder` 修复 `[7,T,H,W]` 门禁消除 100% 误拒；纯 PyTorch 可微 `losses.py` 接入 `trainer`；`packager` 校验 | PR-74 | ~460 行 | 1.5d | `tests/test_lora_feature_store.py` + `tests/test_lora_trainer.py` (非空分片 + `.grad` > 0) | 📋 已规划 |
