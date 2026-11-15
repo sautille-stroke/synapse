@@ -6,6 +6,8 @@ Covers:
 - κ = 1.0 hard-cut re-anchoring
 - sRGB ↔ ACEScg round-trip accuracy
 - Forward guide light-leak prevention
+- _spatial_dims 4-D / 3-D layout detection (H6-P1-04)
+- extract_main_take preroll trimming bounds check
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from synapse.recon.loop import (
     ForwardGuide,
     ForwardGuideResult,
     LoopConfig,
+    extract_main_take,
 )
 from synapse.recon.loop.radiometric import (
     acescg_to_linear,
@@ -201,3 +204,108 @@ def test_forward_guide_invalid_preroll_raises() -> None:
     with pytest.raises(ContractValidationError) as exc_info:
         ForwardGuide(LoopConfig(n_preroll=3))
     assert exc_info.value.exit_code == 10
+
+
+# ---------------------------------------------------------------------------
+# _spatial_dims layout detection (H6-P1-04)
+# ---------------------------------------------------------------------------
+
+
+def test_spatial_dims_4d_non_square() -> None:
+    """4-D [T, H, W, C] conditioning: _spatial_dims returns (H, W) not (T, H).
+
+    The frame count T=17 must NOT be misread as image height H.
+    """
+    conditioning = {
+        "CameraLinearDepth.Z": np.zeros((17, 64, 96, 3), dtype=np.float32),
+    }
+    h, w = ForwardGuide._spatial_dims(conditioning)
+    assert (h, w) == (64, 96), f"Expected (64, 96), got ({h}, {w})"
+
+
+def test_spatial_dims_3d_channels_last() -> None:
+    """3-D [H, W, C] conditioning (channels-last): returns (H, W)."""
+    conditioning = {
+        "WorldNormal.X": np.zeros((128, 64, 3), dtype=np.float32),
+    }
+    h, w = ForwardGuide._spatial_dims(conditioning)
+    assert (h, w) == (128, 64), f"Expected (128, 64), got ({h}, {w})"
+
+
+def test_spatial_dims_3d_channels_first() -> None:
+    """3-D [C, H, W] conditioning (channels-first): returns (H, W)."""
+    conditioning = {
+        "CameraLinearDepth.Z": np.zeros((1, 48, 72), dtype=np.float32),
+    }
+    h, w = ForwardGuide._spatial_dims(conditioning)
+    assert (h, w) == (48, 72), f"Expected (48, 72), got ({h}, {w})"
+
+
+def test_spatial_dims_2d() -> None:
+    """2-D [H, W] single-channel conditioning: returns (H, W)."""
+    conditioning = {
+        "Mask": np.zeros((32, 48), dtype=np.float32),
+    }
+    h, w = ForwardGuide._spatial_dims(conditioning)
+    assert (h, w) == (32, 48), f"Expected (32, 48), got ({h}, {w})"
+
+
+def test_spatial_dims_empty_fallback() -> None:
+    """Empty conditioning dict falls back to (64, 64)."""
+    h, w = ForwardGuide._spatial_dims({})
+    assert (h, w) == (64, 64)
+
+
+def test_forward_guide_4d_conditioning_shape() -> None:
+    """ForwardGuide with 4-D [T, H, W, C] conditioning produces correct spatial dims."""
+    guide = ForwardGuide(LoopConfig(n_preroll=0))
+    conditioning = {
+        "CameraLinearDepth.Z": np.zeros((17, 64, 96, 3), dtype=np.float32),
+    }
+    result = guide.generate(conditioning=conditioning, n_production_frames=97)
+    # frames should have the spatial dims from conditioning: (64, 96), not (17, 64)
+    assert result.frames.shape[1] == 64, f"Height should be 64, got {result.frames.shape[1]}"
+    assert result.frames.shape[2] == 96, f"Width should be 96, got {result.frames.shape[2]}"
+
+
+# ---------------------------------------------------------------------------
+# extract_main_take — preroll trimming with bounds checks
+# ---------------------------------------------------------------------------
+
+
+def test_extract_main_take_basic() -> None:
+    """extract_main_take trims n_preroll frames from the start."""
+    frames = np.arange(97 * 3).reshape(97, 1, 1, 3).astype(np.float32)
+    result = extract_main_take(frames, n_preroll=4)
+    assert result.shape[0] == 93
+    np.testing.assert_array_equal(result[0], frames[4])
+
+
+def test_extract_main_take_zero_preroll() -> None:
+    """With n_preroll=0, extract_main_take returns the full sequence."""
+    frames = np.zeros((97, 8, 8, 3), dtype=np.float32)
+    result = extract_main_take(frames, n_preroll=0)
+    assert result.shape[0] == 97
+    np.testing.assert_array_equal(result, frames)
+
+
+def test_extract_main_take_oob_raises() -> None:
+    """n_preroll >= T must raise ContractValidationError, not silently return empty."""
+    frames = np.zeros((10, 4, 4, 3), dtype=np.float32)
+    with pytest.raises(ContractValidationError) as exc_info:
+        extract_main_take(frames, n_preroll=10)
+    assert exc_info.value.exit_code == 10
+
+
+def test_extract_main_take_exceeds_raises() -> None:
+    """n_preroll > T must raise ContractValidationError."""
+    frames = np.zeros((5, 4, 4, 3), dtype=np.float32)
+    with pytest.raises(ContractValidationError):
+        extract_main_take(frames, n_preroll=100)
+
+
+def test_extract_main_take_negative_raises() -> None:
+    """Negative n_preroll must raise ContractValidationError."""
+    frames = np.zeros((10, 4, 4, 3), dtype=np.float32)
+    with pytest.raises(ContractValidationError):
+        extract_main_take(frames, n_preroll=-1)
