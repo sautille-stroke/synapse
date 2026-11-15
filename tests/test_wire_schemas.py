@@ -321,3 +321,86 @@ class TestSchemaCatchesMismatches:
         with mock.patch.object(wire_guard, "_SCHEMA_DIR", tmp_path):
             errors = wire_guard._check_json_schemas()
         assert any("WRONG_VERSION" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# TASK 5.6: C++ header parsing & extended cross-language checks
+# ---------------------------------------------------------------------------
+
+
+class TestCppHeaderExtendedValidation:
+    """Test C++ header parsing and strict cross-language contract enforcement."""
+
+    @pytest.fixture
+    def aether_header_path(self) -> Path:
+        for probe in wire_guard._DEFAULT_HEADER_PROBES:
+            if probe.exists():
+                return probe
+        pytest.skip("aether fgpp_types.h header not available")
+
+    def test_parse_header_extracts_pixel_types_and_specs(self, aether_header_path: Path) -> None:
+        """_parse_header extracts non-empty pixel_type_values (3 items) and 15 channel specs."""
+        parsed = wire_guard._parse_header(aether_header_path)
+        assert parsed["pixel_type_values"] == {"Uint32": 0, "Half": 1, "Float": 2}
+        assert len(parsed["channel_specs"]) == 15
+        assert parsed["channel_specs"][4]["name"] == "Cryptomatte.ID"
+        assert parsed["channel_specs"][4]["pixel_type"] == "Uint32"
+        assert parsed["channel_specs"][4]["allow_spatial_filtering"] is False
+
+    def test_check_against_header_passes(self, aether_header_path: Path) -> None:
+        """_check_against_header returns no errors against SSOT header."""
+        errors = wire_guard._check_against_header(aether_header_path)
+        assert errors == [], f"C++ header check errors: {errors}"
+
+    def test_check_against_header_catches_tampered_pixel_type(
+        self, aether_header_path: Path, tmp_path: Path
+    ) -> None:
+        """Tampered PixelType enum value in C++ header is caught."""
+        content = aether_header_path.read_text(encoding="utf-8")
+        tampered_content = content.replace("Uint32 = 0", "Uint32 = 99")
+        temp_header = tmp_path / "fgpp_types.h"
+        temp_header.write_text(tampered_content, encoding="utf-8")
+
+        errors = wire_guard._check_against_header(temp_header)
+        assert any("PixelType::Uint32 value mismatch" in e for e in errors), f"Expected error, got: {errors}"
+
+    def test_check_against_header_catches_tampered_channel_pixel_type(
+        self, aether_header_path: Path, tmp_path: Path
+    ) -> None:
+        """Tampered channel PixelType in getAlphabeticalEXRChannelSpecs is caught."""
+        content = aether_header_path.read_text(encoding="utf-8")
+        tampered_content = content.replace(
+            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,',
+            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Float,',
+        )
+        temp_header = tmp_path / "fgpp_types.h"
+        temp_header.write_text(tampered_content, encoding="utf-8")
+
+        errors = wire_guard._check_against_header(temp_header)
+        assert any("Cryptomatte.ID" in e and "PixelType mismatch" in e for e in errors), f"Expected error, got: {errors}"
+
+    def test_check_against_header_catches_tampered_spatial_filtering(
+        self, aether_header_path: Path, tmp_path: Path
+    ) -> None:
+        """Tampered allow_spatial_filtering flag in C++ header is caught."""
+        content = aether_header_path.read_text(encoding="utf-8")
+        tampered_content = content.replace(
+            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,\n       false}',
+            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,\n       true}',
+        )
+        temp_header = tmp_path / "fgpp_types.h"
+        temp_header.write_text(tampered_content, encoding="utf-8")
+
+        errors = wire_guard._check_against_header(temp_header)
+        assert any("Cryptomatte.ID" in e and "allow_spatial_filtering mismatch" in e for e in errors), f"Expected error, got: {errors}"
+
+    def test_check_json_schemas_catches_model_version_mismatch(self) -> None:
+        """_check_json_schemas detects when instantiated Python model default version disagrees with schema."""
+        tampered_meta = dict(wire_guard._SCHEMA_FILES)
+        tampered_meta["bundle.v1.0.schema.json"] = {
+            "expected_version_field": "schema_version",
+            "expected_version_value": "mismatched.bundle.v1.0",
+        }
+        with mock.patch.object(wire_guard, "_SCHEMA_FILES", tampered_meta):
+            errors = wire_guard._check_json_schemas()
+        assert any("mismatched.bundle.v1.0" in e for e in errors)

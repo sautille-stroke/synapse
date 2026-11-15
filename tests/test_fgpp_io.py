@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -197,25 +198,91 @@ class TestExportImport:
     def test_roundtrip_cryptomatte_exact(self) -> None:
         """Large uint32 IDs (>2^24) must survive EXR round-trip exactly."""
         pytest.importorskip("OpenEXR")
+        import Imath  # type: ignore[import-untyped]
+        import OpenEXR  # type: ignore[import-untyped]
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
         assert seq.frames[0].cryptomatte_id is not None
-        # Plant specific large IDs
-        seq.frames[0].cryptomatte_id[0, 0] = np.uint32(0xDEADBEEF)
-        seq.frames[0].cryptomatte_id[0, 1] = np.uint32(0xFFFFFFFF)
-        seq.frames[0].cryptomatte_id[0, 2] = np.uint32(0x80000001)
-        seq.frames[0].cryptomatte_id[1, 0] = np.uint32(0)
-        seq.frames[0].cryptomatte_id[1, 1] = np.uint32(1)
+        # Plant signaling NaN, quiet NaN, subnormals, and boundary IDs
+        test_ids = [
+            0xDEADBEEF,
+            0xFFFFFFFF,
+            0x80000001,
+            0x7F800001,  # IEEE-754 single-precision signaling NaN
+            0x7FC00001,  # quiet NaN
+            0x7F800002,  # another sNaN pattern
+            0xFF800001,  # negative sNaN
+            0x7F800000,  # +inf
+            0xFF800000,  # -inf
+            0x00000000,
+            0x00000001,
+            0x007FFFFF,
+            1,
+        ]
+        for idx, val in enumerate(test_ids):
+            r, c = divmod(idx, 16)
+            seq.frames[0].cryptomatte_id[r, c] = np.uint32(val)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             export_fgpp(seq, tmpdir)
+
+            # Assert OpenEXR header contains native UINT pixel type for Cryptomatte.ID
+            exr_path = Path(tmpdir) / "frame_000000.exr"
+            exr_in = OpenEXR.InputFile(str(exr_path))
+            ch_type = exr_in.header()["channels"]["Cryptomatte.ID"].type
+            exr_in.close()
+            assert ch_type == Imath.PixelType(Imath.PixelType.UINT), (
+                f"Expected Cryptomatte.ID to have UINT pixel type, got {ch_type}"
+            )
+
             loaded = import_fgpp(tmpdir, lazy=False)
             assert isinstance(loaded, FGPPSequence)
             gt = seq.frames[0].cryptomatte_id
             out = loaded.frames[0].cryptomatte_id
             assert out is not None
             np.testing.assert_array_equal(out, gt)
+
+    def test_import_legacy_float_cryptomatte_warns_and_decodes(self) -> None:
+        """Legacy EXRs storing Cryptomatte.ID as FLOAT must emit UserWarning and decode accurately."""
+        pytest.importorskip("OpenEXR")
+        import Imath  # type: ignore[import-untyped]
+        import OpenEXR  # type: ignore[import-untyped]
+        from synapse.fgpp.io import export_fgpp, import_fgpp
+
+        seq = _make_sequence(1, 16, 16)
+        assert seq.frames[0].cryptomatte_id is not None
+        seq.frames[0].cryptomatte_id[0, 0] = np.uint32(123456)
+        seq.frames[0].cryptomatte_id[0, 1] = np.uint32(654321)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_fgpp(seq, tmpdir)
+
+            # Manually re-save the EXR rewriting Cryptomatte.ID as legacy FLOAT
+            exr_path = Path(tmpdir) / "frame_000000.exr"
+            exr_in = OpenEXR.InputFile(str(exr_path))
+            header = exr_in.header()
+            chan_names = list(header["channels"].keys())
+            chan_data = {cn: exr_in.channel(cn) for cn in chan_names}
+            exr_in.close()
+
+            # Change header type and convert uint32 buffer to view(float32)
+            header["channels"]["Cryptomatte.ID"] = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+            legacy_arr = np.frombuffer(chan_data["Cryptomatte.ID"], dtype=np.uint32)
+            chan_data["Cryptomatte.ID"] = legacy_arr.view(np.float32).tobytes()
+
+            exr_out = OpenEXR.OutputFile(str(exr_path), header)
+            exr_out.writePixels(chan_data)
+            exr_out.close()
+
+            with pytest.warns(UserWarning, match="legacy FLOAT"):
+                loaded = import_fgpp(tmpdir, lazy=False)
+
+            assert isinstance(loaded, FGPPSequence)
+            out = loaded.frames[0].cryptomatte_id
+            assert out is not None
+            assert out[0, 0] == np.uint32(123456)
+            assert out[0, 1] == np.uint32(654321)
 
     def test_roundtrip_half_precision(self) -> None:
         pytest.importorskip("OpenEXR")

@@ -17,9 +17,11 @@ An inspection bundle is a self-contained directory that packages:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,7 +35,7 @@ from synapse.errors import ContractValidationError
 # Constants
 # -------------------------------------------------------------------
 
-INSPECTION_SCHEMA_VERSION: str = "inspection.v1.0"
+INSPECTION_SCHEMA_VERSION: str = "synapse.bundle.v1.0"
 """Fixed schema version string embedded in every bundle manifest."""
 
 _BUNDLE_MANIFEST_FILENAME: str = "bundle.json"
@@ -92,12 +94,33 @@ class InspectionBundleManifest(BaseModel):
     @field_validator("schema_version")
     @classmethod
     def _check_schema_version(cls, v: str) -> str:
+        if v == "inspection.v1.0":
+            warnings.warn(
+                f"Legacy schema_version '{v}' detected; please migrate to '{INSPECTION_SCHEMA_VERSION}'.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return INSPECTION_SCHEMA_VERSION
         if v != INSPECTION_SCHEMA_VERSION:
             raise ValueError(
                 f"Unsupported schema_version '{v}'; "
                 f"expected '{INSPECTION_SCHEMA_VERSION}'"
             )
         return v
+
+
+# -------------------------------------------------------------------
+# Integrity helpers
+# -------------------------------------------------------------------
+
+
+def _compute_sha256(path: Path) -> str:
+    """Compute hex SHA-256 digest of a file on disk."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 # -------------------------------------------------------------------
@@ -201,7 +224,7 @@ def validate_inspection_bundle(
             ),
         ) from exc
 
-    # Verify every referenced path exists on disk
+    # Verify every referenced path exists on disk and matches SHA-256 (if present)
     for logical_name, entry in manifest.sources.items():
         ref_path = bundle_dir / entry.path
         if not ref_path.exists():
@@ -214,6 +237,14 @@ def validate_inspection_bundle(
                     "bundle.json sources."
                 ),
             )
+        if entry.sha256 is not None:
+            actual_sha = _compute_sha256(ref_path)
+            if actual_sha != entry.sha256:
+                raise ContractValidationError(
+                    f"SHA-256 integrity mismatch for '{logical_name}' ({entry.path}): "
+                    f"expected {entry.sha256}, got {actual_sha}",
+                    agent_fix_hint=f"Recompute bundle hash or re-export the corrupted file at '{ref_path}'.",
+                )
 
     return manifest
 
@@ -273,6 +304,7 @@ def export_inspection_bundle(
     sources["source_model"] = SourceEntry(
         path=f"source/{source_model_path.name}",
         media_type=_guess_media_type(source_model_path.name),
+        sha256=_compute_sha256(dst_model),
     )
 
     # -- FGPP EXR frames --
@@ -288,6 +320,7 @@ def export_inspection_bundle(
                 sources[f"fgpp_{idx}"] = SourceEntry(
                     path=f"fgpp/{f.name}",
                     media_type=_guess_media_type(f.name),
+                    sha256=_compute_sha256(dst),
                 )
                 idx += 1
 
@@ -302,6 +335,7 @@ def export_inspection_bundle(
             sources[f"generated_{idx}"] = SourceEntry(
                 path=f"generated/video_frames/{fp.name}",
                 media_type=_guess_media_type(fp.name),
+                sha256=_compute_sha256(dst),
             )
 
     # -- reconstructed model --
@@ -316,6 +350,7 @@ def export_inspection_bundle(
             media_type=_guess_media_type(
                 reconstructed_model_path.name,
             ),
+            sha256=_compute_sha256(dst),
         )
 
     # -- animations --
@@ -329,6 +364,7 @@ def export_inspection_bundle(
             sources[f"animation_{idx}"] = SourceEntry(
                 path=f"animations/{anim_path.name}",
                 media_type=_guess_media_type(anim_path.name),
+                sha256=_compute_sha256(dst),
             )
 
     # -- metrics / comparison.json --
@@ -352,6 +388,7 @@ def export_inspection_bundle(
     sources["metrics_comparison"] = SourceEntry(
         path="metrics/comparison.json",
         media_type="application/json",
+        sha256=_compute_sha256(comp_path),
     )
 
     # -- write manifest --

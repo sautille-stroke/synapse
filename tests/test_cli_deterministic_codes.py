@@ -223,6 +223,74 @@ class TestFgppCliExrValidation:
         assert payload["error_type"] == "ContractValidationError"
         assert "missing required FGPP channels" in payload["message"]
 
+    def test_fgpp_validate_exr_cryptomatte_float_mismatch_exit_10(self, tmp_path: Path) -> None:
+        """An EXR with Cryptomatte.ID stored as FLOAT must be rejected with exit 10."""
+        try:
+            import Imath
+            import OpenEXR
+        except ImportError:
+            pytest.skip("OpenEXR is required for deep EXR validation test")
+
+        h, w = 16, 16
+        cam = CameraParams(
+            fx=16.0, fy=16.0, cx=8.0, cy=8.0,
+            width=w, height=h, z_near=0.1, z_far=100.0,
+        )
+        frame = FGPPFrame(
+            camera=cam,
+            depth=np.ones((h, w), dtype=np.float32),
+            direct_radiance=np.full((h, w, 3), 0.5, dtype=np.float16),
+            world_normal=np.full((h, w, 3), 0.0, dtype=np.float16),
+            motion_vector=np.zeros((h, w, 2), dtype=np.float16),
+            base_color=np.full((h, w, 3), 0.8, dtype=np.float16),
+            roughness_metallic=np.zeros((h, w, 2), dtype=np.float16),
+            cryptomatte_id=np.ones((h, w), dtype=np.uint32),
+            frame_index=0,
+        )
+        seq = FGPPSequence(frames=[frame], fps=24.0, scene_id="float_cryptomatte_test")
+        out_dir = tmp_path / "float_cryptomatte_export"
+        export_fgpp(seq, out_dir)
+
+        # Tamper the EXR file to change Cryptomatte.ID channel to FLOAT
+        exr_path = out_dir / "frame_000000.exr"
+        exr_in = OpenEXR.InputFile(str(exr_path))
+        header = exr_in.header()
+        chan_data = {cn: exr_in.channel(cn) for cn in header["channels"].keys()}
+        exr_in.close()
+
+        header["channels"]["Cryptomatte.ID"] = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+        exr_out = OpenEXR.OutputFile(str(exr_path), header)
+        exr_out.writePixels(chan_data)
+        exr_out.close()
+
+        code, out, err = _capture_synapse([
+            "--json", "fgpp", "validate", str(out_dir), "--check-exr",
+        ])
+        assert code == ExitCode.CONTRACT_ERROR  # 10
+        payload = json.loads(out)
+        assert payload["status"] == "error"
+        assert payload["exit_code"] == 10
+        assert "pixel type mismatch: expected UINT32" in payload["message"]
+
+    def test_fgpp_validate_missing_openexr_raises_exit_30(self, tmp_path: Path) -> None:
+        """When OpenEXR is missing, validate --check-exr must exit 30 (BackendUnavailableError)."""
+        out_dir = _make_minimal_fgpp_dir(tmp_path)
+        (out_dir / "frame_000000.exr").write_bytes(b"\x00" * 32)
+
+        import sys
+        from unittest.mock import patch
+
+        with patch.dict(sys.modules, {"OpenEXR": None}):
+            code, out, err = _capture_synapse([
+                "--json", "fgpp", "validate", str(out_dir), "--check-exr",
+            ])
+
+        assert code == ExitCode.BACKEND_UNAVAILABLE  # 30
+        payload = json.loads(out)
+        assert payload["status"] == "error"
+        assert payload["exit_code"] == 30
+        assert payload["error_type"] == "BackendUnavailableError"
+
 
 class TestRsiCliPromotionGate:
     """Test RSI CLI multi-axis and strict promotion gate exit codes."""

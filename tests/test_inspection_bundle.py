@@ -142,6 +142,18 @@ class TestInspectionBundleManifest:
                 "sources": {},
             })
 
+    def test_legacy_schema_version_warning_and_migration(self) -> None:
+        """Legacy schema_version 'inspection.v1.0' issues warning and normalizes to 'synapse.bundle.v1.0'."""
+        with pytest.warns(UserWarning, match="Legacy schema_version"):
+            m = InspectionBundleManifest.model_validate({
+                "schema_version": "inspection.v1.0",
+                "bundle_id": "legacy123",
+                "scenario_name": "legacy_demo",
+                "created_at": "2026-01-01T00:00:00Z",
+                "sources": {},
+            })
+        assert m.schema_version == INSPECTION_SCHEMA_VERSION
+
     def test_path_traversal_rejection(self) -> None:
         """Paths containing ``..`` must be rejected."""
         with pytest.raises(Exception):
@@ -216,6 +228,33 @@ class TestValidateBundle:
             ContractValidationError, match="bundle.json",
         ):
             validate_inspection_bundle(bd)
+
+    def test_sha256_integrity_verification_and_tamper_detection(
+        self, tmp_path: Path,
+    ) -> None:
+        """Exported bundle has SHA-256 for all sources and catches tamper."""
+        model_path = tmp_path / "input_model.glb"
+        model_path.write_bytes(b"\x00glTF" + b"\x00" * 60)
+        out = tmp_path / "sha_bundle"
+        manifest = export_inspection_bundle(
+            scenario_name="sha_test",
+            source_model_path=model_path,
+            output_dir=out,
+        )
+        assert manifest.sources["source_model"].sha256 is not None
+        assert len(manifest.sources["source_model"].sha256) == 64
+
+        # Validate untouched bundle succeeds
+        validated = validate_inspection_bundle(out)
+        assert validated.sources["source_model"].sha256 == manifest.sources["source_model"].sha256
+
+        # Tamper source_model on disk
+        target_file = out / manifest.sources["source_model"].path
+        target_file.write_bytes(b"\xFFglTF" + b"\x00" * 60)
+
+        # Validation must catch SHA-256 mismatch
+        with pytest.raises(ContractValidationError, match="SHA-256 integrity mismatch"):
+            validate_inspection_bundle(out)
 
 
 # ===================================================================
