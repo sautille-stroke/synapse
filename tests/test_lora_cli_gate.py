@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
-from synapse.errors import AssetNotFoundError, QualityGateError
+from synapse.errors import AssetNotFoundError, ContractValidationError, QualityGateError
 from synapse.training.packager import (
     LoRAGateThresholds,
     package_and_gate_lora_bundle,
@@ -578,3 +579,78 @@ class TestLoRACLI:
         for forbidden in ("configured_for_execution", "align_configured", '"status": "configured"'):
             assert forbidden not in cli_src
             assert forbidden not in trainer_src
+
+
+# -------------------------------------------------------------------
+# Packager safetensors validation tests (PR-77)
+# -------------------------------------------------------------------
+
+
+class TestPackagerSafetensorsValidation:
+    """PR-77: Validate .safetensors header and weight key whitelist."""
+
+    def test_valid_safetensors_passes(
+        self, tmp_path: Path,
+    ) -> None:
+        """Valid safetensors with matching target_modules passes."""
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import save_file
+
+        weights = {
+            "ffn.0.lora_A.weight": np.zeros((8, 64), dtype=np.float32),
+            "ffn.0.lora_B.weight": np.zeros((64, 8), dtype=np.float32),
+            "ffn.2.lora_A.weight": np.zeros((8, 64), dtype=np.float32),
+            "ffn.2.lora_B.weight": np.zeros((64, 8), dtype=np.float32),
+        }
+        p = tmp_path / "valid.safetensors"
+        save_file(weights, str(p))
+
+        bundle = tmp_path / "bundle"
+        result = package_and_gate_lora_bundle(
+            weights_path=p,
+            output_dir=bundle,
+            target_modules=["ffn.0", "ffn.2"],
+            skip_bench=True,
+        )
+        assert result["passed"] is True
+
+    def test_unauthorized_weight_key_rejected(
+        self, tmp_path: Path,
+    ) -> None:
+        """Weight key not matching target_modules is rejected."""
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import save_file
+
+        weights = {
+            "ffn.0.lora_A.weight": np.zeros((8, 64), dtype=np.float32),
+            "UNAUTHORIZED.lora_B.weight": np.zeros((64, 8), dtype=np.float32),
+        }
+        p = tmp_path / "bad_keys.safetensors"
+        save_file(weights, str(p))
+
+        bundle = tmp_path / "bundle"
+        with pytest.raises(ContractValidationError, match="Unauthorized"):
+            package_and_gate_lora_bundle(
+                weights_path=p,
+                output_dir=bundle,
+                target_modules=["ffn.0", "ffn.2"],
+                skip_bench=True,
+            )
+
+    def test_empty_safetensors_rejected(
+        self, tmp_path: Path,
+    ) -> None:
+        """Safetensors file with no tensors is rejected."""
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import save_file
+
+        p = tmp_path / "empty.safetensors"
+        save_file({}, str(p))
+
+        bundle = tmp_path / "bundle"
+        with pytest.raises(ContractValidationError, match="no weight"):
+            package_and_gate_lora_bundle(
+                weights_path=p,
+                output_dir=bundle,
+                skip_bench=True,
+            )

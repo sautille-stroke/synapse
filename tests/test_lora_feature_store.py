@@ -373,3 +373,146 @@ class TestLoraPreencodeStage:
 
         stages = get_registered_stages()
         assert "lora_preencode" in stages
+
+
+# ===================================================================
+# TestFeatureStoreQualityGates  (PR-77)
+# ===================================================================
+
+
+class TestFeatureStoreQualityGates:
+    """PR-77: Validate quality gates with distinct FGPP / Wan layouts."""
+
+    @staticmethod
+    def _make_valid_fgpp(t: int = 17, h: int = 32, w: int = 32) -> np.ndarray:
+        """Build a valid ``[T, H, W, 15]`` raw FGPP tensor.
+
+        Channel layout per ``fgpp_types.h``:
+        - 0: CameraLinearDepth.Z  — varies 1.0..10.0
+        - 1-3: DirectRadiance.RGB — moderate values < 65504
+        - 4-6: WorldNormal.XYZ    — unit-length [0,0,1]
+        - 7-13: Padding / reserved — zero
+        - 14: Cryptomatte.ID      — non-zero foreground
+        """
+        fgpp = np.zeros((t, h, w, 15), dtype=np.float32)
+        # Gate 2: depth span > 0.1
+        fgpp[..., 0] = np.linspace(1.0, 10.0, h * w).reshape(1, h, w)
+        # Gate 3: radiance < 65504
+        fgpp[..., 1:4] = 500.0
+        # Gate 4: unit-length normals
+        fgpp[..., 4] = 0.0
+        fgpp[..., 5] = 0.0
+        fgpp[..., 6] = 1.0
+        # Gate 1: foreground coverage > 5%
+        fgpp[..., 14] = 1.0  # 100% foreground
+        return fgpp
+
+    @staticmethod
+    def _make_valid_camera_matrices(t: int = 17) -> np.ndarray:
+        """Build a valid ``[T, 4, 4]`` SO(3) camera matrix."""
+        cam = np.zeros((t, 4, 4), dtype=np.float32)
+        for i in range(t):
+            cam[i] = np.eye(4, dtype=np.float32)
+        return cam
+
+    def test_raw_fgpp_with_camera_matrices_passes_all_gates(
+        self, tmp_path: object,
+    ) -> None:
+        """15-channel FGPP + valid SO(3) camera_matrices passes all 5 gates."""
+        tmp = tmp_path  # type: ignore[assignment]
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.random.RandomState(77).randint(
+            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+        )
+        fgpp_cond = self._make_valid_fgpp(17, 32, 32)
+        cam_mats = self._make_valid_camera_matrices(17)
+
+        builder.add_sample(
+            sample_id="fgpp_valid",
+            video_frames=frames,
+            caption="valid fgpp sample",
+            fgpp_cond=fgpp_cond,
+            camera_matrices=cam_mats,
+            source_sha256="c" * 64,
+        )
+
+        assert builder.rejected_count == 0
+
+        shards = builder.build_shards(tmp / "shards")
+        assert len(shards) >= 1
+        assert shards[0].stat().st_size > 0
+
+        samples = list(iter_feature_shards(shards))
+        assert len(samples) == 1
+        assert samples[0]["latent"].shape == (16, 5, 4, 4)
+
+    def test_wan_7ch_control_passes_gates(
+        self, tmp_path: object,
+    ) -> None:
+        """[7, T, H, W] Wan control tensor skips pixel gates, passes."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.random.RandomState(88).randint(
+            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+        )
+        # [7, T, H, W] — valid Wan control layout
+        wan_cond = np.random.RandomState(42).randn(
+            7, 17, 32, 32,
+        ).astype(np.float32)
+
+        builder.add_sample(
+            sample_id="wan_valid",
+            video_frames=frames,
+            caption="wan control sample",
+            fgpp_cond=wan_cond,
+        )
+
+        # Should NOT be rejected (was 100% rejected before fix)
+        assert builder.rejected_count == 0
+
+    def test_bad_rotation_det_rejects(self) -> None:
+        """Camera matrix with non-SO(3) rotation is rejected by Gate 5."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        fgpp = TestFeatureStoreQualityGates._make_valid_fgpp(5, 16, 16)
+        cam = np.zeros((5, 4, 4), dtype=np.float32)
+        # Set a non-SO(3) rotation (det ≠ 1)
+        cam[0] = np.diag([2.0, 1.0, 1.0, 1.0])
+
+        builder.add_sample(
+            sample_id="bad_rot",
+            video_frames=frames,
+            caption="bad rotation",
+            fgpp_cond=fgpp,
+            camera_matrices=cam,
+        )
+
+        assert builder.rejected_count == 1
+
+    def test_low_foreground_coverage_rejects(self) -> None:
+        """FGPP with < 5% foreground coverage is rejected by Gate 1."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        fgpp = TestFeatureStoreQualityGates._make_valid_fgpp(5, 16, 16)
+        # Zero out Cryptomatte → 0% foreground
+        fgpp[..., 14] = 0.0
+
+        builder.add_sample(
+            sample_id="no_fg",
+            video_frames=frames,
+            caption="no foreground",
+            fgpp_cond=fgpp,
+        )
+
+        assert builder.rejected_count == 1

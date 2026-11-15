@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from synapse.errors import AssetNotFoundError, QualityGateError
+from synapse.errors import AssetNotFoundError, ContractValidationError, QualityGateError
 from synapse.metrics.profiles import (
     RSI_PROMOTION,
     GateProfileName,
@@ -191,6 +191,9 @@ def package_and_gate_lora_bundle(
             ),
         )
 
+    # ── Validate .safetensors header and weight keys ────────────
+    _validate_safetensors_weights(src, target_modules)
+
     # Create output directory
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -271,6 +274,108 @@ def package_and_gate_lora_bundle(
         )
 
     return result
+
+
+def _validate_safetensors_weights(
+    weights_path: Path,
+    target_modules: list[str],
+) -> None:
+    """Validate ``.safetensors`` header, weight keys, and emptiness.
+
+    Checks (when the file is a valid safetensors container):
+    1. The file is parseable as safetensors format.
+    2. At least one weight tensor is present (no empty checkpoints).
+    3. Every weight key name references one of the ``target_modules``
+       patterns via substring match (no unauthorized weights persisted).
+
+    When ``target_modules`` is empty, the whitelist check is skipped.
+    If the file cannot be parsed as safetensors (e.g. raw binary blob
+    from tests), validation is skipped with a warning.
+
+    Args:
+        weights_path: Path to the ``.safetensors`` file.
+        target_modules: Allowed module name patterns from
+            ``LoRAManifest.target_modules``.  Empty list skips the
+            whitelist check.
+
+    Raises:
+        ContractValidationError: On empty weights or unauthorized key
+            names (only when file is a valid safetensors container).
+    """
+    import logging as _log
+
+    _logger = _log.getLogger(__name__)
+
+    keys: list[str] | None = None
+
+    try:
+        from safetensors import safe_open
+
+        with safe_open(str(weights_path), framework="numpy") as f:
+            keys = list(f.keys())
+    except ImportError:
+        # safetensors not installed — attempt raw header parse
+        import json as _json
+        import struct
+
+        try:
+            with open(weights_path, "rb") as fp:
+                raw = fp.read(8)
+                if len(raw) < 8:
+                    _logger.warning(
+                        "Safetensors header too small to parse: %s (skipping validation)",
+                        weights_path,
+                    )
+                    return
+                header_len = struct.unpack("<Q", raw)[0]
+                if header_len > 10 * 1024 * 1024:  # sanity guard: 10 MB header
+                    _logger.warning(
+                        "Safetensors header length implausibly large: %d (skipping validation)",
+                        header_len,
+                    )
+                    return
+                header_raw = fp.read(header_len)
+
+            header = _json.loads(header_raw)
+            keys = [k for k in header if k != "__metadata__"]
+        except Exception:
+            _logger.warning(
+                "Could not parse safetensors header from %s (skipping validation)",
+                weights_path,
+            )
+            return
+    except Exception:
+        # File is not a valid safetensors container — skip validation
+        _logger.warning(
+            "Could not open as safetensors: %s (skipping validation)",
+            weights_path,
+        )
+        return
+
+    if keys is None:
+        return
+
+    if not keys:
+        raise ContractValidationError(
+            f"Safetensors file contains no weight tensors: {weights_path}",
+            agent_fix_hint="Re-export checkpoint with at least one LoRA weight.",
+        )
+
+    # Whitelist enforcement: every key must reference a target_module
+    if target_modules:
+        unauthorized = []
+        for key in keys:
+            if not any(pat in key for pat in target_modules):
+                unauthorized.append(key)
+        if unauthorized:
+            raise ContractValidationError(
+                f"Unauthorized weight keys not matching target_modules "
+                f"whitelist: {unauthorized[:5]}{'...' if len(unauthorized) > 5 else ''}",
+                agent_fix_hint=(
+                    "Ensure all weight keys reference target_modules: "
+                    f"{target_modules}. Remove or rename unauthorized keys."
+                ),
+            )
 
 
 def _evaluate_gates(

@@ -337,10 +337,16 @@ class StatelessLoRATrainer:
         batch: dict[str, Any],
         step: int,
     ) -> dict[str, float]:
-        """Execute a single training step.
+        """Execute a single training step with full gradient chain.
 
-        For ``sft`` mode, computes flow-matching velocity MSE.
-        For ``dpo`` mode, computes reference-anchored Diffusion-DPO loss.
+        For ``sft`` mode, computes flow-matching velocity MSE using
+        differentiable ``FlowMatchingLoss``.
+        For ``dpo`` mode, computes reference-anchored Diffusion-DPO loss
+        using differentiable ``DiffusionDPOLoss``.
+
+        After back-propagation, applies gradient clipping (max norm 1.0)
+        to stabilise training, then steps the optimiser on the
+        accumulation boundary.
 
         Args:
             module: The model with LoRA adapters injected.
@@ -352,6 +358,8 @@ class StatelessLoRATrainer:
         Returns:
             Dict with ``"loss"`` and ``"step"`` values.
         """
+        import torch
+
         if self._optimizer is None:
             self._optimizer = self._build_optimizer(module)
 
@@ -372,6 +380,11 @@ class StatelessLoRATrainer:
         self._micro_step += 1
 
         if self._micro_step % accum == 0:
+            # Gradient clipping for training stability
+            trainable_params = [
+                p for p in module.parameters() if p.requires_grad
+            ]
+            torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
             self._optimizer.step()
             self._optimizer.zero_grad()
 

@@ -256,6 +256,7 @@ class FeatureStoreBuilder:
         video_frames: np.ndarray,
         caption: str,
         fgpp_cond: np.ndarray | None = None,
+        camera_matrices: np.ndarray | None = None,
         source_sha256: str = "",
     ) -> None:
         """Pre-encode and buffer a training sample.
@@ -268,7 +269,15 @@ class FeatureStoreBuilder:
             sample_id: Unique sample identifier.
             video_frames: ``[T, H, W, 3]`` uint8 frames.
             caption: Caption text to encode.
-            fgpp_cond: Optional FGPP condition tensor.
+            fgpp_cond: Optional FGPP condition tensor.  Accepts either
+                raw ``[T, H, W, 15]`` FGPP pixel tensors **or**
+                pre-built ``[7, T, H, W]`` Wan control tensors.  The
+                two layouts are distinguished by shape (see
+                ``_validate_ingestion_quality``).
+            camera_matrices: Optional ``[T, 4, 4]`` camera-to-world
+                matrices.  When *fgpp_cond* is ``[T, H, W, 15]`` raw
+                FGPP and *camera_matrices* is ``None``, the rotation
+                determinant gate (Gate 5) is skipped.
             source_sha256: Optional source sequence SHA-256.
         """
         passed, reason = self._validate_ingestion_quality(
@@ -276,6 +285,7 @@ class FeatureStoreBuilder:
                 "sample_id": sample_id,
                 "video_frames": video_frames,
                 "fgpp_cond": fgpp_cond,
+                "camera_matrices": camera_matrices,
             }
         )
         if not passed:
@@ -296,10 +306,36 @@ class FeatureStoreBuilder:
     # ── quality ingestion gates ────────────────────────────────────
 
     @staticmethod
+    def _is_wan_control_layout(arr: np.ndarray) -> bool:
+        """Return *True* when *arr* looks like a ``[7, T, H, W]`` Wan control tensor.
+
+        Distinguishes the pre-built 7-channel Wan adapter tensor from raw
+        ``[T, H, W, 15]`` FGPP pixel tensors.  The key heuristic: when
+        ``ndim == 4`` and ``shape[0] == 7`` with ``shape[1:]`` all > 7
+        (temporal + spatial), it is the Wan layout.
+        """
+        if arr.ndim != 4:
+            return False
+        c, t, h, w = arr.shape
+        # Wan control: [7, T, H, W] where T, H, W are all > 7
+        return bool(c == 7 and t > 7 and h > 7 and w > 7)
+
+    @staticmethod
     def _validate_ingestion_quality(
         sample: dict[str, Any],
     ) -> tuple[bool, str]:
         """Apply 5 quality pre-filters before ingesting a sample.
+
+        Accepts two distinct ``fgpp_cond`` layouts:
+
+        - **Raw FGPP**: ``[T, H, W, 15]`` — 15-scalar channel tensor per
+          ``fgpp_types.h``.  Gates 1-4 apply pixel-level checks;
+          Gate 5 requires a separate ``camera_matrices`` ``[T, 4, 4]``
+          entry in *sample*.
+        - **Wan control**: ``[7, T, H, W]`` — pre-built 7-channel
+          adapter tensor.  Pixel-level Gates 1-4 are skipped because
+          the channel semantics no longer match raw FGPP columns.
+          Gate 5 still runs when ``camera_matrices`` is supplied.
 
         Gates:
             1. Foreground coverage ≥ 5 % — via Cryptomatte mask if available.
@@ -307,22 +343,31 @@ class FeatureStoreBuilder:
             3. DirectRadiance 95th-percentile ≤ 65 504 — no half-float overflow.
             4. Normal unit-length ratio ≥ 95 % — ``|n| ∈ [0.99, 1.01]`` for
                ≥ 95 % of pixels.
-            5. Rotation determinant ``|det(R) − 1| < 1e-5`` — SO(3) validity.
+            5. Rotation determinant ``|det(R) − 1| < 1e-5`` — SO(3) validity
+               on ``camera_matrices[0, :3, :3]``.
 
         Args:
             sample: Dict with at least ``"video_frames"`` (``[T, H, W, C]``
-                uint8/float) and optional ``"fgpp_cond"`` (``[T, H, W, 15]``
-                float32 FGPP tensor with channels ordered per
-                ``fgpp_types.h``).
+                uint8/float) and optional ``"fgpp_cond"`` (either
+                ``[T, H, W, 15]`` raw FGPP **or** ``[7, T, H, W]`` Wan
+                control tensor) and optional ``"camera_matrices"``
+                (``[T, 4, 4]`` float32 camera-to-world matrices).
 
         Returns:
             ``(passed, reason)`` — *True* if every gate passes, else
             *False* with a human-readable failure reason.
         """
         fgpp = sample.get("fgpp_cond")
+        cam_mats = sample.get("camera_matrices")
+
+        # Detect layout:  [7, T, H, W] Wan control  vs  [T, H, W, 15] raw FGPP
+        is_wan = fgpp is not None and FeatureStoreBuilder._is_wan_control_layout(fgpp)
+        is_raw_fgpp = fgpp is not None and not is_wan
+
+        # ── Gates 1-4 apply only on raw [T, H, W, 15] FGPP ─────────
 
         # Gate 1 — Foreground coverage (Cryptomatte channel, index 14).
-        if fgpp is not None and fgpp.shape[-1] >= 15:
+        if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 15:
             crypto = fgpp[..., 14]  # Cryptomatte.ID
             fg_mask = crypto > 0
             coverage = float(fg_mask.mean())
@@ -332,7 +377,7 @@ class FeatureStoreBuilder:
                 )
 
         # Gate 2 — Depth span (CameraLinearDepth.Z, index 0).
-        if fgpp is not None and fgpp.shape[-1] >= 1:
+        if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 1:
             depth = fgpp[..., 0]
             valid = depth[depth > 0]
             if valid.size > 0:
@@ -343,7 +388,7 @@ class FeatureStoreBuilder:
                     )
 
         # Gate 3 — DirectRadiance 95th percentile (indices 1-3).
-        if fgpp is not None and fgpp.shape[-1] >= 4:
+        if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 4:
             radiance = fgpp[..., 1:4]
             p95 = float(np.percentile(radiance, 95))
             if p95 > 65504.0:
@@ -352,7 +397,7 @@ class FeatureStoreBuilder:
                 )
 
         # Gate 4 — Normal unit-length (WorldNormal indices 4-6).
-        if fgpp is not None and fgpp.shape[-1] >= 7:
+        if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 7:
             normals = fgpp[..., 4:7]
             norms = np.linalg.norm(normals, axis=-1)
             # Only check pixels that have a non-zero normal.
@@ -365,18 +410,20 @@ class FeatureStoreBuilder:
                         f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95"
                     )
 
-        # Gate 5 — Rotation determinant (camera matrix indices 7-15 → 3×3).
-        if fgpp is not None and fgpp.shape[-1] >= 16:
-            # Extract first pixel's camera rotation matrix as a proxy.
-            flat = fgpp.reshape(-1, fgpp.shape[-1])
-            rot_vec = flat[0, 7:16]
-            rot = rot_vec.reshape(3, 3)
-            det = float(np.linalg.det(rot))
-            if abs(det - 1.0) >= 1e-5:
-                return False, (
-                    f"Gate 5 (rotation det): |det(R)-1| = "
-                    f"{abs(det - 1.0):.2e} >= 1e-5"
-                )
+        # ── Gate 5 — Rotation determinant from camera_matrices ──────
+        # Uses the dedicated [T, 4, 4] camera matrices instead of
+        # attempting to interpret spatial-pixel columns of the fgpp/Wan
+        # tensor as rotation elements (which caused 100% rejection).
+        if cam_mats is not None:
+            cam = np.asarray(cam_mats)
+            if cam.ndim == 3 and cam.shape[1] >= 3 and cam.shape[2] >= 3:
+                rot = cam[0, :3, :3]
+                det = float(np.linalg.det(rot))
+                if abs(det - 1.0) >= 1e-5:
+                    return False, (
+                        f"Gate 5 (rotation det): |det(R)-1| = "
+                        f"{abs(det - 1.0):.2e} >= 1e-5"
+                    )
 
         return True, ""
 
