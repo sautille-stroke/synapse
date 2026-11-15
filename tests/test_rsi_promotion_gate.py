@@ -484,3 +484,52 @@ class TestRSICLI:
         parsed = json.loads(output)
         assert parsed["exit_code"] == 40
         assert "agent_fix_hint" in parsed
+
+
+# -------------------------------------------------------------------
+# CurriculumManager tests
+# -------------------------------------------------------------------
+
+
+class TestCurriculumManager:
+    """Tests for CurriculumManager lifecycle orchestrator."""
+
+    def test_plan_round_produces_scenarios(self) -> None:
+        """plan_round returns challenge scenarios."""
+        from synapse.rsi.curriculum import CurriculumConfig, CurriculumManager
+
+        mgr = CurriculumManager(config=CurriculumConfig(num_scenarios=5))
+        scenarios = mgr.plan_round({"lighting": 0.4, "occlusion": 0.9})
+        assert len(scenarios) == 5
+        assert mgr.round == 0
+        assert len(mgr.history) == 1
+
+    def test_quarantine_writes_manifest(self, tmp_path: Path) -> None:
+        """record_quarantine writes a JSON manifest."""
+        from synapse.rsi.curriculum import CurriculumManager
+
+        mgr = CurriculumManager(quarantine_dir=tmp_path / "quarantine")
+        entries = [{"scenario_id": "t01", "regression": 0.005}]
+        path = mgr.record_quarantine(entries, lora_sha256="abc123")
+        assert path is not None
+        assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["round"] == 0
+        assert len(data["quarantine"]) == 1
+
+    def test_advance_round_increments(self) -> None:
+        """advance_round increments the round counter."""
+        from synapse.rsi.curriculum import CurriculumManager
+
+        mgr = CurriculumManager()
+        assert mgr.round == 0
+        assert mgr.advance_round() == 1
+        assert mgr.advance_round() == 2
+
+    def test_quarantine_none_when_no_dir(self) -> None:
+        """record_quarantine returns None when quarantine_dir is not set."""
+        from synapse.rsi.curriculum import CurriculumManager
+
+        mgr = CurriculumManager()
+        result = mgr.record_quarantine([{"scenario_id": "t01"}])
+        assert result is None

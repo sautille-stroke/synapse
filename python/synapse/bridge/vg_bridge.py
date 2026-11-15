@@ -19,8 +19,12 @@ from synapse.fgpp.schema import (
     MIN_CHARACTER_WHITEBOX_VERTICES,
     validate_whitebox_coarseness_floor,
 )
-from synapse.recon.backend import SynapseReconBackend, get_recon_backend
 from synapse.render_core.backend import MockVgBackend, VgBackend
+
+# NOTE: ``SynapseReconBackend`` and ``get_recon_backend`` live in
+# ``synapse.recon.backend`` (Tier 2).  bridge is Tier 0 and must NOT
+# import Tier 2 at module scope.  They are lazy-imported inside
+# ``get_vg_backend()`` and re-exported via ``__getattr__`` below.
 
 __all__ = [
     "MockVgBackend",
@@ -30,6 +34,17 @@ __all__ = [
     "get_recon_backend",
     "get_vg_backend",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Lazy re-export of Tier-2 symbols to keep bridge at Tier 0."""
+    if name in ("SynapseReconBackend", "get_recon_backend"):
+        from synapse.recon.backend import SynapseReconBackend, get_recon_backend
+
+        globals()["SynapseReconBackend"] = SynapseReconBackend
+        globals()["get_recon_backend"] = get_recon_backend
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBackend:
@@ -50,6 +65,8 @@ def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBack
     """
     if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
         return MockVgBackend()
+
+    from synapse.recon.backend import SynapseReconBackend
 
     return SynapseReconBackend()
 

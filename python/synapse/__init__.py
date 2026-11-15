@@ -27,39 +27,64 @@ from typing import TYPE_CHECKING
 
 __version__ = "0.1.0"
 
-# Lightweight submodules that have no heavy third-party deps (cv2, numba,
-# trimesh) are imported eagerly so that ``import synapse`` stays fast in
-# minimal / CI environments.
-from synapse import (
-    adapters,
-    bench,
-    bridge,
-    cli,
-    composite,
-    fgpp,
-    inspect,
-    metrics,
-    pipeline,
-    recon,
-    rsi,
-    style,
-    training,
-)
+# ---------------------------------------------------------------------------
+# PEP 562 lazy loading — all subpackages are imported on first access only.
+# This eliminates pulling Tier 4 cli/pipeline and all 19 subpackages when
+# only importing e.g. ``synapse.fgpp.schema``.
+# ---------------------------------------------------------------------------
 
-# Heavy submodules are lazy-loaded: they pull in cv2 (generators/dataset.py),
-# numba (generators/rasterizer.py), or trimesh (models/loader.py) at import
-# time.  Deferring them avoids ImportError in environments that only need the
-# lightweight core (e.g. FGPP SDK, bench scenarios, CLI list).
-_LAZY_SUBMODULES = {"generators", "models", "refine", "render_core", "viewer"}
+_SUBMODULES = frozenset({
+    "adapters",
+    "bench",
+    "bridge",
+    "cli",
+    "composite",
+    "fgpp",
+    "generators",
+    "inspect",
+    "metrics",
+    "models",
+    "pipeline",
+    "recon",
+    "refine",
+    "render_core",
+    "rsi",
+    "style",
+    "training",
+    "viewer",
+})
 
 if TYPE_CHECKING:  # pragma: no cover — static analysis only
-    from synapse import generators, models, refine, render_core, viewer
+    from synapse import (
+        adapters,
+        bench,
+        bridge,
+        cli,
+        composite,
+        fgpp,
+        generators,
+        inspect,
+        metrics,
+        models,
+        pipeline,
+        recon,
+        refine,
+        render_core,
+        rsi,
+        style,
+        training,
+        viewer,
+    )
 
 
 def __getattr__(name: str) -> object:
-    if name in _LAZY_SUBMODULES:
+    if name in _SUBMODULES:
         return importlib.import_module(f"synapse.{name}")
     raise AttributeError(f"module 'synapse' has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return [*sorted(_SUBMODULES), "__version__"]
 
 
 __all__ = [

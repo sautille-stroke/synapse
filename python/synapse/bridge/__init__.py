@@ -27,12 +27,24 @@ from synapse.bridge.hitl import (
 )
 from synapse.bridge.vg_bridge import (
     MockVgBackend,
-    SynapseReconBackend,
     VgBackend,
     enforce_distillation_geometry_gate,
-    get_recon_backend,
     get_vg_backend,
 )
+
+# SynapseReconBackend and get_recon_backend live in synapse.recon.backend
+# (Tier 2).  bridge is Tier 0, so they are lazy re-exported via __getattr__.
+
+_LAZY_REEXPORTS = {"SynapseReconBackend", "get_recon_backend"}
+
+
+def __getattr__(name: str) -> object:
+    if name in _LAZY_REEXPORTS:
+        from synapse.bridge.vg_bridge import __getattr__ as _vg_getattr
+
+        return _vg_getattr(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "CommandIRRecord",

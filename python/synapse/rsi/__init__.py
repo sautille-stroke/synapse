@@ -12,6 +12,7 @@ from __future__ import annotations
 from synapse.rsi.curriculum import (
     ChallengeScenario,
     CurriculumConfig,
+    CurriculumManager,
     CurriculumSampler,
 )
 from synapse.rsi.dual_verifier import (
@@ -36,6 +37,7 @@ from synapse.rsi.promotion_gate import (
 __all__ = [
     "ChallengeScenario",
     "CurriculumConfig",
+    "CurriculumManager",
     "CurriculumSampler",
     "DualVerifierEngine",
     "PhysicsCheckResult",

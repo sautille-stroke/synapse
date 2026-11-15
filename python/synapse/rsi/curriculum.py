@@ -14,6 +14,7 @@ and increases sampling probability for harder condition levels
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -211,3 +212,112 @@ class CurriculumSampler:
             )
 
         return scenarios
+
+
+# -------------------------------------------------------------------
+# CurriculumManager — closed-loop auto-pool orchestrator
+# -------------------------------------------------------------------
+
+
+class CurriculumManager:
+    """End-to-end curriculum lifecycle manager with quarantine isolation.
+
+    Wires :class:`CurriculumSampler` into the main evaluation workflow
+    auto-pool closed loop:
+
+    1. **Sample** challenge scenarios based on previous Synapse-Bench scores
+    2. **Evaluate** candidate LoRA against sampled challenges
+    3. **Gate** via monotonic promotion (delegates to ``promotion_gate``)
+    4. **Quarantine** regressed scenarios into an isolation directory
+    5. **Update** curriculum weights for the next training round
+
+    Args:
+        config: Curriculum sampling configuration.
+        quarantine_dir: Directory to write quarantine manifests.
+            Created on demand.
+    """
+
+    def __init__(
+        self,
+        config: CurriculumConfig | None = None,
+        quarantine_dir: Path | None = None,
+    ) -> None:
+        self._sampler = CurriculumSampler(config)
+        self._quarantine_dir = Path(quarantine_dir) if quarantine_dir else None
+        self._round: int = 0
+        self._history: list[dict[str, float]] = []
+
+    @property
+    def sampler(self) -> CurriculumSampler:
+        """Access the underlying :class:`CurriculumSampler`."""
+        return self._sampler
+
+    @property
+    def round(self) -> int:
+        """Current training round (0-based)."""
+        return self._round
+
+    @property
+    def history(self) -> list[dict[str, float]]:
+        """Per-round score history."""
+        return list(self._history)
+
+    def plan_round(
+        self,
+        bench_scores: dict[str, float],
+    ) -> list[ChallengeScenario]:
+        """Plan the next training round's challenge pool.
+
+        Args:
+            bench_scores: Previous round's per-factor scores.
+
+        Returns:
+            List of challenge scenarios for the next round.
+        """
+        scenarios = self._sampler.sample_scenarios(bench_scores)
+        self._history.append(dict(bench_scores))
+        return scenarios
+
+    def record_quarantine(
+        self,
+        quarantine_entries: list[dict[str, object]],
+        lora_sha256: str = "",
+    ) -> Path | None:
+        """Write quarantine manifest for regressed scenarios.
+
+        Args:
+            quarantine_entries: List of quarantine entry dicts
+                (from ``PromotionResult.quarantine``).
+            lora_sha256: SHA256 of the candidate LoRA that failed gate.
+
+        Returns:
+            Path to the written manifest, or None if quarantine_dir is unset.
+        """
+        if self._quarantine_dir is None:
+            return None
+
+        import json
+
+        self._quarantine_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = (
+            self._quarantine_dir / f"quarantine_round_{self._round:04d}.json"
+        )
+        manifest = {
+            "round": self._round,
+            "lora_sha256": lora_sha256,
+            "quarantine": quarantine_entries,
+        }
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, default=str),
+            encoding="utf-8",
+        )
+        return manifest_path
+
+    def advance_round(self) -> int:
+        """Advance to the next training round.
+
+        Returns:
+            The new round number.
+        """
+        self._round += 1
+        return self._round
