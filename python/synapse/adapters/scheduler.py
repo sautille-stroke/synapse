@@ -437,6 +437,10 @@ class ConditionScheduler:
             r.frame_index: r for r in reanchors
         }
 
+        # Track which frames had real discontinuities from the detector
+        # BEFORE physical anchor injection, so we can preserve them.
+        detector_flagged_frames: set[int] = set(reanchor_by_frame.keys())
+
         # Add physical anchor frames
         frames = getattr(fgpp_sequence, "frames", [])
         for aidx, f in enumerate(frames):
@@ -465,8 +469,14 @@ class ConditionScheduler:
                         reanchor_by_frame[frame_idx],
                     )
 
+            # A window needs reanchor when it contains a genuine
+            # discontinuity from the detector.  Physical-anchor-only
+            # requests (kappa=1.0 synthetic) do NOT count unless the
+            # same frame was ALSO flagged by the detector (i.e. a real
+            # scene cut coincides with a 48-frame anchor boundary).
             has_discontinuity = any(
-                not r.is_physical_anchor for r in window_reanchors
+                r.frame_index in detector_flagged_frames
+                for r in window_reanchors
             )
             scheduled.append(ScheduledWindow(
                 window=w,

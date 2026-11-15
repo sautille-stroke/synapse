@@ -11,11 +11,14 @@ inside methods — only ``numpy`` is used at module level.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from typing import Any
 
 import numpy as np
 
 from synapse.adapters.lora.manifest import LoRAManifest
+from synapse.errors import AssetNotFoundError, ContractValidationError
 
 # ---------------------------------------------------------------------------
 # MultiLoRAManager
@@ -29,16 +32,149 @@ class MultiLoRAManager:
         lora_bundles: List of ``(manifest, scale)`` pairs.  Each
             bundle specifies a LoRA adapter manifest and the runtime
             scale multiplier to apply during weight merging.
+        test_synthetic: If ``True``, synthesise deterministic A/B
+            matrices from the layer shape instead of reading real
+            ``.safetensors`` files.  **Only for unit tests.**
     """
 
     def __init__(
         self,
         lora_bundles: list[tuple[LoRAManifest, float]],
+        *,
+        test_synthetic: bool = False,
     ) -> None:
         self._bundles = lora_bundles
         self._original_weights: dict[int, tuple[Any, Any]] = {}
+        self._test_synthetic = test_synthetic
+        # Cache of loaded safetensors state dicts keyed by adapter_path
+        self._loaded_state_dicts: dict[str, dict[str, Any]] = {}
 
     # -- public API ----------------------------------------------------------
+
+    def load_lora(self, manifest: LoRAManifest) -> dict[str, Any]:
+        """Load and verify a ``.safetensors`` LoRA adapter file.
+
+        Reads the file at ``manifest.adapter_path``, verifies its
+        SHA-256 against ``manifest.adapter_sha256``, and returns the
+        state dict of tensors.
+
+        Args:
+            manifest: LoRA manifest specifying the adapter file and
+                expected SHA-256.
+
+        Returns:
+            A dict mapping layer keys to tensors.
+
+        Raises:
+            AssetNotFoundError: If the file does not exist (exit 20).
+            ContractValidationError: If SHA-256 mismatch (exit 10).
+        """
+        path = manifest.adapter_path
+        if path in self._loaded_state_dicts:
+            return self._loaded_state_dicts[path]
+
+        if not os.path.isfile(path):
+            raise AssetNotFoundError(
+                f"LoRA adapter file not found: {path}",
+                agent_fix_hint=(
+                    f"Ensure the .safetensors file exists at "
+                    f"'{path}'. Re-download or re-export the adapter."
+                ),
+                details={"adapter_path": path},
+            )
+
+        # SHA-256 verification
+        sha = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                sha.update(chunk)
+        actual_sha = sha.hexdigest()
+
+        if actual_sha != manifest.adapter_sha256:
+            raise ContractValidationError(
+                f"SHA-256 mismatch for '{path}': "
+                f"expected {manifest.adapter_sha256}, "
+                f"got {actual_sha}",
+                agent_fix_hint=(
+                    "Re-download the adapter file or update the "
+                    "manifest SHA-256 hash."
+                ),
+                details={
+                    "adapter_path": path,
+                    "expected_sha256": manifest.adapter_sha256,
+                    "actual_sha256": actual_sha,
+                },
+            )
+
+        # Lazy import safetensors
+        from safetensors.torch import load_file  # type: ignore[import-untyped]
+
+        state_dict = load_file(path)
+        self._loaded_state_dicts[path] = state_dict
+        return state_dict
+
+    def apply_lora_stack(self, module: Any) -> None:
+        """Apply merged and orthogonalised LoRA deltas to *module*.
+
+        For each consecutive pair of LoRA bundles, checks cosine
+        similarity and orthogonalises if conflicting.  Then applies
+        the combined deltas to matching ``nn.Linear`` layers.
+
+        Original weights are stored for later restoration via
+        :meth:`restore_base_weights`.
+
+        Args:
+            module: A ``torch.nn.Module`` whose ``named_modules()``
+                will be iterated.
+        """
+        import torch  # lazy
+
+        # Collect per-layer deltas from all bundles
+        layer_deltas: dict[str, list[np.ndarray]] = {}
+
+        for name, submodule in module.named_modules():
+            if not isinstance(submodule, torch.nn.Linear):
+                continue
+
+            for manifest, scale in self._bundles:
+                if not self._name_matches(name, manifest.target_modules):
+                    continue
+
+                delta = self._compute_delta(
+                    submodule, manifest, scale,
+                )
+                delta_np = delta.detach().cpu().float().numpy()
+                if name not in layer_deltas:
+                    layer_deltas[name] = []
+                layer_deltas[name].append(delta_np)
+
+        # Orthogonalise pairwise then apply combined delta
+        for name, submodule in module.named_modules():
+            if name not in layer_deltas:
+                continue
+
+            deltas = layer_deltas[name]
+            if len(deltas) >= 2:
+                for i in range(1, len(deltas)):
+                    deltas[i] = self.orthogonalize_conflicting_loras(
+                        deltas[0], deltas[i],
+                    )
+
+            combined = sum(deltas[1:], deltas[0])
+
+            key = id(submodule)
+            if key not in self._original_weights:
+                self._original_weights[key] = (
+                    submodule,
+                    submodule.weight.data.clone(),
+                )
+
+            combined_t = torch.tensor(
+                combined,
+                dtype=submodule.weight.dtype,
+                device=submodule.weight.device,
+            )
+            submodule.weight.data.add_(combined_t)
 
     def apply_merged_weights(self, module: Any) -> None:
         """Apply merged LoRA deltas to *module*'s linear layers.
@@ -77,7 +213,6 @@ class MultiLoRAManager:
                         submodule.weight.data.clone(),
                     )
 
-                # Build synthetic A, B from weight shape for merge
                 delta = self._compute_delta(
                     submodule, manifest, scale,
                 )
@@ -208,33 +343,99 @@ class MultiLoRAManager:
 
         return any(re.search(p, name) for p in patterns)
 
-    @staticmethod
     def _compute_delta(
+        self,
         linear: Any,
         manifest: LoRAManifest,
         scale: float,
     ) -> Any:
         """Compute LoRA delta: scale * (alpha/rank) * B @ A.
 
-        For in-memory testing, synthesises deterministic A/B matrices
-        from the linear layer dimensions and manifest rank.
+        When ``test_synthetic`` is ``True``, synthesises deterministic
+        A/B matrices from the linear layer dimensions and manifest rank.
+        Otherwise reads real ``lora_A``/``lora_B`` tensors from the
+        ``.safetensors`` file.
         """
         import torch  # lazy
 
         out_features, in_features = linear.weight.shape
         rank = manifest.rank
 
-        gen = torch.Generator()
-        gen.manual_seed(hash(manifest.name) & 0x7FFFFFFF)
+        if self._test_synthetic:
+            gen = torch.Generator()
+            gen.manual_seed(hash(manifest.name) & 0x7FFFFFFF)
 
-        # A: [rank, in_features], B: [out_features, rank]
-        a_mat = torch.randn(
-            rank, in_features, generator=gen, dtype=torch.float32,
-        ) * 0.01
-        b_mat = torch.randn(
-            out_features, rank, generator=gen, dtype=torch.float32,
-        ) * 0.01
+            # A: [rank, in_features], B: [out_features, rank]
+            a_mat = torch.randn(
+                rank, in_features, generator=gen, dtype=torch.float32,
+            ) * 0.01
+            b_mat = torch.randn(
+                out_features, rank, generator=gen, dtype=torch.float32,
+            ) * 0.01
+        else:
+            state_dict = self.load_lora(manifest)
+
+            # Find matching A and B tensors in the state dict
+            a_mat, b_mat = _extract_lora_ab(
+                state_dict, in_features, out_features, rank,
+            )
 
         effective_scale = scale * (manifest.alpha / manifest.rank)
         delta = effective_scale * (b_mat @ a_mat)
         return delta.to(linear.weight.device, linear.weight.dtype)
+
+
+def _extract_lora_ab(
+    state_dict: dict[str, Any],
+    in_features: int,
+    out_features: int,
+    rank: int,
+) -> tuple[Any, Any]:
+    """Extract lora_A and lora_B tensors from a safetensors state dict.
+
+    Searches for keys containing ``lora_A`` and ``lora_B`` (or
+    ``lora_down`` / ``lora_up``). Falls back to the first pair whose
+    shapes match ``[rank, in_features]`` and ``[out_features, rank]``.
+
+    Returns:
+        Tuple of ``(a_mat, b_mat)`` tensors.
+
+    Raises:
+        ContractValidationError: If no matching A/B pair is found.
+    """
+    import torch  # lazy
+
+    a_key: str | None = None
+    b_key: str | None = None
+
+    for key in state_dict:
+        lk = key.lower()
+        if "lora_a" in lk or "lora_down" in lk:
+            t = state_dict[key]
+            if t.shape == (rank, in_features):
+                a_key = key
+        elif "lora_b" in lk or "lora_up" in lk:
+            t = state_dict[key]
+            if t.shape == (out_features, rank):
+                b_key = key
+
+    if a_key is None or b_key is None:
+        # Fallback: scan all tensors for matching shapes
+        for key, tensor in state_dict.items():
+            if tensor.shape == torch.Size([rank, in_features]) and a_key is None:
+                a_key = key
+            elif tensor.shape == torch.Size([out_features, rank]) and b_key is None:
+                b_key = key
+
+    if a_key is None or b_key is None:
+        raise ContractValidationError(
+            f"Cannot find lora_A [{rank}, {in_features}] and "
+            f"lora_B [{out_features}, {rank}] in safetensors state dict. "
+            f"Available keys: {list(state_dict.keys())}",
+            agent_fix_hint=(
+                "Ensure the .safetensors file contains 'lora_A'/'lora_B' "
+                "or 'lora_down'/'lora_up' tensors with correct shapes."
+            ),
+        )
+
+    return state_dict[a_key].float(), state_dict[b_key].float()

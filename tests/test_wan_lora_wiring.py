@@ -56,6 +56,11 @@ def _make_lora_manifests() -> list[tuple[Any, float]]:
     return [(manifest, 1.0)]
 
 
+def _make_lora_manifests_for_wan() -> list[tuple[Any, float]]:
+    """Build manifests that work with WanAdapter (test_synthetic on manager)."""
+    return _make_lora_manifests()
+
+
 def _make_fgpp_frames_with_cryptomatte(
     n: int = 2, h: int = 8, w: int = 8,
 ) -> list[FGPPFrame]:
@@ -116,6 +121,7 @@ class TestWanAdapterLoRAConstruction:
         adapter = WanAdapter(
             backend=_fake_backend(),
             lora_manifests=manifests,
+            test_synthetic=True,
         )
         assert adapter._lora_manager is not None
         from synapse.adapters.lora.manager import MultiLoRAManager
@@ -138,6 +144,7 @@ class TestWanAdapterLoRAGenerate:
         adapter = WanAdapter(
             backend=_fake_backend(),
             lora_manifests=manifests,
+            test_synthetic=True,
         )
 
         # Patch the manager methods
@@ -174,6 +181,7 @@ class TestWanAdapterLoRAGenerate:
         adapter = WanAdapter(
             backend=LocalCallableBackend(pipeline_fn=exploding_fn),
             lora_manifests=manifests,
+            test_synthetic=True,
         )
 
         mgr = adapter._lora_manager
@@ -201,6 +209,7 @@ class TestWanAdapterLoRAGenerate:
         adapter = WanAdapter(
             backend=_fake_backend(),
             lora_manifests=manifests,
+            test_synthetic=True,
         )
 
         mgr = adapter._lora_manager
@@ -228,6 +237,7 @@ class TestWanAdapterLoRAGenerate:
         adapter = WanAdapter(
             backend=_fake_backend(),
             lora_manifests=manifests,
+            test_synthetic=True,
         )
 
         mgr = adapter._lora_manager

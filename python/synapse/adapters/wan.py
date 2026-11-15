@@ -19,6 +19,8 @@ around each ``generate()`` call when Cryptomatte IDs are present.
 
 from __future__ import annotations
 
+import base64
+import io
 from abc import ABC, abstractmethod
 from typing import Any, cast
 
@@ -99,9 +101,11 @@ class FoundaryHttpTransport(WanBackendTransport):
         self,
         endpoint_url: str = "http://localhost:8090/v1/generate",
         timeout_s: float = 120.0,
+        traceparent: str | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.timeout_s = timeout_s
+        self._upstream_traceparent = traceparent
 
     # -- WanBackendTransport -------------------------------------------------
 
@@ -111,6 +115,10 @@ class FoundaryHttpTransport(WanBackendTransport):
         config: VideoGenerationConfig,
     ) -> np.ndarray:
         """POST the payload to the inference endpoint.
+
+        Fully serialises ``control_tensor`` (compressed binary),
+        ``keyframe_images``, and ``payload.extra``, and forwards the
+        upstream ``traceparent`` from ``TraceContext`` if provided.
 
         Args:
             payload: Condition payload.
@@ -127,9 +135,29 @@ class FoundaryHttpTransport(WanBackendTransport):
         import urllib.error
         import urllib.request
 
+        # Serialize control_tensor as compressed base64 numpy binary
+        control_tensor_b64: str | None = None
+        if payload.control_tensor is not None:
+            buf = io.BytesIO()
+            np.save(buf, payload.control_tensor)
+            control_tensor_b64 = base64.b64encode(
+                buf.getvalue()
+            ).decode("ascii")
+
+        # Serialize keyframe images as base64 list
+        keyframe_images_b64: list[str] = []
+        for kf in payload.keyframe_images:
+            buf = io.BytesIO()
+            np.save(buf, kf)
+            keyframe_images_b64.append(
+                base64.b64encode(buf.getvalue()).decode("ascii")
+            )
+
         body = json.dumps({
             "text_prompt": payload.text_prompt,
             "negative_prompt": payload.negative_prompt,
+            "control_tensor": control_tensor_b64,
+            "keyframe_images": keyframe_images_b64,
             "seed": config.seed,
             "fps": config.fps,
             "width": config.width,
@@ -137,15 +165,22 @@ class FoundaryHttpTransport(WanBackendTransport):
             "guidance_scale": config.guidance_scale,
             "num_inference_steps": config.num_inference_steps,
             "num_frames": config.num_frames,
-            "extra": config.extra,
+            "extra": {**config.extra, **payload.extra},
         }).encode("utf-8")
+
+        # Forward upstream traceparent or generate a new one
+        traceparent = (
+            self._upstream_traceparent
+            if self._upstream_traceparent
+            else _generate_traceparent()
+        )
 
         req = urllib.request.Request(
             self.endpoint_url,
             data=body,
             headers={
                 "Content-Type": "application/json",
-                "traceparent": _generate_traceparent(),
+                "traceparent": traceparent,
             },
             method="POST",
         )
@@ -316,6 +351,33 @@ def _generate_traceparent() -> str:
     return f"00-{trace_id}-{parent_id}-01"
 
 
+def _encode_depth(
+    depth_raw: np.ndarray,
+    z_near: float,
+    z_far: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Log-normalise raw depth preserving float64 until quantisation.
+
+    Args:
+        depth_raw: ``[H, W]`` raw linear depth.
+        z_near: Near plane in metres.
+        z_far: Far plane in metres.
+
+    Returns:
+        Tuple of ``(depth_norm_f64, depth_norm_f32)`` where the f64
+        version is the authoritative precision and f32 is for tensor
+        construction.
+    """
+    from synapse.fgpp.schema import linear_to_log_normalized_depth
+
+    depth_raw_f64 = depth_raw.astype(np.float64)
+    depth_norm_f64 = linear_to_log_normalized_depth(
+        depth_raw_f64, z_near_m=z_near, z_far_m=z_far,
+    )
+    depth_norm_f32 = depth_norm_f64.astype(np.float32)
+    return depth_norm_f64, depth_norm_f32
+
+
 # ---------------------------------------------------------------------------
 # WanAdapter
 # ---------------------------------------------------------------------------
@@ -346,6 +408,8 @@ class WanAdapter(VideoModelAdapter):
         backend: WanBackendTransport | None = None,
         gamma_flow_bias: float = 0.0,
         lora_manifests: list | None = None,
+        *,
+        test_synthetic: bool = False,
     ) -> None:
         self._backend = backend
         self._gamma_flow_bias = float(
@@ -354,7 +418,10 @@ class WanAdapter(VideoModelAdapter):
         self._lora_manager: Any | None = None
         if lora_manifests is not None:
             from synapse.adapters.lora.manager import MultiLoRAManager  # lazy
-            self._lora_manager = MultiLoRAManager(lora_bundles=lora_manifests)
+            self._lora_manager = MultiLoRAManager(
+                lora_bundles=lora_manifests,
+                test_synthetic=test_synthetic,
+            )
 
     # -- properties ----------------------------------------------------------
 
@@ -391,6 +458,9 @@ class WanAdapter(VideoModelAdapter):
         4. Per-frame control tensors are stacked into
            ``[C_cond, T, H, W]``.
 
+        Real ``cryptomatte_id`` from the FGPP sequence is passed
+        through to the payload for downstream spatial masking.
+
         Args:
             fgpp_sequence: Source ``FGPPSequence``.
             config: Generation configuration.
@@ -400,7 +470,6 @@ class WanAdapter(VideoModelAdapter):
             ``[C_cond, T, H, W]`` (C_cond = 7: 1 depth + 3 normal +
             3 radiance).
         """
-        from synapse.fgpp.schema import linear_to_log_normalized_depth
         from synapse.style.aces_color import soft_knee_inverse_tonemap
 
         n_frames = len(fgpp_sequence.frames)
@@ -411,16 +480,13 @@ class WanAdapter(VideoModelAdapter):
         h, w = first.height, first.width
 
         per_frame_tensors: list[np.ndarray] = []
+        cryptomatte_maps: list[np.ndarray] = []
 
         for frame in fgpp_sequence.frames:
-            # 1. Depth — log-normalised in float64 precision
-            depth_raw_f64 = frame.depth.astype(np.float64)
-            depth_norm_f64 = linear_to_log_normalized_depth(
-                depth_raw_f64,
-                z_near_m=frame.camera.z_near,
-                z_far_m=frame.camera.z_far,
+            # 1. Depth — log-normalised, preserving float64 precision
+            depth_norm_f64, depth_norm = _encode_depth(
+                frame.depth, frame.camera.z_near, frame.camera.z_far,
             )
-            depth_norm = depth_norm_f64.astype(np.float32)
 
             # 2. Normals — world → camera
             if frame.world_normal is not None:
@@ -448,6 +514,10 @@ class WanAdapter(VideoModelAdapter):
             )
             per_frame_tensors.append(control)
 
+            # Collect Cryptomatte IDs for passthrough
+            if getattr(frame, "cryptomatte_id", None) is not None:
+                cryptomatte_maps.append(frame.cryptomatte_id)
+
         # Stack into [T, C, H, W] then transpose to [C, T, H, W]
         stacked = np.stack(per_frame_tensors, axis=0)  # [T, C, H, W]
         condition_tensor = np.transpose(
@@ -468,8 +538,16 @@ class WanAdapter(VideoModelAdapter):
             "anchor_interval": 48,
         }
 
+        # Build Cryptomatte passthrough if available
+        cryptomatte_id_tensor: np.ndarray | None = None
+        if len(cryptomatte_maps) == n_frames:
+            cryptomatte_id_tensor = np.stack(
+                cryptomatte_maps, axis=0,
+            )  # [T, H, W]
+
         return PreparedConditionPayload(
             control_tensor=condition_tensor,
+            cryptomatte_id=cryptomatte_id_tensor,
             extra=flow_meta,
         )
 
@@ -483,6 +561,9 @@ class WanAdapter(VideoModelAdapter):
         Re-anchors depth, camera normals, and radiance directly from the physical
         FGPP ground-truth frame, eliminating drift.
 
+        Preserves ``depth_norm_f64`` as ``float64`` until the final
+        quantisation/serialisation boundary.
+
         Args:
             frame: Source FGPPFrame with depth, normals, and radiance.
             frame_index: Frame index in the sequence.
@@ -490,18 +571,14 @@ class WanAdapter(VideoModelAdapter):
         Returns:
             ``[7, H, W]`` float32 ControlNeXt condition tensor.
         """
-        from synapse.fgpp.schema import linear_to_log_normalized_depth
         from synapse.style.aces_color import soft_knee_inverse_tonemap
 
         h, w = frame.height, frame.width
 
         # 1. Depth (float64 calculation -> float32 tensor)
-        depth_norm_f64 = linear_to_log_normalized_depth(
-            frame.depth.astype(np.float64),
-            z_near_m=frame.camera.z_near,
-            z_far_m=frame.camera.z_far,
+        depth_norm_f64, depth_norm = _encode_depth(
+            frame.depth, frame.camera.z_near, frame.camera.z_far,
         )
-        depth_norm = depth_norm_f64.astype(np.float32)
 
         # 2. Camera Normals
         if frame.world_normal is not None:
@@ -539,6 +616,9 @@ class WanAdapter(VideoModelAdapter):
         inference.  ``restore_base_weights`` is called in a ``finally``
         block to guarantee cleanup even on errors.
 
+        For each anchor frame in the sequence, ``reanchor_physical_frame``
+        is called to inject ground-truth conditioning.
+
         Args:
             conditions: Output of ``prepare_conditions()``.
             config: Generation configuration.
@@ -559,6 +639,17 @@ class WanAdapter(VideoModelAdapter):
                 "WanAdapter has no backend transport configured. "
                 "Pass a WanBackendTransport to the constructor."
             )
+
+        # Apply reanchoring for physical anchor frames
+        if fgpp_frames and conditions.extra.get("physical_anchor_indices"):
+            for anchor_idx in conditions.extra["physical_anchor_indices"]:
+                if anchor_idx < len(fgpp_frames):
+                    reanchored = self.reanchor_physical_frame(
+                        fgpp_frames[anchor_idx],
+                        frame_index=anchor_idx,
+                    )
+                    if conditions.control_tensor is not None:
+                        conditions.control_tensor[:, anchor_idx] = reanchored
 
         # Determine whether LoRA application is needed this call
         _lora_applied = False
