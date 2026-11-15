@@ -357,7 +357,7 @@ def stage_from_remote_huggingface(
         return records
 
     try:
-        from huggingface_hub import hf_hub_download  # type: ignore[import-untyped]
+        from huggingface_hub import hf_hub_download
     except ImportError:
         if verbose:
             print(

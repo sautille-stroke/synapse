@@ -123,7 +123,7 @@ def _encode_png_bytes(image_u8: np.ndarray) -> bytes:
         PNG-encoded bytes.
     """
     try:
-        from PIL import Image  # type: ignore[import-untyped]
+        from PIL import Image
         img = Image.fromarray(image_u8, mode="RGB")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -336,7 +336,7 @@ def degrade_fgpp_for_blackbox(
         normal_edge: np.ndarray | None = None
         if all(f.world_normal is not None for f in seg_frames):
             normals = np.stack(
-                [f.world_normal.astype(np.float32) for f in seg_frames],  # type: ignore[union-attr]
+                [f.world_normal.astype(np.float32) for f in seg_frames],
                 axis=0,
             )
             # Compute edge magnitude from spatial gradient of normals

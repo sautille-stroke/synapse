@@ -40,7 +40,7 @@ _DEFAULT_BASE_SCENES: list[dict[str, str]] = [
 # ── per-factor randomisation helpers ───────────────────────────────
 
 
-def _rand_f01(rng: np.random.Generator) -> dict:
+def _rand_f01(rng: np.random.Generator) -> dict[str, Any]:
     """F01_viewpoint — camera placement."""
     return {
         "azimuth_deg": float(rng.uniform(0.0, 360.0)),
@@ -49,7 +49,7 @@ def _rand_f01(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f02(rng: np.random.Generator) -> dict:
+def _rand_f02(rng: np.random.Generator) -> dict[str, Any]:
     """F02_background — backdrop type."""
     bg_type = rng.choice(
         ["neutral_gray", "gradient", "hdri_indoor", "hdri_outdoor", "cluttered"],
@@ -60,7 +60,7 @@ def _rand_f02(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f03(rng: np.random.Generator) -> dict:
+def _rand_f03(rng: np.random.Generator) -> dict[str, Any]:
     """F03_lighting — HDR illumination."""
     num_lights = int(rng.integers(1, 4))  # 1-3
     return {
@@ -72,7 +72,7 @@ def _rand_f03(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f04(rng: np.random.Generator) -> dict:
+def _rand_f04(rng: np.random.Generator) -> dict[str, Any]:
     """F04_material — PBR material properties."""
     return {
         "roughness": float(rng.uniform(0.05, 0.95)),
@@ -81,7 +81,7 @@ def _rand_f04(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f05(rng: np.random.Generator) -> dict:
+def _rand_f05(rng: np.random.Generator) -> dict[str, Any]:
     """F05_geometry — mesh density & deformation."""
     density = rng.choice(["low", "mid", "high"])
     return {
@@ -90,7 +90,7 @@ def _rand_f05(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f06(rng: np.random.Generator) -> dict:
+def _rand_f06(rng: np.random.Generator) -> dict[str, Any]:
     """F06_animation — motion clip parameters."""
     anim_type = rng.choice(["static", "rigid", "skeletal", "physics"])
     return {
@@ -100,7 +100,7 @@ def _rand_f06(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f07(rng: np.random.Generator) -> dict:
+def _rand_f07(rng: np.random.Generator) -> dict[str, Any]:
     """F07_occlusion — inter-object occlusion."""
     return {
         "occlusion_ratio": float(rng.uniform(0.0, 0.5)),
@@ -108,7 +108,7 @@ def _rand_f07(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f08(rng: np.random.Generator) -> dict:
+def _rand_f08(rng: np.random.Generator) -> dict[str, Any]:
     """F08_scale — object scale & camera distance."""
     return {
         "uniform_scale": float(rng.uniform(0.5, 2.0)),
@@ -116,7 +116,7 @@ def _rand_f08(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f09(rng: np.random.Generator) -> dict:
+def _rand_f09(rng: np.random.Generator) -> dict[str, Any]:
     """F09_dof — depth of field / aperture."""
     return {
         "aperture_fstop": float(rng.choice([0.0, 1.4, 2.8, 4.0, 8.0, 16.0])),
@@ -124,7 +124,7 @@ def _rand_f09(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f10(rng: np.random.Generator) -> dict:
+def _rand_f10(rng: np.random.Generator) -> dict[str, Any]:
     """F10_motion_blur — shutter angle."""
     return {
         "shutter_angle_deg": float(rng.choice([0, 90, 180, 270, 360])),
@@ -132,7 +132,7 @@ def _rand_f10(rng: np.random.Generator) -> dict:
     }
 
 
-def _rand_f11(rng: np.random.Generator) -> dict:
+def _rand_f11(rng: np.random.Generator) -> dict[str, Any]:
     """F11_postprocess — tone-mapping & grading."""
     return {
         "exposure_ev": float(rng.uniform(0.5, 2.0)),

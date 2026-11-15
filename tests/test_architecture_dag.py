@@ -16,7 +16,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _load_guard():
+def _load_guard() -> None:
     """Load import_dag_guard module dynamically."""
     import importlib.util
 
@@ -26,7 +26,7 @@ def _load_guard():
     spec = importlib.util.spec_from_file_location("import_dag_guard", guard_path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    spec.loader.exec_module(mod)
     return mod
 
 
@@ -97,7 +97,7 @@ def test_import_dag_guard_detects_dynamic_importlib_bypass(tmp_path: Path) -> No
     # 1. Test _ImportVisitor on importlib.import_module and __import__
     snippet = """
 import importlib
-def sneaky():
+def sneaky() -> None:
     mod1 = importlib.import_module("synapse.cli")
     mod2 = __import__("synapse.inspect")
 """

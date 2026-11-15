@@ -107,8 +107,7 @@ class MultiLoRAManager:
             )
 
         # Lazy import safetensors
-        from safetensors.torch import load_file  # type: ignore[import-untyped]
-
+        from safetensors.torch import load_file
         state_dict = load_file(path)
         self._loaded_state_dicts[path] = state_dict
         return state_dict

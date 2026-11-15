@@ -42,35 +42,35 @@ from synapse.fgpp.schema import (
 class TestSchemaConstants:
     """Verify FGPP schema constants and channel definitions."""
 
-    def test_channel_count(self):
+    def test_channel_count(self) -> None:
         assert len(FGPP_CHANNEL_SPECS) == 15
         assert FGPP_NUM_CHANNELS == 15
 
-    def test_channels_ascii_sorted(self):
+    def test_channels_ascii_sorted(self) -> None:
         names = get_channel_names()
         assert names == sorted(names), "Channel names must be ASCII sorted"
 
-    def test_bytes_per_pixel(self):
+    def test_bytes_per_pixel(self) -> None:
         assert FGPP_BYTES_PER_PIXEL == 34
 
-    def test_bytes_per_pixel_computed(self):
+    def test_bytes_per_pixel_computed(self) -> None:
         assert computed_bytes_per_pixel() == FGPP_BYTES_PER_PIXEL
 
-    def test_schema_version(self):
+    def test_schema_version(self) -> None:
         assert FGPP_SCHEMA_VERSION == "fgpp.v1.0"
 
-    def test_pixel_type_values(self):
-        assert PixelType.UINT32 == 0
-        assert PixelType.HALF == 1
-        assert PixelType.FLOAT == 2
+    def test_pixel_type_values(self) -> None:
+        assert PixelType.UINT32.value == 0
+        assert PixelType.HALF.value == 1
+        assert PixelType.FLOAT.value == 2
 
-    def test_whitebox_constant(self):
+    def test_whitebox_constant(self) -> None:
         assert MIN_CHARACTER_WHITEBOX_VERTICES == 1500
 
-    def test_anchor_interval_constant(self):
+    def test_anchor_interval_constant(self) -> None:
         assert DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES == 48
 
-    def test_logical_groups(self):
+    def test_logical_groups(self) -> None:
         groups = get_logical_groups()
         assert len(groups) == 7
         assert set(groups.keys()) == {
@@ -90,7 +90,7 @@ class TestSchemaConstants:
         assert len(groups["roughness_metallic"]) == 2
         assert len(groups["world_normal"]) == 3
 
-    def test_channel_pixel_types(self):
+    def test_channel_pixel_types(self) -> None:
         """Verify expected pixel type distribution."""
         type_counts = {pt: 0 for pt in PixelType}
         for _, pt, _ in FGPP_CHANNEL_SPECS:
@@ -108,7 +108,7 @@ class TestSchemaConstants:
 class TestDepthConversion:
     """Test log-normalised depth roundtrip and edge cases."""
 
-    def test_roundtrip_arbitrary_depths(self):
+    def test_roundtrip_arbitrary_depths(self) -> None:
         """Forward then inverse must match within 1e-12."""
         z_near, z_far = 0.1, 1000.0
         z_values = np.linspace(0.1, 1000.0, 500)
@@ -116,44 +116,44 @@ class TestDepthConversion:
         recovered = log_normalized_to_linear_depth(normalised, z_near, z_far)
         assert np.max(np.abs(z_values - recovered)) < 1e-12
 
-    def test_roundtrip_single_values(self):
+    def test_roundtrip_single_values(self) -> None:
         z_near, z_far = 0.5, 200.0
         for z in [0.5, 1.0, 10.0, 100.0, 200.0]:
             n = linear_to_log_normalized_depth(z, z_near, z_far)
             r = log_normalized_to_linear_depth(n, z_near, z_far)
             assert abs(float(r) - z) < 1e-12
 
-    def test_near_maps_to_zero(self):
+    def test_near_maps_to_zero(self) -> None:
         result = linear_to_log_normalized_depth(0.1, 0.1, 1000.0)
         assert float(result) == pytest.approx(0.0, abs=1e-12)
 
-    def test_far_maps_to_one(self):
+    def test_far_maps_to_one(self) -> None:
         result = linear_to_log_normalized_depth(1000.0, 0.1, 1000.0)
         assert float(result) == pytest.approx(1.0, abs=1e-12)
 
-    def test_z_near_clamped_if_non_positive(self):
+    def test_z_near_clamped_if_non_positive(self) -> None:
         """z_near <= 0 should be clamped to epsilon, not crash."""
         result = linear_to_log_normalized_depth(1.0, -5.0, 100.0)
         assert np.all(np.isfinite(result))
         result2 = linear_to_log_normalized_depth(1.0, 0.0, 100.0)
         assert np.all(np.isfinite(result2))
 
-    def test_z_far_clamped_if_lte_z_near(self):
+    def test_z_far_clamped_if_lte_z_near(self) -> None:
         """z_far <= z_near should be clamped."""
         result = linear_to_log_normalized_depth(1.0, 5.0, 3.0)
         assert np.all(np.isfinite(result))
 
-    def test_nan_input_clamped(self):
+    def test_nan_input_clamped(self) -> None:
         z = np.array([1.0, float("nan"), 5.0])
         result = linear_to_log_normalized_depth(z, 0.1, 100.0)
         assert np.all(np.isfinite(result))
 
-    def test_inf_input_clamped(self):
+    def test_inf_input_clamped(self) -> None:
         z = np.array([float("inf"), 1.0, float("-inf")])
         result = linear_to_log_normalized_depth(z, 0.1, 100.0)
         assert np.all(np.isfinite(result))
 
-    def test_output_range(self):
+    def test_output_range(self) -> None:
         z = np.array([0.001, 0.1, 10.0, 500.0, 1000.0, 5000.0])
         result = linear_to_log_normalized_depth(z, 0.1, 1000.0)
         assert np.all(result >= 0.0)
@@ -168,19 +168,19 @@ class TestDepthConversion:
 class TestWhiteboxGuard:
     """Test whitebox coarseness floor validation."""
 
-    def test_character_passes(self):
+    def test_character_passes(self) -> None:
         assert validate_whitebox_coarseness_floor(1500, True, True) is True
 
-    def test_character_above_minimum(self):
+    def test_character_above_minimum(self) -> None:
         assert validate_whitebox_coarseness_floor(5000, True, True) is True
 
-    def test_character_below_minimum(self):
+    def test_character_below_minimum(self) -> None:
         assert validate_whitebox_coarseness_floor(1499, True, True) is False
 
-    def test_character_no_limbs(self):
+    def test_character_no_limbs(self) -> None:
         assert validate_whitebox_coarseness_floor(2000, False, True) is False
 
-    def test_non_character_always_passes(self):
+    def test_non_character_always_passes(self) -> None:
         assert validate_whitebox_coarseness_floor(10, False, False) is True
         assert validate_whitebox_coarseness_floor(0, False, False) is True
 
@@ -188,17 +188,17 @@ class TestWhiteboxGuard:
 class TestPhysicalAnchor:
     """Test physical anchor frame detection."""
 
-    def test_anchor_frames(self):
+    def test_anchor_frames(self) -> None:
         assert is_physical_anchor_frame(0) is True
         assert is_physical_anchor_frame(48) is True
         assert is_physical_anchor_frame(96) is True
 
-    def test_non_anchor_frames(self):
+    def test_non_anchor_frames(self) -> None:
         assert is_physical_anchor_frame(1) is False
         assert is_physical_anchor_frame(47) is False
         assert is_physical_anchor_frame(49) is False
 
-    def test_custom_interval(self):
+    def test_custom_interval(self) -> None:
         assert is_physical_anchor_frame(10, interval=10) is True
         assert is_physical_anchor_frame(11, interval=10) is False
 
@@ -211,7 +211,7 @@ class TestPhysicalAnchor:
 class TestProjectionMatrix:
     """Test CameraParams.projection_matrix()."""
 
-    def test_projection_shape(self):
+    def test_projection_shape(self) -> None:
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256, width=512, height=512
         )
@@ -219,7 +219,7 @@ class TestProjectionMatrix:
         assert proj.shape == (4, 4)
         assert proj.dtype == np.float64
 
-    def test_projection_properties(self):
+    def test_projection_properties(self) -> None:
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256, width=1024, height=768,
             fov_degrees=60.0, z_near=0.1, z_far=100.0,
@@ -233,7 +233,7 @@ class TestProjectionMatrix:
         assert proj[0, 0] > 0
         assert proj[1, 1] > 0
 
-    def test_new_camera_fields(self):
+    def test_new_camera_fields(self) -> None:
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256, width=512, height=512,
             focal_length_mm=50.0, sensor_width_mm=36.0, sensor_height_mm=24.0,
@@ -261,7 +261,7 @@ def _make_rotation_matrix(pitch_rad: float, yaw_rad: float) -> np.ndarray:
 class TestMetadataRoundtrip:
     """Test FGPPSequence save_metadata / load_metadata roundtrip."""
 
-    def test_basic_roundtrip(self, tmp_path):
+    def test_basic_roundtrip(self, tmp_path) -> None:
         """Non-trivial camera pose survives save→load with < 1e-12 error."""
         # Build a view matrix with translation [1.2, -3.4, 5.6] and rotation
         t = np.array([1.2, -3.4, 5.6], dtype=np.float64)
@@ -318,7 +318,7 @@ class TestMetadataRoundtrip:
             assert loaded_frame.camera.z_near == pytest.approx(0.1)
             assert loaded_frame.camera.z_far == pytest.approx(500.0)
 
-    def test_column_major_encoding(self, tmp_path):
+    def test_column_major_encoding(self, tmp_path) -> None:
         """Verify column-major layout matches OpenGL/fulgur memory order."""
         # Simple known matrix
         view = np.array(
@@ -351,7 +351,7 @@ class TestMetadataRoundtrip:
         expected = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1]
         np.testing.assert_allclose(col_major, expected, atol=1e-14)
 
-    def test_anchor_flags_in_metadata(self, tmp_path):
+    def test_anchor_flags_in_metadata(self, tmp_path) -> None:
         """Physical anchor flags are correct in saved metadata."""
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256, width=512, height=512
@@ -377,7 +377,7 @@ class TestMetadataRoundtrip:
                 f"Frame {idx}: expected anchor={expected_anchor}"
             )
 
-    def test_invalid_rotation_det_raises(self, tmp_path):
+    def test_invalid_rotation_det_raises(self, tmp_path) -> None:
         """Loading a metadata.json with bad rotation det should raise."""
         # Create metadata with a bad view matrix (scale, not rotation)
         bad_meta = {
@@ -423,7 +423,7 @@ class TestMetadataRoundtrip:
 class TestCameraParamsBackwardCompat:
     """Existing CameraParams tests still pass with new fields."""
 
-    def test_to_dict_from_dict_roundtrip(self):
+    def test_to_dict_from_dict_roundtrip(self) -> None:
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256,
             width=512, height=512,
@@ -440,7 +440,7 @@ class TestCameraParamsBackwardCompat:
         assert cam2.sensor_height_mm == 24.0
         np.testing.assert_allclose(cam2.view_matrix, cam.view_matrix)
 
-    def test_from_dict_defaults(self):
+    def test_from_dict_defaults(self) -> None:
         """Old dicts without new fields should use defaults."""
         d = {
             "fx": 500, "fy": 500, "cx": 256, "cy": 256,
@@ -462,7 +462,7 @@ class TestCameraParamsBackwardCompat:
 class TestWireGuard:
     """Test tools/wire_guard.py internal consistency mode."""
 
-    def test_internal_consistency_passes(self):
+    def test_internal_consistency_passes(self) -> None:
         """wire_guard --check with no aether header should pass internal checks."""
         result = subprocess.run(
             [

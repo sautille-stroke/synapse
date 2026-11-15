@@ -101,7 +101,7 @@ def _find_pybind11_include(dry_run: bool = False) -> Path | None:
     Returns None when pybind11 is absent.
     """
     try:
-        import pybind11  # type: ignore[import-not-found]
+        import pybind11
         inc = Path(pybind11.get_include())
         if inc.is_dir() and (inc / "pybind11" / "pybind11.h").is_file():
             return inc
@@ -328,7 +328,7 @@ def _smoke_test() -> bool:
     """Verify that _c_geometry is loadable and passes a basic geometry check."""
     try:
         import numpy as np
-        from synapse._c_geometry import validate_mesh_geometry  # type: ignore[import-not-found]
+        from synapse._c_geometry import validate_mesh_geometry
     except ImportError as e:
         print(f"[build_native] Smoke test failed to import: {e}", file=sys.stderr)
         return False

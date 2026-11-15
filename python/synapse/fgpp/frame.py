@@ -86,7 +86,7 @@ class CameraParams:
         proj[3, 2] = -1.0
         return proj
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise to JSON-friendly dict."""
         return {
             "fx": self.fx,

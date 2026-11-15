@@ -21,6 +21,11 @@ Usage::
 
 from __future__ import annotations
 
+
+__all__ = [
+    "main",
+]
+
 import argparse
 import json
 import re
@@ -446,7 +451,7 @@ _RE_ENUM_MEMBER = re.compile(
 )
 
 
-def _parse_header(path: Path) -> dict:
+def _parse_header(path: Path) -> dict[str, Any]:
     """Extract contract values from the C++ header."""
     text = path.read_text(encoding="utf-8")
 

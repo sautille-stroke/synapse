@@ -24,12 +24,12 @@ from synapse.viewer.server import ViewerServer, _ReusableHTTPServer, export_stat
 class TestModels:
     """Test 3D model asset loading, normalization, and properties."""
 
-    def test_list_builtin_models(self):
+    def test_list_builtin_models(self) -> None:
         models = list_builtin_models()
         assert len(models) >= 5
         assert "bunny" in models or "sphere" in models
 
-    def test_load_procedural_model(self):
+    def test_load_procedural_model(self) -> None:
         model = load_model("sphere", normalize=True, target_radius=1.0)
         assert model.num_vertices > 0
         assert model.num_faces > 0
@@ -38,7 +38,7 @@ class TestModels:
         np.testing.assert_allclose(center, [0.0, 0.0, 0.0], atol=1e-3)
         assert abs(radius - 1.0) < 1e-3
 
-    def test_load_damaged_helmet_or_fallback(self):
+    def test_load_damaged_helmet_or_fallback(self) -> None:
         models = list_builtin_models()
         target = "damaged_helmet" if "damaged_helmet" in models else "bunny"
         model = load_model(target, normalize=True, target_radius=1.0)
@@ -47,7 +47,7 @@ class TestModels:
         center, radius = model.bounding_sphere()
         assert abs(radius - 1.0) < 1e-3
 
-    def test_model_export_obj(self, tmp_path):
+    def test_model_export_obj(self, tmp_path) -> None:
         model = load_model("cube", normalize=True)
         out_path = tmp_path / "cube.obj"
         exported = model.export_obj(out_path)
@@ -60,7 +60,7 @@ class TestModels:
 class TestRasterizer:
     """Test software multi-channel rasterizer."""
 
-    def test_rasterizer_channels(self):
+    def test_rasterizer_channels(self) -> None:
         model = load_model("cube", normalize=True, target_radius=1.0)
         from synapse.bench.camera import CameraTrajectoryType, generate_cameras
 
@@ -95,7 +95,7 @@ class TestRasterizer:
 class TestVisualizer:
     """Test visualization colormapping functions."""
 
-    def test_visualizers(self):
+    def test_visualizers(self) -> None:
         depth = np.full((64, 64), 2.0, dtype=np.float32)
         mask = np.ones((64, 64), dtype=np.uint8)
         normal = np.zeros((64, 64, 3), dtype=np.float32)
@@ -119,7 +119,7 @@ class TestVisualizer:
 class TestDatasetGenerator:
     """Test end-to-end dataset generation pipeline."""
 
-    def test_generate_dataset(self, tmp_path):
+    def test_generate_dataset(self, tmp_path) -> None:
         out_dir = tmp_path / "test_dataset"
         cfg = DatasetConfig(
             model_name="cube",
@@ -152,7 +152,7 @@ class TestDatasetGenerator:
         assert (out_dir / "frames" / "frame_0000.png").exists()
 
     @pytest.mark.parametrize("traj_type", ["spiral", "hemisphere"])
-    def test_generate_dataset_spiral_and_hemisphere(self, tmp_path, traj_type):
+    def test_generate_dataset_spiral_and_hemisphere(self, tmp_path, traj_type) -> None:
         out_dir = tmp_path / f"test_dataset_{traj_type}"
         cfg = DatasetConfig(
             model_name="cube",
@@ -178,7 +178,7 @@ class TestDatasetGenerator:
 class TestViewerServer:
     """Test embedded HTTP viewer server and static HTML exporter."""
 
-    def test_viewer_http_response(self, tmp_path):
+    def test_viewer_http_response(self, tmp_path) -> None:
         # Create minimal dataset dir with manifest.json
         manifest_data = {
             "dataset_id": "test_ds",
@@ -206,7 +206,7 @@ class TestViewerServer:
         finally:
             server.stop()
 
-    def test_non_loopback_host_rejected(self, tmp_path):
+    def test_non_loopback_host_rejected(self, tmp_path) -> None:
         """Verify non-loopback host (e.g. 0.0.0.0, 192.168.x.x) is rejected."""
         manifest_data = {"dataset_id": "test_ds", "frames": []}
         (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
@@ -218,7 +218,7 @@ class TestViewerServer:
             assert "Non-loopback host" in str(exc_info.value)
             assert "127.0.0.1" in exc_info.value.agent_fix_hint
 
-    def test_reusable_http_server_instance_attribute(self):
+    def test_reusable_http_server_instance_attribute(self) -> None:
         """Verify socketserver.TCPServer.allow_reuse_address is not mutated globally."""
         # Check global TCPServer class attribute remains default (not True by our code)
         assert socketserver.TCPServer.allow_reuse_address is False
@@ -228,7 +228,7 @@ class TestViewerServer:
         dummy_server.allow_reuse_address = True
         assert dummy_server.allow_reuse_address is True
 
-    def test_security_path_traversal_and_extensions(self, tmp_path):
+    def test_security_path_traversal_and_extensions(self, tmp_path) -> None:
         """Verify handler rejects path traversal, hidden files, directory listings, and forbidden extensions."""
         manifest_data = {"dataset_id": "sec_test", "frames": []}
         (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
@@ -269,7 +269,7 @@ class TestViewerServer:
         finally:
             server.stop()
 
-    def test_static_html_export(self, tmp_path):
+    def test_static_html_export(self, tmp_path) -> None:
         """Verify static self-contained HTML export embeds manifest and images."""
         frames_dir = tmp_path / "frames"
         frames_dir.mkdir()
@@ -311,7 +311,7 @@ class TestViewerXSSPrevention:
 
     def test_script_injection_escaped_in_static_html(
         self, tmp_path,
-    ):
+    ) -> None:
         """Manifest containing '</script><script>alert(1)</script>'
         generates HTML without bare '</script>' closing tag that
         could break out of the embedded JSON script block."""
@@ -349,7 +349,7 @@ class TestViewerXSSPrevention:
 
     def test_ampersand_and_angle_brackets_escaped(
         self, tmp_path,
-    ):
+    ) -> None:
         """Verify that &, <, > in manifest values are escaped."""
         manifest_data = {
             "dataset_id": "test<>&",

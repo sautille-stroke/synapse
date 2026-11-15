@@ -45,7 +45,7 @@ class FVDResult:
 # ---------------------------------------------------------------------------
 
 try:
-    from aether.metrics import (  # type: ignore[import-not-found]
+    from aether.metrics import (
         temporal_flicker_score as _native_flicker_score,
     )
     from aether.metrics import (
@@ -344,9 +344,8 @@ def _build_r3d18_extractor() -> Any:
         returns ``[N, 512]`` numpy feature vectors.
     """
     import torch
-    import torchvision.models.video as video_models  # type: ignore[import-untyped]
-    from torchvision import transforms  # type: ignore[import-untyped]
-
+    import torchvision.models.video as video_models
+    from torchvision import transforms
     # Load pretrained R3D-18 and strip the final FC layer
     model = video_models.r3d_18(weights="DEFAULT")
     # Remove the final fully connected layer to get penultimate features

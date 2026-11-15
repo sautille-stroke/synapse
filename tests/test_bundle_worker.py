@@ -95,7 +95,7 @@ class TestBundleManifest:
                 "max_cpu_cores": 8,
             },
         }
-        m = BundleManifest(**data)
+        m = BundleManifest(**data)  # type: ignore[arg-type]
         assert m.job_id == "job-001"
         assert m.stage == "fgpp_validate"
         assert m.inputs["fgpp_dir"] == "/tmp/fgpp"
@@ -431,7 +431,7 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         with unittest.mock.patch.dict(
             "sys.modules", {"PIL": None, "PIL.Image": None},
-        ):
+        ) -> None:
             result = worker.execute(manifest)
 
         assert result.exit_code == 30

@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any,  Literal
 
 
 class ScenarioTier(str, Enum):
@@ -49,7 +49,7 @@ class Asset:
     sha256: str | None = None
     license: str = "MIT"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = {"source": self.source.value, "id": self.id, "license": self.license}
         if self.url:
             d["url"] = self.url
@@ -85,7 +85,7 @@ class ExpectedMetrics:
     style_color_de: float | None = None
     style_light_error_deg: float | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in self.__dict__.items() if v is not None}
 
     @classmethod
@@ -112,7 +112,7 @@ class Scenario:
 
     asset: Asset = field(default_factory=lambda: Asset(AssetSource.PROCEDURAL, "cube"))
     camera_type: str = "orbit"
-    camera_params: dict = field(default_factory=lambda: {
+    camera_params: dict[str, Any] = field(default_factory=lambda: {
         "radius": 3.0,
         "elevation_deg": 15.0,
         "num_frames": 97,
@@ -120,7 +120,7 @@ class Scenario:
     })
     temporal_mode: Literal["continuous_clip", "discrete_views"] = "continuous_clip"
 
-    conditions: dict = field(default_factory=dict)
+    conditions: dict[str, Any] = field(default_factory=dict)
     width: int = 1024
     height: int = 1024
     expected: ExpectedMetrics = field(default_factory=ExpectedMetrics)
@@ -136,7 +136,7 @@ class Scenario:
                 f"Valid values: 5, 9, 13, ..., 97, 101, ..."
             )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "tier": self.tier.value,

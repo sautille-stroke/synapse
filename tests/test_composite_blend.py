@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
 import numpy as np
 from synapse.composite.blend import (
     _guided_filter_box,
@@ -34,7 +35,7 @@ def _make_solid_image(
     dtype: type = np.uint8,
 ) -> np.ndarray:
     """Create a solid-colour [H, W, 3] image."""
-    img = np.zeros((h, w, 3), dtype=dtype)
+    img: Any = np.zeros((h, w, 3), dtype=dtype)
     img[..., 0] = color[0]
     img[..., 1] = color[1]
     img[..., 2] = color[2]

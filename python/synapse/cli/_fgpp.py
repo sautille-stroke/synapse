@@ -24,7 +24,7 @@ from synapse.cli.common import (
 def _validate_exr_channels(exr_path: Path) -> None:
     """Validate 15-channel contract, pixel types, and finite values of an EXR file."""
     try:
-        import OpenEXR  # type: ignore[import-untyped]
+        import OpenEXR
     except ImportError as exc:
         raise BackendUnavailableError(
             "OpenEXR is required to validate EXR channels, but is not installed",
@@ -192,7 +192,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def register_fgpp_subparser(
-    subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    subparsers: argparse._SubParsersAction,
 ) -> argparse.ArgumentParser:
     """Register the ``fgpp`` subcommand tree."""
     fgpp_parser = subparsers.add_parser("fgpp", help="FGPP operations")

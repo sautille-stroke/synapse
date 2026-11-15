@@ -161,9 +161,7 @@ def _normalize_profile_name(profile: str) -> GateProfileName:
         raise ValueError(
             f"Unknown gate profile {profile!r}. Valid profiles: {valid}."
         )
-    return norm  # type: ignore[return-value]
-
-
+    return norm
 def get_profile_thresholds(profile: GateProfileName | str) -> dict[str, float]:
     """Return a copy of the threshold table for *profile*."""
     norm = _normalize_profile_name(profile)

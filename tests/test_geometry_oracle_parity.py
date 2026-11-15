@@ -23,8 +23,7 @@ from synapse.recon.geometry import (
 )
 
 try:
-    import synapse._c_geometry as _c_geometry  # type: ignore[import-not-found]
-
+    import synapse._c_geometry as _c_geometry
     HAS_NATIVE_GEOMETRY = True
 except ImportError:
     _c_geometry = None

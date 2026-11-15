@@ -98,7 +98,7 @@ class TestFvdVideoBridge:
             return mock_extractor_gen(vids)
 
         fvd = compute_fvd_from_videos(dummy_real, dummy_gen, feature_extractor=extractor)
-        assert fvd > 10.0
+        assert fvd > 10.0  # type: ignore[operator]
 
     def test_insufficient_samples_raises(self) -> None:
         def mock_extractor(vids: list[np.ndarray]) -> np.ndarray:
