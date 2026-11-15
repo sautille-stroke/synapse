@@ -5,7 +5,7 @@ Follows Google Colab and Google Drive SSOT V2.0 Standards:
 1. Zero Clutter in MyDrive: Everything under /content/drive/MyDrive/dervgen/.
 2. Job Workspace Isolation: /dervgen/work/{user}/synapse/{date}/{job_id}/
    with README.md, job.json, input/, output/, checkpoints/, logs/.
-3. Preemption Resilience: Resume-first checkpoint logic.
+3. Preemption Resilience: Resume-first checkpoint logic with SIGTERM handler.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import argparse
 import datetime
 import json
 import os
+import signal
 import sys
 import tarfile
 import time
@@ -27,6 +28,10 @@ if str(REPO_ROOT) not in sys.path:
 from synapse.fgpp import FGPPSequence, import_fgpp
 
 EXPERIMENTS: list[str] = ["e1", "e2", "e3", "e4"]
+
+# Minimum required frames for E3 long-horizon scheduler verification.
+# The E3 experiment accesses frames[64] and expects >= 97 frames total.
+MIN_E3_FRAMES: int = 97
 
 
 def detect_gpu_profile() -> dict[str, Any]:
@@ -203,12 +208,47 @@ def finalize_job_workspace(
             readme_path.write_text(new_content, encoding="utf-8")
 
 
+def _persist_state(state_path: Path, state: dict[str, Any]) -> None:
+    """Atomically persist experiment checkpoint state to disk."""
+    tmp_path = state_path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp_path.replace(state_path)
+
+
 def run_colab_suite(
     dataset_dir: Path,
     checkpoint_dir: Path,
     experiments: list[str],
+    mode: str = "auto",
 ) -> dict[str, Any]:
-    """Run selected experiments with per-stage Google Drive checkpointing."""
+    """Run selected experiments with per-stage Google Drive checkpointing.
+
+    Args:
+        dataset_dir: Root directory containing extracted FGPP golden datasets.
+        checkpoint_dir: Directory for persisting experiment state across
+            Colab preemptions.
+        experiments: List of experiment stage IDs (e.g. ``["e1", "e3"]``).
+        mode: Execution mode — ``"auto"`` (detect GPU and fall back to mock),
+            ``"mock"`` (always use CPU MockVideoAdapter), or ``"real-gpu"``
+            (require CUDA WanAdapter; error if unavailable).
+    """
+    gpu_profile = detect_gpu_profile()
+    use_real_gpu = False
+    if mode == "real-gpu":
+        if not gpu_profile.get("cuda_available", False):
+            raise RuntimeError(
+                "real-gpu mode requested but no CUDA GPU detected. "
+                "Set --mode=mock for CPU-only verification or ensure "
+                "Colab Runtime is set to GPU (T4 / L4 / A100)."
+            )
+        use_real_gpu = True
+    elif mode == "auto":
+        use_real_gpu = gpu_profile.get("cuda_available", False)
+    # mode == "mock" → use_real_gpu stays False
+
+    if use_real_gpu:
+        from synapse.adapters import WanAdapter  # noqa: F401 — validates import
+
     from scripts.run_cpu_verification import (
         _verify_e1_conditioning_ablation,
         _verify_e2_style_and_composite,
@@ -222,10 +262,21 @@ def run_colab_suite(
         state: dict[str, Any] = json.loads(state_path.read_text(encoding="utf-8"))
     else:
         state = {
-            "gpu_profile": detect_gpu_profile(),
+            "gpu_profile": gpu_profile,
+            "mode": mode,
             "completed": {},
         }
 
+    # --- Register SIGTERM handler for Colab preemption checkpoint resume ---
+    def _sigterm_handler(signum: int, frame: Any) -> None:  # noqa: ANN401
+        print(f"\n[SIGTERM] Received signal {signum}. Persisting checkpoint state...")
+        _persist_state(state_path, state)
+        print(f"[SIGTERM] State saved to {state_path}. Exiting gracefully.")
+        sys.exit(143)  # 128 + SIGTERM (15)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    # --- Load datasets ---
     seq_b = import_fgpp(
         dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False
     )
@@ -242,8 +293,21 @@ def run_colab_suite(
         seq_b_97f = seq_b
     assert isinstance(seq_b_97f, FGPPSequence)
 
+    # Contract guard: E3 requires >= 97 frames. If fallback (17f) was used,
+    # emit an explicit contract error instead of a late IndexError at frames[64].
+    if "e3" in experiments and seq_b_97f.num_frames < MIN_E3_FRAMES:
+        raise ValueError(
+            f"E3 long-horizon scheduler requires a sequence with at least "
+            f"{MIN_E3_FRAMES} frames, but the loaded sequence "
+            f"'{seq_b_97f.scene_id}' has only {seq_b_97f.num_frames} frames. "
+            f"Ensure prepare_datasets.py bundle includes "
+            f"'track_b_fulgur/course_102_pbr_97f' (97-frame sequence). "
+            f"agent_fix_hint: Re-run `python scripts/prepare_datasets.py` on "
+            f"ubuntu24 and verify the Colab bundle contains the 97f directory."
+        )
+
     for exp in experiments:
-        if exp in state["completed"]:
+        if exp in state.get("completed", {}):
             print(f"[SKIP] {exp} already checkpointed in {state_path}")
             continue
 
@@ -260,8 +324,8 @@ def run_colab_suite(
             res = {"status": "PASS", "note": f"Stage {exp} completed"}
 
         res["elapsed_sec"] = round(time.time() - t0, 3)
-        state["completed"][exp] = res
-        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        state.setdefault("completed", {})[exp] = res
+        _persist_state(state_path, state)
         print(f"[CHECKPOINT SAVED] {exp} -> {state_path}")
 
     return state
@@ -355,7 +419,7 @@ def main() -> int:
     t_start = time.time()
     exps = EXPERIMENTS if args.exp == "all" else [args.exp]
     try:
-        state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps)
+        state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps, mode=args.mode)
         t_duration = time.time() - t_start
         if is_cloud_job:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")

@@ -17,7 +17,14 @@
       "size_bytes": 146800640,
       "size_mb": 140.0,
       "license": "CC-BY-4.0",
-      "description": "Google Scanned Objects and Stanford scan calibration suite (10 canonical assets)"
+      "description": "Google Scanned Objects and Stanford scan calibration suite (10 canonical assets)",
+      "hf_repo": "sautille-stroke/synapse-benchmark-assets",
+      "hf_filename": "gso_starter/stanford_bunny.obj",
+      "category": "3d_reconstruction",
+      "vital_file": {
+        "name": "stanford_bunny.obj",
+        "sha256": "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205"
+      }
     },
     "objaverse_eval": {
       "version": "1.0.0",
@@ -27,7 +34,14 @@
       "size_bytes": 83886080,
       "size_mb": 80.0,
       "license": "ODC-By / CC-BY",
-      "description": "Curated Objaverse manifold GLB models for 3D reconstruction benchmarks"
+      "description": "Curated Objaverse manifold GLB models for 3D reconstruction benchmarks",
+      "hf_repo": "sautille-stroke/synapse-benchmark-assets",
+      "hf_filename": "objaverse_eval/sample_manifold.glb",
+      "category": "3d_reconstruction",
+      "vital_file": {
+        "name": "sample_manifold.glb",
+        "sha256": "b2f694e9f75dfd2d1d280b017b2b8e88e2c0e86a0487c69a7c39de0bc44c10c1"
+      }
     },
     "mixamo_dynamics": {
       "version": "1.0.0",
@@ -37,7 +51,14 @@
       "size_bytes": 15728640,
       "size_mb": 15.0,
       "license": "Royalty-Free Educational / Benchmark",
-      "description": "Rigged humanoid animation FBX tracks for dynamic kinematics evaluation"
+      "description": "Rigged humanoid animation FBX tracks for dynamic kinematics evaluation",
+      "hf_repo": "sautille-stroke/synapse-benchmark-assets",
+      "hf_filename": "mixamo_dynamics/Action_Idle_To_Standing_Idle.fbx",
+      "category": "actor_dynamics",
+      "vital_file": {
+        "name": "Action_Idle_To_Standing_Idle.fbx",
+        "sha256": "c88f1981977717277b96e1b764ee7ecb1130e64903a48e71887e5b1f9c8f070a"
+      }
     },
     "vbench_prompts": {
       "version": "1.0.0",
@@ -47,7 +68,14 @@
       "size_bytes": 2097152,
       "size_mb": 2.0,
       "license": "Apache 2.0",
-      "description": "VBench official 16-dimension canonical prompts suite"
+      "description": "VBench official 16-dimension canonical prompts suite",
+      "hf_repo": "sautille-stroke/synapse-benchmark-assets",
+      "hf_filename": "vbench_prompts/prompts_per_dimension.json",
+      "category": "video_generation",
+      "vital_file": {
+        "name": "prompts_per_dimension.json",
+        "sha256": "07c94a4aab06568eb776fd4256beabbcc36e194c7016c5e1bbb8b4ae5a70b541"
+      }
     }
   }
 }

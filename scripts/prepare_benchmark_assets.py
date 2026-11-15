@@ -314,13 +314,28 @@ def stage_from_local_open_data(
     return records
 
 
+def _load_assets_manifest() -> Dict[str, Any]:
+    """Load the L-Asset manifest from ``assets/assets_manifest.json``."""
+    manifest_path = REPO_ROOT / "assets" / "assets_manifest.json"
+    if not manifest_path.is_file():
+        return {}
+    with manifest_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def stage_from_remote_huggingface(
     target_root: Path,
     tier: str = "starter_dev",
     force: bool = False,
     verbose: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Stage benchmark assets from Hugging Face / GitHub raw mirrors."""
+    """Stage benchmark assets from Hugging Face Hub with per-file SHA-256 verification.
+
+    Downloads files listed in ``assets/assets_manifest.json`` using the
+    ``huggingface_hub`` library.  Each downloaded file is verified against the
+    ``sha256`` declared in the manifest's ``vital_file`` entry, and mismatches
+    cause an immediate error to prevent silent data corruption.
+    """
     records: List[Dict[str, Any]] = []
 
     # Check for Human3.6M token if standard_eval
@@ -333,14 +348,105 @@ def stage_from_remote_huggingface(
                 "Set HF_TOKEN environment variable to download."
             )
 
-    # Attempt Hugging Face download for starter assets if huggingface_hub is available
-    try:
-        import huggingface_hub  # noqa: F401
-        _ensure_dir(target_root / "gso_starter")
+    # Load the assets manifest for remote download metadata
+    manifest = _load_assets_manifest()
+    packages = manifest.get("packages", {})
+    if not packages:
         if verbose:
-            print("  [HuggingFace] Checking remote HuggingFace mirrors...")
+            print("  [HuggingFace] No packages found in assets/assets_manifest.json; skipping remote staging.")
+        return records
+
+    try:
+        from huggingface_hub import hf_hub_download  # type: ignore[import-untyped]
     except ImportError:
-        pass
+        if verbose:
+            print(
+                "  [HuggingFace] huggingface_hub not installed; skipping remote staging. "
+                "Install with: pip install 'huggingface_hub>=0.24.0'"
+            )
+        return records
+
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+
+    for pkg_name, pkg_info in packages.items():
+        hf_repo = pkg_info.get("hf_repo")
+        hf_filename = pkg_info.get("hf_filename")
+        if not hf_repo or not hf_filename:
+            continue
+
+        install_dir = target_root / Path(pkg_info.get("install_dir", pkg_name)).name
+        _ensure_dir(install_dir)
+
+        # Check vital_file to decide if already staged
+        vital = pkg_info.get("vital_file", {})
+        vital_name = vital.get("name")
+        vital_sha256 = vital.get("sha256")
+
+        if vital_name and not force:
+            vital_path = install_dir / vital_name
+            if vital_path.is_file():
+                existing_sha = _sha256_file(vital_path)
+                if existing_sha == vital_sha256:
+                    if verbose:
+                        print(f"  [HuggingFace] {pkg_name}/{vital_name} already staged and verified.")
+                    records.append({
+                        "category": pkg_info.get("category", "3d_reconstruction"),
+                        "relative_path": _calc_rel_path(vital_path, target_root),
+                        "size_bytes": vital_path.stat().st_size,
+                        "sha256": existing_sha,
+                    })
+                    continue
+
+        # Download from HuggingFace Hub
+        if verbose:
+            print(f"  [HuggingFace] Downloading {pkg_name}: {hf_repo}/{hf_filename}...")
+        try:
+            downloaded_path = hf_hub_download(
+                repo_id=hf_repo,
+                filename=hf_filename,
+                repo_type="dataset",
+                token=hf_token,
+                local_dir=str(install_dir),
+            )
+            downloaded_path = Path(downloaded_path)
+        except Exception as e:
+            if verbose:
+                print(f"  [HuggingFace] Failed to download {pkg_name}: {e}")
+            continue
+
+        # Per-file SHA-256 verification
+        if vital_name and vital_sha256:
+            check_path = install_dir / vital_name
+            if check_path.is_file():
+                actual_sha = _sha256_file(check_path)
+                if actual_sha != vital_sha256:
+                    raise ValueError(
+                        f"SHA-256 mismatch for {pkg_name}/{vital_name}: "
+                        f"expected {vital_sha256}, got {actual_sha}. "
+                        f"The downloaded file may be corrupted or tampered with. "
+                        f"agent_fix_hint: Delete {check_path} and re-run with --force."
+                    )
+
+        # Collect all staged files
+        if downloaded_path.is_file():
+            records.append({
+                "category": pkg_info.get("category", "3d_reconstruction"),
+                "relative_path": _calc_rel_path(downloaded_path, target_root),
+                "size_bytes": downloaded_path.stat().st_size,
+                "sha256": _sha256_file(downloaded_path),
+            })
+        elif downloaded_path.is_dir():
+            for fpath in sorted(downloaded_path.rglob("*")):
+                if fpath.is_file():
+                    records.append({
+                        "category": pkg_info.get("category", "3d_reconstruction"),
+                        "relative_path": _calc_rel_path(fpath, target_root),
+                        "size_bytes": fpath.stat().st_size,
+                        "sha256": _sha256_file(fpath),
+                    })
+
+        if verbose:
+            print(f"  [HuggingFace] ✅ {pkg_name} staged and verified.")
 
     return records
 
