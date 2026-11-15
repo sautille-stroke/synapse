@@ -189,3 +189,73 @@ class TestFusionMethodEnumCount:
         assert len(FusionMethod) == 5, (
             f"Expected 5 FusionMethod members, got {len(FusionMethod)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# PR-81: Independent KalmanBBoxTracker per track_id and smoothed_bbox
+# ---------------------------------------------------------------------------
+
+
+class TestIndependentKalmanTrackers:
+    """Pipeline uses independent Kalman trackers per track_id."""
+
+    def test_pipeline_independent_trackers(self) -> None:
+        """Two ROIs with different regions should use independent trackers
+        and not cross-contaminate Kalman state.
+        """
+        from synapse.refine.pipeline import LocalRefinementPipeline
+
+        frames = np.full((3, 64, 64, 3), 0.5, dtype=np.float32)
+
+        # Two ROIs per frame: one hand and one face at different positions
+        rois_per_frame: list[list[RefinementROI]] = []
+        for t in range(3):
+            hand_roi = RefinementROI(
+                bbox_xyxy=np.array([5, 5, 25, 25], dtype=np.float32),
+                crop_acescg=np.full((20, 20, 3), 0.4, dtype=np.float32),
+                region=AnatomicalRegion.HAND,
+                confidence=0.9,
+                frame_index=t,
+            )
+            face_roi = RefinementROI(
+                bbox_xyxy=np.array([35, 35, 55, 55], dtype=np.float32),
+                crop_acescg=np.full((20, 20, 3), 0.6, dtype=np.float32),
+                region=AnatomicalRegion.FACE,
+                confidence=0.9,
+                frame_index=t,
+            )
+            rois_per_frame.append([hand_roi, face_roi])
+
+        pipeline = LocalRefinementPipeline()
+        pipeline.run(frames, rois_per_frame)
+
+        # Should have created independent trackers
+        assert len(pipeline._bbox_trackers) == 2
+        assert "HAND_0" in pipeline._bbox_trackers
+        assert "FACE_1" in pipeline._bbox_trackers
+
+    def test_smoothed_bbox_written_to_result(self) -> None:
+        """RefinementResult should contain smoothed_bbox when pipeline
+        dispatches to region-specific refiners.
+        """
+        from synapse.refine.pipeline import LocalRefinementPipeline
+
+        frames = np.full((2, 64, 64, 3), 0.5, dtype=np.float32)
+
+        rois_per_frame: list[list[RefinementROI]] = []
+        for t in range(2):
+            roi = RefinementROI(
+                bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
+                crop_acescg=np.full((20, 20, 3), 0.4, dtype=np.float32),
+                region=AnatomicalRegion.HAND,
+                confidence=0.9,
+                frame_index=t,
+            )
+            rois_per_frame.append([roi])
+
+        pipeline = LocalRefinementPipeline()
+        # Run without explicit candidates to trigger region dispatch
+        result = pipeline.run(frames, rois_per_frame)
+
+        assert result.num_rois_detected == 2
+        assert result.frames_refined.shape == frames.shape

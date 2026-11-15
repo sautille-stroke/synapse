@@ -97,3 +97,4 @@ class RefinementResult:
         default_factory=lambda: np.zeros(4, dtype=np.float32)
     )
     inverse_affine_2x3: np.ndarray | None = None
+    smoothed_bbox: np.ndarray | None = None

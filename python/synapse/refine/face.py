@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from synapse.errors import ContractValidationError
 from synapse.refine.types import (
     AnatomicalRegion,
     FusionMethod,
@@ -200,15 +201,22 @@ class FaceRefiner:
         reference.  May also be passed per-call to :meth:`refine`.
     gaze_threshold_deg:
         Maximum allowed gaze deviation in degrees.
+    strict:
+        When ``True``, raise :class:`ContractValidationError` if the
+        identity anchor gallery is empty or missing — no silent
+        pass-through without real identity priors.
     """
 
     def __init__(
         self,
         gallery: CanonicalAnchorGallery | None = None,
         gaze_threshold_deg: float = _GAZE_DEVIATION_THRESHOLD_DEG,
+        *,
+        strict: bool = False,
     ) -> None:
         self._gallery = gallery
         self._gaze_threshold_deg = gaze_threshold_deg
+        self._strict = strict
 
     def refine(
         self,
@@ -231,8 +239,27 @@ class FaceRefiner:
         -------
         RefinementResult
             Refined face patch in linear ACEScg.
+
+        Raises
+        ------
+        ContractValidationError
+            If ``strict=True`` and no identity anchor gallery is
+            available (neither per-call nor instance-level), or the
+            gallery is empty.
         """
         active_gallery = gallery or self._gallery
+
+        if self._strict:
+            if active_gallery is None or active_gallery.num_anchors == 0:
+                raise ContractValidationError(
+                    "FaceRefiner strict mode: identity anchor gallery "
+                    "is missing or empty.  Cannot refine face without "
+                    "identity priors.",
+                    agent_fix_hint=(
+                        "Populate a CanonicalAnchorGallery with at least "
+                        "one reference embedding, or set strict=False."
+                    ),
+                )
 
         refined = roi.crop_acescg.copy()
         quality = 1.0
@@ -279,12 +306,14 @@ class FaceRefiner:
             blend_factor = 0.15  # moderate identity-driven blend
             adjusted_lum = lum * (1.0 - blend_factor) + target_lum * blend_factor
             scale = np.where(lum > 1e-6, adjusted_lum / lum, 1.0)
-            refined = np.clip(refined * scale, 0.0, 1.0).astype(np.float32)
+            # Preserve HDR: clamp only negatives, keep values > 1.0
+            refined = np.maximum(refined * scale, 0.0).astype(np.float32)
 
             # Apply per-channel identity-driven colour correction
-            refined = np.clip(
+            # Preserve HDR: clamp only negatives, keep values > 1.0
+            refined = np.maximum(
                 refined * channel_weights[np.newaxis, np.newaxis, :],
-                0.0, 1.0,
+                0.0,
             ).astype(np.float32)
 
         # Gaze consistency check (simulated: compare original vs refined
