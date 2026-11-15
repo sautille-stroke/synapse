@@ -1,0 +1,97 @@
+# Synapse CI — Horizon 6 Quality Baseline
+# Covers H6-P1-09: Automated gate for lint, types, tests, DAG, wire guard.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Job 1: Python fast checks (ruff, mypy, guards, pytest)
+  # -----------------------------------------------------------------------
+  python-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,image,metrics]"
+
+      - name: Ruff lint
+        run: ruff check python/ tests/ scripts/ tools/
+
+      - name: Mypy strict
+        run: mypy python/synapse tests/ scripts/ tools/
+
+      - name: Wire guard
+        run: python tools/wire_guard.py --check
+
+      - name: Import DAG guard
+        run: python tools/import_dag_guard.py --check
+
+      - name: Pytest (fast)
+        env:
+          SYNAPSE_CI_STRICT_DEPS: "1"
+        run: pytest tests/ -m 'not slow' -q -W error::scipy.linalg.LinAlgWarning
+
+  # -----------------------------------------------------------------------
+  # Job 2: Native C++20 geometry core + Data Inspector Bazel tests
+  # -----------------------------------------------------------------------
+  native-bazel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: ${{ github.workflow }}
+
+      - name: Test csrc/geometry
+        working-directory: csrc/geometry
+        run: bazel test //... --config=opt
+
+      - name: Test data-inspector native
+        working-directory: tools/data-inspector/native
+        run: bazel test //... --config=opt
+
+  # -----------------------------------------------------------------------
+  # Job 3: Electron Data Inspector bundle loading
+  # -----------------------------------------------------------------------
+  electron-inspector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Electron dependencies
+        working-directory: tools/data-inspector
+        run: npm ci --ignore-scripts
+
+      - name: Bundle loading test
+        run: |
+          node tools/data-inspector/test/test-bundle-loading.js
+          # Ensure no files were dirtied
+          test -z "$(git status --porcelain)"

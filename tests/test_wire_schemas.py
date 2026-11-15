@@ -162,6 +162,7 @@ _SCHEMA_FILENAMES = [
     "job_bundle.v1.0.schema.json",
     "lora.v1.0.schema.json",
     "inspection.v1.0.schema.json",
+    "inspection.v2.0.schema.json",
     "refine_session.v1.0.schema.json",
     "bundle.v1.0.schema.json",
 ]
@@ -226,9 +227,10 @@ class TestJsonSchemas:
         schema = json.loads(path.read_text(encoding="utf-8"))
         assert "pattern" in schema["properties"]["adapter_sha256"]
 
-    def test_inspection_schema_defect_categories(self) -> None:
+    @pytest.mark.parametrize("filename", ["inspection.v1.0.schema.json", "inspection.v2.0.schema.json"])
+    def test_inspection_schema_defect_categories(self, filename: str) -> None:
         """Inspection schema has correct defect categories."""
-        path = _SCHEMAS_DIR / "inspection.v1.0.schema.json"
+        path = _SCHEMAS_DIR / filename
         schema = json.loads(path.read_text(encoding="utf-8"))
         defect_schema = schema["$defs"]["DefectAnnotation3D"]
         categories = defect_schema["properties"]["category"]["enum"]

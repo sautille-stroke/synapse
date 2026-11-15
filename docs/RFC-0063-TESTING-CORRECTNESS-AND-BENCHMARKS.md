@@ -1,8 +1,8 @@
 # RFC 0063: Synapse 质量保障、测试验证机制与行业横向评测基准规范
 
-> **Namespace Alias**: `SYN-RFC-0063` (repo-local). Ecosystem canonical: `all-overview/rfcs/0063`.
+> **Namespace Alias**: `SYN-RFC-0063` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0063`.
 
-- **RFC 编号**: `RFC 0063`
+- **RFC 编号**: `SYN-RFC-0063`
 - **文档状态**: `Implemented (v1.1)`
 - **作者**: sautille-stroke / DervGen 核心架构组
 - **创建日期**: 2026-10

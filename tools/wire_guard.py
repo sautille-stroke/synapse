@@ -277,6 +277,10 @@ _SCHEMA_FILES: dict[str, dict[str, str]] = {
         "expected_version_field": "schema_version",
         "expected_version_value": "2.0.0",
     },
+    "inspection.v2.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "2.0.0",
+    },
     "refine_session.v1.0.schema.json": {
         "expected_version_field": "schema_version",
         "expected_version_value": "synapse.refine_session.v1.0",
@@ -301,6 +305,12 @@ _SCHEMA_PYTHON_ALIGNMENT: dict[str, tuple[str, str, list[str]]] = {
          "adapter_path", "adapter_sha256", "target_modules"],
     ),
     "inspection.v1.0.schema.json": (
+        "synapse.inspect.schemas",
+        "InspectionReport",
+        ["asset_id", "asset_name", "inspection_timestamp",
+         "overall_quality_score"],
+    ),
+    "inspection.v2.0.schema.json": (
         "synapse.inspect.schemas",
         "InspectionReport",
         ["asset_id", "asset_name", "inspection_timestamp",

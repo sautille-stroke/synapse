@@ -254,7 +254,7 @@ flowchart LR
 - **前置依赖**: `PR-49, PR-50` · **预估规模**: ~460 LOC（1.5 人天）
 - **建议标题**: `fix(csrc): support n-gon fan triangulation in degenerate/intersection checks, single-pass FFI and release GIL [model-tag]`
 - **改造清单**:
-  - `[MODIFY]` [csrc/geometry/src/mesh_checks.cc](../../csrc/geometry/src/mesh_checks.cc) · [csrc/geometry/src/bindings.cc](../../csrc/geometry/src/bindings.cc) · `csrc/geometry/tests/test_geometry.cc`
+  - `[MODIFY]` ~~csrc/geometry/src/mesh_checks.cc~~ (deleted in #47, logic delegated to `@aether//geo`) · [csrc/geometry/src/bindings.cc](../../csrc/geometry/src/bindings.cc) · `csrc/geometry/tests/test_geometry.cc`
     - `checkDegenerateFaces` 与 `checkSelfIntersections`：对 `verts_per_face > 3` 的多边形/四边面按统一三角扇 `(f[0], f[k], f[k+1])`（`k = 1 .. verts_per_face - 2`）完整展开所有子三角形，彻底消除 Quad 第二三角形 `(f[0], f[2], f[3])` 漏检盲区；
     - 优化内部拓扑校验路径，提取共享边表辅助函数避免 `checkWatertight` 重复调用 `checkManifold` 造成的 3× 边哈希表重建；
     - 为 `bindings.cc` 全量 6 个纯 C++ 导出函数挂载 `py::call_guard<py::gil_scoped_release>()`（在完成 Numpy Buffer 解析与验证后或无 Python 对象操作区间释放 GIL）。

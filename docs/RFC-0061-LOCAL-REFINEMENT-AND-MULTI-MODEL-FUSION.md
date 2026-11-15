@@ -1,9 +1,9 @@
 # RFC 0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划
 # (Local Anatomical Refinement, Multi-Model Fusion & Industrial Scalpel Stitching Specification & Plan)
 
-> **Namespace Alias**: `SYN-RFC-0061` (repo-local). Ecosystem canonical: `all-overview/rfcs/0061`.
+> **Namespace Alias**: `SYN-RFC-0061` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0061`.
 
-- **RFC 编号**: `RFC 0061`
+- **RFC 编号**: `SYN-RFC-0061`
 - **文档状态**: `Accepted (v1.1 — Aligned with M10)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`, `forgekit`)
 - **关联设计文档 (Layer B)**:

@@ -3,10 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions & Bazel symlinks
+# C extensions & Bazel symlinks & locks
 *.so
 *.pyd
 **/bazel-*
+**/MODULE.bazel.lock
 
 # Distribution / packaging
 .Python
@@ -63,4 +64,13 @@ assets/*/
 
 # Synapse-generated session data
 data/sessions/
-data/datasets/
+
+# Node.js (data-inspector)
+node_modules/
+**/node_modules/
+
+# Mypy cache
+.mypy_cache/
+
+# Ruff cache
+.ruff_cache/

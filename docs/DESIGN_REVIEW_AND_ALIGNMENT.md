@@ -172,7 +172,7 @@ synapse/
 ├── csrc/geometry/                       # [Tier 0] 现代 C++20 原生几何核 (Bazel, @aether//math, MSVC 兼容)
 │   ├── BUILD.bazel                      # 目标 :geometry_lib, :geometry_bindings (pybind11)
 │   ├── include/synapse/geometry/        # mesh_checks.h, types.h, aabb.h
-│   └── src/                             # mesh_checks.cc, bindings.cc
+│   └── src/                             # bindings.cc (mesh_checks delegated to @aether//geo)
 ├── python/synapse/
 │   ├── py.typed                         # PEP 561 强类型标记
 │   ├── errors.py                        # SynapseError 异常族、退出码 (0/10/20/30/40/50)、agent_fix_hint
