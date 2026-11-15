@@ -279,13 +279,21 @@ def export_static_html(
             embedded_images["contact_sheet.png"] = uri
 
     html_content = VIEWER_HTML_TEMPLATE
+    # Escape <, >, & in JSON to prevent XSS via </script> tag injection
+    # when embedding arbitrary user data inside <script> blocks.
+    safe_manifest = json.dumps(manifest_data).replace(
+        "&", "\\u0026"
+    ).replace("<", "\\u003c").replace(">", "\\u003e")
+    safe_images = json.dumps(embedded_images).replace(
+        "&", "\\u0026"
+    ).replace("<", "\\u003c").replace(">", "\\u003e")
     html_content = html_content.replace(
         "/*__EMBEDDED_MANIFEST__*/ null",
-        json.dumps(manifest_data),
+        safe_manifest,
     )
     html_content = html_content.replace(
         "/*__EMBEDDED_IMAGES__*/ {}",
-        json.dumps(embedded_images),
+        safe_images,
     )
 
     if output_path is None:

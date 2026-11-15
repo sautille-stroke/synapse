@@ -24,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -367,9 +367,22 @@ def _handle_neural_video_generate(
             ),
         )
 
-    from synapse.fgpp.frame import FGPPSequence
+    from synapse.fgpp import import_fgpp
 
-    fgpp_seq = FGPPSequence.load_metadata(fgpp_dir_str)
+    fgpp_result = import_fgpp(fgpp_dir_str, lazy=False)
+    # lazy=False always returns FGPPSequence; narrow the union for mypy.
+    assert not isinstance(fgpp_result, Iterator)
+    fgpp_seq = fgpp_result
+    if not fgpp_seq.frames:
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No EXR frames found in FGPP directory: {fgpp_dir_str!r}",
+            agent_fix_hint=(
+                "Ensure the FGPP directory contains frame_*.exr files "
+                "alongside metadata.json."
+            ),
+        )
     conditions = adapter.prepare_conditions(fgpp_seq, gen_cfg)
 
     result: VideoResult = adapter.generate(
@@ -899,10 +912,52 @@ def run_worker_cli(
             )
         return 20
 
-    raw = json.loads(
-        manifest_file.read_text(encoding="utf-8"),
-    )
-    manifest = BundleManifest(**raw)
+    try:
+        raw = json.loads(
+            manifest_file.read_text(encoding="utf-8"),
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        err = {
+            "status": "error",
+            "exit_code": 10,
+            "message": f"Invalid JSON in bundle manifest: {exc}",
+            "agent_fix_hint": (
+                "Fix the JSON syntax in the bundle manifest file "
+                f"'{manifest_file}' and retry."
+            ),
+        }
+        if json_mode:
+            json.dump(err, sys.stdout, default=str)
+            print()
+        else:
+            print(
+                f"Error: {err['message']}", file=sys.stderr,
+            )
+        return 10
+
+    try:
+        manifest = BundleManifest(**raw)
+    except Exception as exc:
+        err = {
+            "status": "error",
+            "exit_code": 10,
+            "message": (
+                f"Bundle manifest validation failed: {exc}"
+            ),
+            "agent_fix_hint": (
+                "Ensure the bundle manifest conforms to the "
+                "synapse.job_bundle.v1.0 schema. Check required "
+                "fields: job_id, stage, schema_version."
+            ),
+        }
+        if json_mode:
+            json.dump(err, sys.stdout, default=str)
+            print()
+        else:
+            print(
+                f"Error: {err['message']}", file=sys.stderr,
+            )
+        return 10
 
     worker = JobBundleWorker()
     result = worker.execute(manifest)

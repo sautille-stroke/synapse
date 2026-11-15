@@ -116,7 +116,8 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
                 failed_scenarios.append(f"{r.scenario_name}: error {r.error}")
             elif r.gate_verdict is not None and not r.gate_verdict.passed:
                 failed_scenarios.append(
-                    f"{r.scenario_name}: gate not passed ({', '.join(r.gate_verdict.failures)})"
+                    f"{r.scenario_name}: gate not passed ("
+                    f"{', '.join(v.metric_name for v in r.gate_verdict.violations)})"
                 )
         if failed_scenarios:
             raise QualityGateError(
