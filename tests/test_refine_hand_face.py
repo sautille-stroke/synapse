@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from synapse.errors import ContractValidationError
 from synapse.refine.face import CanonicalAnchorGallery, FaceRefiner
 from synapse.refine.hand import HandRefiner
 from synapse.refine.types import AnatomicalRegion, RefinementROI
@@ -318,3 +319,110 @@ class TestHandRefiner:
         result = refiner.refine(roi)
         assert result.region == AnatomicalRegion.HAND
         assert result.refined_acescg.shape == (32, 32, 3)
+
+
+# ---------------------------------------------------------------------------
+# PR-81: HandRefiner strict contract mode tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandRefinerStrictMode:
+    """Strict mode raises ContractValidationError without real priors."""
+
+    def test_hand_strict_raises_without_priors(self) -> None:
+        """strict=True + no depth/normal maps → ContractValidationError."""
+        refiner = HandRefiner(strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.HAND)
+        with pytest.raises(ContractValidationError):
+            refiner.refine(roi)
+
+    def test_hand_strict_passes_with_depth_map(self) -> None:
+        """strict=True + depth_map provided → successful refinement."""
+        refiner = HandRefiner(strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.HAND)
+        depth = np.full((32, 32), 5.0, dtype=np.float32)
+        result = refiner.refine(roi, depth_map=depth)
+        assert result.region == AnatomicalRegion.HAND
+        assert result.refined_acescg.shape == (32, 32, 3)
+
+    def test_hand_strict_passes_with_priors(self) -> None:
+        """strict=True + pre-computed priors → successful refinement."""
+        refiner = HandRefiner(strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.HAND)
+        priors = refiner.prepare_hard_priors(roi)
+        result = refiner.refine(roi, priors=priors)
+        assert result.region == AnatomicalRegion.HAND
+
+    def test_hand_non_strict_passes_without_priors(self) -> None:
+        """strict=False (default) + no priors → fallback to synthetics."""
+        refiner = HandRefiner(strict=False)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.HAND)
+        result = refiner.refine(roi)
+        assert result.region == AnatomicalRegion.HAND
+
+
+# ---------------------------------------------------------------------------
+# PR-81: FaceRefiner strict contract mode tests
+# ---------------------------------------------------------------------------
+
+
+class TestFaceRefinerStrictMode:
+    """Strict mode raises ContractValidationError without anchor gallery."""
+
+    def test_face_strict_raises_without_gallery(self) -> None:
+        """strict=True + no gallery → ContractValidationError."""
+        refiner = FaceRefiner(strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.FACE)
+        with pytest.raises(ContractValidationError):
+            refiner.refine(roi)
+
+    def test_face_strict_raises_with_empty_gallery(self) -> None:
+        """strict=True + empty gallery → ContractValidationError."""
+        gallery = CanonicalAnchorGallery(embedding_dim=64)
+        refiner = FaceRefiner(gallery=gallery, strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.FACE)
+        with pytest.raises(ContractValidationError):
+            refiner.refine(roi)
+
+    def test_face_strict_passes_with_populated_gallery(self) -> None:
+        """strict=True + populated gallery → successful refinement."""
+        rng = np.random.RandomState(42)
+        gallery = CanonicalAnchorGallery(embedding_dim=64)
+        emb = rng.randn(64).astype(np.float64)
+        emb /= np.linalg.norm(emb)
+        gallery.add_anchor(0.0, 0.0, emb)
+
+        refiner = FaceRefiner(gallery=gallery, strict=True)
+        roi = _make_roi(32, 32, region=AnatomicalRegion.FACE)
+        result = refiner.refine(roi)
+        assert result.region == AnatomicalRegion.FACE
+
+
+# ---------------------------------------------------------------------------
+# PR-81: HDR preservation in hand refiner
+# ---------------------------------------------------------------------------
+
+
+class TestHandRefinerHDRPreservation:
+    """Hand refiner must NOT clip values > 1.0 in linear ACEScg."""
+
+    def test_hand_refine_preserves_hdr_values(self) -> None:
+        """HDR pixels (> 1.0) in the crop must survive refinement."""
+        crop = np.full((32, 32, 3), 0.5, dtype=np.float32)
+        # Set some HDR pixels
+        crop[10:15, 10:15, :] = 2.5
+        roi = RefinementROI(
+            bbox_xyxy=np.array([0, 0, 32, 32], dtype=np.float32),
+            crop_acescg=crop,
+            region=AnatomicalRegion.HAND,
+            confidence=0.9,
+            frame_index=0,
+        )
+        refiner = HandRefiner()
+        result = refiner.refine(roi)
+        # The HDR region should NOT be clipped to 1.0
+        hdr_region = result.refined_acescg[10:15, 10:15, :]
+        assert hdr_region.max() > 1.0, (
+            f"HDR values were clipped: max={hdr_region.max():.4f}, "
+            f"expected > 1.0"
+        )

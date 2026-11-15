@@ -191,7 +191,9 @@ class LocalRefinementPipeline:
         # --- Wire up anatomical refiners (PR-45 fix #1) ---
         self.hand_refiner = HandRefiner()
         self.face_refiner = FaceRefiner()
-        self.bbox_tracker = KalmanBBoxTracker()
+        # PR-81: Independent Kalman tracker per track_id instead of
+        # a single shared tracker that cross-contaminates state.
+        self._bbox_trackers: dict[str, KalmanBBoxTracker] = {}
         self.tiled_executor = TiledBypassExecutor()
 
     def run(
@@ -244,6 +246,7 @@ class LocalRefinementPipeline:
 
             for roi_idx, roi in enumerate(rois):
                 total_rois += 1
+                smoothed_bbox: np.ndarray | None = None
 
                 # --- PR-45 fix #2: Region-based dispatch when no
                 # explicit candidates are provided ---
@@ -256,8 +259,14 @@ class LocalRefinementPipeline:
                 else:
                     # Dispatch to region-specific refiner instead of
                     # identity self-merge (cands = [roi.crop_acescg]).
-                    # Apply temporal smoothing via KalmanBBoxTracker.
-                    smoothed_bbox = self.bbox_tracker.update(roi.bbox_xyxy)
+                    # PR-81: Maintain independent KalmanBBoxTracker per
+                    # track_id to prevent cross-contamination between
+                    # different tracked entities.
+                    track_id = f"{roi.region.name}_{roi_idx}"
+                    if track_id not in self._bbox_trackers:
+                        self._bbox_trackers[track_id] = KalmanBBoxTracker()
+                    tracker = self._bbox_trackers[track_id]
+                    smoothed_bbox = tracker.update(roi.bbox_xyxy)
                     roi_smoothed = RefinementROI(
                         bbox_xyxy=smoothed_bbox,
                         crop_acescg=roi.crop_acescg,
@@ -299,6 +308,11 @@ class LocalRefinementPipeline:
                     quality_score=roi.confidence,
                     frame_index=t,
                     bbox_xyxy=roi.bbox_xyxy.copy(),
+                    smoothed_bbox=(
+                        smoothed_bbox.copy()
+                        if smoothed_bbox is not None
+                        else None
+                    ),
                 )
                 frame_refs.append(ref)
 

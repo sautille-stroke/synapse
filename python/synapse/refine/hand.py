@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from synapse.errors import ContractValidationError
 from synapse.refine.types import (
     AnatomicalRegion,
     FusionMethod,
@@ -63,6 +64,11 @@ class HandRefiner:
         Near plane for log-depth normalisation (metres).
     z_far:
         Far plane for log-depth normalisation (metres).
+    strict:
+        When ``True``, raise :class:`ContractValidationError` if
+        critical FGPP geometric priors (depth/normal maps or MANO
+        skeleton) are missing, instead of silently falling back
+        to synthetic defaults.
     """
 
     def __init__(
@@ -70,10 +76,13 @@ class HandRefiner:
         finger_count_expected: int = _DEFAULT_FINGER_COUNT,
         z_near: float = _Z_NEAR_DEFAULT,
         z_far: float = _Z_FAR_DEFAULT,
+        *,
+        strict: bool = False,
     ) -> None:
         self._finger_count_expected = finger_count_expected
         self._z_near = z_near
         self._z_far = z_far
+        self._strict = strict
 
     # -- public interface ----------------------------------------------------
 
@@ -142,6 +151,9 @@ class HandRefiner:
         self,
         roi: RefinementROI,
         priors: dict[str, np.ndarray] | None = None,
+        *,
+        depth_map: np.ndarray | None = None,
+        normal_map: np.ndarray | None = None,
     ) -> RefinementResult:
         """Refine a hand ROI, validating finger topology first.
 
@@ -156,14 +168,45 @@ class HandRefiner:
         priors:
             Pre-computed geometric priors from :meth:`prepare_hard_priors`.
             If ``None``, priors are computed on the fly.
+        depth_map:
+            Optional FGPP depth map for the ROI crop.
+        normal_map:
+            Optional FGPP normal map for the ROI crop.
 
         Returns
         -------
         RefinementResult
             Refined hand patch in linear ACEScg.
+
+        Raises
+        ------
+        ContractValidationError
+            If ``strict=True`` and neither *priors* nor *depth_map* /
+            *normal_map* are provided (critical FGPP geometric priors
+            missing).
         """
+        has_real_priors = (
+            priors is not None
+            or depth_map is not None
+            or normal_map is not None
+        )
+
+        if self._strict and not has_real_priors:
+            raise ContractValidationError(
+                "HandRefiner strict mode: critical FGPP geometric priors "
+                "(depth_map / normal_map or MANO skeleton) are missing. "
+                "Provide real priors or disable strict mode.",
+                agent_fix_hint=(
+                    "Supply depth_map= and normal_map= from FGPP EXR "
+                    "channels, or set strict=False to allow synthetic "
+                    "fallback priors."
+                ),
+            )
+
         if priors is None:
-            priors = self.prepare_hard_priors(roi)
+            priors = self.prepare_hard_priors(
+                roi, depth_map=depth_map, normal_map=normal_map,
+            )
 
         hand_mask = priors["hand_mask"]
         finger_count, is_valid = self._validate_finger_topology(hand_mask)
@@ -186,6 +229,7 @@ class HandRefiner:
         # Apply depth-guided refinement (blend original with
         # depth-modulated version for smoother hand geometry)
         log_depth = priors["log_depth_normalized"]
+        cam_normals = priors["camera_normal_encoded"]
         refined = roi.crop_acescg.copy()
 
         # Depth-aware sharpening: emphasise high-frequency detail in
@@ -199,7 +243,27 @@ class HandRefiner:
             # Gently sharpen by boosting local contrast at depth edges
             local_mean = np.mean(refined, axis=-1, keepdims=True)
             sharpened = refined + edge_weight * (refined - local_mean) * 0.3
-            refined = np.clip(sharpened, 0.0, 1.0).astype(np.float32)
+            # Preserve HDR: clamp only negatives, keep values > 1.0
+            refined = np.maximum(sharpened, 0.0).astype(np.float32)
+
+        # Normal-guided alignment: when real normals are supplied,
+        # apply a subtle surface-normal-weighted correction to reduce
+        # flat-shading artefacts at finger tips.
+        if (
+            has_real_priors
+            and cam_normals.shape[:2] == refined.shape[:2]
+        ):
+            # Use the z-component (facing camera) as a proximity weight
+            normal_z = cam_normals[..., 2:3].astype(np.float32)
+            # Regions facing camera (z ≈ 1.0) get less correction;
+            # glancing angles (z ≈ 0.5) get more.
+            correction_weight = np.clip(1.0 - normal_z, 0.0, 0.5)
+            # Pull towards local neighbourhood mean at glancing angles
+            local_mean_n = np.mean(refined, axis=-1, keepdims=True)
+            refined = (
+                refined * (1.0 - correction_weight * 0.15)
+                + local_mean_n * (correction_weight * 0.15)
+            ).astype(np.float32)
 
         return RefinementResult(
             refined_acescg=refined,

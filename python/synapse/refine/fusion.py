@@ -179,10 +179,16 @@ def _fuse_latent_timestep_switch(
             mid_detail = mid_accum - mid_structure
             detail = 0.5 * detail + 0.5 * mid_detail
 
-    # Weighted combination
-    w_struct = weights[0] / max(float(np.sum(weights)), 1e-8)
-    w_detail = weights[-1] / max(float(np.sum(weights)), 1e-8)
+    # Weighted combination — normalise so w_struct + w_detail = 1.0
+    w_total = max(float(np.sum(weights)), 1e-8)
+    w_struct = weights[0] / w_total
+    w_detail = weights[-1] / w_total
+    # Ensure minimum structural contribution
     w_struct = max(w_struct, 0.3)
+    # Re-normalise so they sum to exactly 1.0
+    w_sum = w_struct + w_detail
+    w_struct = w_struct / w_sum
+    w_detail = w_detail / w_sum
 
     result = w_struct * structure + w_detail * detail
     return np.asarray(result)

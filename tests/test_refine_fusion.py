@@ -295,3 +295,50 @@ def test_uncertainty_fusion_weights_agreement(
         result, 0.5, atol=0.01,
         err_msg="Uncertainty fusion deviated from agreement value",
     )
+
+
+# ---------------------------------------------------------------------------
+# PR-81: LATENT_TIMESTEP_SWITCH weight normalization (sum = 1.0)
+# ---------------------------------------------------------------------------
+
+
+def test_latent_timestep_switch_weight_normalization(
+    fusion: MultiModelRefineFusion,
+) -> None:
+    """LATENT_TIMESTEP_SWITCH w_struct + w_detail must sum to 1.0.
+
+    The fusion output should be a properly normalised combination of
+    structure and detail, not an under- or over-weighted mixture.
+    """
+    # Two patches: one with strong structure, one with detail
+    patch_struct = np.full((H, W, C), 0.4, dtype=np.float32)
+    rng = np.random.default_rng(77)
+    patch_detail = patch_struct + rng.standard_normal(
+        (H, W, C),
+    ).astype(np.float32) * 0.1
+    patch_detail = np.clip(patch_detail, 0.0, 1.0)
+
+    # Asymmetric weights
+    weights = np.array([0.7, 0.3], dtype=np.float32)
+    result = fusion.fuse(
+        [patch_struct, patch_detail],
+        FusionMethod.LATENT_TIMESTEP_SWITCH,
+        weights,
+    )
+
+    assert result.dtype == np.float32
+    assert result.shape == (H, W, C)
+    assert np.all(np.isfinite(result))
+
+    # The result should have similar energy to the inputs (not diminished
+    # by improper weight normalisation).  With weights summing to 1.0,
+    # the mean of the result should be within the range of input means.
+    mean_struct = float(np.mean(patch_struct))
+    mean_detail = float(np.mean(patch_detail))
+    mean_result = float(np.mean(result))
+    low_bound = min(mean_struct, mean_detail) * 0.3
+    high_bound = max(mean_struct, mean_detail) * 2.0
+    assert low_bound <= mean_result <= high_bound, (
+        f"Result mean {mean_result:.4f} outside expected range "
+        f"[{low_bound:.4f}, {high_bound:.4f}]"
+    )

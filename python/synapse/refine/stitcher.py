@@ -145,7 +145,19 @@ class ScalpelStitcher:
                 )
 
                 # -------------------------------------------------------
+                # PR-81: Initialise from background frame, NOT zeros.
+                # The warped fg_full only has valid pixels where
+                # fg_mask_bool is True; everywhere else must show the
+                # original frame to prevent black halos.
+                # -------------------------------------------------------
+                bg_frame = result[t].copy()
+                composite_full = bg_frame.copy()
+                composite_full[fg_mask_bool] = fg_full[fg_mask_bool]
+
+                # -------------------------------------------------------
                 # 2. Surgical mask — motion-adaptive feathered alpha.
+                #    PR-81: Constrain feathering to roi_rect interior
+                #    so it doesn't bleed outside the refinement area.
                 # -------------------------------------------------------
                 mv_frame = (
                     motion_vectors[t] if motion_vectors is not None else None
@@ -158,24 +170,53 @@ class ScalpelStitcher:
                     feather_width=float(ring),
                 )
 
+                # PR-81: Clamp surgical mask to ROI bounding box to
+                # prevent feathering bleeding outside the refinement
+                # region. Pixels outside the bbox keep alpha=0.
+                bbox = patch.bbox_xyxy.astype(np.intp)
+                x1 = max(int(bbox[0]), 0)
+                y1 = max(int(bbox[1]), 0)
+                x2 = min(int(bbox[2]) + ring, w)
+                y2 = min(int(bbox[3]) + ring, h)
+                roi_clamp_mask = np.zeros((h, w), dtype=bool)
+                roi_clamp_mask[y1:y2, x1:x2] = True
+                surgical_alpha = surgical_alpha * roi_clamp_mask.astype(
+                    np.float32,
+                )
+
                 # -------------------------------------------------------
-                # 3. Border-ring LAB colour match on sRGB proxies.
+                # 3. Border-ring LAB colour match ONLY within local
+                #    ROI bounding box (not full frame).
                 # -------------------------------------------------------
-                fg_srgb = _acescg_to_srgb_f32(fg_full)
-                bg_srgb = _acescg_to_srgb_f32(result[t])
+                fg_srgb = _acescg_to_srgb_f32(composite_full)
+                bg_srgb = _acescg_to_srgb_f32(bg_frame)
+
+                # Create an ROI-local mask for colour matching
+                roi_fg_mask = fg_mask_bool & roi_clamp_mask
                 matched_srgb = border_ring_lab_match(
-                    fg_srgb, bg_srgb, fg_mask_bool,
+                    fg_srgb, bg_srgb, roi_fg_mask,
                     ring_width_px=ring,
                 )
 
                 # -------------------------------------------------------
                 # 4. Laplacian pyramid blend in sRGB then convert back.
+                #    PR-81: Preserve linear ACEScg HDR pixels (> 1.0)
+                #    outside the blend region — zero truncation.
                 # -------------------------------------------------------
                 blended_srgb = laplacian_pyramid_blend(
                     matched_srgb, bg_srgb, surgical_alpha,
                     num_levels=4,
                 )
-                result[t] = _srgb_to_acescg_f32(blended_srgb)
+                blended_acescg = _srgb_to_acescg_f32(blended_srgb)
+
+                # PR-81: Preserve HDR. Only apply blended result where
+                # the surgical alpha is > 0. Outside, keep original
+                # frame pixels (including HDR > 1.0) completely intact.
+                alpha_3ch = surgical_alpha[..., np.newaxis]
+                result[t] = (
+                    alpha_3ch * blended_acescg
+                    + (1.0 - alpha_3ch) * bg_frame
+                ).astype(np.float32)
 
                 # -------------------------------------------------------
                 # Measure border quality with real CIE ΔE₀₀.

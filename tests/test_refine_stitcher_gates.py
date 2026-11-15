@@ -540,3 +540,120 @@ def test_export_hard_negatives() -> None:
             parsed = json.loads(line)
             assert "frame_index" in parsed
             assert "failure_reasons" in parsed
+
+
+# ---------------------------------------------------------------------------
+# PR-81: White background + HDR pixel stitch — no black halo, HDR preserved
+# ---------------------------------------------------------------------------
+
+
+def test_stitcher_no_black_halo_white_background() -> None:
+    """White background + local stitch: ROI outer ring 8-24px has no
+    black halo (all values > 0.7 on a white background).
+    """
+    h, w = 128, 128
+    # White background (linear ACEScg 1.0)
+    frames = np.full((1, h, w, 3), 1.0, dtype=np.float32)
+    config = StitchConfig(border_ring_px=8)
+    stitcher = ScalpelStitcher(config)
+
+    # A refined patch slightly different from white
+    patch_size = 30
+    refined = np.full((patch_size, patch_size, 3), 0.9, dtype=np.float32)
+    bbox = np.array([40, 40, 40 + patch_size, 40 + patch_size],
+                    dtype=np.float32)
+    ref_result = RefinementResult(
+        refined_acescg=refined,
+        region=AnatomicalRegion.HAND,
+        fusion_method=FusionMethod.CASCADE,
+        bbox_xyxy=bbox,
+    )
+    refinements: list[list[RefinementResult]] = [[ref_result]]
+    result, _ = stitcher.stitch_sequence(frames, refinements)
+
+    # Check the outer ring (8-24px outside the patch bbox) for black
+    # halo. On a white background, all pixels in the border region
+    # should remain bright (> 0.7).
+    ring_end = 24
+    x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+    # Sample the outer ring region
+    outer_y_top = max(y1 - ring_end, 0)
+    outer_y_bot = min(y2 + ring_end, h)
+    outer_x_left = max(x1 - ring_end, 0)
+    outer_x_right = min(x2 + ring_end, w)
+
+    outer_ring = result[0, outer_y_top:outer_y_bot,
+                        outer_x_left:outer_x_right, :]
+
+    # No pixel in the border region should be near-black
+    min_val = float(outer_ring.min())
+    assert min_val > 0.5, (
+        f"Black halo detected: outer ring min value = {min_val:.4f} "
+        f"(expected > 0.5 on white background)"
+    )
+
+
+def test_stitcher_hdr_pixel_preservation() -> None:
+    """HDR pixel (2.5) outside ROI must survive stitching at exactly 2.5,
+    no [0,1] truncation.
+    """
+    h, w = 128, 128
+    # Create a frame with HDR pixels outside the patch region
+    frames = np.full((1, h, w, 3), 0.5, dtype=np.float32)
+    # Place an HDR pixel at a known location far from the patch
+    hdr_y, hdr_x = 5, 5
+    frames[0, hdr_y, hdr_x, :] = 2.5
+
+    config = StitchConfig(border_ring_px=8)
+    stitcher = ScalpelStitcher(config)
+
+    # Patch placed far from the HDR pixel
+    refined = np.full((20, 20, 3), 0.8, dtype=np.float32)
+    ref_result = RefinementResult(
+        refined_acescg=refined,
+        region=AnatomicalRegion.FACE,
+        fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,
+        bbox_xyxy=np.array([80, 80, 100, 100], dtype=np.float32),
+    )
+    refinements: list[list[RefinementResult]] = [[ref_result]]
+    result, _ = stitcher.stitch_sequence(frames, refinements)
+
+    # The HDR pixel must be preserved exactly
+    hdr_result = result[0, hdr_y, hdr_x, :]
+    np.testing.assert_allclose(
+        hdr_result, 2.5, atol=1e-5,
+        err_msg=(
+            f"HDR pixel was truncated from 2.5 to {hdr_result}. "
+            "Stitcher must preserve linear ACEScg HDR values > 1.0"
+        ),
+    )
+
+
+def test_stitcher_hdr_pixel_inside_frame_not_truncated() -> None:
+    """HDR pixels in the same frame as a refinement patch must not be
+    clipped to [0,1] even when they are near the patch boundary.
+    """
+    h, w = 128, 128
+    frames = np.full((1, h, w, 3), 0.5, dtype=np.float32)
+    # Place HDR pixel just outside the patch bbox + ring
+    hdr_y, hdr_x = 10, 10
+    frames[0, hdr_y, hdr_x, :] = 3.0
+
+    config = StitchConfig(border_ring_px=4)
+    stitcher = ScalpelStitcher(config)
+
+    refined = np.full((20, 20, 3), 0.7, dtype=np.float32)
+    ref_result = RefinementResult(
+        refined_acescg=refined,
+        region=AnatomicalRegion.HAND,
+        fusion_method=FusionMethod.CASCADE,
+        bbox_xyxy=np.array([50, 50, 70, 70], dtype=np.float32),
+    )
+    refinements: list[list[RefinementResult]] = [[ref_result]]
+    result, _ = stitcher.stitch_sequence(frames, refinements)
+
+    hdr_val = float(result[0, hdr_y, hdr_x, 0])
+    assert hdr_val > 1.0, (
+        f"HDR pixel at ({hdr_y},{hdr_x}) was truncated to {hdr_val:.4f}. "
+        f"Expected > 1.0 (original was 3.0)"
+    )
