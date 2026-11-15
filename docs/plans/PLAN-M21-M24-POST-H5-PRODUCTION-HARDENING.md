@@ -78,7 +78,7 @@ flowchart LR
 ### M21：P0 线格式止血、真权重 / 真 EXR 接线与训练光栅地基（Wave 20）
 
 <a id="pr-74"></a>
-#### `PR-74`：OpenEXR `UINT32` `Cryptomatte.ID` 修复、`wire_guard` 逐通道严苛化与 `InspectionBundle` Schema 统一
+#### `[✅ PR-74]`：OpenEXR `UINT32` `Cryptomatte.ID` 修复、`wire_guard` 逐通道严苛化与 `InspectionBundle` Schema 统一（已于 PR #71 合入）
 - **对应审计缺陷**：`H6-P0-01`, `H6-P0-10`（契约部分）, `H6-P1-01`
 - **前置依赖**：`main (e37bfa6)`
 - **涉及文件与核心符号**：
