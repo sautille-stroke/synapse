@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "[inspector] Data Inspector Native v0.1.0\n";
+  std::cerr << "[inspector] Data Inspector Native v0.1.0\n";
 
   InspectorApp app(std::move(config));
 
@@ -108,6 +108,6 @@ int main(int argc, char** argv) {
 
   app.run();
 
-  std::cout << "[inspector] Clean exit\n";
+  std::cerr << "[inspector] Clean exit\n";
   return 0;
 }

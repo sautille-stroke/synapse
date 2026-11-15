@@ -4,53 +4,56 @@
 #include "inspector_app.h"
 #include "inspector_shm_server.h"
 
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <chrono>
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <sstream>
 
 using namespace synapse::inspector;
 
-static void testShmServerBasics() {
-  std::cout << "[test] Running testShmServerBasics...\n";
+// ---------------------------------------------------------------------------
+// SHM Server Tests
+// ---------------------------------------------------------------------------
 
+TEST(InspectorShmServer, BasicOpenClosePublish) {
   InspectorShmServer server;
   const std::string shmName = "/test-shm-server-basics";
   const uint32_t width = 320;
   const uint32_t height = 240;
 
   bool ok = server.open(shmName, width, height, true);
-  assert(ok && "Failed to open SHM server");
-  assert(server.isOpen() && "SHM server should be open");
-  assert(server.totalSize() >= sizeof(InspectorShmHeader) + static_cast<size_t>(width) * height * 4 * 3);
+  ASSERT_TRUE(ok) << "Failed to open SHM server";
+  EXPECT_TRUE(server.isOpen());
+  EXPECT_GE(server.totalSize(),
+            sizeof(InspectorShmHeader) + static_cast<size_t>(width) * height * 4 * 3);
 
   uint8_t* front = server.frontBuffer();
-  assert(front != nullptr && "Front buffer must not be null");
+  ASSERT_NE(front, nullptr) << "Front buffer must not be null";
 
   // Fill front buffer with test pattern
   std::memset(front, 0xAB, static_cast<size_t>(width) * height * 4);
 
   // Publish frame
   uint64_t frameNum = server.publishFrame(60.0f, 0.0166f, 1);
-  assert(frameNum == 1 && "First frame should have index 1");
+  EXPECT_EQ(frameNum, 1u) << "First frame should have index 1";
 
   const uint8_t* pub = server.publishedBuffer();
-  assert(pub != nullptr && "Published buffer must not be null");
-  assert(pub[0] == 0xAB && "Published buffer byte 0 must match written pattern");
-  assert(pub[width * height * 4 - 1] == 0xAB && "Published buffer end byte must match pattern");
+  ASSERT_NE(pub, nullptr) << "Published buffer must not be null";
+  EXPECT_EQ(pub[0], 0xAB) << "Published buffer byte 0 must match written pattern";
+  EXPECT_EQ(pub[width * height * 4 - 1], 0xAB) << "Published buffer end byte must match pattern";
 
   server.close();
-  assert(!server.isOpen() && "SHM server should be closed");
-
-  std::cout << "[test] testShmServerBasics PASSED\n";
+  EXPECT_FALSE(server.isOpen());
 }
 
-static void testInspectorAppLifecycleAndAovs() {
-  std::cout << "[test] Running testInspectorAppLifecycleAndAovs...\n";
+// ---------------------------------------------------------------------------
+// Inspector App Lifecycle & AOV Tests
+// ---------------------------------------------------------------------------
 
+TEST(InspectorApp, LifecycleAndAovs) {
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-app-aov";
   cfg.width = 320;
@@ -61,7 +64,7 @@ static void testInspectorAppLifecycleAndAovs() {
 
   InspectorApp app(cfg);
   bool initOk = app.init();
-  assert(initOk && "InspectorApp::init failed");
+  ASSERT_TRUE(initOk) << "InspectorApp::init failed";
 
   // Test commands
   app.handleCommand(R"({"type":"camera","action":"orbit","dx":15.0,"dy":10.0})");
@@ -79,7 +82,7 @@ static void testInspectorAppLifecycleAndAovs() {
     app.shmServer().publishFrame(60.0f, 0.016f);
 
     const uint8_t* pixels = app.shmServer().publishedBuffer();
-    assert(pixels != nullptr && "Pixels must be valid");
+    ASSERT_NE(pixels, nullptr) << "Pixels must be valid for view: " << v;
 
     // Assert rendered pixels contain non-background content
     bool hasNonZero = false;
@@ -89,26 +92,26 @@ static void testInspectorAppLifecycleAndAovs() {
         break;
       }
     }
-    assert(hasNonZero && "Rendered AOV frame must contain valid non-zero content");
+    EXPECT_TRUE(hasNonZero) << "Rendered AOV frame must contain valid non-zero content for view: " << v;
   }
 
   // Test screenshot export
   const std::string tmpPpm = "test_viewport_screenshot.ppm";
   bool exportOk = app.exportScreenshotPpm(tmpPpm);
-  assert(exportOk && "exportScreenshotPpm failed");
-  assert(std::filesystem::exists(tmpPpm) && "PPM file does not exist");
-  assert(std::filesystem::file_size(tmpPpm) > 1000 && "PPM file too small");
+  EXPECT_TRUE(exportOk) << "exportScreenshotPpm failed";
+  EXPECT_TRUE(std::filesystem::exists(tmpPpm)) << "PPM file does not exist";
+  EXPECT_GT(std::filesystem::file_size(tmpPpm), 1000u) << "PPM file too small";
   std::filesystem::remove(tmpPpm);
 
   // Run the loop for remaining frames
   app.run();
-
-  std::cout << "[test] testInspectorAppLifecycleAndAovs PASSED\n";
 }
 
-static void testBundleManifestLoading() {
-  std::cout << "[test] Running testBundleManifestLoading...\n";
+// ---------------------------------------------------------------------------
+// Bundle Manifest Loading
+// ---------------------------------------------------------------------------
 
+TEST(InspectorApp, BundleManifestLoading) {
   // Create temporary bundle directory
   const std::string bundleDir = "test_temp_bundle";
   std::filesystem::create_directories(bundleDir);
@@ -149,22 +152,68 @@ static void testBundleManifestLoading() {
 
   InspectorApp app(cfg);
   bool ok = app.init();
-  assert(ok && "Failed to load bundle in app.init");
+  ASSERT_TRUE(ok) << "Failed to load bundle in app.init";
 
   app.renderFrame(0.016f);
   app.shmServer().publishFrame(60.0f, 0.016f);
   const uint8_t* pixels = app.shmServer().publishedBuffer();
-  assert(pixels != nullptr);
+  EXPECT_NE(pixels, nullptr);
 
   // Clean up
   std::filesystem::remove_all(bundleDir);
-
-  std::cout << "[test] testBundleManifestLoading PASSED\n";
 }
 
-static void testCleanFastDestruction() {
-  std::cout << "[test] Running testCleanFastDestruction...\n";
+// ---------------------------------------------------------------------------
+// OBJ Loader: Out-of-bounds, negative, quad/ngon indices
+// ---------------------------------------------------------------------------
 
+TEST(InspectorApp, ObjLoaderOutOfBoundsIndices) {
+  const std::string bundleDir = "test_oob_bundle";
+  std::filesystem::create_directories(bundleDir + "/source");
+
+  {
+    std::ofstream ofs(bundleDir + "/bundle.json");
+    ofs << R"({"sources":{"model":{"path":"source/bad.obj"}}})";
+  }
+
+  // OBJ with out-of-bounds positive index (9999) and negative relative index
+  {
+    std::ofstream ofs(bundleDir + "/source/bad.obj");
+    ofs << "v 0.0 0.0 0.0\n"
+        << "v 1.0 0.0 0.0\n"
+        << "v 0.5 1.0 0.0\n"
+        << "v 0.5 0.5 1.0\n"
+        << "f 1 2 9999\n"        // out-of-bounds: should be dropped
+        << "f -4 -3 -2\n"        // negative relative: valid (resolves to 0 1 2)
+        << "f 1 2 3 4\n";        // quad: should be fan-triangulated
+  }
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-oob";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.maxFrames = 1;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  bool ok = app.init();
+  ASSERT_TRUE(ok) << "init must not crash on OBJ with OOB indices";
+
+  // Render a frame — must not SIGSEGV
+  app.renderFrame(0.016f);
+  app.shmServer().publishFrame(60.0f, 0.016f);
+  const uint8_t* pixels = app.shmServer().publishedBuffer();
+  EXPECT_NE(pixels, nullptr);
+
+  std::filesystem::remove_all(bundleDir);
+}
+
+// ---------------------------------------------------------------------------
+// Clean Fast Destruction (no deadlock)
+// ---------------------------------------------------------------------------
+
+TEST(InspectorApp, CleanFastDestruction) {
   auto t0 = std::chrono::steady_clock::now();
   {
     InspectorConfig cfg;
@@ -175,26 +224,11 @@ static void testCleanFastDestruction() {
 
     InspectorApp app(cfg);
     bool ok = app.init();
-    assert(ok);
+    ASSERT_TRUE(ok);
     app.requestQuit();
   }
   auto t1 = std::chrono::steady_clock::now();
   auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-  std::cout << "[test] Clean destruction completed in " << elapsedMs << "ms\n";
-  assert(elapsedMs < 500 && "Destructor took too long (> 500ms)");
-
-  std::cout << "[test] testCleanFastDestruction PASSED\n";
-}
-
-int main() {
-  std::cout << "=== Running Data Inspector Native Tests ===\n";
-
-  testShmServerBasics();
-  testInspectorAppLifecycleAndAovs();
-  testBundleManifestLoading();
-  testCleanFastDestruction();
-
-  std::cout << "=== All Data Inspector Native Tests PASSED ===\n";
-  return 0;
+  EXPECT_LT(elapsedMs, 500) << "Destructor took too long (> 500ms), possible deadlock";
 }
