@@ -245,6 +245,8 @@ def _check_style_profile() -> list[str]:
                         )
         except OSError:
             pass  # Cannot read header — skip silently
+    else:
+        print("  SKIPPED (upstream @aether//style not present)")
 
     return errors
 
@@ -385,6 +387,30 @@ def _check_json_schemas() -> list[str]:
                         f"Schema '{filename}': Python {cls_name} fields "
                         f"missing from schema properties: {sorted(missing_in_schema)}"
                     )
+                missing_in_py = schema_props - py_fields
+                if missing_in_py:
+                    errors.append(
+                        f"Schema '{filename}': Schema properties missing from "
+                        f"Python {cls_name} fields: {sorted(missing_in_py)}"
+                    )
+
+                # Validate default instantiated schema_version
+                inst = None
+                try:
+                    inst = cls()
+                except Exception:
+                    try:
+                        if hasattr(cls, "model_construct"):
+                            inst = cls.model_construct()
+                    except Exception:
+                        pass
+                if inst is not None and hasattr(inst, ver_field):
+                    inst_ver = getattr(inst, ver_field)
+                    if inst_ver != meta["expected_version_value"]:
+                        errors.append(
+                            f"Schema '{filename}': Python {cls_name}.{ver_field} default "
+                            f"is '{inst_ver}', expected '{meta['expected_version_value']}'"
+                        )
             except (ImportError, AttributeError) as e:
                 errors.append(
                     f"Schema '{filename}': cannot import {mod_path}.{cls_name}: {e}"
@@ -399,8 +425,11 @@ def _check_json_schemas() -> list[str]:
 
 _RE_CHANNEL_NAME = re.compile(r'"([A-Za-z]+\.[A-Z]+)"')
 _RE_EXR_SPECS_BODY = re.compile(
-    r"getAlphabeticalEXRChannelSpecs\b.*?\{(.*?)\}\s*;\s*\}",
+    r"getAlphabeticalEXRChannelSpecs\b.*?\{\{\s*(.*?)\s*\}\}\s*;\s*\}",
     re.DOTALL,
+)
+_RE_CHANNEL_SPEC_ENTRY = re.compile(
+    r'\{\s*"([^"]+)"\s*,\s*[^,]+,\s*(\d+)u\s*,\s*PixelType::(\w+)\s*,\s*(true|false)\s*\}'
 )
 _RE_MIN_VERTS = re.compile(
     r"kMinCharacterWhiteboxVertices\s*=\s*(\d+)"
@@ -408,8 +437,12 @@ _RE_MIN_VERTS = re.compile(
 _RE_ANCHOR_INTERVAL = re.compile(
     r"kDefaultPhysicalAnchorIntervalFrames\s*=\s*(\d+)"
 )
-_RE_PIXEL_TYPE = re.compile(
-    r"(\w+)\s*=\s*(\d+)\s*,?\s*//.*PixelType|enum\s+.*PixelType"
+_RE_PIXEL_TYPE_BLOCK = re.compile(
+    r"enum\s+class\s+PixelType\s*:[^{]+\{(.*?)\};",
+    re.DOTALL,
+)
+_RE_ENUM_MEMBER = re.compile(
+    r"(\w+)\s*=\s*(\d+)"
 )
 
 
@@ -417,39 +450,49 @@ def _parse_header(path: Path) -> dict:
     """Extract contract values from the C++ header."""
     text = path.read_text(encoding="utf-8")
 
-    # Extract channel names only from the getAlphabeticalEXRChannelSpecs()
-    # function body to avoid matching group names (e.g., "BaseColor.RGB")
-    # or Doxygen comments.
-    channel_names: list[str] = []
+    channel_specs: list[dict] = []
     m_body = _RE_EXR_SPECS_BODY.search(text)
     if m_body:
         specs_body = m_body.group(1)
-        channel_names = sorted(set(_RE_CHANNEL_NAME.findall(specs_body)))
-    else:
-        # Fallback: search whole file (less precise)
-        channel_names = sorted(set(_RE_CHANNEL_NAME.findall(text)))
+        for m_spec in _RE_CHANNEL_SPEC_ENTRY.finditer(specs_body):
+            channel_specs.append({
+                "name": m_spec.group(1),
+                "component_index": int(m_spec.group(2)),
+                "pixel_type": m_spec.group(3),
+                "allow_spatial_filtering": m_spec.group(4) == "true",
+            })
 
-    result: dict = {
-        "channel_names": channel_names,
-        "min_verts": None,
-        "anchor_interval": None,
-        "pixel_type_values": {},
-    }
+    channel_names: list[str] = [spec["name"] for spec in channel_specs]
+    if not channel_names:
+        # Fallback regex if spec format differs
+        if m_body:
+            channel_names = sorted(set(_RE_CHANNEL_NAME.findall(m_body.group(1))))
+        else:
+            channel_names = sorted(set(_RE_CHANNEL_NAME.findall(text)))
 
+    pixel_type_values: dict[str, int] = {}
+    m_pt_block = _RE_PIXEL_TYPE_BLOCK.search(text)
+    if m_pt_block:
+        for em in _RE_ENUM_MEMBER.finditer(m_pt_block.group(1)):
+            pixel_type_values[em.group(1)] = int(em.group(2))
+
+    min_verts = None
     m = _RE_MIN_VERTS.search(text)
     if m:
-        result["min_verts"] = int(m.group(1))
+        min_verts = int(m.group(1))
 
+    anchor_interval = None
     m = _RE_ANCHOR_INTERVAL.search(text)
     if m:
-        result["anchor_interval"] = int(m.group(1))
+        anchor_interval = int(m.group(1))
 
-    # Extract PixelType enum values from C++ header
-    for pt_match in _RE_PIXEL_TYPE.finditer(text):
-        if pt_match.group(1) and pt_match.group(2):
-            result["pixel_type_values"][pt_match.group(1)] = int(pt_match.group(2))
-
-    return result
+    return {
+        "channel_names": channel_names,
+        "channel_specs": channel_specs,
+        "min_verts": min_verts,
+        "anchor_interval": anchor_interval,
+        "pixel_type_values": pixel_type_values,
+    }
 
 
 def _check_against_header(header_path: Path) -> list[str]:
@@ -457,40 +500,84 @@ def _check_against_header(header_path: Path) -> list[str]:
     errors: list[str] = []
     parsed = _parse_header(header_path)
 
-    # Channel names
+    # 1. Channel names & order
     py_names = get_channel_names()
     cpp_names = parsed["channel_names"]
-    if cpp_names and cpp_names != py_names:
+    if cpp_names != py_names:
         errors.append(
-            f"Channel name mismatch:\n"
+            f"Channel name/ordering mismatch:\n"
             f"  Python: {py_names}\n"
             f"  C++:    {cpp_names}"
         )
 
-    # Min vertices
+    # 2. Min vertices
     if parsed["min_verts"] is not None:
         if parsed["min_verts"] != MIN_CHARACTER_WHITEBOX_VERTICES:
             errors.append(
                 f"kMinCharacterWhiteboxVertices: C++={parsed['min_verts']}, "
                 f"Python={MIN_CHARACTER_WHITEBOX_VERTICES}"
             )
+    else:
+        errors.append("kMinCharacterWhiteboxVertices not found in C++ header")
 
-    # Anchor interval
+    # 3. Anchor interval
     if parsed["anchor_interval"] is not None:
         if parsed["anchor_interval"] != DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES:
             errors.append(
                 f"kDefaultPhysicalAnchorIntervalFrames: C++={parsed['anchor_interval']}, "
                 f"Python={DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES}"
             )
+    else:
+        errors.append("kDefaultPhysicalAnchorIntervalFrames not found in C++ header")
 
-    # PixelType enum values
+    # 4. PixelType enum values
     cpp_pt = parsed.get("pixel_type_values", {})
-    if cpp_pt:
-        py_pt = {e.name: e.value for e in PixelType}
-        for name, cpp_val in cpp_pt.items():
-            if name in py_pt and py_pt[name] != cpp_val:
+    if not cpp_pt:
+        errors.append("PixelType enum values could not be parsed from C++ header")
+    else:
+        py_pt_map = {
+            "Uint32": PixelType.UINT32,
+            "Half": PixelType.HALF,
+            "Float": PixelType.FLOAT,
+        }
+        for cpp_name, expected_py_enum in py_pt_map.items():
+            if cpp_name not in cpp_pt:
+                errors.append(f"PixelType::{cpp_name} missing in C++ header enum")
+            elif cpp_pt[cpp_name] != int(expected_py_enum):
                 errors.append(
-                    f"PixelType.{name}: C++={cpp_val}, Python={py_pt[name]}"
+                    f"PixelType::{cpp_name} value mismatch: C++={cpp_pt[cpp_name]}, "
+                    f"Python={int(expected_py_enum)}"
+                )
+
+    # 5. Detailed per-channel specs (PixelType & allow_spatial_filtering)
+    cpp_specs = parsed.get("channel_specs", [])
+    if len(cpp_specs) != len(FGPP_CHANNEL_SPECS):
+        errors.append(
+            f"Channel specs count mismatch: C++={len(cpp_specs)}, "
+            f"Python={len(FGPP_CHANNEL_SPECS)}"
+        )
+    else:
+        pt_str_to_enum = {
+            "Uint32": PixelType.UINT32,
+            "Half": PixelType.HALF,
+            "Float": PixelType.FLOAT,
+        }
+        for (py_ch_name, py_pt, _), cpp_spec in zip(FGPP_CHANNEL_SPECS, cpp_specs):
+            if cpp_spec["name"] != py_ch_name:
+                errors.append(
+                    f"Channel order mismatch: Python has '{py_ch_name}', C++ has '{cpp_spec['name']}'"
+                )
+            cpp_pt_enum = pt_str_to_enum.get(cpp_spec["pixel_type"])
+            if cpp_pt_enum is None or cpp_pt_enum != py_pt:
+                errors.append(
+                    f"Channel '{py_ch_name}' PixelType mismatch: C++={cpp_spec['pixel_type']}, "
+                    f"Python={py_pt.name}"
+                )
+            expected_filter = py_ch_name != "Cryptomatte.ID"
+            if cpp_spec["allow_spatial_filtering"] != expected_filter:
+                errors.append(
+                    f"Channel '{py_ch_name}' allow_spatial_filtering mismatch: "
+                    f"C++={cpp_spec['allow_spatial_filtering']}, expected={expected_filter}"
                 )
 
     return errors
@@ -584,6 +671,9 @@ def main(argv: list[str] | None = None) -> int:
     print()
     if header_path is not None and header_path.exists():
         print(f"=== Cross-language check against {header_path} ===")
+        parsed = _parse_header(header_path)
+        print(f"  Parsed PixelType values ({len(parsed.get('pixel_type_values', {}))} items): {parsed.get('pixel_type_values')}")
+        print(f"  Parsed {len(parsed.get('channel_specs', []))} ordered EXR channel specs")
         cpp_errors = _check_against_header(header_path)
         all_errors.extend(cpp_errors)
         if cpp_errors:

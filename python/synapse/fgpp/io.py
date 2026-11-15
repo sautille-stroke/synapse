@@ -10,6 +10,7 @@ inside the functions that need them.
 from __future__ import annotations
 
 import copy
+import warnings
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
@@ -132,9 +133,9 @@ def export_fgpp(
                 _, _, pt = _CHANNEL_MAP[ch_name]
 
                 if pt == PixelType.UINT32:
-                    # Bit-reinterpret uint32 → float32 for EXR storage
-                    raw = arr.astype(np.uint32).view(np.float32)
-                    chan_types[ch_name] = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+                    # Native uint32 for OpenEXR storage without float32 bit-reinterpretation
+                    raw = np.ascontiguousarray(arr, dtype=np.uint32)
+                    chan_types[ch_name] = Imath.Channel(Imath.PixelType(Imath.PixelType.UINT))
                     chan_data[ch_name] = raw.tobytes()
                 elif pt == PixelType.FLOAT:
                     # Scalar float32 channel (depth)
@@ -173,6 +174,7 @@ def _read_exr_frame(
     channels: set[str] | None = None,
 ) -> FGPPFrame:
     """Read a single EXR file into an ``FGPPFrame``."""
+    import Imath  # type: ignore[import-untyped]
     import OpenEXR  # type: ignore[import-untyped]
 
     exr = OpenEXR.InputFile(str(exr_path))
@@ -199,9 +201,23 @@ def _read_exr_frame(
 
             arr: np.ndarray
             if pt == PixelType.UINT32:
-                # Stored as float32 bit-pattern
-                arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)
-                arr = arr.view(np.uint32)
+                header_channels = exr.header().get("channels", {})
+                ch_info = header_channels.get(ch_name)
+                is_legacy_float = (
+                    ch_info is not None
+                    and hasattr(ch_info, "type")
+                    and ch_info.type == Imath.PixelType(Imath.PixelType.FLOAT)
+                )
+                if is_legacy_float:
+                    warnings.warn(
+                        f"EXR channel '{ch_name}' is stored as legacy FLOAT; decoding via bit reinterpret view. "
+                        "Please migrate to native UINT32 OpenEXR format.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
+                else:
+                    arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w)
                 components.append(arr)
             elif pt == PixelType.FLOAT:
                 arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)

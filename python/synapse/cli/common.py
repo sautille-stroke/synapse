@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from synapse.errors import (
     AssetNotFoundError,
+    BackendUnavailableError,
     ContractValidationError,
     ExitCode,
     NotImplementedStageError,
@@ -33,6 +34,7 @@ __all__ = [
     "Any",
     "Literal",
     "AssetNotFoundError",
+    "BackendUnavailableError",
     "ContractValidationError",
     "ExitCode",
     "NotImplementedStageError",
