@@ -5,28 +5,29 @@
 - **问题源头审计**: [docs/audits/AUDIT-POST-HORIZON5-2026-11.md](../audits/AUDIT-POST-HORIZON5-2026-11.md)（基线 `e37bfa6`，全覆盖实测确认的 `10×P0 + 10×P1 + 5×P2 + 2×P3` 缺陷）
 - **制定日期**: `2026-11-15`
 - **操作模型标识**: `[opus4.6]` / `[gemini3.8]`
-- **实施状态**: ✅ **100% 已全部合入并验收通过 (18/18 PRs)** — 全部通过 `ubuntu24` 8 项全局验收门禁
+- **实施状态**: ⚠️ **代码批次已合入 (#71 ~ #89)，经 [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md) 在 `46b3bda` / `ubuntu24` 实测复核存在 42 项残余假绿与门禁缺口（健康度 `60/100`），剩余真闭环工作已移交 [`PLAN-M25-M28`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) (`Horizon 7: PR-92 ~ PR-109`)**
 
-> [!NOTE]
-> **Horizon 6 验收封板记录**：
-> - `PR-74` (#71, `8a0f1c2`): Security audit & schema baseline
-> - `PR-75` (#75, `ea04489`): WanAdapter Causal Window & ACEScg styling
-> - `PR-76` (#74, `abaaa4f`): Safetensors SHA-256 verification
-> - `PR-77` (#73, `0f1689d`): Cryptomatte mask slicing
-> - `PR-78` (#76, `a418c04`): E2E MockVideoAdapter regression
-> - `PR-79` (#78, `c6b8b6b`): 15-channel EXR parity guard
-> - `PR-80` (#81, `e9613a9`): Whitebox coarseness validation floor
-> - `PR-81` (#79, `24e1797`): Cryptomatte UINT32 integer type guard
-> - `PR-82` (#77, `6e7ee95`): Column-major matrix & determinant assertion
-> - `PR-83` (#80, `01a5cd2`): WebDataset shard deterministic packing
-> - `PR-84` (#83, `d2ce9f1`): Bazel build & native compilation hardening
-> - `PR-85` (#85, `af16a3e`): Data Inspector native viewer & IPC
-> - `PR-86` (#86, `e497658`): Electron security hardening & test fixtures isolation
-> - `PR-87` (#82, `21b49d5`): Model evaluation & quality thresholds
-> - `PR-88` (#84, `7a7dac0`): Colab runner asset staging & SIGTERM checkpoints
-> - `PR-89` (#87, `6de992b`): PEP 562 lazy init, 5-tier DAG guard, decouple cross-layer reverse edges
-> - `PR-90` (#88, `139b7b8`): `mypy --strict` zero errors across 203 source files, ruff clean, all 1138 fast unit tests green
-> - `PR-91` (#89, `9ed889b`): CI workflow, resolve SYN-RFC collisions, doc links cleanup, extend ruff rules, Bazel 9.3.1 pin
+> [!WARNING]
+> **Horizon 6 实际合入台账与审计复核记录 (`git log` `#71 ~ #90` 核对)**：
+> `PR #90` (`46b3bda`) 此前在本文档头部错配并提前标注 `✅ 100%`。经逐条比对 `git log` 与 `ubuntu24` 全量实跑，真实映射与移交清单如下（完整三问核验见 [AUDIT-POST-HORIZON6-2026-11.md §2](../audits/AUDIT-POST-HORIZON6-2026-11.md#L73-L98)）：
+> - `PR-74` → `#71` (`8a0f1c2`, `fgpp/schema/wire_guard`) + `#72` (`3ac290c`)：⚠️ 部分合入 → 缺 `.exr`/C++ 无 `"camera"` 元数据问题移交 `PR-93`
+> - `PR-75` → `#75` (`ea04489`, `cli/bundle_worker/viewer`)：⚠️ 部分合入 → 后置 `--json`/常驻 `ViewerServer`/空 Stage 移交 `PR-96`
+> - `PR-76` → `#74` (`abaaa4f`, `adapters/wan/lora`)：⚠️ 部分合入 → 掩膜丢弃/`_extract_lora_ab` 覆写/滑窗方差倍增移交 `PR-97`
+> - `PR-77` → `#73` (`0f1689d`, `training`)：⚠️ 部分合入 → Fail-Open Packager/4 零接入损失/门禁退化移交 `PR-98`
+> - `PR-78` → `#76` (`a418c04`, `render_core/composite/style`)：⚠️ 部分合入 → 近裁剪退化/穿地反转/缺前向软肩移交 `PR-94, PR-95`
+> - `PR-79` → `#78` (`c6b8b6b`, `recon/delight`)：⚠️ 部分合入 → 屏幕混叠与亮度相消移交 `PR-99`
+> - `PR-80` → `#81` (`e9613a9`, `recon`)：⚠️ 部分合入 → MC 错位与 `w2c` 致 `test_recon_invert_cli.py` 必败移交 `PR-99`
+> - `PR-81` → `#79` (`24e1797`, `refine`)：⚠️ 部分合入 → HDR 截断与 RGB 调色伪装移交 `PR-100`
+> - `PR-82` → `#77` (`6e7ee95`, `recon/loop`)：⚠️ 部分合入 → 切空间恒返 `[0,0,1]` 与预卷漏裁移交 `PR-99`
+> - `PR-83` → `#80` (`01a5cd2`, `metrics`)：⚠️ 部分合入 → `_build_r3d18_extractor` `T!=3` 崩溃与 `uint8` 未归一化移交 `PR-101`
+> - `PR-84` → `#83` (`d2ce9f1`, `build_native/.bazelrc`)：⚠️ 部分合入 → macOS/Win 链接与 `[opt]` 双重扩展移交 `PR-102`
+> - `PR-85` → `#85` (`af16a3e`, `data-inspector/native`)：⚠️ 部分合入 → `-fno-exceptions` `.value()` `SIGABRT` 与零 `.glb/.exr` 移交 `PR-103`
+> - `PR-86` → `#86` (`e497658`, `data-inspector/electron`)：❌ 核心未生效 → non-Linux SHM 失效与 Seqlock 必败移交 `PR-104`
+> - `PR-87` → `#82` (`21b49d5`, `bench/inspect/rsi`)：⚠️ 部分合入 → 缺指标/`TestEvalScript` 失败与假门禁移交 `PR-105`
+> - `PR-88` → `#84` (`7a7dac0`, `colab/assets`)：⚠️ 部分合入 → 假 `real-gpu`/HF 嵌套/`assets_manifest` 错哈希移交 `PR-106`
+> - `PR-89` → `#87` (`6de992b`, `dag_guard/init`)：⚠️ 部分合入 → 函数域/动态 `import` 与 2 条逆向边未清零移交 `PR-93`
+> - `PR-90` → `#88` (`139b7b8`, `strict mypy/tests/ruff`)：❌ 未达标 → 快测超标 (`40.43s > 25s`)、假 `clean_recon` 与 `-m slow` 掩盖失败移交 `PR-92, PR-107`
+> - `PR-91` → `#89` (`9ed889b`, `ci/rfc/skills`)：❌ 门禁失效 → `.ci/` 误置、327 Ruff 告警被屏蔽与 RFC/Skills 漂移移交 `PR-92, PR-108`
 
 ---
 
@@ -447,7 +448,10 @@ flowchart LR
 
 ## 3. Horizon 6 全局验收总门禁清单（Definition of Done）
 
-当且仅当以下全部命令在云端主力机 `ubuntu24` 一次性实跑全绿，且 `.github/workflows/ci.yml` 门禁状态与本地/远端完全一致时，Horizon 6 (`M21–M24`, `PR-74 ~ PR-91`) 方可更新为 `✅ 100% 已合入`：
+> [!CAUTION]
+> **Horizon-6 收口审计结论（`46b3bda` @ `ubuntu24` 实测）**：仅 `mypy --strict`（`203` 源文件零错误）与单点 Electron/Bazel（带 `[opt]` 警告）过关；单进程 fast pytest 为 `40.43s`（未达 `<= 25s`）、`-m slow` 串行卡死 `>675s` 且子集跑出 `4 failed`、`ruff` 屏蔽 29 条规则掩盖 `327` 处告警、且 `.github/workflows/ci.yml` 未存在（误置于 `.ci/workflows/ci.yml`）。**Horizon 6 未达 `✅ 100%` 封板条件，全部剩余闭环项已转入 [`PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)（Horizon 7, 10 项升级门禁）完成**。
+
+当且仅当以下全部命令在云端主力机 `ubuntu24` 一次性实跑全绿，且 `.github/workflows/ci.yml` 门禁状态与本地/远端完全一致时，Horizon 6 (`M21–M24`, `PR-74 ~ PR-91`) 及后续 Horizon 7 (`PR-92 ~ PR-109`) 方可正式封板：
 
 ```bash
 # 1. 快速单元测试（严格依赖全开，单进程 <= 25s，零 LinAlgWarning）

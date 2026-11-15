@@ -12,9 +12,9 @@
 
 | 协同方向 | 目标仓库 | 职责边界与交互契约 |
 | :--- | :--- | :--- |
-| **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style`) | Layer 0 C++20 定义 `FGPP` 15 标量 EXR 通道布局、`metadata.json` (`fgpp.v1.0`) 与 `StyleProfile` Schema；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死，**严禁私自篡改线格式** |
+| **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style` 规划中) | Layer 0 C++20 已落地 `@aether//fgpp`（15 标量 EXR 通道与 `fgpp.v1.0` `metadata.json`）；`@aether//style` 尚在规划（当前 `StyleProfile` Schema 由 `synapse.style` 镜像维护，`wire_guard` 在未设严格前提时跳过该项），**严禁私自篡改已锁定线格式** |
 | **正向物理 FGPP 生产端** | `fulgur` (Track B) / `caelum-core` (Track A) | 导出多通道 OpenEXR 序列 + `metadata.json`；`synapse.fgpp` 负责无损读取、校验与张量转换 |
-| **全仓自包含原生算法核** | `synapse` (`csrc/geometry/` + Python Oracle) | 已彻底脱离外部 `vg-core`，自包含原生 C++20 几何算子；Python 模块 (`synapse.recon.geometry`) 作为算法正确性验证的 Ground Truth Oracle，双轨互验 |
+| **自包含算法 Oracle 与 `@aether` 委托原生核** | `synapse` (`csrc/geometry/` + Python Oracle) | 已脱离外部 `vg-core`：原生 `csrc/geometry/` Bazel 构建依赖同级 `../aether`（`@aether//geo`、`@aether//math`），`scripts/build_native.py` 委托并封装编译，Python 模块 `synapse.recon.geometry` 作为正确性对比 Oracle 双轨互验 |
 | **上游分布式调度与编排** | `render-farm` (Go) / `narrative-rail` (Go) | 生产级 DAG 编排与 API 服务统一由 Go 承载；通过 RFC 0039 自洽 `JobBundle` 调度 `synapse` 在 `foundary` 容器内完成单步 GPU 计算后即刻退出 |
 | **上层创作工坊与总控** | `grand-studio` / `scene-forge` / `asset-forge` / `film-studio` | 负责白模布景、运镜编辑、2D 瑕疵框选、网格/材质 L2 限时人工精修与 `CommandIR` 采集；**桌面端严禁直接内嵌 `synapse` 重型 PyTorch 环境** |
 
@@ -83,12 +83,13 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 ## 5. 核心文档导航
 
 - **整体设计深度评审与跨文档契约对齐（必读 SSOT）**：[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)
-- **全景可落地实施总计划（M1–M24, 92 PRs）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
-  - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)
+- **全景可落地实施总计划（M1–M28, 110 PRs, `v3.4`）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+  - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) · [PLAN-M25-M28](docs/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)
 - **架构审查与跨仓边界定界**：[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)
 - **重构后全库架构、工程实现与技术债务深度审计报告（2026-11）**：[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](docs/audits/AUDIT-POST-REFACTOR-2026-11.md)
 - **RFC-0063 与全库质量基线深度评审报告（`b98c6e5`）**：[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
 - **Horizon-5 后全库深度复审与生产硬化审计报告（`e37bfa6`）**：[docs/audits/AUDIT-POST-HORIZON5-2026-11.md](docs/audits/AUDIT-POST-HORIZON5-2026-11.md)
+- **Horizon-6 后全库深度复审报告（`46b3bda`）**：[docs/audits/AUDIT-POST-HORIZON6-2026-11.md](docs/audits/AUDIT-POST-HORIZON6-2026-11.md)
 - **行业成熟流水线对比差距与代偿设计规范**：[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
 - **行业前沿技术追踪、演进趋势与架构启示录**：[docs/INDUSTRY_TRACKING_AND_TRENDS.md](docs/INDUSTRY_TRACKING_AND_TRENDS.md)
 - **全系统工程设计增强规范**：[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)

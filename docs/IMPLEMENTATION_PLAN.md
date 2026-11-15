@@ -1,7 +1,7 @@
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v3.3`（全量统合 **M1–M24** 共 24 大里程碑、**92 个原子 PR**（`PR-01` ~ `PR-91`, 含 `PR-14a/b`），涵盖 Horizon 1–6 与 9 份精细化执行子计划）
-- **修订日期**: 2026-11-15
+- **计划版本**: `v3.4`（全量统合 **M1–M28** 共 28 大里程碑、**110 个原子 PR**（`PR-01` ~ `PR-109`, 含 `PR-14a/b`），涵盖 Horizon 1–7 与 10 份精细化执行子计划）
+- **修订日期**: 2026-11-16
 - **操作模型标识**: `[opus4.6]`
 - **前置架构审查与跨文档对齐决议**:
   - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
@@ -9,16 +9,18 @@
   - **[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)**（Horizon 1–3 大规模重构后全库架构、工程实现与技术债务深度审计报告）
   - **[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)**（`RFC-0063` 深度评审、Colab/L-Asset 断裂定位与 `PR-44~57` 实态审计报告）
   - **[docs/audits/AUDIT-POST-HORIZON5-2026-11.md](audits/AUDIT-POST-HORIZON5-2026-11.md)**（`e37bfa6` Horizon-5 收官后全库深度复审、宣称 vs 实态核验与 `10×P0 + 10×P1 + 5×P2 + 2×P3` 缺陷台账）
+  - **[docs/audits/AUDIT-POST-HORIZON6-2026-11.md](audits/AUDIT-POST-HORIZON6-2026-11.md)**（`46b3bda` Horizon-6 合入后全库五切片审计与 `ubuntu24` 十项实测、`12×P0 + 16×P1 + 10×P2 + 4×P3 = 42` 项缺陷台账，综合评分 `60/100`）
 - **细分可执行子计划导航（Subdivided Actionable Sub-Plans）**:
   1. ↳ **[PLAN-M1-M2](plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md)**：地基清零、`@aether//fgpp` 线格式闭环、CLI 基座与双轨视频生成适配器（`PR-01` ~ `PR-08` ✅）
   2. ↳ **[PLAN-M3-M4](plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md)**：软肩 ACEScg 风格对齐、`3D ∪ SAM2` 手术刀合成、`vg-core` 桥接、`JobBundleWorker` 与 30 场景基准（`PR-09` ~ `PR-15` ✅）
   3. ↳ **[PLAN-M5](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)**：合成数据离线潜空间缓存、5 维正交解耦 LoRA 训练与 Cryptomatte 空间隔离调度（`PR-16` ~ `PR-19` ✅）
   4. ↳ **[PLAN-M6-M7](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)**：3D 微距质检、Visual Jev 强类型裁决、RL 样本导出与物理驱动递归自我提升 RSI 飞轮（`PR-20` ~ `PR-25` ✅）
-  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + SHM 可视化检查器（`PR-26` ✅ · `PR-27~29` 脚手架已合入，真实 3D/EXR 视口移交 `M18/M23`）
+  5. ↳ **[PLAN-M8](plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md)**：`InspectionBundle` 导出器与 Electron + SHM 可视化检查器（`PR-26` ✅ · `PR-27~29` 脚手架已合入，真实 3D/EXR 视口移交 `M18/M23/M27`）
   6. ↳ **[PLAN-M9-M12 (Horizon 3)](plans/PLAN-M9-M12-HORIZON3-LANDING.md)**：RFC 0060 多视角真差往返、RFC 0061 解剖局部精修、RFC 0062 可微逆向闭环与 M12 全域收口（`PR-30` ~ `PR-43` ⚠️ 骨架与单测已合入，生产硬化见 `PLAN-M13-M16`）
-  7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` ⚠️ `PR-51` ✅，`PR-55` ❌，余项收口于 Horizon 5/6）
-  8. ↳ **[PLAN-M17-M20 (Horizon 5 质量治理与基准落地)](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)**：生态 RFC 碰撞消解、遗留 `data-inspector`/`build_native` 收口、`RFC-0063` 基准真实落地与严苛 `mypy`/快测试门禁（`PR-58` ~ `PR-73` ⚠️ `PR #51~#69` 已合入，残余静默缺陷移交 Horizon 6）
-  9. ↳ **[PLAN-M21-M24 (Horizon 6 生产硬化与真值收口)](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)**：OpenEXR `UINT32` / 真 LoRA 权重 / 真 EXR Worker 止血、逆向/精修/FVD 算子真值化、跨平台 Data Inspector、5-Tier 锁死与 GitHub Actions CI（`PR-74` ~ `PR-91` ✅ 100% 已合入，18/18 PRs 全绿封板）
+  7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` ⚠️ `PR-51` ✅，`PR-55` ❌，余项收口于 Horizon 5–7）
+  8. ↳ **[PLAN-M17-M20 (Horizon 5 质量治理与基准落地)](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)**：生态 RFC 碰撞消解、遗留 `data-inspector`/`build_native` 收口、`RFC-0063` 基准真实落地与严苛 `mypy`/快测试门禁（`PR-58` ~ `PR-73` ⚠️ `PR #51~#69` 已合入，残余静默缺陷移交 Horizon 6–7）
+  9. ↳ **[PLAN-M21-M24 (Horizon 6 生产硬化与真值收口)](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)**：OpenEXR `UINT32` / 真 LoRA 权重 / 真 EXR Worker 止血、逆向/精修/FVD 算子真值化、跨平台 Data Inspector、5-Tier 锁死与 CI（`PR-74` ~ `PR-91` ⚠️ 代码批次已合入于 `#71~#89`，经 `AUDIT-POST-HORIZON6-2026-11` 实测尚存 42 项残余假绿/门禁缺口且 `PR-91` CI 未激活，转入 Horizon 7）
+  10. ↳ **[PLAN-M25-M28 (Horizon 7 真实闭环与全仓治理)](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)**：激活 `.github/workflows/ci.yml`、真严格 `conftest`/Ruff 解禁、`fgpp` Fail-Closed、全范围零豁免 DAG、齐次光栅与 ACEScg 闭环、去 `ViewerServer`、Wan/Training/Recon/Refine/Metrics 真算子、`data-inspector` 跨平台 Seqlock/SHM、Colab/Assets 校验与 10 项硬门禁封板（`PR-92` ~ `PR-109` 📋 已规划）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -37,7 +39,8 @@
    - **Horizon 2（工业飞轮、PEFT 进化与桌面检查器，`M5–M8`，14 个 PR）**：在核心底座稳固后，并行铺开 LoRA 训练管线、3D 智能质检、物理驱动 RSI 自演进闭环与原生 3D 检查器；
    - **Horizon 3（视频逆向孪生、解剖精修、可微闭环与全域收口，`M9–M12`，14 个 PR）**：落实 `RFC 0060/0061/0062` 双向闭环与 Horizon-2 遗留算法接线，闭合多视角反演、512×512 手术刀局部精修、Mitsuba 3/解析 Jacobian 可微逆渲染及 `profiles` 量纲收口；
    - **Horizon 4 & 5（重构后架构解耦、质量治理与基准落地，`M13–M20`，30 个 PR）**：抽离 `render_core`、CLI 模块化、C++ N-gon 与 `@aether//geo` 委托及 `RFC-0063` 四轨道落地（`PR #51~#69` 已合入，部分残余假绿缺陷已核查登记）；
-   - **Horizon 6（Post-Horizon-5 生产级真值收口与 CI 封板，`M21–M24`，18 个 PR）**：落实 `AUDIT-POST-HORIZON5-2026-11` 全部 `10×P0 + 10×P1 + 5×P2 + 2×P3` 修复，打通原生 `UINT32` EXR、真 `.safetensors` LoRA、真 EXR Worker、可微训练、真实去光照/精修/FVD、跨平台 Data Inspector、5-Tier DAG、全仓 `mypy --strict`、快测试 `<= 25s` 与 GitHub Actions CI；
+   - **Horizon 6（Post-Horizon-5 生产级真值收口，`M21–M24`，18 个 PR）**：合入 `#71~#89` 实现 `mypy --strict` 零错与 `UINT32` EXR 等局部止血，但经 `AUDIT-POST-HORIZON6-2026-11` 实测仍存 `.ci/` 误置、假 `conftest`、4 项 `-m slow` 失败与核心算子假绿，余项转入 Horizon 7；
+   - **Horizon 7（Post-Horizon-6 真实闭环与全仓治理，`M25–M28`，18 个 PR）**：落实 `AUDIT-POST-HORIZON6-2026-11` 全部 `12×P0 + 16×P1 + 10×P2 + 4×P3` 修复（`PR-92 ~ PR-109`），激活 `.github/workflows/ci.yml`、真严格 `conftest`、Ruff 327 告警清零、`fgpp` Fail-Closed、5-Tier 零豁免 DAG、齐次光栅与 Split-Brain 收敛、移除常驻 `ViewerServer`、真 Wan/Training/Recon/Refine/Metrics、Inspector C++/Electron 跨平台 Seqlock/SHM、Colab/Assets 闭环及 10 项 `ubuntu24` 硬门禁终验封板；
    - 每个原子 PR 净增代码严格控制在 **`300 ~ 750` 行**，必须使用 `/tmp/synapse-wt-<branch>` 独立 Git Worktree 走 PR Squash Merge 流程。
 2. **零 GPU 阻塞日常回归（`ubuntu24` P0 主力机优先）**：
    - 依托纯 NumPy 向量化软光栅（`PR-01`）与确定性 `MockVideoAdapter`（`PR-05`）及 Mock Transport/推理桩，**100% 的协议、调度、融合、质检编排、RSI 门禁单测均可在云端 CPU 主力机 `ubuntu24` 上秒级全量回归**；真实大模型权重与 CUDA 算子仅在 `win-dev` 或 `foundary` 容器做专项集成验收。
@@ -46,7 +49,7 @@
 
 ---
 
-## 2. 全局 24 阶段 92-PR 依赖拓扑图 (Global Dependency DAG)
+## 2. 全局 28 阶段 110-PR 依赖拓扑图 (Global Dependency DAG)
 
 ```mermaid
 flowchart LR
@@ -179,7 +182,7 @@ flowchart LR
         end
     end
 
-    subgraph H6 ["Horizon 6: 生产硬化、算子真值化与自动化 CI 封板 (Waves 20–23, 18 PRs 📋)"]
+    subgraph H6 ["Horizon 6: 生产硬化代码批次 (#71-#89, Waves 20–23, 18 PRs ⚠️)"]
         subgraph M21 ["M21: P0 线格式与真权重/真EXR止血"]
             PR74["PR-74: EXR UINT32 / wire_guard / Bundle统一"]
             PR75["PR-75: Worker真EXR / exit 40 / 后置--json / XSS"]
@@ -204,7 +207,36 @@ flowchart LR
         subgraph M24 ["M24: 5-Tier DAG、strict类型、快测SLA与CI"]
             PR89["PR-89: __init__惰性 / 5-Tier DAG / RSI全接线"]
             PR90["PR-90: 清零strict 79+63错 / 4假单测 / pytest<=25s"]
-            PR91["PR-91: .github/workflows/ci.yml / RFC消撞 / 文档同步"]
+            PR91["PR-91: .ci工作流 / 文档收口(转交H7)"]
+        end
+    end
+
+    subgraph H7 ["Horizon 7: 真实闭环、全仓治理与 10 门禁终验封板 (Waves 24–27, 18 PRs 📋)"]
+        subgraph M25 ["M25: 门禁恢复与核心光学/CLI闭环"]
+            PR92["PR-92: .github CI / conftest真hook / 解禁Ruff"]
+            PR93["PR-93: fgpp Fail-Closed / 全域DAG / wire_guard"]
+            PR94["PR-94: 齐次近面裁剪 / render_core / telemetry"]
+            PR95["PR-95: Composite/ACEScg / 单一EDT / Style IRLS"]
+            PR96["PR-96: 去ViewerServer / --json全子命令 / Stage闭环"]
+        end
+        subgraph M26 ["M26: 推理、训练、逆向与指标真值化"]
+            PR97["PR-97: Wan/LoRA/单一Foundary/SynapseRecon"]
+            PR98["PR-98: Packager/4 Losses/Trainer/旋转门禁"]
+            PR99["PR-99: Marching Cubes/Delight/Tracking/闭环烘焙"]
+            PR100["PR-100: Stitcher HDR/HandFace诚实度/Fusion"]
+            PR101["PR-101: R3D18真推理/Warp/Watertight/Metrics"]
+        end
+        subgraph M27 ["M27: 原生/Inspector/SHM 与评测Colab"]
+            PR102["PR-102: build_native/Bazel去重/bindings/GTest"]
+            PR103["PR-103: Inspector C++安全/.glb+.exr/Seqlock"]
+            PR104["PR-104: Electron Seqlock/non-Linux SHM/零拷贝IPC"]
+            PR105["PR-105: Bench/3D Eval/RSI/去陈旧scenarios"]
+            PR106["PR-106: Colab SSOT V2/HF嵌套/Assets SHA256"]
+        end
+        subgraph M28 ["M28: 测试真重构、RFC去撞与十门禁封板"]
+            PR107["PR-107: clean_recon重写/去误标slow/327 Ruff清零"]
+            PR108["PR-108: SYN-RFC重命名/Skills与文档SSOT对齐"]
+            PR109["PR-109: ubuntu24十门禁全绿 & GitHub CI最终封板"]
         end
     end
 
@@ -258,6 +290,21 @@ flowchart LR
     PR84 --> PR88
     PR85 & PR86 & PR87 & PR88 --> PR89 & PR90
     PR89 & PR90 --> PR91
+
+    PR91 --> PR92 --> PR93
+    PR93 --> PR94 & PR95 & PR96
+    PR94 --> PR95
+    PR95 --> PR96
+    PR93 & PR94 & PR96 --> PR97 --> PR98
+    PR94 & PR95 --> PR99
+    PR95 & PR99 --> PR100 & PR101
+    PR92 --> PR102
+    PR93 --> PR103 --> PR104
+    PR96 & PR99 & PR101 --> PR105
+    PR97 & PR102 & PR105 --> PR106
+    PR98 & PR100 & PR101 & PR105 --> PR107
+    PR96 & PR106 --> PR108
+    PR102 & PR104 & PR106 & PR107 & PR108 --> PR109
 ```
 
 ---
@@ -290,11 +337,15 @@ flowchart LR
 | **Wave 20** | `PR-74` (`fgpp`/`wire_guard`/`bundle`) ∥ `PR-75` (`worker`/`cli`/`viewer`) ∥ `PR-76` (`adapters`) ∥ `PR-77` (`training`) ∥ `PR-78` (`render_core`/`composite`/`style`) | **M21 收官**：OpenEXR `UINT32`、真 `.safetensors` LoRA、真 EXR Worker、可微训练梯度与软光栅/合成止血 |
 | **Wave 21** | `PR-79` (`recon/delight`) ∥ `PR-80` (`recon`+`stages`+`gate`) ∥ `PR-81` (`refine`) ∥ `PR-82` (`recon/loop`) ∥ `PR-83` (`metrics`) | **M22 收官**：多视角去光照、光流追踪、去黑晕精修、指标方向修正、FVD 真特征与全适配器 `Var(X)` 门禁 |
 | **Wave 22** | `PR-84` (`build_native`/`.bazelrc`) → `PR-85` (`inspector/native`) → `PR-86` (`inspector/electron`) ∥ `PR-87` (`bench_runner`/`model_evaluator`/`cli`) ∥ `PR-88` (`colab`/`assets`) | **M23 收官**：跨平台零拷贝 SHM 视口、基准评估器 Fail-Closed 与 Colab E1–E4 + HF 下载闭环 |
-| **Wave 23** | `PR-89` (`__init__`/`dag_guard`/`rsi`) ∥ `PR-90` (`mypy --strict`/`tests`/`pyproject`) → `PR-91` (`.github/workflows/ci.yml`/docs) | **Horizon 6 全线封板**：5-Tier DAG 硬锁死、全仓 zero-error strict typing、快测 `<= 25s` 与 CI 全自动门禁 |
+| **Wave 23** | `PR-89` (`__init__`/`dag_guard`/`rsi`) ∥ `PR-90` (`mypy --strict`/`tests`/`pyproject`) → `PR-91` (`ci`/docs) | **Horizon 6 代码合入 (#71–#90)**：`mypy --strict` 清零、仅 `.ci/` 误置与 `42` 项残余假绿缺陷，转入 **Horizon 7** ⚠️ |
+| **Wave 24** | `PR-92` (`.github` CI/`conftest`/Ruff) → `PR-93` (`fgpp`/全域 DAG/`wire_guard`) → (`PR-94` ∥ `PR-95`) → `PR-96` (`viewer`/`cli`/`bundle`) | **M25 收官**：真实 CI 与防跳过门禁、Fail-Closed 契约、齐次近面裁剪、ACEScg/Composite 收敛、去常驻服务端与 Stage 真落盘 |
+| **Wave 25** | `PR-97` (`adapters`/`bridge`) → `PR-98` (`training`) ∥ (`PR-99` → `PR-100` → `PR-101`) | **M26 收官**：Wan/LoRA/单一 Foundary、4 Losses/旋转门禁、Marching Cubes/Delight/Loop、HDR Stitcher、R3D18/Metrics 真值化 |
+| **Wave 26** | (`PR-102` ∥ `PR-105`) ∥ (`PR-103` → `PR-104`) ∥ `PR-106` | **M27 收官**：`build_native` 与 Bazel 零双重扩展、Inspector C++/Electron Seqlock & macOS SHM、Bench/RSI/Eval、Colab & Assets 闭环 |
+| **Wave 27** | (`PR-107` ∥ `PR-108`) → `PR-109` | **Horizon 7 终局封板**：真差分重构 `clean_recon`、快测 `<= 25s` / 慢测 `<= 60s`、327 Ruff 告警清零、`SYN-RFC` 去撞、10 门禁全绿封板 |
 
 ---
 
-## 4. 全量 92-PR 落地追踪与“防静默失败三问”验收总表
+## 4. 全量 110-PR 落地追踪与“防静默失败三问”验收总表
 
 ### 4.1 Horizon 1：核心互操作 SDK、无状态 Worker 与 `Synapse-Bench`（M1–M4，共 16 PRs，约 21.5 人天）
 
@@ -405,24 +456,47 @@ flowchart LR
 
 | PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M21-M24](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
-| **[PR-74](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-74)** | M21 | EXR 原生 `UINT32` 写出与 `cli/_fgpp` 严苛化、`wire_guard` C++ `PixelType` 解析、统一 `synapse.bundle.v1.0` | PR-73 | ~420 行 | 1.5d | `wire_guard.py --check` + `tests/test_fgpp_io.py` (`UINT` bit 零误差) | ✅ 已合入 (#71) |
-| **[PR-75](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-75)** | M21 | `bundle_worker` 改用 `import_fgpp()`、`run_worker_cli` 错误信封、后置 `--json`、`_bench.py` 门禁 exit `40`、`viewer` XSS | PR-74 | ~380 行 | 1.5d | `tests/test_bundle_worker.py` + `tests/test_cli.py` + `tests/test_dataset_and_viewer.py` | 📋 已规划 |
-| **[PR-76](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-76)** | M21 | `MultiLoRAManager` 加载真 `.safetensors`+SHA256、`LoRAPatchHook` `bf16` & 掩膜、`FoundaryHttp` 3D 载荷、48f+`float64` | PR-74 | ~540 行 | 2.0d | `tests/test_lora_manager.py` + `tests/test_wan_lora_wiring.py` + `tests/test_condition_scheduler.py` | 📋 已规划 |
-| **[PR-77](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-77)** | M21 | `FeatureStoreBuilder` 修复 `[7,T,H,W]` 门禁消除 100% 误拒；纯 PyTorch 可微 `losses.py` 接入 `trainer`；`packager` 校验 | PR-74 | ~460 行 | 1.5d | `tests/test_lora_feature_store.py` + `tests/test_lora_trainer.py` (非空分片 + `.grad` > 0) | 📋 已规划 |
-| **[PR-78](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-78)** | M21 | `SoftwareRasterizer` 近裁剪+$1/w$ 深度+真实光流；`composite` 去糊底片/真逆色调映射/光流反投影对齐；SH 去背向 | PR-73 | ~520 行 | 2.0d | `tests/test_composite_blend.py` + `tests/test_composite_mask.py` + `tests/test_style.py` | 📋 已规划 |
-| **[PR-79](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-79)** | M22 | `recon/delight.py` 废除 `rad/rad=1` 空操作，实现 SH 辐照度 + 多视角 UV 融合去光照与 HDR 保真 | PR-78 | ~420 行 | 1.5d | `tests/test_recon.py` (方向光去光照对照方差收敛 `>= 60%`) | 📋 已规划 |
-| **[PR-80](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-80)** | M22 | `recon` 块/LK 光流追踪、`w2c` 统一、空体素 fail-closed、全网格落盘、`_c_geometry` 字典修复与合法 `quad_remesh` | PR-78 | ~500 行 | 2.0d | `tests/test_recon_multiview.py` + `tests/test_geometry_tier0.py` (`backend="native"` 零异常) | 📋 已规划 |
-| **[PR-81](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-81)** | M22 | `HandRefiner`/`FaceRefiner` 无先验 fail-closed；`ScalpelStitcher` 消纯黑光晕/HDR 截断；权重和归一化与 `track_id` Kalman | PR-78 | ~460 行 | 1.5d | `tests/test_refine_hand_face.py` + `tests/test_refine_stitcher_gates.py` (HDR `>1.0` 零截断) | 📋 已规划 |
-| **[PR-82](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-82)** | M22 | `recon/loop` `_spatial_dims` 维度修正、预卷帧裁切边界、UV 法线烘焙与直接调用生产对称 TV 梯度测试 | PR-78 | ~360 行 | 1.5d | `tests/test_recon_loop_guide.py` + `tests/test_recon_loop_optimizer.py` + `tests/test_recon_closed_loop_e2e.py` | 📋 已规划 |
-| **[PR-83](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-83)** | M22 | `_METRIC_DIRECTIONS` 修正 `f_score_5mm`/`watertight_pct`；$\epsilon I$ 消警 + 真 3D 特征 FVD；掩膜 LPIPS；全适配器 `Var(X)` | PR-75, 76 | ~440 行 | 1.5d | `pytest tests/test_metrics*.py tests/test_profiles_doc_sync.py -W error::scipy.linalg.LinAlgWarning` | 📋 已规划 |
-| **[PR-84](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-84)** | M23 | `build_native.py` 补全 `@aether//core,spatial` 与 Colab 自包含编译；对齐 `.bazelrc` `opt` & 私服 BCR；真实编译单测 | PR-73 | ~340 行 | 1.5d | `cd csrc/geometry && bazel test //... --config=opt` + `tests/test_geometry_tier0.py` (非 dry-run) | 📋 已规划 |
-| **[PR-85](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-85)** | M23 | `inspector_app.cc` 改 `@aether//pal`（零 POSIX 泄漏/死锁）、OBJ 安全+Z-Buffer+`.glb/.exr`、原子 SHM/JSON、`test_inspector` 迁 GTest | PR-84 | ~580 行 | 2.5d | `cd tools/data-inspector/native && bazel test //... --config=opt` (零 `<unistd.h>`/`<poll.h>`) | 📋 已规划 |
-| **[PR-86](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-86)** | M23 | Electron 跨平台零拷贝 SHM；修复 `app.js` `SourceEntry`/AOV 解耦；Electron 守卫、红绿灯边距、只读 `test/fixtures` | PR-74, 85 | ~480 行 | 2.0d | `node tools/data-inspector/test/test-bundle-loading.js` (`git status fixtures/` 为空) | 📋 已规划 |
-| **[PR-87](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-87)** | M23 | `bench_runner` 数组与全 `required_keys`；`model_evaluator` 16 项全门禁+相对键防撞+表面采样；CLI 残余去伪与 RSI 多轴 | PR-74, 75, 80, 81, 83 | ~460 行 | 2.0d | `tests/test_bench_runner.py` + `tests/test_model_evaluator.py` + `tests/test_cli.py` | 📋 已规划 |
-| **[PR-88](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-88)** | M23 | `colab_runner` 97f 入束修复 `IndexError`、`--mode real-gpu` 与 `SIGTERM` 续跑；SSOT V2.0；真实 HF 拉取 + `vital_file` | PR-74, 77, 84 | ~420 行 | 1.5d | `bash -n workenv/google-colab/setup_colab.sh` + `tests/test_benchmark_assets.py` | 📋 已规划 |
-| **[PR-89](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-89)** | M24 | `synapse/__init__.py` PEP 562 惰性化；`import_dag_guard` 强制 5-Tier `TIER_MAP` & 相对/动态导入；打通 RSI 课程与隔离接线 | Wave 21, PR-87 | ~420 行 | 1.5d | `tools/import_dag_guard.py --check` + `tests/test_architecture_dag.py` + `tests/test_rsi_promotion_gate.py` | 📋 已规划 |
-| **[PR-90](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-90)** | M24 | 清零 `mypy --strict` 79 错与 `tests/scripts/tools` 63 错；修 4 假单测、`port=0` 与 `SYNAPSE_CI_STRICT_DEPS`；`<= 25s` | Wave 22 | ~520 行 | 2.0d | `mypy python/synapse tests/ scripts/ tools/` + `time pytest -m 'not slow' <= 25s` | 📋 已规划 |
-| **[PR-91](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-91)** | M24 | 新增 `.github/workflows/ci.yml`；消解生态 `0061–0063` 撞号与治理元数据；同步全部文档断链、Skills、`.gitignore` 与 Ruff | PR-89, 90 | ~320 行 | 1.0d | CI 全作业 + 8 项 Horizon-6 全局验收门禁全绿 | 📋 已规划 |
+| **[PR-74](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-74)** | M21 | EXR 原生 `UINT32` 写出与 `cli/_fgpp` 严苛化、`wire_guard` C++ `PixelType` 解析、统一 `synapse.bundle.v1.0` | PR-73 | ~420 行 | 1.5d | `wire_guard.py --check` + `tests/test_fgpp_io.py` (`UINT` bit 零误差) | ⚠️ 部分合入 (#71, #72 → `PR-93`) |
+| **[PR-75](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-75)** | M21 | `bundle_worker` 改用 `import_fgpp()`、`run_worker_cli` 错误信封、后置 `--json`、`_bench.py` 门禁 exit `40`、`viewer` XSS | PR-74 | ~380 行 | 1.5d | `tests/test_bundle_worker.py` + `tests/test_cli.py` + `tests/test_dataset_and_viewer.py` | ⚠️ 部分合入 (#75 → `PR-96`) |
+| **[PR-76](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-76)** | M21 | `MultiLoRAManager` 加载真 `.safetensors`+SHA256、`LoRAPatchHook` `bf16` & 掩膜、`FoundaryHttp` 3D 载荷、48f+`float64` | PR-74 | ~540 行 | 2.0d | `tests/test_lora_manager.py` + `tests/test_wan_lora_wiring.py` + `tests/test_condition_scheduler.py` | ⚠️ 部分合入 (#74 → `PR-97`) |
+| **[PR-77](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-77)** | M21 | `FeatureStoreBuilder` 修复 `[7,T,H,W]` 门禁消除 100% 误拒；纯 PyTorch 可微 `losses.py` 接入 `trainer`；`packager` 校验 | PR-74 | ~460 行 | 1.5d | `tests/test_lora_feature_store.py` + `tests/test_lora_trainer.py` (非空分片 + `.grad` > 0) | ⚠️ 部分合入 (#73 → `PR-98`) |
+| **[PR-78](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-78)** | M21 | `SoftwareRasterizer` 近裁剪+$1/w$ 深度+真实光流；`composite` 去糊底片/真逆色调映射/光流反投影对齐；SH 去背向 | PR-73 | ~520 行 | 2.0d | `tests/test_composite_blend.py` + `tests/test_composite_mask.py` + `tests/test_style.py` | ⚠️ 部分合入 (#76 → `PR-94,95`) |
+| **[PR-79](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-79)** | M22 | `recon/delight.py` 废除 `rad/rad=1` 空操作，实现 SH 辐照度 + 多视角 UV 融合去光照与 HDR 保真 | PR-78 | ~420 行 | 1.5d | `tests/test_recon.py` (方向光去光照对照方差收敛 `>= 60%`) | ⚠️ 部分合入 (#78 → `PR-99`) |
+| **[PR-80](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-80)** | M22 | `recon` 块/LK 光流追踪、`w2c` 统一、空体素 fail-closed、全网格落盘、`_c_geometry` 字典修复与合法 `quad_remesh` | PR-78 | ~500 行 | 2.0d | `tests/test_recon_multiview.py` + `tests/test_geometry_tier0.py` (`backend="native"` 零异常) | ⚠️ 部分合入 (#81 → `PR-99`) |
+| **[PR-81](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-81)** | M22 | `HandRefiner`/`FaceRefiner` 无先验 fail-closed；`ScalpelStitcher` 消纯黑光晕/HDR 截断；权重和归一化与 `track_id` Kalman | PR-78 | ~460 行 | 1.5d | `tests/test_refine_hand_face.py` + `tests/test_refine_stitcher_gates.py` (HDR `>1.0` 零截断) | ⚠️ 部分合入 (#79 → `PR-100`) |
+| **[PR-82](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-82)** | M22 | `recon/loop` `_spatial_dims` 维度修正、预卷帧裁切边界、UV 法线烘焙与直接调用生产对称 TV 梯度测试 | PR-78 | ~360 行 | 1.5d | `tests/test_recon_loop_guide.py` + `tests/test_recon_loop_optimizer.py` + `tests/test_recon_closed_loop_e2e.py` | ⚠️ 部分合入 (#77 → `PR-99`) |
+| **[PR-83](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-83)** | M22 | `_METRIC_DIRECTIONS` 修正 `f_score_5mm`/`watertight_pct`；$\epsilon I$ 消警 + 真 3D 特征 FVD；掩膜 LPIPS；全适配器 `Var(X)` | PR-75, 76 | ~440 行 | 1.5d | `pytest tests/test_metrics*.py tests/test_profiles_doc_sync.py -W error::scipy.linalg.LinAlgWarning` | ⚠️ 部分合入 (#80 → `PR-101`) |
+| **[PR-84](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-84)** | M23 | `build_native.py` 补全 `@aether//core,spatial` 与 Colab 自包含编译；对齐 `.bazelrc` `opt` & 私服 BCR；真实编译单测 | PR-73 | ~340 行 | 1.5d | `cd csrc/geometry && bazel test //... --config=opt` + `tests/test_geometry_tier0.py` (非 dry-run) | ⚠️ 部分合入 (#83 → `PR-102`) |
+| **[PR-85](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-85)** | M23 | `inspector_app.cc` 改 `@aether//pal`（零 POSIX 泄漏/死锁）、OBJ 安全+Z-Buffer+`.glb/.exr`、原子 SHM/JSON、`test_inspector` 迁 GTest | PR-84 | ~580 行 | 2.5d | `cd tools/data-inspector/native && bazel test //... --config=opt` (零 `<unistd.h>`/`<poll.h>`) | ⚠️ 部分合入 (#85 → `PR-103`) |
+| **[PR-86](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-86)** | M23 | Electron 跨平台零拷贝 SHM；修复 `app.js` `SourceEntry`/AOV 解耦；Electron 守卫、红绿灯边距、只读 `test/fixtures` | PR-74, 85 | ~480 行 | 2.0d | `node tools/data-inspector/test/test-bundle-loading.js` (`git status fixtures/` 为空) | ❌ 核心未生效 (#86 → `PR-104`) |
+| **[PR-87](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-87)** | M23 | `bench_runner` 数组与全 `required_keys`；`model_evaluator` 16 项全门禁+相对键防撞+表面采样；CLI 残余去伪与 RSI 多轴 | PR-74, 75, 80, 81, 83 | ~460 行 | 2.0d | `tests/test_bench_runner.py` + `tests/test_model_evaluator.py` + `tests/test_cli.py` | ⚠️ 部分合入 (#82 → `PR-105`) |
+| **[PR-88](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-88)** | M23 | `colab_runner` 97f 入束修复 `IndexError`、`--mode real-gpu` 与 `SIGTERM` 续跑；SSOT V2.0；真实 HF 拉取 + `vital_file` | PR-74, 77, 84 | ~420 行 | 1.5d | `bash -n workenv/google-colab/setup_colab.sh` + `tests/test_benchmark_assets.py` | ⚠️ 部分合入 (#84 → `PR-106`) |
+| **[PR-89](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-89)** | M24 | `synapse/__init__.py` PEP 562 惰性化；`import_dag_guard` 强制 5-Tier `TIER_MAP` & 相对/动态导入；打通 RSI 课程与隔离接线 | Wave 21, PR-87 | ~420 行 | 1.5d | `tools/import_dag_guard.py --check` + `tests/test_architecture_dag.py` + `tests/test_rsi_promotion_gate.py` | ⚠️ 部分合入 (#87 → `PR-93`) |
+| **[PR-90](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-90)** | M24 | 清零 `mypy --strict` 79 错与 `tests/ scripts/ tools/` 63 错；修 4 假单测、`port=0` 与 `SYNAPSE_CI_STRICT_DEPS`；`<= 25s` | Wave 22 | ~520 行 | 2.0d | `mypy python/synapse tests/ scripts/ tools/` + `time pytest -m 'not slow' <= 25s` | ❌ 未达标 (#88 → `PR-92,107`) |
+| **[PR-91](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md#pr-91)** | M24 | 新增 `.github/workflows/ci.yml`；消解生态 `0061–0063` 撞号与治理元数据；同步全部文档断链、Skills、`.gitignore` 与 Ruff | PR-89, 90 | ~320 行 | 1.0d | CI 全作业 + 8 项 Horizon-6 全局验收门禁全绿 | ❌ 门禁失效 (#89 → `PR-92,108`) |
+
+### 4.7 Horizon 7：Post-Horizon-6 真实闭环与全仓治理（M25–M28，共 18 PRs，详见 [PLAN-M25-M28](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)）
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M25-M28](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) 查看详情） | 前置依赖 | 净增规模 | 工时 | `ubuntu24` 验收门禁测试 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-92](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-92)** | M25 | `.ci` → `.github/workflows/ci.yml` 并修复 3 Job；`conftest` 重写为 `hookwrapper`；解禁 Ruff `B017/SIM115` 等与去 `--basetemp` | PR-91 | ~220 行 | 1.0d | `SYNAPSE_CI_STRICT_DEPS=1 pytest tests/test_bench.py -k test_scenario_create` + negative skip 检验 | 📋 已规划 |
+| **[PR-93](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-93)** | M25 | `fgpp/io.py` 缺文件 Fail-Closed、`load_metadata` 逆矩阵恢复内参；全作用域 `import_dag_guard` 消 2 逆边；`wire_guard --require-aether` | PR-92 | ~340 行 | 1.5d | `import_dag_guard.py --check` + `wire_guard.py --check --require-aether` + `test_fgpp_*` | 📋 已规划 |
+| **[PR-94](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-94)** | M25 | 齐次近面插值裁剪+内参投影+`prev_vertices` 光流；`procedural` 关节链与焊接；`pyramid`/`morphology`/`conditions`/`telemetry` 收口 | PR-93 | ~380 行 | 1.5d | `pytest tests/test_render_core.py tests/test_fgpp_contract.py tests/test_cli_deterministic_codes.py` | 📋 已规划 |
+| **[PR-95](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-95)** | M25 | `detector` 穿地 Y-up/-Z + 反向 Warp；`morphology` 单一精确 EDT；`aces_color` 前向软肩+D65；线性混合+`Style` IRLS/$S^2$ 均值 | PR-93, 94 | ~420 行 | 2.0d | `pytest tests/test_composite_blend.py tests/test_composite_mask.py tests/test_style.py` | 📋 已规划 |
+| **[PR-96](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-96)** | M25 | 移除核心常驻 `ViewerServer` 遵守红线 #1 + XSS/CSP；所有叶子子命令挂 `parents=[json_parent]`；CLI 导出真实 EXR 与 5 Stage 落盘 | PR-93, 95 | ~380 行 | 1.5d | `pytest tests/test_cli*.py tests/test_bundle_worker.py tests/test_pipeline_stage_adapters.py` | 📋 已规划 |
+| **[PR-97](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-97)** | M26 | `Wan` 接入 `LoRAPatchHook` `[B,L,D]` 与 `_extract_lora_ab` 按模块匹配；相关性感知滑窗方差；统一单一 `Foundary` 客户端与 `HITL` 文件账本 | PR-93, 94, 96 | ~450 行 | 2.0d | `pytest tests/test_wan_*.py tests/test_lora_manager.py tests/test_cloud_adapters.py tests/test_bridge_and_hitl.py` | 📋 已规划 |
+| **[PR-98](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-98)** | M26 | 移除 `packager` Fail-Open；导出+接线 `losses.py` 4 项损失；`fp32` LoRA 权重；恢复 `FeatureStore` 旋转门禁修好 `test_ingestion_gate_rejects_bad_rotation` | PR-97 | ~320 行 | 1.5d | `pytest tests/test_lora_*.py tests/test_domain_randomizer_and_gate.py -k ...` | 📋 已规划 |
+| **[PR-99](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-99)** | M26 | 256 表插值 Marching Cubes + `w2c` 剪影修复（`test_recon_invert_cli.py` 转绿）；真切空间法线烘焙、`extract_main_take`、Z-Buffer Delight 与 PnP 追踪 | PR-94, 95 | ~460 行 | 2.0d | `pytest tests/test_recon_invert_cli.py tests/test_recon*.py` | 📋 已规划 |
+| **[PR-100](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-100)** | M26 | `ScalpelStitcher` ACEScg 混合保 ROI 内 HDR+边界 EMA；`Hand`/`FaceRefiner` 诚实 `strict=True` 报错与虹膜质心视线；`Fusion`/`LocalRefinementPipeline` 闭环 | PR-95, 99 | ~360 行 | 1.5d | `pytest tests/test_refine_*.py` | 📋 已规划 |
+| **[PR-101](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-101)** | M26 | 修复 `_build_r3d18_extractor` 通道维（增无 Mock `T=16` 用例）；`uint8` 除 255 + 反向光流；`eigh` FVD；掩膜金字塔 LPIPS 与 Y-up XZ 滑移 | PR-95, 99 | ~330 行 | 1.5d | `pytest tests/test_metrics*.py tests/test_rfc0063_metrics.py tests/test_profiles_doc_sync.py` | 📋 已规划 |
+| **[PR-102](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-102)** | M27 | `build_native` 跨平台链接+禁静默回退；消除 `csrc/geometry/.bazelrc` `[opt]` 双重扩展；64-bit `bindings` 校验；`test_geometry.cc` 迁 GoogleTest | PR-92 | ~260 行 | 1.5d | `(cd csrc/geometry && bazel test //:test_geometry)` + `tests/test_geometry_*.py` | 📋 已规划 |
+| **[PR-103](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-103)** | M27 | `inspector_app.cc` 去 `-fno-exceptions` `.value()` `SIGABRT`、实现 `.glb/.exr` 加载与 `Albedo`/`Motion`；`shm_server` placement-new+奇偶 Seqlock 校验 | PR-93 | ~420 行 | 2.0d | `(cd tools/data-inspector/native && bazel test //:test_inspector --test_output=errors)` | 📋 已规划 |
+| **[PR-104](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-104)** | M27 | Electron `shm-reader` 头解析入循环 + macOS/Win SHM 绑定；去 14MB/帧 JSON IPC 拷贝；`realpathSync` 锁死与提交 `package-lock.json` | PR-103 | ~320 行 | 1.5d | `node tools/data-inspector/test/test-bundle-loading.js` (`npm ci` 就绪) | 📋 已规划 |
+| **[PR-105](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-105)** | M27 | `bench_runner` 全指标+T2/T3 真动态；`model_evaluator` 无参考门禁+修 `TestEvalScript::test_smoke_run`；删陈旧 `data/scenarios/` 与 RSI 30 场景接通 | PR-96, 99, 101 | ~380 行 | 1.5d | `pytest tests/test_bench_runner.py tests/test_model_evaluator.py tests/test_eval_report.py tests/test_rsi_*.py` | 📋 已规划 |
+| **[PR-106](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-106)** | M27 | 锁定 Wan 7ch SSOT；`colab_runner --mode=real-gpu` 真推理（无权报错 `50/30`）；`setup_colab` NVMe 落盘；HF 去双层嵌套与更新 `assets_manifest` SHA256 | PR-97, 102, 105 | ~310 行 | 1.5d | `prepare_datasets.py` + `run_cpu_verification.py` + `pytest tests/test_benchmark_assets.py tests/test_colab_runner.py` | 📋 已规划 |
+| **[PR-107](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-107)** | M28 | 重写 `clean_recon` 接入真实 `ReconPipeline.run()`（`>= 3.0x` 真差）；去除误标 `slow` 并接缓存使快 `<=25s`/慢 `<=60s`；清零 Ruff 327 告警 | PR-98, 100, 101, 105 | ~350 行 | 1.5d | `SYNAPSE_CI_STRICT_DEPS=1 pytest -m "not slow"` + `-m slow -n auto` + `ruff check` (`0 errors`) | 📋 已规划 |
+| **[PR-108](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-108)** | M28 | `git mv RFC-0060..0063` 为 `SYN-RFC-0060..0063` 消撞号；更新 `.agents/skills/` 去幻觉符号与 `AGENTS.md` / Colab README 对齐；`0 broken links` | PR-96, 106 | ~240 行 | 1.0d | 全仓 Markdown 相对路径 & 引用扫描脚本 (`0 broken links`) | 📋 已规划 |
+| **[PR-109](plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md#pr-109)** | M28 | 在 `ubuntu24` 一次性串联实跑 10 项终验门禁并验证 GitHub Actions PR 3/3 绿灯，正式收口全部 4 份治理文档 | PR-102, 104, 106, 107, 108 | ~120 行 | 0.5d | Horizon 7 全部 **10 项硬门禁** `0 failed, 0 skipped, 0 errors` | 📋 已规划 |
 
 ---
 
@@ -443,8 +517,13 @@ flowchart LR
 | **RK-11** | `Cryptomatte.ID` (`UINT32`) 通过 `.view(np.float32)` 写为 `FLOAT` EXR 遭 sNaN 位反转损坏 | M21 (`PR-74`) | `export_fgpp` 原生以 `Imath.PixelType.UINT` 写出；`cli/_fgpp` 与 `wire_guard` 逐通道解析 `fgpp_types.h` 阻断 `FLOAT` |
 | **RK-12** | `MultiLoRAManager` 随机噪声 delta 与 `bundle_worker` 仅读 `load_metadata()` 引发静默伪执行 | M21 (`PR-75,76`) | 生产路径强校验 `.safetensors` + SHA256、`import_fgpp()` 真读 EXR、并强制传入 `FoundaryHttpTransport` 3D 控制张量 |
 | **RK-13** | `_METRIC_DIRECTIONS` 遗漏 `f_score_5mm`/`watertight_pct` 导致 3D 门禁反向放行破洞网格 | M22 (`PR-83`) | 显式登记 `higher_is_better` 并单测断言所有档位阈值键全覆盖；接入真实 3D 视频 FVD 特征与逐通道 `Var(X)` 门禁 |
-| **RK-14** | `data-inspector` 泄露 `<poll.h>/<unistd.h>` 死锁 Windows 且 macOS/Windows SHM 路径 100% 失效 | M23 (`PR-85,86`) | C++ 收敛至 `@aether//pal` 并迁 GoogleTest（`-DNDEBUG` 生效）；Electron 端经 `@aether//pal:shm` / mmap 实现全平台零拷贝 |
-| **RK-15** | 缺少 `.github/workflows/ci.yml`、快测试退化至 `64.89s` 且 `--strict` 类型门禁漂移 | M24 (`PR-90,91`) | 开启 `mypy strict = true`（0 err）、会话软光栅缓存压低 fast pytest `<= 25s` 并由 GitHub Actions CI 永久锁定 |
+| **RK-14** | `data-inspector` 在 Windows/macOS SHM 失效、Seqlock 重试竞态且 `-fno-exceptions` 调用 `.value()` 引发 `SIGABRT` | M23 / M27 (`PR-103,104`) | C++ `inspector_shm_server` 采用 placement-new + 奇偶 Seqlock 与 `is_always_lock_free` 断言、`inspector_app.cc` 零未校验 `.get<T>()`/`.value()`；Electron 读头移入重试循环并支持跨平台 `@aether//pal:shm` 绑定或 `--shm-file` |
+| **RK-15** | `.github/workflows/ci.yml` 缺失、`conftest` 非 `hookwrapper` 崩溃、快测 `40.43s` 与 327 Ruff 告警被屏蔽 | M24 / M25 / M28 (`PR-92,107`) | 将工作流迁至 `.github/workflows/ci.yml` 并修通 3 Job；`conftest` 改 `@pytest.hookimpl(hookwrapper=True)`；解禁 29 条中 `7` 条核心缺陷规则清零 327 告警；会话光栅缓存压低 fast `<= 25s` & slow `<= 60s` |
+| **RK-16** | `conftest` / `-m slow` 标签掩盖失败用例及 `clean_recon` 伪差分造成“全绿”幻觉 | M25 / M28 (`PR-92,107`) | `SYNAPSE_CI_STRICT_DEPS=1` 双阶段强制把 `skip` 转 `fail`；解除错贴 `<200ms` 单测的 `@pytest.mark.slow`；重写 `test_roundtrip_reconstruction.py` 真实调用 `ReconPipeline.run()` |
+| **RK-17** | 光流符号 (`+mv` vs `-mv`)、相机坐标系 (`+Y up/-Z` vs OpenCV)、内参重建与 Wan 7ch 语义跨模块 Split-Brain | M25–M27 (`PR-93..95, 97, 99..101, 106`) | 统一反向重采样 `(x - mv_x, y - mv_y)`、右手系 `+Y up` `-Z` 相机契约、从 `proj_matrix_col_major` 重建 `(fx,fy,cx,cy)` 及 Wan 7ch 唯一 SSOT 并入端到端测试锁死 |
+| **RK-18** | 核心 SDK 残余 `ViewerServer` 常驻 `TCPServer` 违反 `Zero-Python` 服务端红线且含 SVG XSS/`port=0` 隐患 | M25 (`PR-96`) | 从 `synapse.viewer` 移除常驻 `TCPServer` 仅保留静态 HTML 导出，强制 CSP/URL `%` 解码与子命令全范围 `--json` 错误契约 |
+| **RK-19** | `MultiLoRAManager` 丢弃空域掩膜、`_extract_lora_ab` 跨层覆盖及 `Hand/FaceRefiner`/`FeatureStore`/`Metrics` 静默失真 | M26 (`PR-97,98,100,101`) | 按模块前缀精确匹配 LoRA 键并走 `LoRAPatchHook` `[B,L,D]`；恢复所有帧 `camera_matrices` `det(R)` 门禁；`Hand/FaceRefiner` `strict=True` 无真先验报 `50`；`_build_r3d18_extractor` 通道维归一化且补齐非 Mock `T=16` 单测 |
+| **RK-20** |仓内 `docs/RFC-0060..0063` 与生态 `all-overview/rfcs/0061..0063` 撞号且 `.agents/skills/` 引用已删除/不存在符号 | M28 (`PR-108`) | `git mv` 为 `docs/SYN-RFC-0060..0063-*.md`；将 `synapse-overview`/`synapse-lora-and-flywheel` 校准至实际落地的 `synapse.rsi` 符号与实态能力边界 |
 
 ---
 
