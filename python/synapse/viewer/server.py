@@ -101,7 +101,7 @@ class ViewerServer:
     def __init__(
         self,
         dataset_dir: str | Path,
-        port: int = 8765,
+        port: int = 0,
         host: str = "127.0.0.1",
     ) -> None:
         self.dataset_dir = Path(dataset_dir).resolve()
@@ -189,7 +189,7 @@ class ViewerServer:
 
 def launch_viewer(
     dataset_dir: str | Path,
-    port: int = 8765,
+    port: int = 0,
     open_browser: bool = True,
     block: bool = True,
     host: str = "127.0.0.1",

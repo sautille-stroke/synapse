@@ -22,3 +22,10 @@ from synapse.render_core.procedural import (  # noqa: F401
     generate_humanoid_proxy,
     generate_procedural_mesh,
 )
+
+__all__ = [
+    "ProceduralMesh",
+    "ProceduralMeshType",
+    "generate_humanoid_proxy",
+    "generate_procedural_mesh",
+]

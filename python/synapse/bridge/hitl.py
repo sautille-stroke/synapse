@@ -22,6 +22,11 @@ from synapse.errors import (
     evaluate_hitl_circuit_breaker,  # noqa: F401
 )
 
+__all__ = [
+    "CircuitBreakerError",
+    "evaluate_hitl_circuit_breaker",
+]
+
 # -----------------------------------------------------------------------
 # Operator identity
 # -----------------------------------------------------------------------

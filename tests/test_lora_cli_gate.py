@@ -574,11 +574,21 @@ class TestLoRACLI:
     def test_no_fake_stub_statuses_in_cli_or_trainer(self) -> None:
         """Ensure fake success stub strings are purged from cli and trainer."""
         repo_root = Path(__file__).resolve().parent.parent
-        cli_src = (repo_root / "python/synapse/cli/__init__.py").read_text(encoding="utf-8")
-        trainer_src = (repo_root / "python/synapse/training/trainer.py").read_text(encoding="utf-8")
-        for forbidden in ("configured_for_execution", "align_configured", '"status": "configured"'):
-            assert forbidden not in cli_src
-            assert forbidden not in trainer_src
+        cli_dir = repo_root / "python" / "synapse" / "cli"
+        trainer_dir = repo_root / "python" / "synapse" / "training"
+        forbidden_strings = (
+            "configured_for_execution",
+            "align_configured",
+            '"status": "configured"',
+        )
+        violations: list[str] = []
+        for search_dir in (cli_dir, trainer_dir):
+            for py_file in sorted(search_dir.rglob("*.py")):
+                src = py_file.read_text(encoding="utf-8")
+                for forbidden in forbidden_strings:
+                    if forbidden in src:
+                        violations.append(f"{py_file.name}: contains '{forbidden}'")
+        assert violations == [], f"Fake stub statuses found: {violations}"
 
 
 # -------------------------------------------------------------------

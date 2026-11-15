@@ -13,3 +13,11 @@ from synapse.render_core.conditions import (  # noqa: F401
     ConditionLevel,
     Conditions,
 )
+
+__all__ = [
+    "CROSS_CONDITIONS",
+    "ConditionLevel",
+    "Conditions",
+    "RENDERING_CONDITION_FACTORS",
+    "SINGLE_FACTOR_CONDITIONS",
+]

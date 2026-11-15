@@ -20,7 +20,7 @@ class TestPipelineStageAdapters:
         ]
         violations: list[str] = []
         for d in domain_dirs:
-            for py_file in sorted(d.glob("*.py")):
+            for py_file in sorted(d.rglob("*.py")):
                 source = py_file.read_text(encoding="utf-8")
                 tree = ast.parse(source, filename=str(py_file))
                 for node in ast.walk(tree):
@@ -40,7 +40,7 @@ class TestPipelineStageAdapters:
             repo_root / "python" / "synapse" / "inspect",
         ]
         for d in domain_dirs:
-            for py_file in sorted(d.glob("*.py")):
+            for py_file in sorted(d.rglob("*.py")):
                 source = py_file.read_text(encoding="utf-8")
                 assert "E402" not in source, f"Found noqa: E402 in {py_file}"
 

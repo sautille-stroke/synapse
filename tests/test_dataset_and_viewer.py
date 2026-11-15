@@ -187,7 +187,7 @@ class TestViewerServer:
         }
         (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
 
-        server = ViewerServer(dataset_dir=tmp_path, port=9876)
+        server = ViewerServer(dataset_dir=tmp_path, port=0)
         url = server.start(open_browser=False)
 
         try:
@@ -238,7 +238,7 @@ class TestViewerServer:
         sub.mkdir()
         (sub / "test.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 
-        server = ViewerServer(dataset_dir=tmp_path, port=9877)
+        server = ViewerServer(dataset_dir=tmp_path, port=0)
         url = server.start(open_browser=False)
 
         try:

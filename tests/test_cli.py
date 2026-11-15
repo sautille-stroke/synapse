@@ -540,60 +540,13 @@ class TestRsiGatePromote:
 
 # ===================================================================
 # Test: PR-44 anti-silent-failure CLI tests
+# (Deduplicated: unique tests only — shared tests moved to
+#  TestReconInvertVideo / TestRsiGatePromote above)
 # ===================================================================
 
 
 class TestAntiSilentFailureCLI:
     """Verify that CLI commands reject missing inputs instead of faking success."""
-
-    def test_recon_invert_video_missing_video_exits_20(self) -> None:
-        """synapse recon invert-video without --video → exit_code=20."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "recon", "invert-video"]
-        )
-        assert code == ExitCode.RESOURCE_MISSING
-        data = json.loads(out)
-        assert data["exit_code"] == ExitCode.RESOURCE_MISSING
-        assert "agent_fix_hint" in data
-
-    def test_recon_invert_video_nonexistent_file_exits_20(
-        self,
-    ) -> None:
-        """synapse recon invert-video with nonexistent --video → exit_code=20."""
-        code, out, err = _capture_main_synapse(
-            [
-                "--json", "recon", "invert-video",
-                "--video", "/nonexistent/path/frames.npy",
-            ]
-        )
-        assert code == ExitCode.RESOURCE_MISSING
-
-    def test_rsi_gate_promote_without_args_exits_10(self) -> None:
-        """synapse rsi gate-promote without --baseline/--candidate → exit_code=10."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "rsi", "gate-promote"]
-        )
-        assert code == ExitCode.CONTRACT_ERROR
-        data = json.loads(out)
-        assert data["exit_code"] == ExitCode.CONTRACT_ERROR
-        assert "agent_fix_hint" in data
-
-    def test_rsi_gate_promote_with_args_succeeds(self) -> None:
-        """synapse rsi gate-promote with explicit 3-axis args → exit_code=0."""
-        code, out, err = _capture_main_synapse(
-            [
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.7",
-                "--baseline-geom", "0.7",
-                "--baseline-temporal", "0.7",
-                "--candidate-overall", "0.8",
-                "--candidate-geom", "0.8",
-                "--candidate-temporal", "0.8",
-            ]
-        )
-        assert code == 0
-        data = json.loads(out)
-        assert data["status"] == "ok"
 
     def test_recon_closed_loop_missing_normals_exits_20(self, tmp_path: Path) -> None:
         """synapse recon closed-loop without --normals → exit_code=20."""
