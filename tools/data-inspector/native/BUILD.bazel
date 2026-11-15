@@ -30,6 +30,7 @@ cc_library(
     }),
     deps = [
         "@aether//core",
+        "@aether//pal:console",
         "@aether//pal:shm",
         "@nlohmann_json//:json",
     ],
@@ -53,5 +54,6 @@ cc_test(
     copts = COMMON_COPTS,
     deps = [
         ":inspector_lib",
+        "@googletest//:gtest_main",
     ],
 )

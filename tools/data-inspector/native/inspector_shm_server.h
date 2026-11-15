@@ -42,10 +42,10 @@ struct InspectorShmHeader {
   std::atomic<uint32_t> write_idx;    ///< Buffer index (0..2) of latest completed frame.
   uint32_t buffer_count;              ///< Number of frame buffers (kShmBufferCount = 3).
   std::atomic<uint64_t> frame_ready;  ///< Monotonically incremented after each completed frame.
-  float fps;                          ///< Measured FPS.
-  float delta_time;                   ///< Last frame delta in seconds.
-  uint8_t debug_view;                 ///< Active debug view mode (0 = lit).
-  uint8_t m_reserved[23];             ///< Pad to 64 bytes.
+  std::atomic<float> fps;             ///< Measured FPS.
+  std::atomic<float> delta_time;      ///< Last frame delta in seconds.
+  std::atomic<uint8_t> debug_view;    ///< Active debug view mode (0 = lit).
+  uint8_t reserved[23];              ///< Pad to 64 bytes.
 };
 
 static_assert(sizeof(InspectorShmHeader) == 64,
@@ -54,6 +54,8 @@ static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "std::atomic<uint32_t> must be lock-free for cross-process SHM");
 static_assert(std::atomic<uint64_t>::is_always_lock_free,
               "std::atomic<uint64_t> must be lock-free for cross-process SHM");
+static_assert(std::atomic<float>::is_always_lock_free,
+              "std::atomic<float> must be lock-free for cross-process SHM");
 
 /// @brief Server-side SHM manager backed by `aether::pal::SharedMemory`.
 class InspectorShmServer {

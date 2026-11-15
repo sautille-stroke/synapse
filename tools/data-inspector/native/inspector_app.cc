@@ -3,12 +3,8 @@
 
 #include "inspector_app.h"
 
+#include <aether/pal/console.h>
 #include <nlohmann/json.hpp>
-
-#ifndef _WIN32
-#include <poll.h>
-#include <unistd.h>
-#endif
 
 #include <algorithm>
 #include <chrono>
@@ -39,7 +35,8 @@ InspectorApp::~InspectorApp() {
   if (m_stdinState) {
     m_stdinState->stop.store(true, std::memory_order_release);
   }
-  // Safe thread termination: the reader thread wakes up via poll timeout or stop flag
+  // The reader thread uses pollStdinBytes with a short timeout, so it will
+  // notice the stop flag promptly and exit. No permanent deadlock on join().
   if (m_stdinThread.joinable()) {
     m_stdinThread.join();
   }
@@ -110,16 +107,38 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
       }
     } else if (line[0] == 'f' && line[1] == ' ') {
       std::istringstream iss(line.substr(2));
-      std::string s0, s1, s2;
-      if (iss >> s0 >> s1 >> s2) {
-        auto parseIndex = [](const std::string& token) -> uint32_t {
-          char* endPtr = nullptr;
-          long idx = std::strtol(token.c_str(), &endPtr, 10);
-          return idx > 0 ? static_cast<uint32_t>(idx - 1) : 0u;
-        };
-        loadedFaces.push_back(parseIndex(s0));
-        loadedFaces.push_back(parseIndex(s1));
-        loadedFaces.push_back(parseIndex(s2));
+      std::vector<uint32_t> faceIndices;
+      std::string token;
+      const auto vertCount = static_cast<int64_t>(loadedVerts.size() / 3);
+
+      while (iss >> token) {
+        char* endPtr = nullptr;
+        long idx = std::strtol(token.c_str(), &endPtr, 10);
+        if (idx == 0) continue;  // invalid OBJ index
+
+        uint32_t resolved = 0;
+        if (idx > 0) {
+          resolved = static_cast<uint32_t>(idx - 1);
+        } else {
+          // Negative relative index: -1 = last vertex, etc.
+          int64_t absIdx = vertCount + idx;
+          if (absIdx < 0) continue;  // out of range
+          resolved = static_cast<uint32_t>(absIdx);
+        }
+
+        // Drop out-of-bounds indices
+        if (resolved >= static_cast<uint32_t>(vertCount)) continue;
+
+        faceIndices.push_back(resolved);
+      }
+
+      // Fan-triangulate: works for triangles, quads, and N-gons
+      if (faceIndices.size() >= 3) {
+        for (size_t i = 1; i + 1 < faceIndices.size(); ++i) {
+          loadedFaces.push_back(faceIndices[0]);
+          loadedFaces.push_back(faceIndices[i]);
+          loadedFaces.push_back(faceIndices[i + 1]);
+        }
       }
     }
   }
@@ -153,13 +172,14 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
   m_mesh.faces = std::move(loadedFaces);
   m_mesh.faceNormals.clear();
 
+  const auto vertexCount = m_mesh.vertices.size();
   for (size_t f = 0; f < m_mesh.faces.size(); f += 3) {
     const uint32_t i0 = m_mesh.faces[f + 0];
     const uint32_t i1 = m_mesh.faces[f + 1];
     const uint32_t i2 = m_mesh.faces[f + 2];
-    if (i0 * 3 + 2 >= m_mesh.vertices.size() ||
-        i1 * 3 + 2 >= m_mesh.vertices.size() ||
-        i2 * 3 + 2 >= m_mesh.vertices.size()) {
+    if (i0 * 3 + 2 >= vertexCount ||
+        i1 * 3 + 2 >= vertexCount ||
+        i2 * 3 + 2 >= vertexCount) {
       m_mesh.faceNormals.push_back(0.0f);
       m_mesh.faceNormals.push_back(1.0f);
       m_mesh.faceNormals.push_back(0.0f);
@@ -229,14 +249,14 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
       if (relPath.size() > 4 && relPath.substr(relPath.size() - 4) == ".obj") {
         std::string fullObjPath = std::string(bundlePath) + "/" + relPath;
         if (loadObjMesh(fullObjPath)) {
-          std::cout << "[inspector] Loaded mesh: " << fullObjPath << "\n";
+          std::cerr << "[inspector] Loaded mesh: " << fullObjPath << "\n";
           break;
         }
       }
     }
   }
 
-  std::cout << "[inspector] Loaded bundle: " << m_config.bundlePath
+  std::cerr << "[inspector] Loaded bundle: " << m_config.bundlePath
             << " (verts=" << (m_mesh.vertices.size() / 3)
             << ", faces=" << (m_mesh.faces.size() / 3) << ")\n";
   return true;
@@ -255,43 +275,63 @@ bool InspectorApp::init() {
     return false;
   }
 
-  std::cout << "[inspector] SHM opened: " << m_config.shmName << " ("
+  std::cerr << "[inspector] SHM opened: " << m_config.shmName << " ("
             << m_config.width << "x" << m_config.height << ", "
             << m_shm.totalSize() << " bytes)\n";
-  std::cout << "[inspector] RHI backend: " << m_config.rhiBackend
+  std::cerr << "[inspector] RHI backend: " << m_config.rhiBackend
             << " (diagnostic SHM rasterizer)\n";
-  std::cout << "[inspector] Headless: "
+  std::cerr << "[inspector] Headless: "
             << (m_config.headless ? "true" : "false") << "\n";
-  std::cout.flush();
 
   auto state = m_stdinState;
   m_stdinThread = std::thread([state]() {
+    // Line accumulation buffer for pollStdinBytes
+    std::string lineBuf;
+    constexpr size_t kChunkSize = 4096;
+    char chunk[kChunkSize];
+
     while (!state->stop.load(std::memory_order_acquire)) {
-#ifndef _WIN32
-      struct pollfd pfd;
-      pfd.fd = STDIN_FILENO;
-      pfd.events = POLLIN;
-      pfd.revents = 0;
-      int ret = poll(&pfd, 1, 50);
-      if (ret < 0) {
-        if (errno == EINTR) continue;
+      auto result = aether::pal::pollStdinBytes(chunk, kChunkSize);
+
+      if (result.pipeClosed) {
+        // Flush any trailing partial line
+        if (!lineBuf.empty()) {
+          if (!lineBuf.empty() && lineBuf.back() == '\r') {
+            lineBuf.pop_back();
+          }
+          if (!lineBuf.empty()) {
+            std::lock_guard<std::mutex> lock(state->mtx);
+            state->lines.push_back(std::move(lineBuf));
+            lineBuf.clear();
+          }
+        }
         break;
       }
-      if (ret == 0) continue;
-      if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-        if (!(pfd.revents & POLLIN)) break;
+
+      if (result.bytesRead == 0) {
+        // No data available — sleep briefly to avoid busy-spin
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
       }
-#endif
-      std::string line;
-      if (!std::getline(std::cin, line)) {
-        break;
+
+      // Append received bytes and split on newlines
+      lineBuf.append(chunk, result.bytesRead);
+      size_t pos = 0;
+      while (true) {
+        const auto nl = lineBuf.find('\n', pos);
+        if (nl == std::string::npos) break;
+        std::string oneLine = lineBuf.substr(pos, nl - pos);
+        pos = nl + 1;
+        if (!oneLine.empty() && oneLine.back() == '\r') {
+          oneLine.pop_back();
+        }
+        if (oneLine.empty()) continue;
+        std::lock_guard<std::mutex> lock(state->mtx);
+        state->lines.push_back(std::move(oneLine));
       }
-      if (!line.empty() && line.back() == '\r') {
-        line.pop_back();
+      if (pos > 0) {
+        lineBuf.erase(0, pos);
       }
-      if (line.empty()) continue;
-      std::lock_guard<std::mutex> lock(state->mtx);
-      state->lines.push_back(std::move(line));
     }
     state->eof.store(true, std::memory_order_release);
   });
@@ -309,8 +349,7 @@ void InspectorApp::run() {
   float accumulatedTime = 0.0f;
   float measuredFps = 60.0f;
 
-  std::cout << "[inspector] Entering frame loop\n";
-  std::cout.flush();
+  std::cerr << "[inspector] Entering frame loop\n";
 
   while (m_running.load(std::memory_order_acquire)) {
     const auto now = Clock::now();
@@ -334,12 +373,16 @@ void InspectorApp::run() {
 
     renderFrame(deltaTime);
     m_shm.publishFrame(measuredFps, deltaTime, static_cast<uint8_t>(m_debugView));
-    std::cout << "{\"type\":\"frame_ready\"}\n";
+
+    // Emit structured JSON-RPC frame notification on stdout (pure JSON only)
+    nlohmann::json frameMsg;
+    frameMsg["type"] = "frame_ready";
+    std::cout << frameMsg.dump() << "\n";
     std::cout.flush();
 
     totalFrames++;
     if (m_config.maxFrames > 0 && totalFrames >= m_config.maxFrames) {
-      std::cout << "[inspector] Reached maxFrames (" << m_config.maxFrames
+      std::cerr << "[inspector] Reached maxFrames (" << m_config.maxFrames
                 << "), exiting\n";
       requestQuit();
       break;
@@ -366,8 +409,7 @@ void InspectorApp::run() {
     }
   }
 
-  std::cout << "[inspector] Frame loop exited\n";
-  std::cout.flush();
+  std::cerr << "[inspector] Frame loop exited\n";
 }
 
 void InspectorApp::renderFrame(float /*deltaTime*/) {
@@ -376,6 +418,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
 
   const uint32_t w = m_config.width;
   const uint32_t h = m_config.height;
+  const size_t pixelCount = static_cast<size_t>(w) * h;
 
   // Clear background: dark aesthetic viewport palette (RGBA = 16, 20, 28, 255)
   for (uint32_t i = 0; i < w * h; ++i) {
@@ -386,6 +429,9 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
   }
 
   if (!m_entityVisible) return;
+
+  // Allocate z-buffer for real depth occlusion
+  std::vector<float> zBuffer(pixelCount, std::numeric_limits<float>::max());
 
   // View matrix transformation parameters
   const float cy = std::cos(m_orbitYaw);
@@ -425,7 +471,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     const int dx = std::abs(x1 - x0);
     const int dy = -std::abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
-    const int sy = y0 < y1 ? 1 : -1;
+    const int syy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
 
     while (true) {
@@ -439,7 +485,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       if (x0 == x1 && y0 == y1) break;
       const int e2 = 2 * err;
       if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
+      if (e2 <= dx) { err += dx; y0 += syy; }
     }
   };
 
@@ -464,11 +510,19 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
   const float lx = 0.577f, ly = 0.577f, lz = 0.577f;
 
   // Render mesh triangles
+  const size_t vertexCount = m_mesh.vertices.size();
   const size_t numFaces = m_mesh.faces.size() / 3;
   for (size_t f = 0; f < numFaces; ++f) {
     const uint32_t i0 = m_mesh.faces[f * 3 + 0];
     const uint32_t i1 = m_mesh.faces[f * 3 + 1];
     const uint32_t i2 = m_mesh.faces[f * 3 + 2];
+
+    // Bounds check face indices against vertex array
+    if (i0 * 3 + 2 >= vertexCount ||
+        i1 * 3 + 2 >= vertexCount ||
+        i2 * 3 + 2 >= vertexCount) {
+      continue;  // Drop out-of-bounds face
+    }
 
     float sx0, sy0, sz0;
     float sx1, sy1, sz1;
@@ -547,7 +601,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       drawLine(static_cast<int>(sx2), static_cast<int>(sy2),
                static_cast<int>(sx0), static_cast<int>(sy0), 70, 200, 235);
     } else {
-      // Simple raster scanline triangle fill
+      // Simple raster scanline triangle fill with z-buffer depth occlusion
       int minX = std::max(0, static_cast<int>(std::min({sx0, sx1, sx2})));
       int maxX = std::min(static_cast<int>(w) - 1, static_cast<int>(std::max({sx0, sx1, sx2})));
       int minY = std::max(0, static_cast<int>(std::min({sy0, sy1, sy2})));
@@ -558,6 +612,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       };
       const float area = edgeFunc(sx0, sy0, sx1, sy1, sx2, sy2);
       if (std::abs(area) > 1e-4f) {
+        const float invArea = 1.0f / area;
         for (int y = minY; y <= maxY; ++y) {
           for (int x = minX; x <= maxX; ++x) {
             const float px = static_cast<float>(x) + 0.5f;
@@ -567,11 +622,21 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
             const float w2 = edgeFunc(sx0, sy0, sx1, sy1, px, py);
 
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-              const size_t off = (static_cast<size_t>(y) * w + static_cast<size_t>(x)) * 4u;
-              buf[off + 0] = cr;
-              buf[off + 1] = cg;
-              buf[off + 2] = cb;
-              buf[off + 3] = 255;
+              // Interpolate depth for z-buffer test
+              const float bary0 = w0 * invArea;
+              const float bary1 = w1 * invArea;
+              const float bary2 = w2 * invArea;
+              const float fragZ = bary0 * sz0 + bary1 * sz1 + bary2 * sz2;
+
+              const size_t pixIdx = static_cast<size_t>(y) * w + static_cast<size_t>(x);
+              if (fragZ < zBuffer[pixIdx]) {
+                zBuffer[pixIdx] = fragZ;
+                const size_t off = pixIdx * 4u;
+                buf[off + 0] = cr;
+                buf[off + 1] = cg;
+                buf[off + 2] = cb;
+                buf[off + 3] = 255;
+              }
             }
           }
         }
@@ -619,7 +684,11 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
 
   auto j = nlohmann::json::parse(jsonStr, nullptr, false);
   if (j.is_discarded()) {
-    std::cout << "{\"type\":\"ack\",\"command\":\"unknown\",\"ok\":false}\n";
+    nlohmann::json errResp;
+    errResp["type"] = "ack";
+    errResp["command"] = "unknown";
+    errResp["ok"] = false;
+    std::cout << errResp.dump() << "\n";
     std::cout.flush();
     return;
   }
@@ -670,7 +739,7 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   } else if (type == "set_entity_visible") {
     const std::string name = j.value("name", "");
     m_entityVisible = j.value("visible", true);
-    std::cout << "[inspector] Entity '" << name
+    std::cerr << "[inspector] Entity '" << name
               << "' visible=" << (m_entityVisible ? "true" : "false") << "\n";
   } else if (type == "export_screenshot") {
     const std::string path = j.value("path", "");
@@ -680,8 +749,11 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
     ok = false;
   }
 
-  std::cout << "{\"type\":\"ack\",\"command\":\"" << type
-            << "\",\"ok\":" << (ok ? "true" : "false") << "}\n";
+  nlohmann::json ackResp;
+  ackResp["type"] = "ack";
+  ackResp["command"] = type;
+  ackResp["ok"] = ok;
+  std::cout << ackResp.dump() << "\n";
   std::cout.flush();
 }
 

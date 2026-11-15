@@ -27,7 +27,7 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width,
 
   const size_t requiredSize = computeTotalSize(width, height);
   auto shmResult = aether::pal::SharedMemory::create(
-      name, requiredSize, aether::pal::ShmCreate::CreateOrOpen,
+      name, requiredSize, aether::pal::ShmCreate::CreateNew,
       aether::pal::ShmAccess::ReadWrite);
   if (!shmResult.isOk()) {
     return false;
@@ -54,9 +54,9 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width,
   hdr->write_idx.store(0u, std::memory_order_relaxed);
   hdr->buffer_count = kShmBufferCount;
   hdr->frame_ready.store(0u, std::memory_order_release);
-  hdr->fps = 0.0f;
-  hdr->delta_time = 0.0f;
-  hdr->debug_view = 0u;
+  hdr->fps.store(0.0f, std::memory_order_relaxed);
+  hdr->delta_time.store(0.0f, std::memory_order_relaxed);
+  hdr->debug_view.store(0u, std::memory_order_relaxed);
 
   return true;
 }
@@ -95,11 +95,17 @@ uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime,
   if (!m_shm.isValid()) return 0;
   auto* hdr = m_shm.as<InspectorShmHeader>(0);
 
-  hdr->fps = fps;
-  hdr->delta_time = deltaTime;
-  hdr->debug_view = debugView;
+  // Store metadata with relaxed ordering — visibility is guaranteed by the
+  // release store on write_idx below.
+  hdr->fps.store(fps, std::memory_order_relaxed);
+  hdr->delta_time.store(deltaTime, std::memory_order_relaxed);
+  hdr->debug_view.store(debugView, std::memory_order_relaxed);
 
+  // Publish the completed buffer index with release semantics so that readers
+  // who acquire write_idx also see the pixel data and metadata written above.
   hdr->write_idx.store(m_stagingIdx, std::memory_order_release);
+
+  // Bump the monotonic frame counter (acq_rel to synchronise with readers).
   const uint64_t readyCount =
       hdr->frame_ready.fetch_add(1u, std::memory_order_acq_rel) + 1u;
 
