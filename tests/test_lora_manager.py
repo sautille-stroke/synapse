@@ -1,4 +1,4 @@
-"""Tests for PR-16 LoRA manifest, manager, orthogonalisation and patcher.
+"""Tests for PR-16 + PR-76 LoRA manifest, manager, orthogonalisation and patcher.
 
 Covers:
 * LoRAManifest Pydantic validation (safe format, category whitelists, SHA256)
@@ -6,16 +6,23 @@ Covers:
 * Cryptomatte spatial mask construction and dominant-entity voting
 * Gram-Schmidt orthogonalisation of conflicting LoRA deltas
 * LoRAPatchHook attach / detach / mask-gated output
+* PR-76: Real .safetensors loading with SHA256 verification
+* PR-76: Tampered .safetensors file rejected (exit code 10)
+* PR-76: bf16 linear through LoRAPatchHook with spatial mask
 """
 
 from __future__ import annotations
 
+import hashlib
+import os
+import tempfile
 from typing import Any
 
 import numpy as np
 import pytest
 from synapse.adapters.lora.manager import MultiLoRAManager
 from synapse.adapters.lora.manifest import LoRAManifest
+from synapse.errors import AssetNotFoundError, ContractValidationError, ExitCode
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -44,6 +51,34 @@ def _make_manifest(
         adapter_sha256=sha,
         target_modules=target_modules,
     )
+
+
+def _create_safetensors_file(
+    path: str,
+    rank: int = 16,
+    in_features: int = 8,
+    out_features: int = 4,
+) -> str:
+    """Create a real .safetensors file and return its SHA256 hex digest."""
+    torch = pytest.importorskip("torch")
+    safetensors_torch = pytest.importorskip("safetensors.torch")
+
+    gen = torch.Generator()
+    gen.manual_seed(42)
+    a_mat = torch.randn(rank, in_features, generator=gen, dtype=torch.float32) * 0.01
+    b_mat = torch.randn(out_features, rank, generator=gen, dtype=torch.float32) * 0.01
+
+    state_dict = {
+        "lora_A.weight": a_mat,
+        "lora_B.weight": b_mat,
+    }
+    safetensors_torch.save_file(state_dict, path)
+
+    sha = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
 
 
 # ===================================================================
@@ -151,7 +186,10 @@ class TestMultiLoRAManager:
             target_modules=["ffn.proj"],
             category="control",
         )
-        mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+        mgr = MultiLoRAManager(
+            lora_bundles=[(manifest, 1.0)],
+            test_synthetic=True,
+        )
         mgr.apply_merged_weights(model)
         mgr.restore_base_weights(model)
 
@@ -178,6 +216,7 @@ class TestMultiLoRAManager:
         )
         mgr = MultiLoRAManager(
             lora_bundles=[(m1, 0.5), (m2, 0.8)],
+            test_synthetic=True,
         )
         mgr.apply_merged_weights(model)
         mgr.restore_base_weights(model)
@@ -199,7 +238,10 @@ class TestMultiLoRAManager:
             rank=8,
             alpha=8.0,
         )
-        mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+        mgr = MultiLoRAManager(
+            lora_bundles=[(manifest, 1.0)],
+            test_synthetic=True,
+        )
         mgr.apply_merged_weights(model)
 
         diff = (linear.weight.data - original).abs().max().item()
@@ -249,6 +291,106 @@ class TestMultiLoRAManager:
             ids, target_entity_ids={7}, spatial_block=8,
         )
         assert mask[0, 0, 0] is np.bool_(True)
+
+
+# ===================================================================
+# TestMultiLoRAManagerSafetensors — PR-76 real .safetensors loading
+# ===================================================================
+
+
+class TestMultiLoRAManagerSafetensors:
+    """PR-76: Real .safetensors loading with SHA256 verification."""
+
+    def test_load_real_safetensors(self) -> None:
+        """Load a valid .safetensors file succeeds."""
+        pytest.importorskip("torch")
+        pytest.importorskip("safetensors")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "lora.safetensors")
+            sha = _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+
+            manifest = _make_manifest(
+                adapter_path=path,
+                sha=sha,
+                rank=16,
+                target_modules=["ffn.proj"],
+                category="control",
+            )
+            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+            state_dict = mgr.load_lora(manifest)
+            assert "lora_A.weight" in state_dict
+            assert "lora_B.weight" in state_dict
+
+    def test_tampered_safetensors_rejected_exit_10(self) -> None:
+        """PR-76(a): Tampered .safetensors file rejected (exit code 10)."""
+        pytest.importorskip("torch")
+        pytest.importorskip("safetensors")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "lora.safetensors")
+            _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+
+            # Tamper the file — append garbage bytes
+            with open(path, "ab") as f:
+                f.write(b"\x00" * 64)
+
+            # Compute the *wrong* (original) SHA
+            manifest = _make_manifest(
+                adapter_path=path,
+                sha="b" * 64,  # deliberate wrong hash
+                rank=16,
+                target_modules=["ffn.proj"],
+                category="control",
+            )
+            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+            with pytest.raises(ContractValidationError) as exc_info:
+                mgr.load_lora(manifest)
+            assert exc_info.value.exit_code == ExitCode.CONTRACT_ERROR  # 10
+
+    def test_missing_safetensors_raises_exit_20(self) -> None:
+        """Missing .safetensors file raises AssetNotFoundError (exit 20)."""
+        manifest = _make_manifest(
+            adapter_path="/nonexistent/path/model.safetensors",
+            sha=_VALID_SHA,
+            target_modules=["ffn.proj"],
+            category="control",
+        )
+        mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+        with pytest.raises(AssetNotFoundError) as exc_info:
+            mgr.load_lora(manifest)
+        assert exc_info.value.exit_code == ExitCode.RESOURCE_MISSING  # 20
+
+    def test_apply_lora_stack_with_real_file(self) -> None:
+        """apply_lora_stack reads real safetensors and modifies weights."""
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("safetensors")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "lora.safetensors")
+            sha = _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+
+            manifest = _make_manifest(
+                adapter_path=path,
+                sha=sha,
+                rank=16,
+                target_modules=["ffn.proj"],
+                category="control",
+            )
+
+            linear = torch.nn.Linear(8, 4, bias=False)
+            original = linear.weight.data.clone()
+            root = torch.nn.Module()
+            ffn = torch.nn.Module()
+            root.add_module("ffn", ffn)
+            ffn.add_module("proj", linear)
+
+            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+            mgr.apply_lora_stack(root)
+
+            diff = (linear.weight.data - original).abs().max().item()
+            assert diff > 1e-10, "apply_lora_stack should modify weights"
+            mgr.restore_base_weights(root)
 
 
 # ===================================================================
@@ -393,5 +535,42 @@ class TestPatcher:
         # Second token should be unchanged
         diff_1 = (out_after[1] - out_before[1]).abs().max().item()
         assert diff_1 < 1e-6, "Masked-out token should be unmodified"
+
+        hook.detach(linear)
+
+    def test_bf16_forward_pass_with_spatial_mask(self) -> None:
+        """PR-76(b): bf16 linear through LoRAPatchHook works, spatial mask
+        outside pixels have strictly zero delta."""
+        torch = pytest.importorskip("torch")
+        from synapse.adapters.lora.patcher import LoRAPatchHook
+
+        # Create a bf16 linear layer
+        linear = torch.nn.Linear(8, 4, bias=False).to(dtype=torch.bfloat16)
+        torch.nn.init.eye_(linear.weight[:4, :4])  # partial identity
+
+        # 4 tokens: tokens 0,1 foreground, tokens 2,3 background
+        x = torch.randn(4, 8, dtype=torch.bfloat16)
+        out_before = linear(x).detach().clone()
+
+        # LoRA delta in float32 (should be cast to bf16 by patcher)
+        delta = torch.randn(4, 8, dtype=torch.float32) * 0.1
+        # Spatial mask: [1.0, 1.0, 0.0, 0.0]
+        mask = torch.tensor([1.0, 1.0, 0.0, 0.0])
+
+        hook = LoRAPatchHook(lora_delta=delta)
+        hook.attach(linear, mask=mask)
+
+        out_after = linear(x).detach()
+
+        # Foreground tokens (0, 1) should be modified
+        fg_diff = (out_after[:2] - out_before[:2]).abs().max().item()
+        assert fg_diff > 1e-4, "Foreground tokens should be modified by LoRA"
+
+        # Background tokens (2, 3) should have strictly zero delta
+        bg_diff = (out_after[2:] - out_before[2:]).abs().max().item()
+        assert bg_diff < 1e-6, (
+            f"Background (masked-out) tokens must have zero delta, "
+            f"got max diff {bg_diff}"
+        )
 
         hook.detach(linear)

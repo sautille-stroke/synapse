@@ -1,4 +1,5 @@
-"""Tests for Wan 48-frame physical anchors, float64 depth, and non-degenerate gates.
+"""Tests for Wan 48-frame physical anchors, float64 depth, non-degenerate gates,
+and PR-76 FoundaryHttpTransport serialisation.
 
 Covers:
 - RFC 0044 §3.2 & RFC 0063 §3.1, §4.1 (AUD-P1-08)
@@ -6,19 +7,25 @@ Covers:
 - Float64 log-normalized depth round-trip precision (< 1e-12)
 - WanAdapter.reanchor_physical_frame ground-truth conditioning slice
 - validate_output_non_degenerate Tier-2 variance gate enforcement (exit code 40)
+- PR-76(c): FoundaryHttpTransport serialises control_tensor and forwards traceparent
 """
 
 from __future__ import annotations
 
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
+from typing import Any
+
 import numpy as np
 import pytest
-from synapse.adapters.base import VideoGenerationConfig
+from synapse.adapters.base import PreparedConditionPayload, VideoGenerationConfig
 from synapse.adapters.scheduler import (
     CausalWindowPlan,
     ConditionScheduler,
     DiscontinuityDetector,
 )
-from synapse.adapters.wan import LocalCallableBackend, WanAdapter
+from synapse.adapters.wan import FoundaryHttpTransport, LocalCallableBackend, WanAdapter
 from synapse.errors import ExitCode, QualityGateError
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.schema import (
@@ -170,3 +177,113 @@ class TestNonDegenerateQualityGate:
         # When check_non_degenerate is disabled, it returns normally
         result = adapter.generate(payload, config, check_non_degenerate=False)
         assert result.frames_srgb_u8.shape == (8, 32, 32, 3)
+
+
+# ===================================================================
+# PR-76(c): FoundaryHttpTransport serialisation test
+# ===================================================================
+
+
+class _CaptureHandler(BaseHTTPRequestHandler):
+    """HTTP handler that captures request body and headers for test inspection."""
+
+    captured_body: dict[str, Any] = {}
+    captured_headers: dict[str, str] = {}
+
+    def do_POST(self) -> None:
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        _CaptureHandler.captured_body = json.loads(body.decode("utf-8"))
+        # Store headers with lowercase keys for case-insensitive lookup
+        _CaptureHandler.captured_headers = {
+            k.lower(): v for k, v in self.headers.items()
+        }
+
+        # Respond with valid frames JSON
+        rng = np.random.default_rng(42)
+        frames = rng.integers(10, 240, size=(2, 8, 8, 3), dtype=np.uint8)
+        response = json.dumps({"frames": frames.tolist()}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(response)))
+        self.end_headers()
+        self.wfile.write(response)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Suppress request logging during tests."""
+
+
+class TestFoundaryHttpTransportSerialization:
+    """PR-76(c): Mock HTTP service receives control_tensor and traceparent."""
+
+    def test_submit_serialises_control_tensor_and_traceparent(self) -> None:
+        """FoundaryHttpTransport.submit must include control_tensor in the
+        request body and forward the upstream traceparent header."""
+        # Start a mock HTTP server
+        server = HTTPServer(("127.0.0.1", 0), _CaptureHandler)
+        port = server.server_address[1]
+        thread = Thread(target=server.handle_request, daemon=True)
+        thread.start()
+
+        try:
+            upstream_traceparent = "00-abcdef0123456789abcdef0123456789-1234567890abcdef-01"
+            transport = FoundaryHttpTransport(
+                endpoint_url=f"http://127.0.0.1:{port}/v1/generate",
+                timeout_s=5.0,
+                traceparent=upstream_traceparent,
+            )
+
+            # Build a payload with a real control_tensor
+            control = np.random.default_rng(0).random(
+                (7, 2, 8, 8), dtype=np.float64,
+            ).astype(np.float32)
+            payload = PreparedConditionPayload(
+                control_tensor=control,
+                text_prompt="test prompt",
+                extra={"anchor_interval": 48},
+            )
+            config = VideoGenerationConfig(
+                num_frames=2, width=8, height=8, seed=42,
+            )
+
+            frames = transport.submit(payload, config)
+
+            # Verify response
+            assert frames.shape == (2, 8, 8, 3)
+            assert frames.dtype == np.uint8
+
+            # Verify request body contains control_tensor
+            body = _CaptureHandler.captured_body
+            assert "control_tensor" in body
+            assert body["control_tensor"] is not None
+            assert isinstance(body["control_tensor"], str)  # base64 string
+            assert len(body["control_tensor"]) > 0
+
+            # Verify extra dict is merged
+            assert body["extra"]["anchor_interval"] == 48
+
+            # Verify traceparent header was forwarded
+            hdrs = _CaptureHandler.captured_headers
+            assert "traceparent" in hdrs
+            assert hdrs["traceparent"] == upstream_traceparent
+
+        finally:
+            server.server_close()
+            thread.join(timeout=2.0)
+
+
+class TestPrepareConditionsCryptomattePassthrough:
+    """Test that prepare_conditions passes through cryptomatte_id."""
+
+    def test_cryptomatte_id_in_payload(self) -> None:
+        """prepare_conditions should include cryptomatte_id in the payload."""
+        frames = [_make_dummy_frame(i) for i in range(4)]
+        seq = FGPPSequence(frames=frames, fps=24.0, scene_id="crypt_test")
+
+        adapter = WanAdapter()
+        config = VideoGenerationConfig(num_frames=4)
+        payload = adapter.prepare_conditions(seq, config)
+
+        assert payload.cryptomatte_id is not None
+        assert payload.cryptomatte_id.shape == (4, 32, 32)
+        assert payload.cryptomatte_id.dtype == np.uint32

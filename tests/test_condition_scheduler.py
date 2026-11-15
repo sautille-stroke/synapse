@@ -547,3 +547,60 @@ class TestConditionScheduler:
         scheduled = sched.schedule(seq)
         for i, sw in enumerate(scheduled):
             assert sw.window_index == i
+
+
+    def test_frame_48_scene_cut_keeps_has_discontinuity(self) -> None:
+        """PR-76(d): Frame 48 coinciding with scene cut keeps
+        ``has_discontinuity=True``.
+
+        When a real shot-change discontinuity (high kappa) happens at
+        exactly frame 48 (which is also a physical anchor), the
+        ``needs_reanchor`` flag must be ``True`` — the physical anchor
+        marking must NOT silently erase the shot-change signal.
+        """
+        plan = CausalWindowPlan(total_frames=97)
+        det = DiscontinuityDetector(threshold=0.3)
+        sched = ConditionScheduler(plan, det, anchor_interval=48)
+
+        frames = []
+        for i in range(97):
+            mv = np.zeros((_H, _W, 2), dtype=np.float16)
+            normal = np.zeros((_H, _W, 3), dtype=np.float16)
+            normal[..., 2] = 1.0
+            crypto = np.ones((_H, _W), dtype=np.uint32)
+
+            # Inject a massive scene-cut discontinuity at exactly frame 48
+            if i == 48:
+                mv[:] = 50.0          # huge motion jump
+                normal[..., 2] = -1.0  # flipped normals
+                crypto[:] = 0          # all background — IoU crashes
+
+            frames.append(_make_frame(
+                i, mv=mv, normal=normal, crypto=crypto,
+            ))
+
+        seq = FGPPSequence(frames=frames, fps=24.0, scene_id="fr48_cut")
+        scheduled = sched.schedule(seq)
+
+        assert len(scheduled) == 1  # single window [0, 97)
+
+        # Frame 48 must appear as a reanchor request
+        req48_list = [
+            r for r in scheduled[0].reanchor_requests
+            if r.frame_index == 48
+        ]
+        assert len(req48_list) == 1
+        req48 = req48_list[0]
+
+        # It must be marked as BOTH physical anchor AND discontinuity
+        assert req48.is_physical_anchor is True
+        assert req48.kappa > det.threshold
+
+        # The window must be flagged as needing reanchor (the bug was
+        # that the old code used ``not r.is_physical_anchor`` which
+        # would filter out the frame 48 request, wrongly reporting
+        # needs_reanchor=False).
+        assert scheduled[0].needs_reanchor is True, (
+            "Frame 48 is both a physical anchor and a scene cut — "
+            "needs_reanchor must be True"
+        )
