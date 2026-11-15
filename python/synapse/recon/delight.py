@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from synapse.recon.types import DelightResult, MeshGeometry
+from synapse.recon.types import CameraExtrinsics, DelightResult, MeshGeometry
 
 
 def evaluate_spherical_harmonics_basis(normals: np.ndarray) -> np.ndarray:
@@ -86,6 +86,118 @@ def _spatial_smooth(img: np.ndarray, radius: int = 3) -> np.ndarray:
         return res
 
 
+def _normalize_normals(nrm: np.ndarray) -> np.ndarray:
+    """Normalize a normal map to unit length, auto-detecting tangent-space encoding.
+
+    If normals are in [0, 1] tangent-space encoding (X, Y centered around 0.5,
+    Z > 0.4), remap to [-1, 1] world-space before normalizing.
+
+    Args:
+        nrm: Normal map, shape (..., 3).
+
+    Returns:
+        Unit-length normal vectors, same shape.
+    """
+    nrm_vec = np.copy(nrm)
+    if (np.min(nrm) >= 0.0 and np.max(nrm) <= 1.0
+            and np.mean(nrm[..., :2]) > 0.35 and np.mean(nrm[..., 2]) > 0.6):
+        nrm_vec = nrm * 2.0 - 1.0
+
+    lens = np.linalg.norm(nrm_vec, axis=-1, keepdims=True)
+    lens[lens < 1e-12] = 1.0
+    result: np.ndarray = nrm_vec / lens
+    return result
+
+
+def _build_chromaticity_mask(
+    radiance: np.ndarray,
+    *,
+    lum_floor: float = 0.01,
+    chroma_consistency_radius: int = 2,
+) -> np.ndarray:
+    """Build a boolean mask of pixels with locally consistent chromaticity.
+
+    High-chromaticity-consistency regions have stable hue ratios, making them
+    reliable for SH irradiance fitting (shadows change luminance but not hue
+    for diffuse Lambertian surfaces).
+
+    Args:
+        radiance: Linear radiance image, shape (H, W, 3), float.
+        lum_floor: Minimum luminance to consider a pixel valid.
+        chroma_consistency_radius: Neighborhood radius for chromaticity
+            variance computation.
+
+    Returns:
+        Boolean mask of shape (H, W).
+    """
+    lum = 0.2126 * radiance[..., 0] + 0.7152 * radiance[..., 1] + 0.0722 * radiance[..., 2]
+    valid = lum > lum_floor
+
+    # Chromaticity = channel / luminance
+    safe_lum = np.clip(lum, lum_floor, None)[..., np.newaxis]
+    chroma = radiance / safe_lum  # (H, W, 3)
+
+    # Local variance of chromaticity (box filter)
+    h, w = radiance.shape[:2]
+    r = chroma_consistency_radius
+    chroma_var = np.zeros((h, w), dtype=np.float64)
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            shifted = np.roll(np.roll(chroma, dy, axis=0), dx, axis=1)
+            chroma_var += np.sum((shifted - chroma) ** 2, axis=-1)
+    n_neighbors = (2 * r + 1) ** 2
+    chroma_var /= max(n_neighbors, 1)
+
+    # Adaptive threshold: median + 1.5 * MAD
+    flat_var = chroma_var[valid]
+    if len(flat_var) == 0:
+        return valid
+    med = float(np.median(flat_var))
+    mad = float(np.median(np.abs(flat_var - med)))
+    threshold = med + 1.5 * max(mad, 1e-6)
+
+    return valid & (chroma_var < threshold)
+
+
+def _solve_sh_irradiance(
+    normals_flat: np.ndarray,
+    luminance_flat: np.ndarray,
+    mask_flat: np.ndarray,
+    *,
+    max_samples: int = 4096,
+    reg: float = 1e-3,
+) -> np.ndarray:
+    """Solve 2nd-order SH irradiance coefficients from masked pixels.
+
+    Args:
+        normals_flat: Flat normal vectors, shape (N, 3).
+        luminance_flat: Per-pixel luminance, shape (N,).
+        mask_flat: Boolean mask of valid pixels, shape (N,).
+        max_samples: Max pixels to subsample for the least-squares solve.
+        reg: Tikhonov regularization weight.
+
+    Returns:
+        SH coefficients, shape (9,).
+    """
+    valid_idx = np.where(mask_flat)[0]
+    if len(valid_idx) < 9:
+        # Not enough samples — return uniform ambient
+        coeffs = np.zeros(9, dtype=np.float64)
+        coeffs[0] = float(np.mean(luminance_flat)) / 0.282095 if len(luminance_flat) > 0 else 1.0
+        return coeffs
+
+    # Subsample for efficiency
+    step = max(1, len(valid_idx) // max_samples)
+    sel = valid_idx[::step]
+
+    basis = evaluate_spherical_harmonics_basis(normals_flat[sel])  # (M, 9)
+    target = luminance_flat[sel]  # (M,)
+
+    lhs = basis.T @ basis + reg * np.eye(9, dtype=np.float64)
+    rhs = basis.T @ target
+    return np.linalg.solve(lhs, rhs)
+
+
 def delight(
     albedo: np.ndarray,
     normal: np.ndarray,
@@ -122,17 +234,7 @@ def delight(
 
     h, w, c = alb.shape
 
-    # Normalization of normals:
-    # If tangent-space normal map where X, Y in [0, 1] centered around 0.5 and Z > 0.4
-    if np.min(nrm) >= 0.0 and np.max(nrm) <= 1.0 and np.mean(nrm[..., :2]) > 0.35 and np.mean(nrm[..., 2]) > 0.6:
-        nrm_vec = nrm * 2.0 - 1.0
-    else:
-        nrm_vec = np.copy(nrm)
-
-    # Unit norm
-    lens = np.linalg.norm(nrm_vec, axis=-1, keepdims=True)
-    lens[lens < 1e-12] = 1.0
-    nrm_vec = nrm_vec / lens
+    nrm_vec = _normalize_normals(nrm)
 
     # 1. Spherical Harmonics irradiance regression for directional lighting
     flat_nrm = nrm_vec.reshape(-1, 3)
@@ -145,7 +247,7 @@ def delight(
     sub_alb = flat_alb[::sample_step]
 
     basis_sub = evaluate_spherical_harmonics_basis(sub_nrm)
-    target_e = sub_rad / np.clip(sub_alb, 0.05, 1.0)
+    target_e = sub_rad / np.clip(sub_alb, 0.05, None)
 
     reg = 1e-3
     lhs = basis_sub.T @ basis_sub + reg * np.eye(9, dtype=np.float64)
@@ -157,7 +259,7 @@ def delight(
     sh_irradiance = np.clip(sh_irradiance, 0.1, 5.0)
 
     # 2. Retinex spatial illumination estimation for cast shadows & occlusion
-    observed_illumination = rad / np.clip(alb, 0.05, 1.0)
+    observed_illumination = rad / np.clip(alb, 0.05, None)
     smooth_illumination = _spatial_smooth(observed_illumination, radius=max(2, min(h, w) // 8))
     smooth_illumination = np.clip(smooth_illumination, 0.1, 5.0)
 
@@ -175,18 +277,44 @@ def delight(
     scale_factor = np.clip(scale_factor, 0.5, 2.0)
     recovered_albedo = recovered_albedo * scale_factor
 
-    final_albedo = np.clip(recovered_albedo, 0.0, 1.0)
-
     if is_uint8:
+        final_albedo = np.clip(recovered_albedo, 0.0, 1.0)
         return np.asarray((final_albedo * 255.0).astype(np.uint8))
+
+    # HDR: preserve values > 1.0
+    final_albedo = np.clip(recovered_albedo, 0.0, None)
     return np.asarray(final_albedo, dtype=np.float32)
+
+
+def _pseudo_normal_map(image: np.ndarray) -> np.ndarray:
+    """Generate a pseudo-normal map from image intensity gradients.
+
+    Args:
+        image: RGB image, shape (H, W, 3), float.
+
+    Returns:
+        Normal map, shape (H, W, 3), unit-length.
+    """
+    gray = 0.2126 * image[..., 0] + 0.7152 * image[..., 1] + 0.0722 * image[..., 2]
+    gy, gx = np.gradient(gray)
+    gz = np.ones_like(gray) * 0.5
+    norm_len = np.sqrt(gx * gx + gy * gy + gz * gz + 1e-8)
+    return np.stack([-gx / norm_len, -gy / norm_len, gz / norm_len], axis=-1)
 
 
 def decompose_intrinsic(
     radiance: np.ndarray,
     normal: np.ndarray | None = None,
 ) -> DelightResult:
-    """Decompose lit radiance into intrinsic Albedo, Shading, and Specular components.
+    """Decompose lit radiance into intrinsic Albedo, Shading, and Specular.
+
+    Uses pixel normals and luminance under a local high-chromaticity
+    consistency mask to solve 2nd-order SH irradiance coefficients ``c_SH``.
+    Estimates global smooth shading field ``E(x) = clip(Y(n)^T c_SH, eps,
+    E_max)``.  Decomposes intrinsic albedo ``rho_hat = I / E``.
+
+    Only uint8 inputs are divided by 255.0; float32/float64 HDR values
+    above 1.0 are preserved (not erroneously scaled down).
 
     Args:
         radiance: Input lit RGB image, shape (H, W, 3).
@@ -196,51 +324,111 @@ def decompose_intrinsic(
         DelightResult containing albedo, shading, specular, and SH parameters.
     """
     is_uint8 = np.asarray(radiance).dtype == np.uint8
-    rad = np.asarray(radiance, dtype=np.float32)
+    rad = np.asarray(radiance, dtype=np.float64)
     if is_uint8:
         rad = rad / 255.0
+
+    # Do NOT divide float32/float64 HDR by 255.0 — preserve linear range.
 
     h, w, _ = rad.shape
 
     if normal is None:
-        # Reconstruct pseudo normal map from image intensity gradient
-        gray = 0.299 * rad[..., 0] + 0.587 * rad[..., 1] + 0.114 * rad[..., 2]
-        gy, gx = np.gradient(gray)
-        gz = np.ones_like(gray) * 0.5
-        norm = np.sqrt(gx * gx + gy * gy + gz * gz + 1e-8)
-        norm_map = np.stack([-gx / norm, -gy / norm, gz / norm], axis=-1)
+        norm_map = _pseudo_normal_map(rad)
     else:
-        norm_map = normal
+        norm_map = np.asarray(normal, dtype=np.float64)
 
-    # Albedo de-lighting
-    albedo_map = delight(rad, norm_map, rad)
+    nrm_vec = _normalize_normals(norm_map)
 
-    # Shading = Radiance / (Albedo + eps)
-    shading_map = rad / np.clip(albedo_map, 0.05, 1.0)
-    shading_map = np.clip(shading_map, 0.0, 3.0)
+    # --- SH irradiance solve under chromaticity consistency mask ---
+    # Build chromaticity consistency mask
+    chroma_mask = _build_chromaticity_mask(rad)
 
-    # Specular residual
-    specular_map = np.maximum(0.0, rad - albedo_map * np.mean(shading_map, axis=-1, keepdims=True))
+    flat_nrm = nrm_vec.reshape(-1, 3)
+    flat_mask = chroma_mask.reshape(-1)
 
-    # Evaluate mean SH coefficients
-    basis = evaluate_spherical_harmonics_basis(norm_map.reshape(-1, 3)[:: max(1, (h * w) // 1000)])
-    sub_rad = rad.reshape(-1, 3)[:: max(1, (h * w) // 1000)]
-    reg = 1e-3
-    ambient_sh = np.linalg.solve(basis.T @ basis + reg * np.eye(9), basis.T @ sub_rad)
+    # Step 1: Compute luminance
+    lum = 0.2126 * rad[..., 0] + 0.7152 * rad[..., 1] + 0.0722 * rad[..., 2]
+    flat_lum = lum.reshape(-1)
 
-    # Compute real delta_e between the re-lit composite and input radiance.
-    relit = albedo_map * np.mean(shading_map, axis=-1, keepdims=True)
-    relit = np.clip(relit, 0.0, 1.0)
+    # Step 2: Estimate shading field E(n) using SH fit on luminance.
+    # Under constant-albedo assumption, L(x) = rho_L * E(n(x)),
+    # so E ∝ L. We normalize by median luminance to get E_hat ≈ E / E_mean.
+    median_lum = float(np.median(flat_lum[flat_mask]) if np.any(flat_mask) else np.median(flat_lum))
+    median_lum = max(median_lum, 1e-6)
+    normalized_lum = flat_lum / median_lum
+
+    # Fit SH to normalized luminance (captures the shading pattern)
+    sh_lum_coeffs = _solve_sh_irradiance(flat_nrm, normalized_lum, flat_mask)
+
+    # Evaluate SH shading field
+    basis_full = evaluate_spherical_harmonics_basis(flat_nrm)
+    sh_shading_normalized = (basis_full @ sh_lum_coeffs).reshape(h, w)
+
+    # Scale back to absolute irradiance
+    eps = 0.02
+    e_max = 20.0
+    sh_shading = np.clip(sh_shading_normalized * median_lum, eps, e_max)
+
+    # Step 3: Retinex spatial smoothing for residual shading (cast shadows,
+    # sharp terminators) that SH band-limiting cannot capture.
+    # Compute residual luminance ratio after SH division
+    albedo_sh_lum = lum / sh_shading  # initial SH-based albedo luminance
+    # Smooth the initial albedo estimate to separate texture from residual shading
+    albedo_sh_smooth = _spatial_smooth(
+        albedo_sh_lum[..., np.newaxis], radius=max(2, min(h, w) // 8),
+    )[..., 0]
+    albedo_sh_smooth = np.clip(albedo_sh_smooth, 1e-4, None)
+    # Residual shading = smooth(albedo_sh) / albedo_sh → inverted residual
+    # Better: total shading = lum / smooth_albedo
+    total_shading_lum = lum / albedo_sh_smooth
+    total_shading_lum = np.clip(total_shading_lum, eps, e_max)
+
+    # Expand to 3 channels (achromatic shading)
+    shading_map = np.stack([total_shading_lum] * 3, axis=-1)
+
+    # Compute per-channel SH coefficients for the ambient_sh output
+    sh_rgb_coeffs = np.zeros((9, 3), dtype=np.float64)
+    for ch in range(3):
+        ch_lum = rad[..., ch]
+        ch_albedo = ch_lum / total_shading_lum
+        ch_albedo_smooth = _spatial_smooth(
+            ch_albedo[..., np.newaxis], radius=max(2, min(h, w) // 8),
+        )[..., 0]
+        ch_albedo_smooth = np.clip(ch_albedo_smooth, 1e-4, None)
+        ch_shading = ch_lum / ch_albedo_smooth
+        sh_rgb_coeffs[:, ch] = _solve_sh_irradiance(
+            flat_nrm, ch_shading.reshape(-1), flat_mask, max_samples=2048,
+        )
+
+    # Decompose intrinsic albedo: rho_hat = I / E
+    albedo_map = rad / shading_map
+
+    # For LDR content, clip albedo to [0, 1]; for HDR, allow > 1.0
+    if is_uint8:
+        albedo_map = np.clip(albedo_map, 0.0, 1.0)
+    else:
+        albedo_map = np.clip(albedo_map, 0.0, None)
+    albedo_map = albedo_map.astype(np.float32)
+
+    # Normalize shading for output (keep relative scale)
+    shading_out = np.clip(shading_map, 0.0, e_max).astype(np.float32)
+
+    # Specular residual: non-negative difference between observed and relit
+    relit = albedo_map.astype(np.float64) * shading_map
+    specular_map = np.maximum(0.0, rad - relit).astype(np.float32)
+
+    # Compute delta_e_residual: re-light and compare to original (CIE76)
+    relit_clamped = np.clip(relit, 0.0, 1.0)
     rad_clamped = np.clip(rad, 0.0, 1.0)
-    lab_relit = _rgb_to_lab(relit.astype(np.float64))
-    lab_orig = _rgb_to_lab(rad_clamped.astype(np.float64))
+    lab_relit = _rgb_to_lab(relit_clamped)
+    lab_orig = _rgb_to_lab(rad_clamped)
     delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
 
     return DelightResult(
         albedo=albedo_map,
-        shading=shading_map,
+        shading=shading_out,
         specular=specular_map,
-        ambient_sh=ambient_sh,
+        ambient_sh=sh_rgb_coeffs,
         delta_e_residual=delta_e,
     )
 
@@ -285,18 +473,178 @@ def _delta_e_76(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     return np.sqrt(np.sum((lab1 - lab2) ** 2, axis=-1))
 
 
+def _delta_e_00(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
+    """CIE Delta-E 2000 distance (CIEDE2000).
+
+    Simplified but faithful implementation of the CIEDE2000 formula.
+    Accepts (..., 3) shaped arrays of (L*, a*, b*).
+    """
+    L1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
+    L2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
+
+    # Step 1: Compute C' and h'
+    C1 = np.sqrt(a1**2 + b1**2)
+    C2 = np.sqrt(a2**2 + b2**2)
+    C_bar = (C1 + C2) / 2.0
+    C_bar_7 = C_bar**7
+    G = 0.5 * (1.0 - np.sqrt(C_bar_7 / (C_bar_7 + 25.0**7)))
+
+    a1p = a1 * (1.0 + G)
+    a2p = a2 * (1.0 + G)
+    C1p = np.sqrt(a1p**2 + b1**2)
+    C2p = np.sqrt(a2p**2 + b2**2)
+
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360.0
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360.0
+
+    # Step 2: Compute delta L', delta C', delta H'
+    dLp = L2 - L1
+    dCp = C2p - C1p
+
+    dhp = np.where(
+        C1p * C2p == 0.0,
+        0.0,
+        np.where(
+            np.abs(h2p - h1p) <= 180.0,
+            h2p - h1p,
+            np.where(h2p - h1p > 180.0, h2p - h1p - 360.0, h2p - h1p + 360.0),
+        ),
+    )
+    dHp = 2.0 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp / 2.0))
+
+    # Step 3: Weighting functions
+    Lp_bar = (L1 + L2) / 2.0
+    Cp_bar = (C1p + C2p) / 2.0
+
+    hp_bar = np.where(
+        C1p * C2p == 0.0,
+        h1p + h2p,
+        np.where(
+            np.abs(h1p - h2p) <= 180.0,
+            (h1p + h2p) / 2.0,
+            np.where(h1p + h2p < 360.0, (h1p + h2p + 360.0) / 2.0, (h1p + h2p - 360.0) / 2.0),
+        ),
+    )
+
+    T = (1.0
+         - 0.17 * np.cos(np.radians(hp_bar - 30.0))
+         + 0.24 * np.cos(np.radians(2.0 * hp_bar))
+         + 0.32 * np.cos(np.radians(3.0 * hp_bar + 6.0))
+         - 0.20 * np.cos(np.radians(4.0 * hp_bar - 63.0)))
+
+    SL = 1.0 + 0.015 * (Lp_bar - 50.0)**2 / np.sqrt(20.0 + (Lp_bar - 50.0)**2)
+    SC = 1.0 + 0.045 * Cp_bar
+    SH = 1.0 + 0.015 * Cp_bar * T
+
+    Cp_bar_7 = Cp_bar**7
+    RT = (-2.0 * np.sqrt(Cp_bar_7 / (Cp_bar_7 + 25.0**7))
+          * np.sin(np.radians(60.0 * np.exp(-((hp_bar - 275.0) / 25.0)**2))))
+
+    dE: np.ndarray = np.sqrt(
+        (dLp / SL)**2 + (dCp / SC)**2 + (dHp / SH)**2
+        + RT * (dCp / SC) * (dHp / SH)
+    )
+    return dE
+
+
+def _project_mesh_to_view(
+    vertices: np.ndarray,
+    normals: np.ndarray,
+    camera: CameraExtrinsics,
+    h: int,
+    w: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Project mesh vertices into a camera view, returning a normal map and weight map.
+
+    Args:
+        vertices: Mesh vertices, shape (V, 3).
+        normals: Per-vertex normals, shape (V, 3).
+        camera: Camera extrinsics with .transform (4x4 world-to-cam or cam-to-world).
+        h: Image height.
+        w: Image width.
+
+    Returns:
+        normal_map: Projected normal map, shape (H, W, 3).
+        weight_map: cos_theta_v visibility weight, shape (H, W, 1).
+        valid_mask: Boolean mask of pixels with valid projection, shape (H, W).
+    """
+    verts = np.asarray(vertices, dtype=np.float64)
+    nrms = np.asarray(normals, dtype=np.float64)
+
+    # Transform to camera space
+    T = np.asarray(camera.transform, dtype=np.float64)
+    R = T[:3, :3]
+    t = T[:3, 3]
+
+    # Determine if transform is world-to-camera or camera-to-world:
+    # camera.position should be consistent with t.
+    cam_pos = np.asarray(camera.position, dtype=np.float64)
+
+    # Use camera.position for view direction computation
+    # Transform vertices to camera space: p_cam = R @ p_world + t
+    verts_cam = (R @ verts.T).T + t
+
+    # Simple pinhole projection (assume fx=fy=max(h,w), cx=w/2, cy=h/2)
+    fx = fy = float(max(h, w))
+    cx, cy = w / 2.0, h / 2.0
+
+    # Only consider vertices in front of camera (z > 0)
+    z = verts_cam[:, 2]
+    in_front = z > 0.01
+
+    # Project to pixel coordinates
+    px = (fx * verts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
+    py = (fy * verts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
+
+    # Compute view direction for cos_theta_v weighting
+    view_dirs = verts - cam_pos[np.newaxis, :]
+    view_dist = np.linalg.norm(view_dirs, axis=-1, keepdims=True)
+    view_dist[view_dist < 1e-8] = 1.0
+    view_dirs = view_dirs / view_dist
+
+    # cos(theta_v) = dot(normal, -view_dir)
+    cos_theta = np.sum(nrms * (-view_dirs), axis=-1)
+    cos_theta = np.clip(cos_theta, 0.0, 1.0)
+
+    # Rasterize (scatter) into maps
+    normal_map = np.zeros((h, w, 3), dtype=np.float64)
+    weight_map = np.zeros((h, w, 1), dtype=np.float64)
+    depth_buf = np.full((h, w), np.inf, dtype=np.float64)
+
+    valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
+    indices = np.where(valid)[0]
+
+    # Transform normals to camera space for the normal map
+    nrms_cam = (R @ nrms.T).T
+
+    for idx in indices:
+        xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
+        if zi < depth_buf[yi, xi]:
+            depth_buf[yi, xi] = zi
+            normal_map[yi, xi] = nrms_cam[idx]
+            weight_map[yi, xi, 0] = cos_theta[idx]
+
+    valid_mask = weight_map[..., 0] > 0.0
+    # Re-normalize projected normals
+    nrm_lens = np.linalg.norm(normal_map, axis=-1, keepdims=True)
+    nrm_lens[nrm_lens < 1e-12] = 1.0
+    normal_map = normal_map / nrm_lens
+
+    return normal_map, weight_map, valid_mask
+
+
 def delight_multiview_albedo(
     frames: np.ndarray,
-    cameras: list,
+    cameras: list[CameraExtrinsics],
     mesh: MeshGeometry,
     shading_model: str = "sh2",
 ) -> DelightResult:
     """Multi-view albedo de-lighting via inverse rendering.
 
-    Projects each frame onto the mesh, solves for per-texel albedo by
-    removing estimated spherical-harmonics shading, then computes the
-    CIELAB Delta-E residual between the re-lit composite and the original
-    observations.
+    Projects each frame onto the mesh using camera extrinsics, solves for
+    per-texel albedo by removing SH-estimated shading with view-weight
+    (cos_theta_v visibility) fusion, then computes the CIEDE2000 Delta-E
+    residual between the re-lit composite and the original observations.
 
     Args:
         frames: RGB video frames, shape ``(N, H, W, 3)``, float32 or uint8.
@@ -309,85 +657,132 @@ def delight_multiview_albedo(
         :class:`DelightResult` with aggregated albedo, shading, specular,
         ambient SH coefficients, and ``delta_e_residual``.
     """
-    is_uint8 = np.asarray(frames).dtype == np.uint8 or np.asarray(frames).max() > 1.5
+    is_uint8 = np.asarray(frames).dtype == np.uint8
     frames_arr = np.asarray(frames, dtype=np.float64)
     if is_uint8:
         frames_arr = frames_arr / 255.0
 
+    # Do NOT divide float32/float64 HDR by 255.0 — preserve linear range.
+
     n_views = frames_arr.shape[0]
     h, w = frames_arr.shape[1], frames_arr.shape[2]
 
-    # Collect per-view normals by projecting mesh normals into each view.
-    # For the aggregated albedo we average de-lit results across views.
-    albedo_accum = np.zeros((h, w, 3), dtype=np.float64)
-    shading_accum = np.zeros((h, w, 3), dtype=np.float64)
-    weight_accum = np.zeros((h, w, 1), dtype=np.float64)
-
     # Compute mesh vertex normals if not present
     mesh_normals = getattr(mesh, "normals", None)
-    if mesh_normals is None or len(mesh_normals) == 0:
+    if mesh_normals is None or (hasattr(mesh_normals, "__len__") and len(mesh_normals) == 0):
         from synapse.recon.geometry import compute_normals as _cn
 
         mesh_normals = _cn(mesh.vertices, mesh.faces)
 
+    mesh_verts = np.asarray(mesh.vertices, dtype=np.float64)
+    mesh_nrms = np.asarray(mesh_normals, dtype=np.float64)
+
+    # --- Per-view SH solve and weighted albedo accumulation ---
+    albedo_accum = np.zeros((h, w, 3), dtype=np.float64)
+    shading_accum = np.zeros((h, w, 3), dtype=np.float64)
+    weight_accum = np.zeros((h, w, 1), dtype=np.float64)
+
+    per_view_sh_coeffs = []
+
     for vi in range(n_views):
         frame_rgb = frames_arr[vi]
+        cam = cameras[vi] if vi < len(cameras) else cameras[-1]
 
-        # Generate a pseudo-normal map from the frame intensity gradient
-        gray = 0.299 * frame_rgb[..., 0] + 0.587 * frame_rgb[..., 1] + 0.114 * frame_rgb[..., 2]
-        gy, gx = np.gradient(gray)
-        gz = np.ones_like(gray) * 0.5
-        norm_len = np.sqrt(gx * gx + gy * gy + gz * gz + 1e-8)
-        normal_map = np.stack([-gx / norm_len, -gy / norm_len, gz / norm_len], axis=-1)
+        # Project mesh normals into this view
+        proj_normal, proj_weight, proj_valid = _project_mesh_to_view(
+            mesh_verts, mesh_nrms, cam, h, w,
+        )
 
-        # De-light this view
-        view_albedo = delight(frame_rgb, normal_map, frame_rgb)
-        view_albedo = np.asarray(view_albedo, dtype=np.float64)
-        if view_albedo.max() > 1.5:
-            view_albedo = view_albedo / 255.0
+        # Use projected normals where available, fall back to pseudo-normals
+        has_projection = np.sum(proj_valid) > (h * w * 0.01)  # >1% coverage
+        if has_projection:
+            normal_map = proj_normal
+            view_weight = proj_weight
+        else:
+            normal_map = _pseudo_normal_map(frame_rgb)
+            view_weight = np.ones((h, w, 1), dtype=np.float64)
 
-        # Shading = radiance / albedo
-        view_shading = frame_rgb / np.clip(view_albedo, 0.05, 1.0)
-        view_shading = np.clip(view_shading, 0.0, 5.0)
+        nrm_vec = _normalize_normals(normal_map)
 
-        albedo_accum += view_albedo
-        shading_accum += view_shading
-        weight_accum += 1.0
+        # Build chromaticity mask for SH fitting
+        chroma_mask = _build_chromaticity_mask(frame_rgb)
 
-    # Average
-    safe_weight = np.clip(weight_accum, 1.0, None)
-    avg_albedo = np.clip(albedo_accum / safe_weight, 0.0, 1.0).astype(np.float32)
-    avg_shading = np.clip(shading_accum / safe_weight, 0.0, 5.0).astype(np.float32)
+        # Solve SH irradiance using normalized luminance (not raw radiance)
+        flat_nrm = nrm_vec.reshape(-1, 3)
+        flat_mask = chroma_mask.reshape(-1)
+
+        # Compute luminance
+        view_lum = (0.2126 * frame_rgb[..., 0] + 0.7152 * frame_rgb[..., 1]
+                    + 0.0722 * frame_rgb[..., 2])
+        flat_view_lum = view_lum.reshape(-1)
+        median_view_lum = float(
+            np.median(flat_view_lum[flat_mask]) if np.any(flat_mask)
+            else np.median(flat_view_lum)
+        )
+        median_view_lum = max(median_view_lum, 1e-6)
+        normalized_view_lum = flat_view_lum / median_view_lum
+
+        # Fit SH to normalized luminance
+        sh_lum_coeffs_view = _solve_sh_irradiance(
+            flat_nrm, normalized_view_lum, flat_mask, max_samples=2048,
+        )
+
+        # SH coefficients stored as per-channel (broadcast to 3ch for output)
+        sh_coeffs_view = np.column_stack([
+            sh_lum_coeffs_view * median_view_lum,
+            sh_lum_coeffs_view * median_view_lum,
+            sh_lum_coeffs_view * median_view_lum,
+        ])
+        per_view_sh_coeffs.append(sh_coeffs_view)
+
+        # Evaluate SH shading field for this view
+        basis_full = evaluate_spherical_harmonics_basis(flat_nrm)
+        sh_shading_scalar = (basis_full @ sh_lum_coeffs_view).reshape(h, w)
+        sh_shading_abs = sh_shading_scalar * median_view_lum
+
+        eps = 0.02
+        e_max = 20.0
+        sh_shading_clamped = np.clip(sh_shading_abs, eps, e_max)
+        view_shading = np.stack([sh_shading_clamped] * 3, axis=-1)
+
+        # Decompose albedo: rho = I / E
+        view_albedo = frame_rgb / view_shading
+
+        # Weighted accumulation (cos_theta_v from mesh projection)
+        w_map = view_weight  # (H, W, 1)
+        albedo_accum += view_albedo * w_map
+        shading_accum += view_shading * w_map
+        weight_accum += w_map
+
+    # Weighted average
+    safe_weight = np.clip(weight_accum, 1e-8, None)
+    avg_albedo = albedo_accum / safe_weight
+
+    if is_uint8:
+        avg_albedo = np.clip(avg_albedo, 0.0, 1.0)
+    else:
+        avg_albedo = np.clip(avg_albedo, 0.0, None)
+    avg_albedo = avg_albedo.astype(np.float32)
+
+    avg_shading = np.clip(shading_accum / safe_weight, 0.0, 20.0).astype(np.float32)
 
     # Specular residual (mean across views)
     mean_frame = np.mean(frames_arr, axis=0)
-    specular = np.maximum(
-        0.0,
-        mean_frame - avg_albedo.astype(np.float64) * np.mean(avg_shading, axis=-1, keepdims=True).astype(np.float64),
-    ).astype(np.float32)
-
-    # Compute SH coefficients from the averaged normal field
-    gray_avg = 0.299 * avg_albedo[..., 0] + 0.587 * avg_albedo[..., 1] + 0.114 * avg_albedo[..., 2]
-    gy_a, gx_a = np.gradient(gray_avg)
-    gz_a = np.ones_like(gray_avg) * 0.5
-    norm_len_a = np.sqrt(gx_a * gx_a + gy_a * gy_a + gz_a * gz_a + 1e-8)
-    avg_normals = np.stack([-gx_a / norm_len_a, -gy_a / norm_len_a, gz_a / norm_len_a], axis=-1)
-
-    flat_n = avg_normals.reshape(-1, 3).astype(np.float64)
-    flat_r = mean_frame.reshape(-1, 3).astype(np.float64)
-    step = max(1, len(flat_n) // 1000)
-    basis = evaluate_spherical_harmonics_basis(flat_n[::step])
-    sub_rad = flat_r[::step]
-    reg = 1e-3
-    ambient_sh = np.linalg.solve(basis.T @ basis + reg * np.eye(9), basis.T @ sub_rad)
-
-    # Compute delta_e_residual: re-light and compare to original
     relit = avg_albedo.astype(np.float64) * avg_shading.astype(np.float64)
-    relit = np.clip(relit, 0.0, 1.0)
+    specular = np.maximum(0.0, mean_frame - relit).astype(np.float32)
+
+    # Average SH coefficients across views
+    if per_view_sh_coeffs:
+        ambient_sh = np.mean(per_view_sh_coeffs, axis=0)
+    else:
+        ambient_sh = np.zeros((9, 3), dtype=np.float64)
+
+    # Compute CIEDE2000 delta_e_residual between re-lit and original
+    relit_clamped = np.clip(relit, 0.0, 1.0)
     mean_frame_clamped = np.clip(mean_frame, 0.0, 1.0)
-    lab_relit = _rgb_to_lab(relit)
+    lab_relit = _rgb_to_lab(relit_clamped)
     lab_orig = _rgb_to_lab(mean_frame_clamped)
-    delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
+    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_orig)))
 
     return DelightResult(
         albedo=avg_albedo,
