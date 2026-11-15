@@ -391,9 +391,9 @@ class Conditions:
             kwargs[k] = ConditionLevel(v)
         return cls(**kwargs)
 
-    def resolve(self) -> dict[str, dict]:
+    def resolve(self) -> dict[str, dict[str, Any]]:
         """Expand to full factor parameter dicts."""
-        resolved: dict[str, dict] = {}
+        resolved: dict[str, dict[str, Any]] = {}
         for factor_id, factor_def in RENDERING_CONDITION_FACTORS.items():
             field_name = factor_id
             level = getattr(self, field_name, None) or ConditionLevel.L1

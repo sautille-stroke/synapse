@@ -63,7 +63,7 @@ def save_style_profile_yaml(
     d = to_style_profile_dict(desc)
 
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
         p.write_text(yaml.dump(d, default_flow_style=False), encoding="utf-8")
     except ImportError:
         p = p.with_suffix(".json")

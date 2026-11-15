@@ -101,7 +101,7 @@ class ViewerServer:
     def __init__(
         self,
         dataset_dir: str | Path,
-        port: int = 8765,
+        port: int = 0,
         host: str = "127.0.0.1",
     ) -> None:
         self.dataset_dir = Path(dataset_dir).resolve()
@@ -139,7 +139,7 @@ class ViewerServer:
                 self.httpd = _ReusableHTTPServer(
                     (self.host, cur_port), handler_cls,  # type: ignore[arg-type]
                 )
-                self.port = cur_port
+                self.port = self.httpd.server_address[1]  # actual port (OS-assigned if 0)
                 break
             except OSError:
                 cur_port += 1
@@ -189,7 +189,7 @@ class ViewerServer:
 
 def launch_viewer(
     dataset_dir: str | Path,
-    port: int = 8765,
+    port: int = 0,
     open_browser: bool = True,
     block: bool = True,
     host: str = "127.0.0.1",

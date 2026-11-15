@@ -451,6 +451,10 @@ class TestRSICLI:
                 "--json", "rsi", "gate-promote",
                 "--baseline-overall", "0.7",
                 "--candidate-overall", "0.8",
+                "--baseline-geom", "0.6",
+                "--candidate-geom", "0.7",
+                "--baseline-temporal", "0.65",
+                "--candidate-temporal", "0.75",
             ])
         finally:
             sys.stdout = old
@@ -475,6 +479,10 @@ class TestRSICLI:
                 "--json", "rsi", "gate-promote",
                 "--baseline-overall", "0.8",
                 "--candidate-overall", "0.7",
+                "--baseline-geom", "0.8",
+                "--candidate-geom", "0.6",
+                "--baseline-temporal", "0.8",
+                "--candidate-temporal", "0.6",
             ])
         finally:
             sys.stdout = old

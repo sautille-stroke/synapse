@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -39,7 +40,7 @@ from synapse.recon.geometry import (
 
 
 @pytest.fixture()
-def tetrahedron():
+def tetrahedron() -> None:
     """Regular tetrahedron — closed, watertight, 2-manifold, zero defects."""
     verts = np.array([
         [1.0, 1.0, 1.0],
@@ -53,11 +54,11 @@ def tetrahedron():
         [0, 2, 3],
         [1, 3, 2],
     ])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
-def open_plane():
+def open_plane() -> None:
     """Single triangle — manifold but not watertight (boundary edges)."""
     verts = np.array([
         [0.0, 0.0, 0.0],
@@ -65,11 +66,11 @@ def open_plane():
         [0.0, 1.0, 0.0],
     ])
     faces = np.array([[0, 1, 2]])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
-def needle_triangle():
+def needle_triangle() -> None:
     """Extremely thin needle triangle — should be flagged as degenerate."""
     verts = np.array([
         [0.0, 0.0, 0.0],
@@ -77,11 +78,11 @@ def needle_triangle():
         [0.5, 1e-12, 0.0],  # Near-zero area
     ])
     faces = np.array([[0, 1, 2]])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
-def bowtie_mesh():
+def bowtie_mesh() -> None:
     """Bowtie / hourglass — two triangles sharing only a single vertex.
 
     This is a non-manifold pinch point at vertex 2.
@@ -97,11 +98,11 @@ def bowtie_mesh():
         [0, 1, 2],
         [2, 3, 4],
     ])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
-def self_intersecting_mesh():
+def self_intersecting_mesh() -> None:
     """Two triangles that cross through each other in 3D space."""
     verts = np.array([
         # Triangle 0: lies in the XY plane
@@ -117,11 +118,11 @@ def self_intersecting_mesh():
         [0, 1, 2],
         [3, 4, 5],
     ])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
-def mesh_with_debris():
+def mesh_with_debris() -> None:
     """Tetrahedron + tiny floating debris cube far away."""
     # Main body: tetrahedron
     main_verts = np.array([
@@ -146,7 +147,7 @@ def mesh_with_debris():
 
     verts = np.vstack([main_verts, debris_verts])
     faces = np.vstack([main_faces, debris_faces])
-    return verts, faces
+    return verts, faces  # type: ignore[return-value]
 
 
 # ===================================================================
@@ -157,18 +158,18 @@ def mesh_with_debris():
 class TestCheckDegenerateFaces:
     """Tests for degenerate / needle triangle detection."""
 
-    def test_healthy_tetrahedron(self, tetrahedron):
+    def test_healthy_tetrahedron(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         result = check_degenerate_faces(verts, faces)
         assert len(result) == 0
 
-    def test_needle_detected(self, needle_triangle):
+    def test_needle_detected(self, needle_triangle: Any) -> None:
         verts, faces = needle_triangle
         result = check_degenerate_faces(verts, faces, min_area=1e-8)
         assert len(result) == 1
         assert result[0] == 0
 
-    def test_zero_area_face(self):
+    def test_zero_area_face(self) -> None:
         """Three collinear points — zero area face."""
         verts = np.array([
             [0.0, 0.0, 0.0],
@@ -179,7 +180,7 @@ class TestCheckDegenerateFaces:
         result = check_degenerate_faces(verts, faces)
         assert len(result) == 1
 
-    def test_high_aspect_ratio(self):
+    def test_high_aspect_ratio(self) -> None:
         """Very elongated but nonzero-area triangle."""
         verts = np.array([
             [0.0, 0.0, 0.0],
@@ -192,13 +193,13 @@ class TestCheckDegenerateFaces:
         )
         assert len(result) == 1
 
-    def test_empty_mesh(self):
+    def test_empty_mesh(self) -> None:
         verts = np.zeros((0, 3))
         faces = np.zeros((0, 3), dtype=np.int64)
         result = check_degenerate_faces(verts, faces)
         assert len(result) == 0
 
-    def test_quad_degenerate_second_triangle(self):
+    def test_quad_degenerate_second_triangle(self) -> None:
         """Quad where v0,v1,v2 form a healthy sub-tri but v0,v2,v3 is a degenerate needle."""
         verts = np.array([
             [0.0, 0.0, 0.0],
@@ -222,18 +223,18 @@ class TestCheckDegenerateFaces:
 class TestCheckSelfIntersections:
     """Tests for triangle-triangle intersection detection."""
 
-    def test_no_intersection_tetrahedron(self, tetrahedron):
+    def test_no_intersection_tetrahedron(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) == 0
 
-    def test_crossing_triangles_detected(self, self_intersecting_mesh):
+    def test_crossing_triangles_detected(self, self_intersecting_mesh: Any) -> None:
         verts, faces = self_intersecting_mesh
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) >= 1
         assert (0, 1) in pairs or (1, 0) in pairs
 
-    def test_adjacent_faces_not_flagged(self):
+    def test_adjacent_faces_not_flagged(self) -> None:
         """Two triangles sharing an edge should NOT be flagged."""
         verts = np.array([
             [0.0, 0.0, 0.0],
@@ -248,13 +249,13 @@ class TestCheckSelfIntersections:
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) == 0
 
-    def test_empty_mesh(self):
+    def test_empty_mesh(self) -> None:
         verts = np.zeros((0, 3))
         faces = np.zeros((0, 3), dtype=np.int64)
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) == 0
 
-    def test_quad_self_intersection_second_triangle(self):
+    def test_quad_self_intersection_second_triangle(self) -> None:
         """Two quads: first sub-triangles don't intersect but second sub-triangles do."""
         verts = np.array([
             # Quad A: XY plane
@@ -282,13 +283,13 @@ class TestCheckSelfIntersections:
 class TestFindConnectedComponents:
     """Tests for mesh connected component decomposition."""
 
-    def test_single_component(self, tetrahedron):
+    def test_single_component(self, tetrahedron: Any) -> None:
         _, faces = tetrahedron
         components = find_connected_components(faces)
         assert len(components) == 1
         assert len(components[0]) == 4
 
-    def test_two_components(self, mesh_with_debris):
+    def test_two_components(self, mesh_with_debris: Any) -> None:
         _, faces = mesh_with_debris
         components = find_connected_components(faces)
         assert len(components) == 2
@@ -296,7 +297,7 @@ class TestFindConnectedComponents:
         assert len(components[0]) == 4
         assert len(components[1]) == 1
 
-    def test_isolated_triangles(self):
+    def test_isolated_triangles(self) -> None:
         """Three completely disconnected triangles."""
         faces = np.array([
             [0, 1, 2],
@@ -306,7 +307,7 @@ class TestFindConnectedComponents:
         components = find_connected_components(faces)
         assert len(components) == 3
 
-    def test_empty_mesh(self):
+    def test_empty_mesh(self) -> None:
         faces = np.zeros((0, 3), dtype=np.int64)
         components = find_connected_components(faces)
         assert len(components) == 0
@@ -320,13 +321,13 @@ class TestFindConnectedComponents:
 class TestPruneFloatingIslands:
     """Tests for floating debris removal."""
 
-    def test_no_pruning_needed(self, tetrahedron):
+    def test_no_pruning_needed(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         clean_v, clean_f, mask = prune_floating_islands(verts, faces)
         assert len(clean_f) == len(faces)
         assert np.all(mask)
 
-    def test_debris_removed(self, mesh_with_debris):
+    def test_debris_removed(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         clean_v, clean_f, mask = prune_floating_islands(
             verts, faces, min_face_ratio=0.25,
@@ -335,7 +336,7 @@ class TestPruneFloatingIslands:
         assert len(clean_f) == 4
         assert len(clean_v) == 4
 
-    def test_vertex_remapping(self, mesh_with_debris):
+    def test_vertex_remapping(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         clean_v, clean_f, _ = prune_floating_islands(
             verts, faces, min_face_ratio=0.25,
@@ -353,17 +354,17 @@ class TestPruneFloatingIslands:
 class TestManifoldWatertight:
     """Verify existing manifold/watertight checks with new test meshes."""
 
-    def test_tetrahedron_manifold_watertight(self, tetrahedron):
+    def test_tetrahedron_manifold_watertight(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         assert check_manifold(verts, faces)
         assert check_watertight(verts, faces)
 
-    def test_open_plane_manifold_not_watertight(self, open_plane):
+    def test_open_plane_manifold_not_watertight(self, open_plane: Any) -> None:
         verts, faces = open_plane
         assert check_manifold(verts, faces)
         assert not check_watertight(verts, faces)
 
-    def test_bowtie_not_manifold(self, bowtie_mesh):
+    def test_bowtie_not_manifold(self, bowtie_mesh: Any) -> None:
         verts, faces = bowtie_mesh
         # Bowtie has a pinch vertex at vertex 2 — must fail both manifold & watertight
         assert not check_manifold(verts, faces)
@@ -378,7 +379,7 @@ class TestManifoldWatertight:
 class TestValidateMeshGeometry:
     """Tests for the unified Tier 0 gate function."""
 
-    def test_healthy_tetrahedron_passes(self, tetrahedron):
+    def test_healthy_tetrahedron_passes(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         result = validate_mesh_geometry(verts, faces, backend="python")
         assert isinstance(result, GeometricValidationResult)
@@ -392,21 +393,21 @@ class TestValidateMeshGeometry:
         assert result.num_vertices == 4
         assert result.num_faces == 4
 
-    def test_needle_fails(self, needle_triangle):
+    def test_needle_fails(self, needle_triangle: Any) -> None:
         verts, faces = needle_triangle
         result = validate_mesh_geometry(verts, faces, backend="python")
         assert result.passed is False
         assert len(result.degenerate_face_indices) > 0
         assert any("degenerate" in r.lower() for r in result.failure_reasons)
 
-    def test_self_intersection_fails(self, self_intersecting_mesh):
+    def test_self_intersection_fails(self, self_intersecting_mesh: Any) -> None:
         verts, faces = self_intersecting_mesh
         result = validate_mesh_geometry(verts, faces, backend="python")
         assert result.passed is False
         assert len(result.self_intersecting_pairs) > 0
         assert any("intersect" in r.lower() for r in result.failure_reasons)
 
-    def test_debris_detected(self, mesh_with_debris):
+    def test_debris_detected(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         result = validate_mesh_geometry(
             verts, faces, min_face_ratio=0.25, backend="python",
@@ -414,7 +415,7 @@ class TestValidateMeshGeometry:
         assert result.num_connected_components == 2
         assert len(result.floating_island_face_indices) > 0
 
-    def test_require_watertight_open_fails(self, open_plane):
+    def test_require_watertight_open_fails(self, open_plane: Any) -> None:
         verts, faces = open_plane
         result = validate_mesh_geometry(
             verts, faces, require_watertight=True, backend="python",
@@ -423,7 +424,7 @@ class TestValidateMeshGeometry:
         assert result.is_watertight is False
         assert any("watertight" in r.lower() for r in result.failure_reasons)
 
-    def test_result_serializable(self, tetrahedron):
+    def test_result_serializable(self, tetrahedron: Any) -> None:
         verts, faces = tetrahedron
         result = validate_mesh_geometry(verts, faces, backend="python")
         d = result.model_dump()
@@ -431,13 +432,12 @@ class TestValidateMeshGeometry:
         assert "passed" in d
         assert "is_manifold" in d
 
-    def test_auto_backend_removed(self, tetrahedron):
+    def test_auto_backend_removed(self, tetrahedron: Any) -> None:
         """'auto' backend no longer exists — should raise ValueError."""
         verts, faces = tetrahedron
         with pytest.raises(ValueError, match="Invalid backend"):
             validate_mesh_geometry(verts, faces, backend="auto")  # type: ignore[arg-type]
-
-    def test_native_backend_unavailable_raises(self, tetrahedron):
+    def test_native_backend_unavailable_raises(self, tetrahedron: Any) -> None:
         """Native backend raises BackendUnavailableError(exit_code=30) when _c_geometry missing (P1-ARCH-03)."""
         import sys
         from unittest.mock import patch
@@ -490,11 +490,8 @@ class TestBuildNativeScript:
         and _build_direct_fallback with a rigged environment where pybind11
         is genuinely unreachable.
         """
-        import importlib
-        import importlib.util
         import subprocess
         import sys
-        import tempfile
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent
@@ -560,6 +557,7 @@ class TestBuildNativeScript:
         assert "spatial/include" in output, "aether/spatial/include not found in compiler args"
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     sys.platform == "win32" or sys.platform == "darwin",
     reason="Real native compile requires Linux (ubuntu24)",
@@ -671,7 +669,7 @@ class TestGeometryGateNativeBackend:
         old_mod = sys.modules.get("synapse._c_geometry")
         old_attr = getattr(synapse, "_c_geometry", None)
         sys.modules["synapse._c_geometry"] = mock_cg
-        synapse._c_geometry = mock_cg  # type: ignore[attr-defined]
+        synapse._c_geometry = mock_cg
         try:
             result = validate_recon_mesh_manifold(v, f, backend="native")
             assert result is True
@@ -685,8 +683,7 @@ class TestGeometryGateNativeBackend:
                 if hasattr(synapse, "_c_geometry"):
                     delattr(synapse, "_c_geometry")
             else:
-                synapse._c_geometry = old_attr  # type: ignore[attr-defined]
-
+                synapse._c_geometry = old_attr
     def test_native_backend_validate_mesh_geometry_dict_access(self) -> None:
         """validate_mesh_geometry with backend='native' reads dict keys
         without AttributeError."""
@@ -717,7 +714,7 @@ class TestGeometryGateNativeBackend:
         old_mod = sys.modules.get("synapse._c_geometry")
         old_attr = getattr(synapse, "_c_geometry", None)
         sys.modules["synapse._c_geometry"] = mock_cg
-        synapse._c_geometry = mock_cg  # type: ignore[attr-defined]
+        synapse._c_geometry = mock_cg
         try:
             result = validate_mesh_geometry(v, f, backend="native")
             assert result.passed is True
@@ -732,9 +729,7 @@ class TestGeometryGateNativeBackend:
                 if hasattr(synapse, "_c_geometry"):
                     delattr(synapse, "_c_geometry")
             else:
-                synapse._c_geometry = old_attr  # type: ignore[attr-defined]
-
-
+                synapse._c_geometry = old_attr
 # ===================================================================
 # PR-80: quad_remesh no duplicate-vertex faces (test-b)
 # ===================================================================

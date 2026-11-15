@@ -407,7 +407,7 @@ class WanAdapter(VideoModelAdapter):
         self,
         backend: WanBackendTransport | None = None,
         gamma_flow_bias: float = 0.0,
-        lora_manifests: list | None = None,
+        lora_manifests: list[Any] | None = None,
         *,
         test_synthetic: bool = False,
     ) -> None:
@@ -604,7 +604,7 @@ class WanAdapter(VideoModelAdapter):
         conditions: PreparedConditionPayload,
         config: VideoGenerationConfig,
         model: Any | None = None,
-        fgpp_frames: list | None = None,
+        fgpp_frames: list[Any] | None = None,
         check_non_degenerate: bool = True,
     ) -> VideoResult:
         """Generate video frames via the configured backend transport.

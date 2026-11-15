@@ -29,7 +29,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 try:
-    from aether.color import (  # type: ignore[import-not-found]
+    from aether.color import (
         acescg_to_linear_srgb as _native_acescg_to_linear_srgb,
     )
     from aether.color import (

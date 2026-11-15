@@ -198,8 +198,8 @@ class TestExportImport:
     def test_roundtrip_cryptomatte_exact(self) -> None:
         """Large uint32 IDs (>2^24) must survive EXR round-trip exactly."""
         pytest.importorskip("OpenEXR")
-        import Imath  # type: ignore[import-untyped]
-        import OpenEXR  # type: ignore[import-untyped]
+        import Imath
+        import OpenEXR
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
@@ -246,8 +246,8 @@ class TestExportImport:
     def test_import_legacy_float_cryptomatte_warns_and_decodes(self) -> None:
         """Legacy EXRs storing Cryptomatte.ID as FLOAT must emit UserWarning and decode accurately."""
         pytest.importorskip("OpenEXR")
-        import Imath  # type: ignore[import-untyped]
-        import OpenEXR  # type: ignore[import-untyped]
+        import Imath
+        import OpenEXR
         from synapse.fgpp.io import export_fgpp, import_fgpp
 
         seq = _make_sequence(1, 16, 16)
@@ -309,7 +309,7 @@ class TestExportImport:
         with tempfile.TemporaryDirectory() as tmpdir:
             export_fgpp(seq, tmpdir)
             gen = import_fgpp(tmpdir, lazy=True)
-            frames = list(gen)
+            frames = list(gen)  # type: ignore[arg-type]
             assert len(frames) == 3
             assert all(isinstance(f, FGPPFrame) for f in frames)
 
@@ -333,6 +333,7 @@ class TestExportImport:
 # ===================================================================
 
 
+@pytest.mark.slow
 class TestTorchBridge:
     def test_frame_to_tensors_keys(self) -> None:
         pytest.importorskip("torch")

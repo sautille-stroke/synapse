@@ -46,8 +46,7 @@ def frame_to_tensors(
     dict[str, torch.Tensor]
         Keys match :class:`FGPPFrame` field names.
     """
-    import torch  # type: ignore[import-untyped]
-
+    import torch
     tensors: dict[str, Any] = {}
 
     for field in _IMAGE_FIELDS:

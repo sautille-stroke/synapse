@@ -84,6 +84,7 @@ def test_blend_with_motion_vectors_runs() -> None:
     assert result.dtype == np.uint8
 
 
+@pytest.mark.slow
 def test_blend_motion_vectors_reduces_temporal_error() -> None:
     """With motion vectors, temporal warp error at boundaries should reduce."""
     t_count = 4

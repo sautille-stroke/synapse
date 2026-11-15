@@ -34,7 +34,7 @@ def handle_asset_inspect_3d(
     endpoint_url = params.get("vlm_endpoint_url")
     if endpoint_url:
         try:
-            from synapse.inspect.vlm_transport import (  # type: ignore[import-not-found]
+            from synapse.inspect.vlm_transport import (
                 HttpVlmTransport,
             )
         except ImportError as exc:

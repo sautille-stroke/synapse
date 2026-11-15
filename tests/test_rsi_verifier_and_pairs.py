@@ -502,10 +502,10 @@ class TestPreferenceDatasetBuilder:
             source_intent_id="intent_01",
         )
         pair = rec.to_preference_pair()
-        assert pair.chosen_uri == "file:///good.glb"
-        assert pair.rejected_uri == "file:///bad.glb"
-        assert pair.condition_key == "file:///init.glb"
-        assert pair.asset_id == "hero_mesh"
+        assert pair["chosen"] == "file:///good.glb"
+        assert pair["rejected"] == "file:///bad.glb"
+        assert pair["state_before"] == "file:///init.glb"
+        assert pair["asset_id"] == "hero_mesh"
 
 
 # -------------------------------------------------------------------

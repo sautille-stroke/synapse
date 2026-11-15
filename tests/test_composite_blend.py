@@ -10,7 +10,10 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
+import pytest
 from synapse.composite.blend import (
     _guided_filter_box,
     border_ring_lab_match,
@@ -34,11 +37,11 @@ def _make_solid_image(
     dtype: type = np.uint8,
 ) -> np.ndarray:
     """Create a solid-colour [H, W, 3] image."""
-    img = np.zeros((h, w, 3), dtype=dtype)
+    img: Any = np.zeros((h, w, 3), dtype=dtype)
     img[..., 0] = color[0]
     img[..., 1] = color[1]
     img[..., 2] = color[2]
-    return img
+    return img  # type: ignore[no-any-return]
 
 
 def _make_circle_mask(
@@ -46,7 +49,7 @@ def _make_circle_mask(
 ) -> np.ndarray:
     """Create a circular bool mask [H, W]."""
     yy, xx = np.ogrid[:h, :w]
-    return ((xx - cx) ** 2 + (yy - cy) ** 2) <= radius ** 2
+    return ((xx - cx) ** 2 + (yy - cy) ** 2) <= radius ** 2  # type: ignore[no-any-return]
 
 
 def _mean_ciede2000(img1_srgb: np.ndarray, img2_srgb: np.ndarray,
@@ -243,6 +246,7 @@ class TestLaplacianPyramidBlend:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestSurgicalSequence:
     """Tests for composite_surgical_sequence."""
 

@@ -139,9 +139,9 @@ class TestSoftwareRasterizerBasics:
         frame = rast.render(verts, faces, norms, cam)
 
         assert frame.depth.shape == (32, 32)
-        assert frame.world_normal.shape == (32, 32, 3)
-        assert frame.motion_vector.shape == (32, 32, 2)
-        assert frame.cryptomatte_id.shape == (32, 32)
+        assert frame.world_normal.shape == (32, 32, 3)  # type: ignore[union-attr]
+        assert frame.motion_vector.shape == (32, 32, 2)  # type: ignore[union-attr]
+        assert frame.cryptomatte_id.shape == (32, 32)  # type: ignore[union-attr]
 
     def test_render_writes_depth(self) -> None:
         """Rendered triangle produces non-infinite depth values."""
@@ -151,7 +151,7 @@ class TestSoftwareRasterizerBasics:
         frame = rast.render(verts, faces, norms, cam)
 
         # Some pixels should have depth < z_far
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         assert np.any(fg_mask), "No foreground pixels rendered"
         fg_depths = frame.depth[fg_mask]
         assert np.all(fg_depths < cam.z_far)
@@ -185,7 +185,7 @@ class TestNearClipClipping:
         frame = rast.render(verts, faces, normals, cam)
 
         # Should have some rendered pixels (the two front vertices are visible)
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         assert np.any(fg_mask), "Near-clipped triangle should still produce pixels"
 
         # All depths must be positive and within valid range
@@ -210,7 +210,7 @@ class TestNearClipClipping:
         frame = rast.render(verts, faces, normals, cam)
 
         # Triangle is behind the camera, should have no foreground pixels
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         assert not np.any(fg_mask), "Triangle behind camera should not render"
 
 
@@ -231,11 +231,11 @@ class TestMotionVectors:
             prev_camera=cam_prev,
         )
 
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         assert np.any(fg_mask), "Triangle should be visible"
 
         # Motion vectors should be non-zero for visible pixels
-        mv = frame.motion_vector.astype(np.float32)
+        mv = frame.motion_vector.astype(np.float32)  # type: ignore[union-attr]
         fg_mv = mv[fg_mask]
         mv_magnitude = np.sqrt(fg_mv[:, 0]**2 + fg_mv[:, 1]**2)
 
@@ -255,10 +255,10 @@ class TestMotionVectors:
             prev_camera=cam,
         )
 
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         assert np.any(fg_mask)
 
-        mv = frame.motion_vector.astype(np.float32)
+        mv = frame.motion_vector.astype(np.float32)  # type: ignore[union-attr]
         fg_mv = mv[fg_mask]
         # With identical cameras, motion vectors should be essentially zero
         max_mv = float(np.max(np.abs(fg_mv)))
@@ -299,9 +299,9 @@ class TestMotionVectors:
             prev_camera=cam_prev,
         )
 
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         if np.any(fg_mask):
-            mv = frame.motion_vector.astype(np.float32)
+            mv = frame.motion_vector.astype(np.float32)  # type: ignore[union-attr]
             fg_mv = mv[fg_mask]
             assert np.all(np.isfinite(fg_mv)), (
                 "Motion vectors for near-clipped triangle must be finite"
@@ -326,7 +326,7 @@ class TestPerspectiveCorrectInterpolation:
         cam = _make_camera(width=64, height=64, position=(0, 0, 5))
         frame = rast.render(verts, faces, normals, cam)
 
-        fg_mask = frame.cryptomatte_id > 0
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
         if np.any(fg_mask):
             depths = frame.depth[fg_mask]
             assert np.all(depths > 0)

@@ -201,9 +201,11 @@ def test_recon_closed_loop_cli_json() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         video_path = Path(tmp_dir) / "test_frames.npy"
+        normals_path = Path(tmp_dir) / "test_normals.npy"
         # T=5 satisfies Wan 2.1 T=4k+1 phase lock
         np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
-        rc = main_synapse(["--json", "recon", "closed-loop", "--video", str(video_path), "--max-iterations", "2"])
+        np.save(normals_path, np.full((5, 32, 32, 3), 0.0, dtype=np.float32))
+        rc = main_synapse(["--json", "recon", "closed-loop", "--video", str(video_path), "--normals", str(normals_path), "--max-iterations", "2"])
         assert rc == 0
 
 
@@ -213,9 +215,11 @@ def test_recon_closed_loop_cli_human() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         video_path = Path(tmp_dir) / "test_frames.npy"
+        normals_path = Path(tmp_dir) / "test_normals.npy"
         # T=5 satisfies Wan 2.1 T=4k+1 phase lock
         np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
-        rc = main_synapse(["recon", "closed-loop", "--video", str(video_path), "--max-iterations", "2"])
+        np.save(normals_path, np.full((5, 32, 32, 3), 0.0, dtype=np.float32))
+        rc = main_synapse(["recon", "closed-loop", "--video", str(video_path), "--normals", str(normals_path), "--max-iterations", "2"])
         assert rc == 0
 
 

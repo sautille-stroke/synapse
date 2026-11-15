@@ -924,7 +924,7 @@ def validate_recon_mesh_manifold(
     """
     if backend == "native":
         try:
-            import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+            import synapse._c_geometry as _cg
 
             v = np.ascontiguousarray(vertices, dtype=np.float64)
             f = np.ascontiguousarray(faces, dtype=np.int64)
@@ -940,4 +940,3 @@ def validate_recon_mesh_manifold(
         except (ImportError, AttributeError, KeyError, TypeError):
             pass
     return bool(check_manifold(vertices, faces))
-

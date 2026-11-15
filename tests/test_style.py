@@ -357,7 +357,7 @@ class TestProfileMapper:
             try:
                 content = json.loads(raw)
             except json.JSONDecodeError:
-                import yaml  # type: ignore[import-untyped]
+                import yaml
                 content = yaml.safe_load(raw)
             assert content["schema_version"] == "style_profile.v2.0.0"
             assert content["post_process_config"]["exposure_ev"] == 1.5

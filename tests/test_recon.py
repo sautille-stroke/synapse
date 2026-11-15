@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 import pytest
@@ -603,12 +604,12 @@ class TestReconBackendInterop:
 
     def test_is_vg_backend_subclass(self) -> None:
         """SynapseReconBackend implements VgBackend interface."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         assert isinstance(backend, VgBackend)
 
     def test_recon_backend_delight(self) -> None:
         """SynapseReconBackend.delight returns array."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         alb = np.full((16, 16, 3), 0.5, dtype=np.float32)
         nrm = np.zeros((16, 16, 3), dtype=np.float32)
         nrm[..., 2] = 1.0
@@ -618,7 +619,7 @@ class TestReconBackendInterop:
 
     def test_recon_backend_quad_remesh(self) -> None:
         """SynapseReconBackend.quad_remesh succeeds."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         v = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float32)
         f = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
         new_v, new_f = backend.quad_remesh(v, f, target_faces=1)
@@ -628,21 +629,21 @@ class TestReconBackendInterop:
 
     def test_recon_backend_check_manifold(self) -> None:
         """SynapseReconBackend.check_manifold returns True for valid mesh."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
         f = np.array([[0, 1, 2]], dtype=np.int32)
         assert backend.check_manifold(v, f) is True
 
     def test_recon_backend_solve_zero_slip_ik(self) -> None:
         """SynapseReconBackend.solve_zero_slip_ik returns updated dict."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         res = backend.solve_zero_slip_ik({"dummy": True}, np.zeros((4, 2)))
         assert res.get("dummy") is True
         assert "telemetry" in res
 
     def test_recon_backend_refine_pose_6dof(self) -> None:
         """SynapseReconBackend.refine_pose_6dof returns 4x4 matrix."""
-        backend = SynapseReconBackend()
+        backend = SynapseReconBackend()  # type: ignore[operator]
         pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
         mat = backend.refine_pose_6dof(pts, pts)
         assert mat.shape == (4, 4)
@@ -650,13 +651,13 @@ class TestReconBackendInterop:
 
     def test_get_recon_backend_factory(self) -> None:
         """get_recon_backend returns SynapseReconBackend."""
-        backend = get_recon_backend(mock=False)
-        assert isinstance(backend, SynapseReconBackend)
+        backend = get_recon_backend(mock=False)  # type: ignore[operator]
+        assert isinstance(backend, SynapseReconBackend)  # type: ignore[arg-type]
 
     def test_get_vg_backend_fallback(self) -> None:
         """get_vg_backend(fallback_to_recon=True) returns SynapseReconBackend."""
         backend = get_vg_backend(mock=False, fallback_to_recon=True)
-        assert isinstance(backend, SynapseReconBackend)
+        assert isinstance(backend, SynapseReconBackend)  # type: ignore[arg-type]
 
 
 # ===================================================================
@@ -667,7 +668,7 @@ class TestReconBackendInterop:
 class TestStagesReconPersistence:
     """PR-80: stages/recon persisted file can be read back with non-empty faces."""
 
-    def test_video_to_3d_invert_persists_full_mesh(self, tmp_path) -> None:
+    def test_video_to_3d_invert_persists_full_mesh(self, tmp_path: Any) -> None:
         """handle_video_to_3d_invert saves vertices, faces (and uvs) to
         output .npz, and the persisted file can be read back with
         non-empty faces."""

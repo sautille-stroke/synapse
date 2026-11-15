@@ -221,7 +221,7 @@ class TestFeatureStoreBuilder:
 
     def test_build_single_shard(self, tmp_path: object) -> None:
         """3 samples -> 1 shard, all readable back."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -238,7 +238,7 @@ class TestFeatureStoreBuilder:
                 source_sha256=f"{'a' * 64}",
             )
 
-        shard_paths = builder.build_shards(tmp / "shards")
+        shard_paths = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         assert len(shard_paths) == 1
         assert shard_paths[0].exists()
 
@@ -256,7 +256,7 @@ class TestFeatureStoreBuilder:
         self, tmp_path: object,
     ) -> None:
         """Small max_shard_bytes forces multiple shards."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(
@@ -274,7 +274,7 @@ class TestFeatureStoreBuilder:
                 caption=f"caption {i}",
             )
 
-        shard_paths = builder.build_shards(tmp / "shards")
+        shard_paths = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         assert len(shard_paths) > 1, (
             "Expected multiple shards with small size limit"
         )
@@ -289,7 +289,7 @@ class TestFeatureStoreBuilder:
         self, tmp_path: object,
     ) -> None:
         """FGPP condition tensor round-trips through shards."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -306,7 +306,7 @@ class TestFeatureStoreBuilder:
             fgpp_cond=cond,
         )
 
-        shards = builder.build_shards(tmp / "shards")
+        shards = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         samples = list(iter_feature_shards(shards))
         assert len(samples) == 1
         assert samples[0]["fgpp_cond"] is not None
@@ -318,7 +318,7 @@ class TestFeatureStoreBuilder:
         self, tmp_path: object,
     ) -> None:
         """Samples without fgpp_cond yield None."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -330,7 +330,7 @@ class TestFeatureStoreBuilder:
             caption="no cond",
         )
 
-        shards = builder.build_shards(tmp / "shards")
+        shards = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         samples = list(iter_feature_shards(shards))
         assert samples[0]["fgpp_cond"] is None
 
@@ -338,7 +338,7 @@ class TestFeatureStoreBuilder:
         self, tmp_path: object,
     ) -> None:
         """source_sha256 appears in meta."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -352,7 +352,7 @@ class TestFeatureStoreBuilder:
             source_sha256=sha,
         )
 
-        shards = builder.build_shards(tmp / "shards")
+        shards = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         samples = list(iter_feature_shards(shards))
         assert samples[0]["meta"]["source_sha256"] == sha
 
@@ -419,7 +419,7 @@ class TestFeatureStoreQualityGates:
         self, tmp_path: object,
     ) -> None:
         """15-channel FGPP + valid SO(3) camera_matrices passes all 5 gates."""
-        tmp = tmp_path  # type: ignore[assignment]
+        tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -441,7 +441,7 @@ class TestFeatureStoreQualityGates:
 
         assert builder.rejected_count == 0
 
-        shards = builder.build_shards(tmp / "shards")
+        shards = builder.build_shards(tmp / "shards")  # type: ignore[operator]
         assert len(shards) >= 1
         assert shards[0].stat().st_size > 0
 

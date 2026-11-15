@@ -28,10 +28,10 @@ from synapse.render_core.backend import MockVgBackend, VgBackend
 
 __all__ = [
     "MockVgBackend",
-    "SynapseReconBackend",
+    "SynapseReconBackend",  # noqa: F822 — lazy via __getattr__
     "VgBackend",
     "enforce_distillation_geometry_gate",
-    "get_recon_backend",
+    "get_recon_backend",  # noqa: F822 — lazy via __getattr__
     "get_vg_backend",
 ]
 

@@ -11,6 +11,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -86,7 +87,7 @@ class CameraParams:
         proj[3, 2] = -1.0
         return proj
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise to JSON-friendly dict."""
         return {
             "fx": self.fx,
@@ -108,8 +109,8 @@ class CameraParams:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> CameraParams:
-        """Deserialise from dict."""
+    def from_dict(cls, d: dict[str, Any]) -> CameraParams:
+        """Deserialise from dict[str, Any]."""
         return cls(
             fx=d["fx"],
             fy=d["fy"],

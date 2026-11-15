@@ -85,7 +85,7 @@ def validate_mesh_geometry(
 
     if backend == "native":
         try:
-            import synapse._c_geometry as _cg  # type: ignore[import-not-found]
+            import synapse._c_geometry as _cg
         except ImportError as exc:
             raise BackendUnavailableError(
                 "synapse._c_geometry C++20 extension is not compiled or available",

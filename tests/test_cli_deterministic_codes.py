@@ -319,6 +319,10 @@ class TestRsiCliPromotionGate:
             "--json", "rsi", "gate-promote",
             "--baseline-overall", "0.85",
             "--candidate-overall", "0.70",
+            "--baseline-geom", "0.85",
+            "--candidate-geom", "0.65",
+            "--baseline-temporal", "0.85",
+            "--candidate-temporal", "0.65",
             "--strict",
         ])
         assert code == ExitCode.CIRCUIT_BREAKER  # 40

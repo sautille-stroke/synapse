@@ -265,14 +265,14 @@ class TestHitlCircuitBreaker:
         """899s is within the 900s budget — returns None."""
         result = evaluate_hitl_circuit_breaker(
             elapsed_seconds=899.0, domain="video_shot"
-        )
+        )  # type: ignore[func-returns-value]
         assert result is None
 
     def test_exact_budget_no_trigger(self) -> None:
         """Exactly 900s does NOT trigger the breaker."""
         result = evaluate_hitl_circuit_breaker(
             elapsed_seconds=900.0, domain="video_shot"
-        )
+        )  # type: ignore[func-returns-value]
         assert result is None
 
     def test_over_budget_video_raises(self) -> None:
@@ -305,7 +305,7 @@ class TestHitlCircuitBreaker:
             elapsed_seconds=60.0,
             domain="asset_3d",
             max_seconds=60.0,
-        )
+        )  # type: ignore[func-returns-value]
         assert result is None
 
         with pytest.raises(CircuitBreakerError):

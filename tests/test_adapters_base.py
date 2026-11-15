@@ -8,6 +8,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from synapse.adapters import (
@@ -63,7 +65,7 @@ def _make_test_sequence(
 
 def _default_config(**overrides: object) -> VideoGenerationConfig:
     """Return a ``VideoGenerationConfig`` with small defaults for speed."""
-    kw: dict = {
+    kw: dict[str, Any] = {
         "seed": 42,
         "fps": 24.0,
         "width": _W,
@@ -262,7 +264,7 @@ class TestDefectInjection:
         means = result.frames_srgb_u8.astype(np.float64).mean(axis=(1, 2, 3))
 
         # With flicker, the mean brightness should vary across frames
-        brightness_range = means.max() - means.min()
+        brightness_range = float(np.max(means)) - float(np.min(means))
         assert brightness_range > 1.0, (
             f"Flicker should cause visible brightness variation, "
             f"but range was only {brightness_range:.4f}"

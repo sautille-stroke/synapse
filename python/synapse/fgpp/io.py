@@ -101,9 +101,8 @@ def export_fgpp(
     Path
         The *output_dir* path.
     """
-    import Imath  # type: ignore[import-untyped]
-    import OpenEXR  # type: ignore[import-untyped]
-
+    import Imath
+    import OpenEXR
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -174,9 +173,8 @@ def _read_exr_frame(
     channels: set[str] | None = None,
 ) -> FGPPFrame:
     """Read a single EXR file into an ``FGPPFrame``."""
-    import Imath  # type: ignore[import-untyped]
-    import OpenEXR  # type: ignore[import-untyped]
-
+    import Imath
+    import OpenEXR
     exr = OpenEXR.InputFile(str(exr_path))
     dw = exr.header()["dataWindow"]
     w = dw.max.x - dw.min.x + 1
@@ -420,7 +418,7 @@ def resize_fgpp_frame(
 
     # Try to import cv2 for quality resize of float channels
     try:
-        import cv2  # type: ignore[import-untyped]
+        import cv2
         _has_cv2 = True
     except ImportError:
         _has_cv2 = False

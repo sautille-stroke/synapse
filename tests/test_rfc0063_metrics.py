@@ -79,7 +79,7 @@ class TestFvdVideoBridge:
 
         dummy_videos = [np.zeros((5, 16, 16, 3), dtype=np.float32) for _ in range(3)]
         fvd = compute_fvd_from_videos(dummy_videos, dummy_videos, feature_extractor=mock_extractor)
-        assert fvd == pytest.approx(0.0, abs=1e-5)
+        assert fvd.value == pytest.approx(0.0, abs=1e-5)
 
     def test_custom_extractor_distinct_distributions(self) -> None:
         def mock_extractor_real(vids: list[np.ndarray]) -> np.ndarray:
@@ -98,7 +98,7 @@ class TestFvdVideoBridge:
             return mock_extractor_gen(vids)
 
         fvd = compute_fvd_from_videos(dummy_real, dummy_gen, feature_extractor=extractor)
-        assert fvd > 10.0
+        assert fvd.value > 10.0
 
     def test_insufficient_samples_raises(self) -> None:
         def mock_extractor(vids: list[np.ndarray]) -> np.ndarray:

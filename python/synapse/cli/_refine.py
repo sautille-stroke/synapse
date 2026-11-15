@@ -111,7 +111,7 @@ def _cmd_refine_anatomical(
             for item in roi_items:
                 if not isinstance(item, dict):
                     continue
-                t_idx = int(item.get("frame_index", item.get("t", 0)))
+                t_idx = int(item.get("frame_index", item.get("t", 0)))  # type: ignore[arg-type]
                 if t_idx < 0 or t_idx >= frames.shape[0]:
                     continue
                 rname = str(item.get("region", "HAND")).upper()

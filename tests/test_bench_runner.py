@@ -300,7 +300,7 @@ class TestEvaluateBundle:
             size=(32, 32, 3),
         ).astype(np.float32)
         norms = np.linalg.norm(normals, axis=-1, keepdims=True)
-        normals = normals / np.maximum(norms, 1e-8)
+        normals = normals / np.maximum(norms, 1e-8)  # type: ignore[assignment]
         np.save(str(fgpp_dir / "normals.npy"), normals)
 
         # Create GT mask [32, 32] uint32

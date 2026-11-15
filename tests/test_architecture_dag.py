@@ -9,6 +9,9 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 
 def _repo_root() -> Path:
@@ -16,7 +19,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _load_guard():
+def _load_guard() -> Any:
     """Load import_dag_guard module dynamically."""
     import importlib.util
 
@@ -26,10 +29,11 @@ def _load_guard():
     spec = importlib.util.spec_from_file_location("import_dag_guard", guard_path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    spec.loader.exec_module(mod)
     return mod
 
 
+@pytest.mark.slow
 def test_no_import_cycles() -> None:
     """Assert that the synapse import DAG contains no circular dependencies."""
     mod = _load_guard()
@@ -50,6 +54,7 @@ def test_no_import_cycles() -> None:
         )
 
 
+@pytest.mark.slow
 def test_no_tier_violations() -> None:
     """Assert that no import crosses upward in the 5-tier architecture."""
     mod = _load_guard()
@@ -73,6 +78,7 @@ def test_no_tier_violations() -> None:
         )
 
 
+@pytest.mark.slow
 def test_import_dag_guard_cli_check_exits_zero() -> None:
     """``python tools/import_dag_guard.py --check`` exits 0."""
     guard_path = _repo_root() / "tools" / "import_dag_guard.py"
@@ -97,7 +103,7 @@ def test_import_dag_guard_detects_dynamic_importlib_bypass(tmp_path: Path) -> No
     # 1. Test _ImportVisitor on importlib.import_module and __import__
     snippet = """
 import importlib
-def sneaky():
+def sneaky() -> None:
     mod1 = importlib.import_module("synapse.cli")
     mod2 = __import__("synapse.inspect")
 """
@@ -127,7 +133,6 @@ def sneaky():
 
 def test_relative_import_resolved_by_guard(tmp_path: Path) -> None:
     """Relative imports (``from .. import X``) are resolved to real package paths."""
-    import ast
 
     mod = _load_guard()
 

@@ -244,7 +244,7 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
 
     # Try trimesh as optional fallback
     try:
-        import trimesh  # type: ignore[import-untyped]
+        import trimesh
     except ImportError as exc:
         raise ImportError(
             f"Cannot load '{name_or_path}': not a procedural mesh or .obj file, "

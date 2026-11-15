@@ -225,6 +225,7 @@ class TestAlignPose:
         )
         return verts, faces
 
+    @pytest.mark.slow
     def test_fast_alignment_contract(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
@@ -233,7 +234,7 @@ class TestAlignPose:
         res = 32
         centroid = verts.mean(axis=0)
         radii = np.linalg.norm(verts - centroid, axis=1)
-        bbox_r = float(radii.max())
+        bbox_r = float(np.max(radii))
         cam_radius = bbox_r * 2.5
         cams = generate_fibonacci_sphere_cameras(
             n_cameras=4, radius_scale=cam_radius, fov_deg=50.0,
@@ -257,7 +258,7 @@ class TestAlignPose:
         # Compute bounding sphere for radius
         centroid = verts.mean(axis=0)
         radii = np.linalg.norm(verts - centroid, axis=1)
-        bbox_r = float(radii.max())
+        bbox_r = float(np.max(radii))
         cam_radius = bbox_r * 2.5
 
         # Place a ground-truth camera at a known position
@@ -307,7 +308,7 @@ class TestAlignPose:
 
         centroid = verts.mean(axis=0)
         radii = np.linalg.norm(verts - centroid, axis=1)
-        bbox_r = float(radii.max())
+        bbox_r = float(np.max(radii))
         cam_radius = bbox_r * 2.5
 
         # Known camera
@@ -332,13 +333,22 @@ class TestAlignPose:
             n_coarse=48, n_refine_iters=30,
         )
 
-
+        diameter = bbox_r * 2.0
         # If IoU is good, position should be close (or symmetric)
         # For asymmetric mesh, good IoU implies close position
         assert best_iou >= 0.88, (
             f"IoU {best_iou:.4f} too low for position check"
         )
 
+        # Position displacement error must be <= 5% of bounding sphere diameter
+        recovered_pos = np.array(best_pose.position)
+        displacement = float(np.linalg.norm(recovered_pos - gt_pos))
+        assert displacement <= 0.05 * diameter, (
+            f"Position displacement {displacement:.4f} > 5% of diameter "
+            f"{diameter:.4f} (threshold {0.05 * diameter:.4f})"
+        )
+
+    @pytest.mark.slow
     def test_blank_reference_triggers_gate(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
@@ -367,7 +377,7 @@ class TestAlignPose:
 
         centroid = verts.mean(axis=0)
         radii = np.linalg.norm(verts - centroid, axis=1)
-        bbox_r = float(radii.max())
+        bbox_r = float(np.max(radii))
         cam_radius = bbox_r * 2.5
 
         # Generate a reference from a known view

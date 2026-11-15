@@ -57,7 +57,7 @@ def _ring_cameras(
             rotation_matrix=r_mat,
             yaw_rad=theta,
         ))
-    return cameras
+    return cameras  # type: ignore[return-value]
 
 
 def _sphere_mesh(
@@ -178,8 +178,8 @@ def _generate_synthetic_frames(
 
 def inject_defect_a(
     frames: np.ndarray,
-    cameras: list,
-) -> tuple[np.ndarray, list]:
+    cameras: list[Any],
+) -> tuple[np.ndarray, list[Any]]:
     """Defect A: ≤2 co-linear views (degenerate baseline)."""
     # Keep only first 2 views with near-zero angular difference
     from synapse.recon.types import CameraExtrinsics
@@ -201,10 +201,10 @@ def inject_defect_a(
 
 def inject_defect_b(
     frames: np.ndarray,
-    cameras: list,
+    cameras: list[Any],
     noise_std: float = 0.08,
     seed: int = 99,
-) -> tuple[np.ndarray, list]:
+) -> tuple[np.ndarray, list[Any]]:
     """Defect B: flipped normals + depth noise σ=0.08m."""
     rng = np.random.RandomState(seed)
     noisy_frames = frames.copy()
@@ -218,8 +218,8 @@ def inject_defect_b(
 
 def inject_defect_c(
     frames: np.ndarray,
-    cameras: list,
-) -> tuple[np.ndarray, list]:
+    cameras: list[Any],
+) -> tuple[np.ndarray, list[Any]]:
     """Defect C: upper hemisphere truncation (only bottom 50% of views)."""
     n = len(cameras)
     keep = max(2, n // 2)

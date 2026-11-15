@@ -258,7 +258,7 @@ def _assert_fgpp_package_valid(pkg_dir: Path) -> FGPPSequence:
     # 3. Cryptomatte: exact uint32 dtype
     assert frame.cryptomatte_id.dtype == np.uint32
     assert frame.cryptomatte_id.shape == (frame.height, frame.width)
-    assert PixelType.UINT32 == 0
+    assert PixelType.UINT32 == 0  # type: ignore[comparison-overlap]
 
     # 4. BaseColor: linear [0, 1]
     bc = frame.base_color.astype(np.float32)
