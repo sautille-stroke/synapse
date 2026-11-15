@@ -207,7 +207,7 @@ class DatasetGenerator:
                 )
                 # Derive mask and RGB from FGPPFrame channels
                 _mask = (render_res.cryptomatte_id > 0).astype(np.uint8) if render_res.cryptomatte_id is not None else np.zeros(render_res.depth.shape, dtype=np.uint8)
-                _radiance = render_res.direct_radiance.astype(np.float32) if render_res.direct_radiance is not None else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)  # type: ignore[union-attr]
+                _radiance = render_res.direct_radiance.astype(np.float32) if render_res.direct_radiance is not None else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)
                 _rgb = np.clip(_radiance * 255.0, 0, 255).astype(np.uint8)
 
                 # Assert required channels are present (rasterizer always produces them)
@@ -250,9 +250,9 @@ class DatasetGenerator:
                 fgpp_filename = f"frame_{i:04d}.npz"
                 np.savez_compressed(
                     fgpp_dir / fgpp_filename,
-                    depth=render_res.depth.astype(np.float32),  # type: ignore[union-attr]
-                    world_normal=render_res.world_normal.astype(np.float16),  # type: ignore[union-attr]
-                    motion_vector=render_res.motion_vector.astype(np.float16),  # type: ignore[union-attr]
+                    depth=render_res.depth.astype(np.float32),
+                    world_normal=render_res.world_normal.astype(np.float16),
+                    motion_vector=render_res.motion_vector.astype(np.float16),
                     mask=_mask.astype(np.uint8),
                 )
 
@@ -260,8 +260,8 @@ class DatasetGenerator:
                 fgpp_frame = FGPPFrame(
                     camera=cam,
                     depth=render_res.depth,
-                    world_normal=render_res.world_normal.astype(np.float16),  # type: ignore[union-attr]
-                    motion_vector=render_res.motion_vector.astype(np.float16),  # type: ignore[union-attr]
+                    world_normal=render_res.world_normal.astype(np.float16),
+                    motion_vector=render_res.motion_vector.astype(np.float16),
                     frame_index=i,
                 )
                 fgpp_frames.append(fgpp_frame)

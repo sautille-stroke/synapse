@@ -192,7 +192,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def register_fgpp_subparser(
-    subparsers: argparse._SubParsersAction,
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> argparse.ArgumentParser:
     """Register the ``fgpp`` subcommand tree."""
     fgpp_parser = subparsers.add_parser("fgpp", help="FGPP operations")
@@ -215,7 +215,7 @@ def register_fgpp_subparser(
         "--export-vis", action="store_true", default=False,
         help="Export visualisation images",
     )
-    return cast(argparse.ArgumentParser, fgpp_parser)
+    return fgpp_parser
 
 
 def dispatch_fgpp(

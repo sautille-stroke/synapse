@@ -215,6 +215,7 @@ def _make_quad_self_intersection_second_triangle() -> tuple[np.ndarray, np.ndarr
 # ===================================================================
 
 
+@pytest.mark.slow
 class TestGeometryOracleExactness:
     """Verify mathematical edge cases in the Python Oracle."""
 

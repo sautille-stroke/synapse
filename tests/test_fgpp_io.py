@@ -333,6 +333,7 @@ class TestExportImport:
 # ===================================================================
 
 
+@pytest.mark.slow
 class TestTorchBridge:
     def test_frame_to_tensors_keys(self) -> None:
         pytest.importorskip("torch")

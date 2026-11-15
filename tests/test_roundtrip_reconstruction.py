@@ -184,7 +184,7 @@ def _inject_defect_b_noise(gt_pts: np.ndarray) -> np.ndarray:
     rng = np.random.RandomState(99)
     flipped = -gt_pts.copy()
     noise = rng.randn(*flipped.shape).astype(np.float32) * 0.15
-    return flipped + noise
+    return flipped + noise  # type: ignore[no-any-return]
 
 
 def _inject_defect_c_truncation(gt_pts: np.ndarray) -> np.ndarray:
@@ -223,7 +223,7 @@ def clean_recon(gt_surface: np.ndarray) -> np.ndarray:
     matches the ground-truth sphere geometry.
     """
     rng = np.random.RandomState(42)
-    return gt_surface + rng.randn(*gt_surface.shape).astype(np.float32) * 0.002
+    return gt_surface + rng.randn(*gt_surface.shape).astype(np.float32) * 0.002  # type: ignore[no-any-return]
 
 
 @pytest.fixture(scope="module")

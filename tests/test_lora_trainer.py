@@ -274,17 +274,18 @@ class TestLoRATrainConfig:
 
 
 @pytest.fixture()
-def _require_torch():
+def _require_torch() -> None:
     """Skip if torch is not installed."""
     pytest.importorskip("torch")
 
 
+@pytest.mark.slow
 @pytest.mark.usefixtures("_require_torch")
 class TestStatelessLoRATrainer:
     """Tests for StatelessLoRATrainer (requires torch)."""
 
     @staticmethod
-    def _make_toy_model():
+    def _make_toy_model() -> Any:
         """Build a tiny 2-layer MLP for testing."""
         import torch
 
@@ -297,7 +298,7 @@ class TestStatelessLoRATrainer:
                     torch.nn.Linear(dim * 4, dim),
                 )
 
-            def forward(self, x):
+            def forward(self, x: Any) -> Any:
                 return self.ffn(x)
 
         return ToyDiT(dim=64)
@@ -473,7 +474,7 @@ class TestStatelessLoRATrainer:
                         )
                         break
 
-    def test_export_checkpoint(self, tmp_path) -> None:
+    def test_export_checkpoint(self, tmp_path: Any) -> None:
         """Export should create a safetensors file."""
         pytest.importorskip("safetensors")
 
@@ -612,12 +613,12 @@ class TestStatelessLoRATrainer:
 
         # Step 0 (micro_step 1 of 2): gradients accumulated, B still 0
         trainer.train_step(model, {"latent": x_1, "noise": x_0}, 0)
-        b_after_half = model.spatial_attn.lora_B.data.abs().max().item()
+        b_after_half = model.spatial_attn.lora_B.data.abs().max().item()  # type: ignore[operator]
         assert b_after_half == 0.0
 
         # Step 1 (micro_step 2 of 2): optimizer steps, B becomes non-zero
         trainer.train_step(model, {"latent": x_1, "noise": x_0}, 1)
-        b_after_full = model.spatial_attn.lora_B.data.abs().max().item()
+        b_after_full = model.spatial_attn.lora_B.data.abs().max().item()  # type: ignore[operator]
         assert b_after_full > 0.0
 
         assert len(trainer._optimizer.param_groups) == 2

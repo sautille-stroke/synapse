@@ -5,10 +5,13 @@ any future import cycle, tier violation, or lazy import leak.
 """
 
 from __future__ import annotations
+from typing import Any
 
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 def _repo_root() -> Path:
@@ -16,7 +19,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _load_guard() -> None:
+def _load_guard() -> Any:
     """Load import_dag_guard module dynamically."""
     import importlib.util
 
@@ -30,6 +33,7 @@ def _load_guard() -> None:
     return mod
 
 
+@pytest.mark.slow
 def test_no_import_cycles() -> None:
     """Assert that the synapse import DAG contains no circular dependencies."""
     mod = _load_guard()
@@ -50,6 +54,7 @@ def test_no_import_cycles() -> None:
         )
 
 
+@pytest.mark.slow
 def test_no_tier_violations() -> None:
     """Assert that no import crosses upward in the 5-tier architecture."""
     mod = _load_guard()
@@ -73,6 +78,7 @@ def test_no_tier_violations() -> None:
         )
 
 
+@pytest.mark.slow
 def test_import_dag_guard_cli_check_exits_zero() -> None:
     """``python tools/import_dag_guard.py --check`` exits 0."""
     guard_path = _repo_root() / "tools" / "import_dag_guard.py"

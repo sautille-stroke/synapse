@@ -6,6 +6,7 @@ the authoritative FGPP specification.
 """
 
 from __future__ import annotations
+from typing import Any
 
 import json
 import math
@@ -108,8 +109,8 @@ class CameraParams:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> CameraParams:
-        """Deserialise from dict."""
+    def from_dict(cls, d: dict[str, Any]) -> CameraParams:
+        """Deserialise from dict[str, Any]."""
         return cls(
             fx=d["fx"],
             fy=d["fy"],

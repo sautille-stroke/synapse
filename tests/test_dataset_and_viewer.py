@@ -1,3 +1,4 @@
+from typing import Any
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
@@ -38,6 +39,7 @@ class TestModels:
         np.testing.assert_allclose(center, [0.0, 0.0, 0.0], atol=1e-3)
         assert abs(radius - 1.0) < 1e-3
 
+    @pytest.mark.slow
     def test_load_damaged_helmet_or_fallback(self) -> None:
         models = list_builtin_models()
         target = "damaged_helmet" if "damaged_helmet" in models else "bunny"
@@ -47,7 +49,7 @@ class TestModels:
         center, radius = model.bounding_sphere()
         assert abs(radius - 1.0) < 1e-3
 
-    def test_model_export_obj(self, tmp_path) -> None:
+    def test_model_export_obj(self, tmp_path: Any) -> None:
         model = load_model("cube", normalize=True)
         out_path = tmp_path / "cube.obj"
         exported = model.export_obj(out_path)
@@ -116,10 +118,11 @@ class TestVisualizer:
         assert sheet.shape == (64, 64 * 5, 3)
 
 
+@pytest.mark.slow
 class TestDatasetGenerator:
     """Test end-to-end dataset generation pipeline."""
 
-    def test_generate_dataset(self, tmp_path) -> None:
+    def test_generate_dataset(self, tmp_path: Any) -> None:
         out_dir = tmp_path / "test_dataset"
         cfg = DatasetConfig(
             model_name="cube",
@@ -152,7 +155,7 @@ class TestDatasetGenerator:
         assert (out_dir / "frames" / "frame_0000.png").exists()
 
     @pytest.mark.parametrize("traj_type", ["spiral", "hemisphere"])
-    def test_generate_dataset_spiral_and_hemisphere(self, tmp_path, traj_type) -> None:
+    def test_generate_dataset_spiral_and_hemisphere(self, tmp_path: Any, traj_type: Any) -> None:
         out_dir = tmp_path / f"test_dataset_{traj_type}"
         cfg = DatasetConfig(
             model_name="cube",
@@ -178,7 +181,7 @@ class TestDatasetGenerator:
 class TestViewerServer:
     """Test embedded HTTP viewer server and static HTML exporter."""
 
-    def test_viewer_http_response(self, tmp_path) -> None:
+    def test_viewer_http_response(self, tmp_path: Any) -> None:
         # Create minimal dataset dir with manifest.json
         manifest_data = {
             "dataset_id": "test_ds",
@@ -206,7 +209,7 @@ class TestViewerServer:
         finally:
             server.stop()
 
-    def test_non_loopback_host_rejected(self, tmp_path) -> None:
+    def test_non_loopback_host_rejected(self, tmp_path: Any) -> None:
         """Verify non-loopback host (e.g. 0.0.0.0, 192.168.x.x) is rejected."""
         manifest_data = {"dataset_id": "test_ds", "frames": []}
         (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
@@ -228,7 +231,7 @@ class TestViewerServer:
         dummy_server.allow_reuse_address = True
         assert dummy_server.allow_reuse_address is True
 
-    def test_security_path_traversal_and_extensions(self, tmp_path) -> None:
+    def test_security_path_traversal_and_extensions(self, tmp_path: Any) -> None:
         """Verify handler rejects path traversal, hidden files, directory listings, and forbidden extensions."""
         manifest_data = {"dataset_id": "sec_test", "frames": []}
         (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
@@ -269,7 +272,7 @@ class TestViewerServer:
         finally:
             server.stop()
 
-    def test_static_html_export(self, tmp_path) -> None:
+    def test_static_html_export(self, tmp_path: Any) -> None:
         """Verify static self-contained HTML export embeds manifest and images."""
         frames_dir = tmp_path / "frames"
         frames_dir.mkdir()
@@ -310,7 +313,7 @@ class TestViewerXSSPrevention:
     in the exported static HTML."""
 
     def test_script_injection_escaped_in_static_html(
-        self, tmp_path,
+        self, tmp_path: Any,
     ) -> None:
         """Manifest containing '</script><script>alert(1)</script>'
         generates HTML without bare '</script>' closing tag that
@@ -348,7 +351,7 @@ class TestViewerXSSPrevention:
         )
 
     def test_ampersand_and_angle_brackets_escaped(
-        self, tmp_path,
+        self, tmp_path: Any,
     ) -> None:
         """Verify that &, <, > in manifest values are escaped."""
         manifest_data = {

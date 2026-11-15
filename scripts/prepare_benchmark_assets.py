@@ -320,7 +320,7 @@ def _load_assets_manifest() -> Dict[str, Any]:
     if not manifest_path.is_file():
         return {}
     with manifest_path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        return json.load(f)  # type: ignore[no-any-return]
 
 
 def stage_from_remote_huggingface(

@@ -44,7 +44,7 @@ def _make_manifest(
         target_modules = ["cross_attn.to_k"]
     return LoRAManifest(
         name=name,
-        category=category,
+        category=category,  # type: ignore[arg-type]
         rank=rank,
         alpha=alpha,
         adapter_path=adapter_path,
@@ -156,6 +156,7 @@ class TestLoRAManifest:
 # ===================================================================
 
 
+@pytest.mark.slow
 class TestMultiLoRAManager:
     """Tests for ``MultiLoRAManager`` weight merging and masking."""
 

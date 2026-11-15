@@ -225,6 +225,7 @@ class TestAlignPose:
         )
         return verts, faces
 
+    @pytest.mark.slow
     def test_fast_alignment_contract(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
@@ -347,6 +348,7 @@ class TestAlignPose:
             f"{diameter:.4f} (threshold {0.05 * diameter:.4f})"
         )
 
+    @pytest.mark.slow
     def test_blank_reference_triggers_gate(
         self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:

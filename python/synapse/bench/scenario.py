@@ -58,7 +58,7 @@ class Asset:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> Asset:
+    def from_dict(cls, d: dict[str, Any]) -> Asset:
         return cls(
             source=AssetSource(d["source"]),
             id=d["id"],
@@ -89,7 +89,7 @@ class ExpectedMetrics:
         return {k: v for k, v in self.__dict__.items() if v is not None}
 
     @classmethod
-    def from_dict(cls, d: dict) -> ExpectedMetrics:
+    def from_dict(cls, d: dict[str, Any]) -> ExpectedMetrics:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -154,7 +154,7 @@ class Scenario:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> Scenario:
+    def from_dict(cls, d: dict[str, Any]) -> Scenario:
         return cls(
             id=d["id"],
             tier=ScenarioTier(d["tier"]),

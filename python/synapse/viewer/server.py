@@ -139,7 +139,7 @@ class ViewerServer:
                 self.httpd = _ReusableHTTPServer(
                     (self.host, cur_port), handler_cls,  # type: ignore[arg-type]
                 )
-                self.port = cur_port
+                self.port = self.httpd.server_address[1]  # actual port (OS-assigned if 0)
                 break
             except OSError:
                 cur_port += 1

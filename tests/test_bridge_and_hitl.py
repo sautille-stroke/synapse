@@ -280,7 +280,7 @@ class TestHitlCircuitBreaker:
         with pytest.raises(CircuitBreakerError) as exc_info:
             evaluate_hitl_circuit_breaker(
                 elapsed_seconds=900.1, domain="video_shot"
-            )  # type: ignore[func-returns-value]
+            )
         assert "circuit breaker" in str(exc_info.value).lower()
 
     def test_over_budget_asset_raises(self) -> None:
@@ -288,7 +288,7 @@ class TestHitlCircuitBreaker:
         with pytest.raises(CircuitBreakerError) as exc_info:
             evaluate_hitl_circuit_breaker(
                 elapsed_seconds=901.0, domain="asset_3d"
-            )  # type: ignore[func-returns-value]
+            )
         assert "circuit breaker" in str(exc_info.value).lower()
 
     def test_exit_code_is_40(self) -> None:
@@ -296,7 +296,7 @@ class TestHitlCircuitBreaker:
         with pytest.raises(CircuitBreakerError) as exc_info:
             evaluate_hitl_circuit_breaker(
                 elapsed_seconds=1000.0, domain="video_shot"
-            )  # type: ignore[func-returns-value]
+            )
         assert exc_info.value.exit_code == 40
 
     def test_custom_max_seconds(self) -> None:
@@ -313,14 +313,14 @@ class TestHitlCircuitBreaker:
                 elapsed_seconds=61.0,
                 domain="asset_3d",
                 max_seconds=60.0,
-            )  # type: ignore[func-returns-value]
+            )
 
     def test_video_shot_hint_mentions_fgpp(self) -> None:
         """Video shot fallback hint mentions FGPP."""
         with pytest.raises(CircuitBreakerError) as exc_info:
             evaluate_hitl_circuit_breaker(
                 elapsed_seconds=1000.0, domain="video_shot"
-            )  # type: ignore[func-returns-value]
+            )
         assert "FGPP" in exc_info.value.agent_fix_hint
 
     def test_asset_hint_mentions_decal(self) -> None:
@@ -328,7 +328,7 @@ class TestHitlCircuitBreaker:
         with pytest.raises(CircuitBreakerError) as exc_info:
             evaluate_hitl_circuit_breaker(
                 elapsed_seconds=1000.0, domain="asset_3d"
-            )  # type: ignore[func-returns-value]
+            )
         hint = exc_info.value.agent_fix_hint
         assert "decal" in hint.lower() or "procedural" in hint.lower()
 

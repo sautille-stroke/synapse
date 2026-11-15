@@ -37,7 +37,7 @@ MIN_E3_FRAMES: int = 97
 def detect_gpu_profile() -> dict[str, Any]:
     """Detect CUDA GPU device, VRAM capacity, and recommended Wan 2.1 profile."""
     try:
-        import torch  # type: ignore[import-not-found]
+        import torch
 
         if not torch.cuda.is_available():
             return {

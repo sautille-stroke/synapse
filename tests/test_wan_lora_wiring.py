@@ -149,9 +149,9 @@ class TestWanAdapterLoRAGenerate:
 
         # Patch the manager methods
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[assignment]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[assignment]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[assignment]
+        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
+        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_with_cryptomatte()
@@ -162,9 +162,9 @@ class TestWanAdapterLoRAGenerate:
             payload, config, model=mock_model, fgpp_frames=frames,
         )
 
-        mgr.build_spatial_lora_masks.assert_called_once()
-        mgr.apply_merged_weights.assert_called_once_with(mock_model)
-        mgr.restore_base_weights.assert_called_once_with(mock_model)
+        mgr.build_spatial_lora_masks.assert_called_once()  # type: ignore[union-attr]
+        mgr.apply_merged_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
+        mgr.restore_base_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_restores_on_error(self) -> None:
@@ -185,9 +185,9 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[assignment]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[assignment]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[assignment]
+        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
+        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_with_cryptomatte()
@@ -200,7 +200,7 @@ class TestWanAdapterLoRAGenerate:
             )
 
         # restore MUST still be called despite the error
-        mgr.restore_base_weights.assert_called_once_with(mock_model)
+        mgr.restore_base_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
 
     def test_wan_adapter_generate_skips_lora_without_cryptomatte(self) -> None:
         """When frames lack ``cryptomatte_id``, LoRA methods must NOT
@@ -213,9 +213,9 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[assignment]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[assignment]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[assignment]
+        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
+        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_without_cryptomatte()
@@ -226,9 +226,9 @@ class TestWanAdapterLoRAGenerate:
             payload, config, model=mock_model, fgpp_frames=frames,
         )
 
-        mgr.build_spatial_lora_masks.assert_not_called()
-        mgr.apply_merged_weights.assert_not_called()
-        mgr.restore_base_weights.assert_not_called()
+        mgr.build_spatial_lora_masks.assert_not_called()  # type: ignore[union-attr]
+        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
+        mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_skips_lora_without_model(self) -> None:
@@ -241,9 +241,9 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[assignment]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[assignment]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[assignment]
+        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
+        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
 
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
@@ -252,7 +252,7 @@ class TestWanAdapterLoRAGenerate:
         # model=None (default) → LoRA skipped
         result = adapter.generate(payload, config, fgpp_frames=frames)
 
-        mgr.build_spatial_lora_masks.assert_not_called()
-        mgr.apply_merged_weights.assert_not_called()
-        mgr.restore_base_weights.assert_not_called()
+        mgr.build_spatial_lora_masks.assert_not_called()  # type: ignore[union-attr]
+        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
+        mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)

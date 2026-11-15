@@ -10,6 +10,7 @@ Validates:
 """
 
 from __future__ import annotations
+from typing import Any
 
 import json
 from pathlib import Path
@@ -30,7 +31,7 @@ from synapse.inspect.flywheel_exporter import (
 
 
 @pytest.fixture
-def clean_report() -> dict:
+def clean_report() -> dict[str, Any]:
     """InspectionReport with no defects."""
     return {
         "schema_version": "2.0.0",
@@ -44,7 +45,7 @@ def clean_report() -> dict:
 
 
 @pytest.fixture
-def defective_report() -> dict:
+def defective_report() -> dict[str, Any]:
     """InspectionReport with mixed defect actions."""
     return {
         "schema_version": "2.0.0",
@@ -177,7 +178,7 @@ class TestTargetedRefinement:
     """Tests for run_targeted_refinement."""
 
     def test_clean_report_no_fixes(
-        self, clean_report: dict,
+        self, clean_report: dict[str, Any],
     ) -> None:
         """Clean report produces no fixes and passes gate."""
         result = run_targeted_refinement(report=clean_report)
@@ -187,7 +188,7 @@ class TestTargetedRefinement:
         assert result["gate_result"]["passed"] is True
 
     def test_defective_report_routes_actions(
-        self, defective_report: dict,
+        self, defective_report: dict[str, Any],
     ) -> None:
         """Defects are correctly routed to actions."""
         result = run_targeted_refinement(
@@ -212,7 +213,7 @@ class TestTargetedRefinement:
         assert actions[2]["status"] == "requires_hitl"
 
     def test_require_manifold_check_without_fn_raises_40(
-        self, clean_report: dict,
+        self, clean_report: dict[str, Any],
     ) -> None:
         """require_manifold_check=True without manifold_check_fn raises 40."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -223,12 +224,12 @@ class TestTargetedRefinement:
         assert int(exc_info.value.exit_code) == 40
 
     def test_auto_fix_callback(
-        self, defective_report: dict,
+        self, defective_report: dict[str, Any],
     ) -> None:
         """Auto-fix callback is invoked for fixable defects."""
-        fix_calls: list[tuple] = []
+        fix_calls: list[tuple[Any, ...]] = []
 
-        def mock_fix(defect: dict, action: str) -> dict:
+        def mock_fix(defect: dict[str, Any], action: str) -> dict[str, Any]:
             fix_calls.append((defect["defect_id"], action))
             return {"ok": True}
 
@@ -242,10 +243,10 @@ class TestTargetedRefinement:
         assert result["fixed_count"] == 2
 
     def test_auto_fix_failure_escalates_to_hitl(
-        self, defective_report: dict,
+        self, defective_report: dict[str, Any],
     ) -> None:
         """Failed auto-fix increments hitl count."""
-        def failing_fix(defect: dict, action: str) -> dict:
+        def failing_fix(defect: dict[str, Any], action: str) -> dict[str, Any]:
             raise RuntimeError("Fix engine crashed")
 
         result = run_targeted_refinement(
@@ -256,7 +257,7 @@ class TestTargetedRefinement:
         assert result["hitl_count"] == 3
 
     def test_manifold_check_passes(
-        self, clean_report: dict,
+        self, clean_report: dict[str, Any],
     ) -> None:
         """Passing manifold check keeps gate green."""
         result = run_targeted_refinement(
@@ -270,7 +271,7 @@ class TestTargetedRefinement:
         assert result["gate_result"]["passed"] is True
 
     def test_manifold_check_fails_volume(
-        self, clean_report: dict,
+        self, clean_report: dict[str, Any],
     ) -> None:
         """Volume breathing exceeding threshold raises error."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -286,7 +287,7 @@ class TestTargetedRefinement:
         assert "volume_breathing_pct" in str(exc_info.value)
 
     def test_manifold_check_fails_non_manifold(
-        self, clean_report: dict,
+        self, clean_report: dict[str, Any],
     ) -> None:
         """Non-manifold edges trigger gate failure."""
         with pytest.raises(QualityGateError):

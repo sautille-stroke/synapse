@@ -201,12 +201,12 @@ def _cmd_rsi_gate_promote(
                 ),
             )
 
-        baseline_overall = float(baseline_overall_raw)
-        candidate_overall = float(candidate_overall_raw)
-        baseline_geom = float(baseline_geom_raw)
-        candidate_geom = float(candidate_geom_raw)
-        baseline_temporal = float(baseline_temporal_raw)
-        candidate_temporal = float(candidate_temporal_raw)
+        baseline_overall = float(baseline_overall_raw)  # type: ignore[arg-type]
+        candidate_overall = float(candidate_overall_raw)  # type: ignore[arg-type]
+        baseline_geom = float(baseline_geom_raw)  # type: ignore[arg-type]
+        candidate_geom = float(candidate_geom_raw)  # type: ignore[arg-type]
+        baseline_temporal = float(baseline_temporal_raw)  # type: ignore[arg-type]
+        candidate_temporal = float(candidate_temporal_raw)  # type: ignore[arg-type]
 
         # Parse scenarios if provided
         scenarios_raw = getattr(args, "scenarios", None)

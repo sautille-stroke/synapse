@@ -148,7 +148,7 @@ class TestSingleModelEvaluation:
             resolution=64,
             num_views=6,
             reference_mesh=None,
-            geometry_backend=_BACKEND,
+            geometry_backend=_BACKEND,  # type: ignore[arg-type]
         )
         assert res.overall_passed is False
         assert res.gate_results["reference_required_not_evaluated"] is False
@@ -164,13 +164,14 @@ class TestSingleModelEvaluation:
             resolution=64,
             num_views=6,
             reference_mesh=ref_mesh,
-            geometry_backend=_BACKEND,
+            geometry_backend=_BACKEND,  # type: ignore[arg-type]
         )
         assert res.metrics["chamfer_mm"] <= 1.0
         assert res.gate_results["chamfer_mm"] is True
         assert res.overall_passed is True
 
 
+@pytest.mark.slow
 class TestModelDirectoryEvaluation:
     """Tests for evaluate_3d_models_directory, including recursive rglob discovery."""
 
@@ -190,7 +191,7 @@ class TestModelDirectoryEvaluation:
             profile_name="TRACK_A_ASSET",
             resolution=64,
             num_views=6,
-            geometry_backend=_BACKEND,
+            geometry_backend=_BACKEND,  # type: ignore[arg-type]
         )
         assert res["summary"]["total"] == 1
         assert res["summary"]["passed"] == 1
@@ -229,7 +230,7 @@ class TestModelDirectoryEvaluation:
             profile_name="TRACK_A_ASSET",
             resolution=64,
             num_views=6,
-            geometry_backend=_BACKEND,
+            geometry_backend=_BACKEND,  # type: ignore[arg-type]
         )
         res = evaluator.evaluate_directory(
             input_dir=in_dir,

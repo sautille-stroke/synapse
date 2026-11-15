@@ -20,9 +20,11 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import Any
 
 
 __all__ = [
+    "FGPP_CHANNEL_SPECS",
     "main",
 ]
 
@@ -83,7 +85,7 @@ def _check_internal() -> list[str]:
         )
 
     # 4. PixelType values
-    if PixelType.UINT32 != 0 or PixelType.HALF != 1 or PixelType.FLOAT != 2:
+    if PixelType.UINT32 != 0 or PixelType.HALF != 1 or PixelType.FLOAT != 2:  # type: ignore[comparison-overlap]
         errors.append("PixelType enum values do not match expected (0, 1, 2)")
 
     # 5. Schema version
@@ -455,7 +457,7 @@ def _parse_header(path: Path) -> dict[str, Any]:
     """Extract contract values from the C++ header."""
     text = path.read_text(encoding="utf-8")
 
-    channel_specs: list[dict] = []
+    channel_specs: list[dict[str, Any]] = []
     m_body = _RE_EXR_SPECS_BODY.search(text)
     if m_body:
         specs_body = m_body.group(1)

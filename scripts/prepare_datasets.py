@@ -294,7 +294,7 @@ def _export_caelum_track_a_17f(
 def _summarize_sequence(seq_dir: Path) -> dict[str, Any]:
     """Validate an exported FGPP directory and return its manifest record."""
     seq = import_fgpp(seq_dir, lazy=False)
-    f0 = seq.frames[0]
+    f0 = seq.frames[0]  # type: ignore[union-attr]
     assert f0.cryptomatte_id is not None
     unique_ids = [int(x) for x in np.unique(f0.cryptomatte_id)]
     meta_path = seq_dir / "metadata.json"
@@ -302,13 +302,13 @@ def _summarize_sequence(seq_dir: Path) -> dict[str, Any]:
     beauty_files = sorted(seq_dir.glob("beauty_*.exr"))
 
     return {
-        "scene_id": seq.scene_id,
+        "scene_id": seq.scene_id,  # type: ignore[union-attr]
         "relative_path": seq_dir.name,
-        "num_frames": seq.num_frames,
-        "fps": seq.fps,
+        "num_frames": seq.num_frames,  # type: ignore[union-attr]
+        "fps": seq.fps,  # type: ignore[union-attr]
         "resolution": [f0.width, f0.height],
         "unique_cryptomatte_ids_frame0": len(unique_ids),
-        "has_beauty_gt": len(beauty_files) == seq.num_frames,
+        "has_beauty_gt": len(beauty_files) == seq.num_frames,  # type: ignore[union-attr]
         "metadata_sha256": _sha256_file(meta_path),
         "frame_000000_sha256": _sha256_file(frame0_path),
     }

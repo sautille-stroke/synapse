@@ -13,6 +13,7 @@ satisfies the 3-D causal VAE constraint ``T = 4k + 1``.
 """
 
 from __future__ import annotations
+from typing import Any
 
 import logging
 from dataclasses import dataclass, field
@@ -202,8 +203,8 @@ class DomainRandomizer:
 
     def generate_variants(
         self,
-        base_scenarios: list[dict] | None = None,
-    ) -> list[dict]:
+        base_scenarios: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         """Generate ≥ ``num_variants`` scene variant JSON descriptors.
 
         Each variant dict contains:
@@ -226,7 +227,7 @@ class DomainRandomizer:
         # Reset RNG to guarantee identical output for same seed.
         rng = np.random.default_rng(self._cfg.seed)
 
-        variants: list[dict] = []
+        variants: list[dict[str, Any]] = []
         for idx in range(num):
             base = scenes[idx % len(scenes)]
             base_name = base.get("name", f"scene_{idx}")
@@ -237,7 +238,7 @@ class DomainRandomizer:
 
             frame_count = int(variant_rng.choice(_4K_PLUS_1))
 
-            factors: dict[str, dict] = {}
+            factors: dict[str, dict[str, Any]] = {}
             for key in FACTOR_KEYS:
                 randomizer = _FACTOR_RANDOMIZERS[key]
                 factors[key] = randomizer(variant_rng)  # type: ignore[operator]

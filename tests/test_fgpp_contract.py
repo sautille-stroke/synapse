@@ -7,6 +7,7 @@ Covers:
 """
 
 from __future__ import annotations
+from typing import Any
 
 import json
 import math
@@ -261,7 +262,7 @@ def _make_rotation_matrix(pitch_rad: float, yaw_rad: float) -> np.ndarray:
 class TestMetadataRoundtrip:
     """Test FGPPSequence save_metadata / load_metadata roundtrip."""
 
-    def test_basic_roundtrip(self, tmp_path) -> None:
+    def test_basic_roundtrip(self, tmp_path: Any) -> None:
         """Non-trivial camera pose survives save→load with < 1e-12 error."""
         # Build a view matrix with translation [1.2, -3.4, 5.6] and rotation
         t = np.array([1.2, -3.4, 5.6], dtype=np.float64)
@@ -318,7 +319,7 @@ class TestMetadataRoundtrip:
             assert loaded_frame.camera.z_near == pytest.approx(0.1)
             assert loaded_frame.camera.z_far == pytest.approx(500.0)
 
-    def test_column_major_encoding(self, tmp_path) -> None:
+    def test_column_major_encoding(self, tmp_path: Any) -> None:
         """Verify column-major layout matches OpenGL/fulgur memory order."""
         # Simple known matrix
         view = np.array(
@@ -351,7 +352,7 @@ class TestMetadataRoundtrip:
         expected = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1]
         np.testing.assert_allclose(col_major, expected, atol=1e-14)
 
-    def test_anchor_flags_in_metadata(self, tmp_path) -> None:
+    def test_anchor_flags_in_metadata(self, tmp_path: Any) -> None:
         """Physical anchor flags are correct in saved metadata."""
         cam = CameraParams(
             fx=500, fy=500, cx=256, cy=256, width=512, height=512
@@ -377,7 +378,7 @@ class TestMetadataRoundtrip:
                 f"Frame {idx}: expected anchor={expected_anchor}"
             )
 
-    def test_invalid_rotation_det_raises(self, tmp_path) -> None:
+    def test_invalid_rotation_det_raises(self, tmp_path: Any) -> None:
         """Loading a metadata.json with bad rotation det should raise."""
         # Create metadata with a bad view matrix (scale, not rotation)
         bad_meta = {
@@ -459,6 +460,7 @@ class TestCameraParamsBackwardCompat:
 # =========================================================================
 
 
+@pytest.mark.slow
 class TestWireGuard:
     """Test tools/wire_guard.py internal consistency mode."""
 

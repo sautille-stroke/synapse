@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Generator
 
 import pytest
 
@@ -18,14 +18,14 @@ _STRICT_DEPS = os.environ.get("SYNAPSE_CI_STRICT_DEPS", "0") == "1"
 
 
 @pytest.fixture(autouse=True)
-def _enforce_strict_deps(request: pytest.FixtureRequest) -> None:  # noqa: PT004
+def _enforce_strict_deps(request: pytest.FixtureRequest) -> Generator[None, None, None]:  # noqa: PT004
     """When SYNAPSE_CI_STRICT_DEPS=1, convert skips from importorskip into failures.
 
     This fixture inspects the test outcome after it runs.  If the test was
     skipped via ``pytest.importorskip`` and strict deps is enabled, it raises
     an AssertionError so CI notices the missing dependency.
     """
-    yield  # type: ignore[misc]
+    yield
     if not _STRICT_DEPS:
         return
     # After the test: if it was skipped and the reason mentions an import,

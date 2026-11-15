@@ -308,6 +308,7 @@ class TestNormalizeMetric:
 # -------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestEvalScript:
     @pytest.fixture()
     def script_path(self) -> Path:

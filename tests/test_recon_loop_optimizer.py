@@ -262,6 +262,7 @@ def test_extract_pbr_textures_with_normal_map() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_vectorized_uv_accumulation_512() -> None:
     """512×512 UV optimisation completes in <100ms (vectorized, no Python loops)."""
     import time

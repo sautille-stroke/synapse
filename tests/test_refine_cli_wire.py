@@ -140,7 +140,7 @@ def test_refine_session_command_ir_roundtrip() -> None:
     ]
     session = RefineSessionPayload(
         session_id="ir-test",
-        command_ir_records=ir_records,
+        command_ir_records=ir_records,  # type: ignore[arg-type]
     )
     serialised = json.dumps({
         "schema_version": session.schema_version,
