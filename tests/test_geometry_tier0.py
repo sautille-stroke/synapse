@@ -15,6 +15,10 @@ Test fixtures include:
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 from synapse.inspect.geometry_gate import validate_mesh_geometry
@@ -478,6 +482,157 @@ class TestBuildNativeScript:
             text=True,
         )
         assert res.returncode == 0, f"build_native.py --dry-run --backend=direct failed: {res.stderr}"
+
+    def test_build_native_pybind11_missing_exit_30(self) -> None:
+        """When pybind11 is absent, build_native.py must exit with code 30 (BACKEND_UNAVAILABLE).
+
+        Tests the _emit_error path by directly invoking _find_pybind11_include
+        and _build_direct_fallback with a rigged environment where pybind11
+        is genuinely unreachable.
+        """
+        import importlib
+        import importlib.util
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "build_native.py"
+
+        # Create a wrapper that blocks pybind11 AND clears bazel cache path
+        wrapper = (
+            "import sys, os, importlib, importlib.util\n"
+            "# Block pybind11 from import\n"
+            "class _Block:\n"
+            "    def find_module(self, n, p=None):\n"
+            "        return self if n == 'pybind11' else None\n"
+            "    def load_module(self, n):\n"
+            "        raise ImportError('blocked')\n"
+            "sys.meta_path.insert(0, _Block())\n"
+            "sys.modules.pop('pybind11', None)\n"
+            "# Redirect HOME to a temp dir so bazel cache is not found\n"
+            "import tempfile\n"
+            "os.environ['HOME'] = tempfile.mkdtemp()\n"
+            f"sys.argv = ['{script}', '--backend=direct']\n"
+            f"spec = importlib.util.spec_from_file_location('build_native', r'{script}')\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(mod)\n"
+            "sys.exit(mod.main())\n"
+        )
+        res = subprocess.run(
+            [sys.executable, "-c", wrapper],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+        )
+        # Should exit 30 when pybind11 is missing
+        assert res.returncode == 30, (
+            f"Expected exit code 30, got {res.returncode}.\n"
+            f"stdout: {res.stdout}\nstderr: {res.stderr}"
+        )
+        assert "agent_fix_hint" in res.stderr
+
+    def test_build_native_includes_aether_core_spatial(self) -> None:
+        """Dry-run must include aether/core/include and aether/spatial/include in compiler args."""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "build_native.py"
+        aether_root = repo_root.parent / "aether"
+        if not aether_root.is_dir():
+            pytest.skip("aether sibling directory not found")
+
+        env = os.environ.copy()
+        env.pop("AETHER_ROOT", None)
+        res = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--backend=direct"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert res.returncode == 0, f"dry-run failed: {res.stderr}"
+        # Check that aether core and spatial includes appear in the compiler command
+        output = res.stdout + res.stderr
+        assert "core/include" in output, "aether/core/include not found in compiler args"
+        assert "spatial/include" in output, "aether/spatial/include not found in compiler args"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or sys.platform == "darwin",
+    reason="Real native compile requires Linux (ubuntu24)",
+)
+class TestBuildNativeRealCompile:
+    """PR-84: Real compile test — build_native.py produces a loadable .so."""
+
+    def test_real_direct_compile_and_load(self, tmp_path: Path) -> None:
+        """build_native.py --backend=direct --output-dir=<tmp> produces a
+        loadable _c_geometry .so with working validate_mesh exported."""
+        import importlib
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "build_native.py"
+
+        # Build into tmp_path
+        res = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--backend=direct",
+                f"--output-dir={tmp_path}",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=120,
+        )
+        assert res.returncode == 0, (
+            f"build_native.py real compile failed (rc={res.returncode}):\n"
+            f"stdout: {res.stdout}\nstderr: {res.stderr}"
+        )
+
+        # Locate the built .so
+        so_files = list(tmp_path.glob("_c_geometry*"))
+        assert len(so_files) >= 1, f"No _c_geometry .so found in {tmp_path}: {list(tmp_path.iterdir())}"
+
+        # Load the module dynamically
+        spec = importlib.util.spec_from_file_location("_c_geometry", str(so_files[0]))
+        assert spec is not None, f"Failed to create module spec from {so_files[0]}"
+        assert spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # Verify validate_mesh_geometry is exported and callable
+        assert hasattr(mod, "validate_mesh_geometry"), (
+            f"Module does not export validate_mesh_geometry. Dir: {dir(mod)}"
+        )
+
+        # Smoke test: validate a simple tetrahedron
+        verts = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            dtype=np.float64,
+        )
+        faces = np.array(
+            [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]],
+            dtype=np.int64,
+        )
+        result = mod.validate_mesh_geometry(
+            vertices=verts,
+            faces=faces,
+            verts_per_face=3,
+            require_watertight=True,
+            min_area=1e-8,
+            max_aspect_ratio=100.0,
+            min_face_ratio=0.01,
+        )
+        assert isinstance(result, dict)
+        assert result.get("is_manifold") is True
+        assert result.get("passed") is True
 
 
 # ===================================================================

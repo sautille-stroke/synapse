@@ -4,15 +4,11 @@
 
 try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
+# 1. Bzlmod Registries — DervGen private BCR has priority, public BCR as fallback
+common --registry=https://bcr.dervgen.com/bcr
 common --registry=https://bcr.bazel.build
-common --repo_env=https_proxy=
-common --repo_env=http_proxy=
-common --repo_env=HTTPS_PROXY=
-common --repo_env=HTTP_PROXY=
-# Prevent duplicate expansion of unix-common when --config=linux (or other platform configs)
-# is explicitly passed, resolving [P1-ARCH-03] Bazel configuration warnings.
-common --noenable_platform_specific_config
 
+# 2. C++20 Standard
 build:macos --cxxopt=-std=c++20
 build:macos --host_cxxopt=-std=c++20
 build:linux --cxxopt=-std=c++20
@@ -20,8 +16,13 @@ build:linux --host_cxxopt=-std=c++20
 build:windows --cxxopt=/std:c++20
 build:windows --host_cxxopt=/std:c++20
 
+# 3. Exceptions/RTTI configuration
 build:macos --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
 build:linux --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
 build:windows --per_file_copt=^(?!.*[^/][+]/).*@/EHs-c-,/GR-,/D_HAS_EXCEPTIONS=0
+
+# 4. Default optimised build (RelWithDebInfo)
+build:opt --compilation_mode=opt
+build --config=opt
 
 try-import %workspace%/.bazelrc.user

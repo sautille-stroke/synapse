@@ -13,11 +13,17 @@ accelerator:
    matching the active Python ABI extension suffix (e.g.
    `_c_geometry.cpython-312-x86_64-linux-gnu.so` and `_c_geometry.so`).
 4. Executes a non-destructive Tier-0 smoke test to verify import integrity.
+
+Exit codes follow the synapse CLI deterministic status code contract:
+  0  — success
+  10 — argument or contract validation failure
+  30 — GPU/backend unavailable (pybind11 missing, no compiler, etc.)
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -88,7 +94,12 @@ def _build_with_bazel(repo_root: Path, bazel_bin: str) -> Path | None:
 
 
 def _find_pybind11_include(dry_run: bool = False) -> Path | None:
-    """Find pybind11 header directory, installing if needed."""
+    """Find pybind11 header directory.
+
+    Does NOT auto-install pybind11 — callers must install it explicitly
+    before invoking this script (``pip install pybind11>=2.11.0``).
+    Returns None when pybind11 is absent.
+    """
     try:
         import pybind11  # type: ignore[import-not-found]
         inc = Path(pybind11.get_include())
@@ -99,20 +110,6 @@ def _find_pybind11_include(dry_run: bool = False) -> Path | None:
 
     if dry_run:
         return Path("<pybind11-include>")
-
-    # Try pip installing pybind11
-    print("[build_native] pybind11 not found in Python environment, attempting installation...")
-    install_res = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet", "pybind11>=2.11.0"],
-        capture_output=True,
-        text=True,
-    )
-    if install_res.returncode == 0:
-        try:
-            import pybind11  # type: ignore[import-not-found]
-            return Path(pybind11.get_include())
-        except ImportError:
-            pass
 
     # Check bazel cache for previously downloaded pybind11
     home = Path.home()
@@ -127,7 +124,13 @@ def _find_pybind11_include(dry_run: bool = False) -> Path | None:
 
 
 def _find_aether_root(repo_root: Path) -> Path | None:
-    """Find aether root directory from AETHER_ROOT env or sibling directory."""
+    """Find aether root directory.
+
+    Resolution order:
+    1. ``AETHER_ROOT`` environment variable (explicit override).
+    2. Sibling directory ``../aether`` (standard dev checkout).
+    3. In-tree snapshot ``csrc/aether`` (offline Colab containers).
+    """
     if "AETHER_ROOT" in os.environ:
         cand = Path(os.environ["AETHER_ROOT"]).resolve()
         if cand.is_dir():
@@ -138,38 +141,51 @@ def _find_aether_root(repo_root: Path) -> Path | None:
     return None
 
 
-def _find_aether_math_include(repo_root: Path) -> Path | None:
-    """Find aether/math/include directory."""
+def _find_aether_includes(repo_root: Path) -> list[Path]:
+    """Collect all required aether include directories for direct compilation.
+
+    Returns include paths for: math, geo, core, and spatial modules.
+    Each path is only included if the directory actually exists.
+    """
     aether_root = _find_aether_root(repo_root)
-    if aether_root:
-        cand = aether_root / "math" / "include"
-        if cand.is_dir() and (cand / "aether" / "math" / "dvec.h").is_file():
-            return cand
-    return None
+    if not aether_root:
+        return []
+
+    include_dirs: list[Path] = []
+    # Required aether submodules for geometry compilation
+    for submod in ["math", "geo", "core", "spatial"]:
+        cand = aether_root / submod / "include"
+        if cand.is_dir():
+            include_dirs.append(cand)
+    return include_dirs
 
 
-def _find_aether_geo_include(repo_root: Path) -> Path | None:
-    """Find aether/geo/include directory."""
+def _find_aether_geo_src(repo_root: Path) -> list[Path]:
+    """Find aether/geo implementation source files for direct compilation."""
     aether_root = _find_aether_root(repo_root)
-    if aether_root:
-        cand = aether_root / "geo" / "include"
-        if cand.is_dir() and (cand / "aether" / "geo" / "mesh_checks.h").is_file():
-            return cand
-    return None
+    if not aether_root:
+        return []
 
-
-def _find_aether_geo_src(repo_root: Path) -> Path | None:
-    """Find aether/geo/src/mesh_checks.cc source file for direct compilation."""
-    aether_root = _find_aether_root(repo_root)
-    if aether_root:
-        cand = aether_root / "geo" / "src" / "mesh_checks.cc"
-        if cand.is_file():
-            return cand
-    return None
+    sources: list[Path] = []
+    geo_src_dir = aether_root / "geo" / "src"
+    if geo_src_dir.is_dir():
+        # mesh_checks.cc is the primary required implementation unit
+        mesh_checks = geo_src_dir / "mesh_checks.cc"
+        if mesh_checks.is_file():
+            sources.append(mesh_checks)
+        # mesh_forensics.cc provides optional additional validation
+        mesh_forensics = geo_src_dir / "mesh_forensics.cc"
+        if mesh_forensics.is_file():
+            sources.append(mesh_forensics)
+    return sources
 
 
 def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = False) -> bool:
-    """Directly compile _c_geometry using host C++20 compiler."""
+    """Directly compile _c_geometry using host C++20 compiler.
+
+    Returns True on success, False on failure. When pybind11 is missing,
+    prints a structured JSON error with ``agent_fix_hint`` and returns False.
+    """
     csrc_dir = repo_root / "csrc" / "geometry"
     bindings_src = csrc_dir / "src" / "bindings.cc"
     if not bindings_src.is_file():
@@ -177,19 +193,22 @@ def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = F
         return False
 
     sources = [bindings_src]
-    aether_geo_src = _find_aether_geo_src(repo_root)
-    if aether_geo_src:
-        sources.append(aether_geo_src)
+    aether_geo_srcs = _find_aether_geo_src(repo_root)
+    if aether_geo_srcs:
+        sources.extend(aether_geo_srcs)
     else:
-        print("[build_native] Notice: aether/geo/src/mesh_checks.cc not found; compiling with header declarations", file=sys.stderr)
+        print("[build_native] Notice: aether/geo/src/ not found; compiling with header declarations only", file=sys.stderr)
 
     pybind_inc = _find_pybind11_include(dry_run=dry_run)
     if not pybind_inc:
-        print("[build_native] Error: pybind11 includes could not be located.", file=sys.stderr)
+        _emit_error(
+            30,
+            "pybind11 headers not found in Python environment",
+            "pip install 'pybind11>=2.11.0' && python scripts/build_native.py --backend=direct",
+        )
         return False
 
-    aether_math_inc = _find_aether_math_include(repo_root)
-    aether_geo_inc = _find_aether_geo_include(repo_root)
+    aether_includes = _find_aether_includes(repo_root)
 
     includes = [
         f"-I{csrc_dir / 'include'}",
@@ -199,10 +218,8 @@ def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = F
     platinc = sysconfig.get_path("platinclude")
     if platinc and platinc != sysconfig.get_path("include"):
         includes.append(f"-I{platinc}")
-    if aether_math_inc:
-        includes.append(f"-I{aether_math_inc}")
-    if aether_geo_inc:
-        includes.append(f"-I{aether_geo_inc}")
+    for inc in aether_includes:
+        includes.append(f"-I{inc}")
 
     is_windows = sys.platform == "win32"
     source_args = [str(s) for s in sources]
@@ -212,7 +229,11 @@ def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = F
             if dry_run:
                 compiler = "cl.exe"
             else:
-                print("[build_native] MSVC cl.exe not found in PATH.", file=sys.stderr)
+                _emit_error(
+                    30,
+                    "MSVC cl.exe not found in PATH",
+                    "Install Visual Studio Build Tools and ensure cl.exe is in PATH",
+                )
                 return False
         cmd = [
             compiler,
@@ -233,7 +254,11 @@ def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = F
             if dry_run:
                 compiler = "clang++"
             else:
-                print("[build_native] No C++ compiler (clang++/g++/c++) found in PATH.", file=sys.stderr)
+                _emit_error(
+                    30,
+                    "No C++ compiler (clang++/g++/c++) found in PATH",
+                    "apt-get install -y clang && python scripts/build_native.py --backend=direct",
+                )
                 return False
         cmd = [
             compiler,
@@ -265,6 +290,17 @@ def _build_direct_fallback(repo_root: Path, output_file: Path, dry_run: bool = F
         return False
 
     return output_file.is_file()
+
+
+def _emit_error(exit_code: int, message: str, agent_fix_hint: str) -> None:
+    """Print a structured JSON error to stderr for agent consumption."""
+    error = {
+        "error": message,
+        "exit_code": exit_code,
+        "agent_fix_hint": agent_fix_hint,
+    }
+    print(f"[build_native] Error: {message}", file=sys.stderr)
+    print(json.dumps(error), file=sys.stderr)
 
 
 def _install_extension(built_artifact: Path, target_dir: Path) -> list[Path]:
@@ -332,10 +368,11 @@ def main() -> int:
     parser.add_argument("--check-only", "--check", action="store_true", dest="check_only", help="Only verify existing extension integrity.")
     parser.add_argument("--dry-run", action="store_true", help="Print compiler commands without executing.")
     parser.add_argument("--backend", choices=["auto", "bazel", "direct"], default="auto", help="Build backend to use.")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Output directory for built .so (default: python/synapse/).")
     args = parser.parse_args()
 
     repo_root = _get_repo_root()
-    target_dir = repo_root / "python" / "synapse"
+    target_dir = args.output_dir if args.output_dir else repo_root / "python" / "synapse"
 
     if args.check_only:
         if _smoke_test():
@@ -343,7 +380,7 @@ def main() -> int:
             return 0
         else:
             print("❌ synapse._c_geometry verification failed.", file=sys.stderr)
-            return 1
+            return 30
 
     built_artifact: Path | None = None
 
@@ -371,8 +408,12 @@ def main() -> int:
             built_artifact = temp_out
             print(f"[build_native] Direct compilation succeeded: {built_artifact}")
         else:
-            print("[build_native] Both Bazel and fallback compilation failed.", file=sys.stderr)
-            return 1
+            _emit_error(
+                30,
+                "Both Bazel and fallback compilation failed",
+                "pip install 'pybind11>=2.11.0' && python scripts/build_native.py --backend=direct",
+            )
+            return 30
 
     # Step 3: Install extension artifacts into python/synapse/
     installed = _install_extension(built_artifact, target_dir)
@@ -390,7 +431,7 @@ def main() -> int:
         return 0
     else:
         print("❌ synapse._c_geometry smoke test failed.", file=sys.stderr)
-        return 1
+        return 10
 
 
 if __name__ == "__main__":
