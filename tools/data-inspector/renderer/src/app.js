@@ -1,6 +1,10 @@
 // renderer/src/app.js — Main application logic for the Data Inspector renderer.
 // Handles bundle loading, viewport canvas, camera interaction, and view switching.
 // Uses safe DOM construction (textContent) for all manifest/file strings.
+// H6-P0-10: Unpacks SourceEntry.path (eliminates [object Object] node text).
+// H6-P0-10: Decouples top nav tabs from native AOV set_debug_view.
+// H6-P0-10: Fixes uncaught Promise rejection on tab/debug-mode click.
+// H6-P2-01: Canvas ResizeObserver for DPR adaptation. macOS traffic light padding.
 'use strict';
 
 // ─── State ───────────────────────────────────────────────────────
@@ -17,6 +21,34 @@ let imageData = null;
 // Camera interaction state.
 let isDragging = false;
 let lastMouse = { x: 0, y: 0 };
+
+// ─── Platform setup ──────────────────────────────────────────────
+
+// H6-P2-01: Apply macOS traffic light offset via CSS custom property.
+if (window.inspectorAPI && window.inspectorAPI.platform === 'darwin') {
+  document.documentElement.style.setProperty('--traffic-light-inset', '76px');
+}
+
+// ─── Helper: extract display label from source entry ─────────────
+
+/**
+ * Extract a display-safe string from a source entry.
+ * Handles both plain strings and SourceEntry objects ({ path: '...' }).
+ * Prevents [object Object] from appearing in the UI.
+ * @param {unknown} entry
+ * @returns {string}
+ */
+function extractDisplayLabel(entry) {
+  if (!entry) return '';
+  if (typeof entry === 'string') return entry;
+  if (typeof entry === 'object') {
+    if (typeof entry.path === 'string') return entry.path;
+    if (typeof entry.url === 'string') return entry.url;
+    if (typeof entry.label === 'string') return entry.label;
+    if (typeof entry.name === 'string') return entry.name;
+  }
+  return '';
+}
 
 // ─── Bundle loading ──────────────────────────────────────────────
 
@@ -63,10 +95,18 @@ async function loadBundle(bundlePath) {
 
   // Show available view tabs based on manifest sources.
   const sources = manifest.sources || {};
+
+  // H6-P0-10: Support multi-instance keys (animation_*, generated_*, fgpp_*).
+  const hasAnimations = !!(sources.animations && sources.animations.length) ||
+    Object.keys(sources).some(k => k.startsWith('animation_'));
+  const hasVideo = !!(sources.generated_video || sources.fgpp_sequence) ||
+    Object.keys(sources).some(k => k.startsWith('generated_') || k.startsWith('fgpp_'));
+  const hasComparison = !!sources.reconstructed_model;
+
   showTab('source', true);
-  showTab('animation', !!(sources.animations && sources.animations.length));
-  showTab('video', !!(sources.generated_video || sources.fgpp_sequence));
-  showTab('comparison', !!sources.reconstructed_model);
+  showTab('animation', hasAnimations);
+  showTab('video', hasVideo);
+  showTab('comparison', hasComparison);
 
   // Update bundle info safely via textContent.
   const bundleInfo = document.getElementById('bundle-info');
@@ -83,7 +123,10 @@ async function loadBundle(bundlePath) {
 
   updateStatus(`Bundle loaded: ${inv.fileCount} files`);
 
-  // Start native renderer for the source model view.
+  // Activate source view and start native renderer.
+  if (typeof sourceModelView !== 'undefined') {
+    sourceModelView.activate();
+  }
   startNativeRenderer(bundlePath);
 }
 
@@ -104,12 +147,14 @@ function buildSceneTree(manifest) {
     iconSpan.className = 'tree-icon';
     iconSpan.textContent = String(icon);
     const labelSpan = document.createElement('span');
-    labelSpan.textContent = String(label);
+    // H6-P0-10: Use extractDisplayLabel to handle SourceEntry objects.
+    labelSpan.textContent = extractDisplayLabel(label);
     node.appendChild(iconSpan);
     node.appendChild(labelSpan);
     tree.appendChild(node);
   };
 
+  // Core sources.
   if (sources.source_model) addNode('\u25B6', sources.source_model);
   if (sources.animations) {
     for (const anim of sources.animations) {
@@ -120,16 +165,35 @@ function buildSceneTree(manifest) {
   if (sources.generated_video) addNode('\u25A0', sources.generated_video);
   if (sources.reconstructed_model) addNode('\u25B6', sources.reconstructed_model);
   if (sources.metrics) addNode('\u25CB', sources.metrics);
+
+  // H6-P0-10: Multi-instance source keys (animation_*, generated_*, fgpp_*).
+  for (const [key, val] of Object.entries(sources)) {
+    if (key.startsWith('animation_')) {
+      addNode('\u25B7', val);
+    } else if (key.startsWith('generated_')) {
+      addNode('\u25A0', val);
+    } else if (key.startsWith('fgpp_')) {
+      addNode('\u25A0', val);
+    }
+  }
 }
 
 // ─── Native renderer ─────────────────────────────────────────────
 
 function startNativeRenderer(bundlePath) {
   const viewport = document.getElementById('viewport');
-  const w = viewport.clientWidth || 1280;
-  const h = viewport.clientHeight || 720;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = viewport.clientWidth || 1280;
+  const cssH = viewport.clientHeight || 720;
+  // H6-P2-01: DPR-aware canvas sizing.
+  const w = Math.round(cssW * dpr);
+  const h = Math.round(cssH * dpr);
 
-  window.inspectorAPI.nativeStart(bundlePath, w, h);
+  window.inspectorAPI.nativeStart(bundlePath, w, h)
+    .catch((err) => {
+      console.error('[native start error]', err);
+      updateStatus(`Error starting native renderer: ${err.message || err}`);
+    });
   nativeRunning = true;
 
   // Show canvas, hide empty state.
@@ -137,6 +201,9 @@ function startNativeRenderer(bundlePath) {
   canvas.style.display = 'block';
   canvas.width = w;
   canvas.height = h;
+  // CSS size matches the viewport container.
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
   document.getElementById('prop-resolution').textContent = `${w}x${h}`;
 
   const overlay = document.getElementById('viewport-overlay');
@@ -145,6 +212,30 @@ function startNativeRenderer(bundlePath) {
   }
 
   imageData = ctx.createImageData(w, h);
+}
+
+// H6-P2-01: Canvas ResizeObserver for DPR adaptation on resize.
+if (typeof ResizeObserver !== 'undefined') {
+  const viewportEl = document.getElementById('viewport');
+  if (viewportEl && canvas) {
+    const resizeObserver = new ResizeObserver(() => {
+      if (!nativeRunning) return;
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = viewportEl.clientWidth;
+      const cssH = viewportEl.clientHeight;
+      const w = Math.round(cssW * dpr);
+      const h = Math.round(cssH * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+        imageData = ctx.createImageData(w, h);
+        document.getElementById('prop-resolution').textContent = `${w}x${h}`;
+      }
+    });
+    resizeObserver.observe(viewportEl);
+  }
 }
 
 // Listen for frames from the native process.
@@ -177,11 +268,17 @@ if (window.inspectorAPI) {
   window.inspectorAPI.onNativeExit((code) => {
     console.log('[native exit]', code);
     nativeRunning = false;
+    if (typeof sourceModelView !== 'undefined') {
+      sourceModelView.deactivate();
+    }
     updateStatus(`Native process exited (code ${code})`);
   });
 }
 
-// ─── View switching ──────────────────────────────────────────────
+// ─── View switching (top panel navigation tabs) ──────────────────
+// H6-P0-10: DECOUPLED from native AOV set_debug_view. Tabs switch the
+// app's conceptual view (source/animation/video/comparison), NOT the
+// native renderer's debug visualization mode.
 
 document.querySelectorAll('.view-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
@@ -190,17 +287,23 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
     tab.classList.add('active');
     currentView = tab.dataset.view;
 
-    if (nativeRunning) {
-      const mode = currentView === 'rgb' ? 'lit' : currentView;
-      window.inspectorAPI.nativeSendCommand({
-        type: 'set_debug_view',
-        mode,
-      });
+    // Activate/deactivate SourceModelView based on tab.
+    if (typeof sourceModelView !== 'undefined') {
+      if (currentView === 'source') {
+        sourceModelView.activate();
+      } else {
+        sourceModelView.deactivate();
+      }
     }
+
+    // View switching does NOT send set_debug_view to native.
+    // Debug view mode is controlled independently by the .debug-modes buttons.
   });
 });
 
-// ─── Debug view mode ─────────────────────────────────────────────
+// ─── Debug view mode (native AOV selector) ───────────────────────
+// H6-P0-10: Independent from view tabs. Controls the native renderer's
+// debug visualization (lit/wireframe/normals/depth/uv/albedo/motion/cryptomatte).
 
 document.querySelectorAll('.debug-modes button').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -211,10 +314,18 @@ document.querySelectorAll('.debug-modes button').forEach((btn) => {
     document.getElementById('prop-debug-view').textContent =
       btn.dataset.mode.charAt(0).toUpperCase() + btn.dataset.mode.slice(1);
 
+    // Update SourceModelView state.
+    if (typeof sourceModelView !== 'undefined') {
+      sourceModelView.setDebugMode(btn.dataset.mode);
+    }
+
+    // H6-P0-10: Guard against uncaught Promise rejection when native is not running.
     if (nativeRunning) {
       window.inspectorAPI.nativeSendCommand({
         type: 'set_debug_view',
         mode: btn.dataset.mode,
+      }).catch((err) => {
+        console.warn('[debug-mode] Failed to send command:', err.message || err);
       });
     }
   });
@@ -246,7 +357,7 @@ if (canvas) {
       action,
       dx,
       dy,
-    });
+    }).catch(() => { /* ignore send failures during drag */ });
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -257,7 +368,7 @@ if (canvas) {
       action: 'zoom',
       dx: 0,
       dy: e.deltaY,
-    });
+    }).catch(() => { /* ignore */ });
   });
 
   // Prevent context menu on right-click.
