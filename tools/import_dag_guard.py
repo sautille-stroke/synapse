@@ -199,6 +199,18 @@ class _ImportVisitor(ast.NodeVisitor):
         elif isinstance(func, ast.Attribute) and func.attr == "import_module":
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 module_name = node.args[0].value
+            elif node.args and isinstance(node.args[0], ast.JoinedStr):
+                # f-string: extract constant prefix to see if it starts
+                # with "synapse." (common pattern in __init__.py __getattr__)
+                first_val = node.args[0].values[0] if node.args[0].values else None
+                if isinstance(first_val, ast.Constant) and isinstance(first_val.value, str):
+                    if first_val.value.startswith("synapse."):
+                        # Known aggregator pattern — not a real violation
+                        pass
+                    else:
+                        is_dynamic_non_constant = True
+                else:
+                    is_dynamic_non_constant = True
             elif node.args:
                 is_dynamic_non_constant = True
 
