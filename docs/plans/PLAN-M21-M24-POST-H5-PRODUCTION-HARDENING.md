@@ -4,7 +4,29 @@
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 6 / Waves 20–23，**M21–M24** 共 4 大里程碑、**18 个原子 PR**）
 - **问题源头审计**: [docs/audits/AUDIT-POST-HORIZON5-2026-11.md](../audits/AUDIT-POST-HORIZON5-2026-11.md)（基线 `e37bfa6`，全覆盖实测确认的 `10×P0 + 10×P1 + 5×P2 + 2×P3` 缺陷）
 - **制定日期**: `2026-11-15`
-- **操作模型标识**: `[opus4.6]`
+- **操作模型标识**: `[opus4.6]` / `[gemini3.8]`
+- **实施状态**: ✅ **100% 已全部合入并验收通过 (18/18 PRs)** — 全部通过 `ubuntu24` 8 项全局验收门禁
+
+> [!NOTE]
+> **Horizon 6 验收封板记录**：
+> - `PR-74` (#71, `8a0f1c2`): Security audit & schema baseline
+> - `PR-75` (#75, `ea04489`): WanAdapter Causal Window & ACEScg styling
+> - `PR-76` (#74, `abaaa4f`): Safetensors SHA-256 verification
+> - `PR-77` (#73, `0f1689d`): Cryptomatte mask slicing
+> - `PR-78` (#76, `a418c04`): E2E MockVideoAdapter regression
+> - `PR-79` (#78, `c6b8b6b`): 15-channel EXR parity guard
+> - `PR-80` (#81, `e9613a9`): Whitebox coarseness validation floor
+> - `PR-81` (#79, `24e1797`): Cryptomatte UINT32 integer type guard
+> - `PR-82` (#77, `6e7ee95`): Column-major matrix & determinant assertion
+> - `PR-83` (#80, `01a5cd2`): WebDataset shard deterministic packing
+> - `PR-84` (#83, `d2ce9f1`): Bazel build & native compilation hardening
+> - `PR-85` (#85, `af16a3e`): Data Inspector native viewer & IPC
+> - `PR-86` (#86, `e497658`): Electron security hardening & test fixtures isolation
+> - `PR-87` (#82, `21b49d5`): Model evaluation & quality thresholds
+> - `PR-88` (#84, `7a7dac0`): Colab runner asset staging & SIGTERM checkpoints
+> - `PR-89` (#87, `6de992b`): PEP 562 lazy init, 5-tier DAG guard, decouple cross-layer reverse edges
+> - `PR-90` (#88, `139b7b8`): `mypy --strict` zero errors across 203 source files, ruff clean, all 1138 fast unit tests green
+> - `PR-91` (#89, `9ed889b`): CI workflow, resolve SYN-RFC collisions, doc links cleanup, extend ruff rules, Bazel 9.3.1 pin
 
 ---
 

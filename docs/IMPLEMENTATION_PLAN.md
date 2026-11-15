@@ -18,7 +18,7 @@
   6. ↳ **[PLAN-M9-M12 (Horizon 3)](plans/PLAN-M9-M12-HORIZON3-LANDING.md)**：RFC 0060 多视角真差往返、RFC 0061 解剖局部精修、RFC 0062 可微逆向闭环与 M12 全域收口（`PR-30` ~ `PR-43` ⚠️ 骨架与单测已合入，生产硬化见 `PLAN-M13-M16`）
   7. ↳ **[PLAN-M13-M16 (Horizon 4 重构后硬化)](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**：防静默失败清零、包级循环依赖斩断、原生 C++ 多边形与打包修复、CLI 模块化及严苛 CI 门禁（`PR-44` ~ `PR-57` ⚠️ `PR-51` ✅，`PR-55` ❌，余项收口于 Horizon 5/6）
   8. ↳ **[PLAN-M17-M20 (Horizon 5 质量治理与基准落地)](plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)**：生态 RFC 碰撞消解、遗留 `data-inspector`/`build_native` 收口、`RFC-0063` 基准真实落地与严苛 `mypy`/快测试门禁（`PR-58` ~ `PR-73` ⚠️ `PR #51~#69` 已合入，残余静默缺陷移交 Horizon 6）
-  9. ↳ **[PLAN-M21-M24 (Horizon 6 生产硬化与真值收口)](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)**：OpenEXR `UINT32` / 真 LoRA 权重 / 真 EXR Worker 止血、逆向/精修/FVD 算子真值化、跨平台 Data Inspector、5-Tier 锁死与 GitHub Actions CI（`PR-74` ~ `PR-91` 📋）
+  9. ↳ **[PLAN-M21-M24 (Horizon 6 生产硬化与真值收口)](plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)**：OpenEXR `UINT32` / 真 LoRA 权重 / 真 EXR Worker 止血、逆向/精修/FVD 算子真值化、跨平台 Data Inspector、5-Tier 锁死与 GitHub Actions CI（`PR-74` ~ `PR-91` ✅ 100% 已合入，18/18 PRs 全绿封板）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
