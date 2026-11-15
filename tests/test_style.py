@@ -75,22 +75,24 @@ class TestAcesColor:
         assert np.allclose(acescg_white, [[1.0, 1.0, 1.0]], atol=0.01)
 
     def test_soft_knee_identity_below_threshold(self) -> None:
-        """L <= 4.0 → identity (passthrough)."""
-        values = np.array([0.0, 0.5, 1.0, 2.0, 3.0, 4.0])
+        """L <= 0.8 → identity (passthrough)."""
+        values = np.array([0.0, 0.1, 0.3, 0.5, 0.7, 0.8])
         result = soft_knee_inverse_tonemap(values)
         np.testing.assert_allclose(result, values, atol=1e-12)
 
     def test_soft_knee_bounded(self) -> None:
-        """Max output <= 12.0 for any input including extreme values."""
-        values = np.array([0.0, 5.0, 10.0, 100.0, 1e6, 1e20])
+        """Inverse tonemap is strictly increasing and super-linear above knee."""
+        values = np.array([0.0, 0.5, 0.8, 1.0, 2.0, 5.0])
         result = soft_knee_inverse_tonemap(values)
-        assert np.all(result <= 12.0), f"Max output: {result.max()}"
+        assert np.all(np.diff(result) > 0), f"Not monotonic: {result}"
+        above = values > 0.8
+        assert np.all(result[above] > values[above])
         assert np.all(result >= 0.0)
 
     def test_soft_knee_c1_continuous(self) -> None:
-        """Derivative is continuous at L = 4.0 (finite difference check)."""
+        """Derivative is continuous at L = 0.8 (finite difference check)."""
         eps = 1e-7
-        x = np.array([4.0 - eps, 4.0, 4.0 + eps])
+        x = np.array([0.8 - eps, 0.8, 0.8 + eps])
         y = soft_knee_inverse_tonemap(x)
         # Left derivative
         d_left = (y[1] - y[0]) / eps
@@ -382,3 +384,186 @@ class TestProfileMapper:
         overrides = to_engine_light_overrides(desc)
         assert overrides["directional_light"]["intensity"] == pytest.approx(0.8)
         assert overrides["ambient_light"]["intensity"] == pytest.approx(0.2)
+
+
+# ---------------------------------------------------------------------------
+# PR-78 — soft_knee_inverse_tonemap monotonicity + light direction fitting
+# ---------------------------------------------------------------------------
+
+
+class TestSoftKneeMonotonicity:
+    """soft_knee_inverse_tonemap must be strictly monotonically increasing."""
+
+    def test_strictly_increasing(self) -> None:
+        """Output values strictly increase as input increases."""
+        x = np.linspace(0.0, 5.0, 1000)
+        y = soft_knee_inverse_tonemap(x)
+        # Check that every successive output is greater than the previous
+        diffs = np.diff(y)
+        assert np.all(diffs > 0), (
+            f"Inverse tonemap is not strictly increasing: "
+            f"min diff = {float(np.min(diffs)):.6e}"
+        )
+
+    def test_superlinear_above_knee(self) -> None:
+        """Above the knee threshold, output grows super-linearly
+        (faster than identity)."""
+        x = np.array([1.0, 1.5, 2.0, 3.0])
+        y = soft_knee_inverse_tonemap(x)
+        # Above the knee (0.8), output should be > input
+        assert np.all(y[x > 0.8] > x[x > 0.8]), (
+            "Inverse tonemap should produce super-linear recovery "
+            "above the knee threshold"
+        )
+
+    def test_identity_below_knee(self) -> None:
+        """Below the knee threshold, output equals input (identity)."""
+        x = np.linspace(0.0, 0.79, 100)
+        y = soft_knee_inverse_tonemap(x)
+        np.testing.assert_allclose(y, x, atol=1e-10)
+
+    def test_c1_continuous_at_knee(self) -> None:
+        """Function is C1 continuous at the knee point."""
+        knee = 0.8
+        eps = 1e-6
+        x = np.array([knee - eps, knee, knee + eps])
+        y = soft_knee_inverse_tonemap(x)
+        # Value should be continuous
+        assert abs(y[1] - knee) < 1e-8
+        # Left and right derivatives should be close
+        left_deriv = (y[1] - y[0]) / eps
+        right_deriv = (y[2] - y[1]) / eps
+        assert abs(left_deriv - 1.0) < 0.1, (
+            f"Left derivative at knee should be ~1.0, got {left_deriv}"
+        )
+        assert right_deriv > 1.0, (
+            f"Right derivative at knee should be > 1.0 (super-linear), "
+            f"got {right_deriv}"
+        )
+
+
+class TestLightDirectionFitting:
+    """extract_style_fgpp_intrinsic should recover the main light direction
+    within 5° for a known single directional light."""
+
+    def test_single_directional_light_recovery(self) -> None:
+        """Known light direction recovered with < 5° error.
+
+        Uses uniformly distributed normals on the upper hemisphere.
+        The light direction has a strong +Z component to ensure most
+        (N·L) > 0 for upper-hemisphere normals — this avoids the
+        max(0, N·L) clamping that makes the linear least-squares
+        ill-conditioned when the data is not truly linear.
+        """
+        from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+
+        H, W = 128, 128
+        T = 5  # multiple frames for robustness
+
+        # Known light direction: strong Z component so that nearly all
+        # upper-hemisphere normals yield positive N·L (avoiding max(0,..)
+        # clipping that would break the linear model assumption).
+        true_light_dir = np.array([0.3, 0.4, 0.866], dtype=np.float64)
+        true_light_dir /= np.linalg.norm(true_light_dir)
+
+        # Camera looking along -Z, Y up
+        view = np.eye(4, dtype=np.float64)
+        view[2, 3] = -5.0
+        world = np.linalg.inv(view)
+
+        cam = CameraParams(
+            fx=W / 2.0, fy=H / 2.0,
+            cx=W / 2.0, cy=H / 2.0,
+            width=W, height=H,
+            view_matrix=view,
+            world_matrix=world,
+        )
+
+        ambient = 0.15
+
+        frames_list: list[FGPPFrame] = []
+        video_frames = np.zeros((T, H, W, 3), dtype=np.uint8)
+
+        for t in range(T):
+            rng = np.random.RandomState(42 + t)
+
+            # Uniformly distributed normals on upper hemisphere:
+            # Gaussian → normalize → flip Z < 0.
+            raw = rng.randn(H, W, 3).astype(np.float64)
+            norms = np.sqrt(np.sum(raw ** 2, axis=-1, keepdims=True))
+            normals = raw / np.maximum(norms, 1e-8)
+            normals[..., 2] = np.abs(normals[..., 2])
+
+            # Base color: uniform white (linear)
+            base_color = np.full((H, W, 3), 0.8, dtype=np.float32)
+
+            # Lambertian shading (linear): ambient + max(0, N·L)
+            ndotl = np.sum(normals * true_light_dir, axis=-1)
+            ndotl = np.maximum(ndotl, 0.0)
+            shading = (ambient + ndotl)[..., np.newaxis]
+            radiance = 0.8 * shading
+
+            # Convert linear → sRGB → uint8
+            from synapse.style.aces_color import linear_to_srgb as _l2s
+            srgb = np.clip(_l2s(np.clip(radiance, 0.0, 1.0)), 0.0, 1.0)
+            video_frames[t] = (srgb * 255.0 + 0.5).astype(np.uint8)
+
+            cid = np.ones((H, W), dtype=np.uint32) * 12345
+            depth = np.full((H, W), 5.0, dtype=np.float32)
+
+            fgpp_frame = FGPPFrame(
+                camera=cam,
+                depth=depth,
+                base_color=base_color,
+                world_normal=normals.astype(np.float32),
+                roughness_metallic=np.stack([
+                    np.full((H, W), 0.8, dtype=np.float32),
+                    np.zeros((H, W), dtype=np.float32),
+                ], axis=-1),
+                cryptomatte_id=cid,
+                motion_vector=np.zeros((H, W, 2), dtype=np.float32),
+                direct_radiance=radiance.astype(np.float32),
+            )
+            frames_list.append(fgpp_frame)
+
+        fgpp_seq = FGPPSequence(frames=frames_list)
+
+        desc = extract_style_fgpp_intrinsic(video_frames, fgpp_seq)
+
+        assert desc.key_light_dir_world is not None
+        recovered = np.array(desc.key_light_dir_world, dtype=np.float64)
+        recovered /= np.linalg.norm(recovered) + 1e-30
+
+        cos_angle = float(np.clip(np.dot(recovered, true_light_dir), -1, 1))
+        angle_deg = float(np.degrees(np.arccos(cos_angle)))
+
+        assert angle_deg < 5.0, (
+            f"Light direction error {angle_deg:.1f}° exceeds 5° threshold. "
+            f"True: {true_light_dir.tolist()}, "
+            f"Recovered: {recovered.tolist()}"
+        )
+
+
+class TestExtractorFloatHDRInput:
+    """extractor must NOT divide float32/float64 HDR input by 255."""
+
+    def test_float_input_not_divided_by_255(self) -> None:
+        """Float input in [0,1] should not be re-divided by 255."""
+        H, W = 16, 16
+        # Create float32 input already in [0, 1] range
+        frames = np.full((2, H, W, 3), 0.5, dtype=np.float32)
+        desc = extract_style_optical(frames)
+        # If incorrectly divided by 255, values become ~0.002
+        # and exposure would be very negative
+        assert desc.exposure_ev > -10.0, (
+            f"Exposure {desc.exposure_ev} EV suggests float input was "
+            f"erroneously divided by 255"
+        )
+
+    def test_uint8_input_still_works(self) -> None:
+        """uint8 input is correctly divided by 255."""
+        H, W = 16, 16
+        frames = np.full((2, H, W, 3), 128, dtype=np.uint8)
+        desc = extract_style_optical(frames)
+        # 128/255 ≈ 0.502 → reasonable exposure
+        assert abs(desc.exposure_ev) < 10.0

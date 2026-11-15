@@ -285,9 +285,37 @@ def border_ring_lab_match(
     # do it inline.
     result_srgb = _lab_to_srgb_float(result_lab)
 
-    # Merge: only modify the inner band pixels.
+    # Merge: smoothly blend the inner band pixels using distance-based
+    # transition weights instead of a hard step at the 16px boundary.
     output_f = patch_f.copy()
-    output_f[inner_band] = result_srgb[inner_band]
+    # Compute distance from the inner edge of the mask toward the interior
+    # for a smooth falloff over the ring_width_px band.
+    from synapse.render_core.morphology import binary_erosion as _be
+
+    # Distance-based smooth weight: 1.0 at the outer edge of the inner
+    # band (mask boundary) → 0.0 at the inner edge (eroded boundary).
+    # Pixels outside inner_band keep the original patch values.
+    if np.any(inner_band):
+        # Build distance field from the eroded boundary inward
+        # Approximate with iterative erosion layers
+        layers = max(1, ring_width_px)
+        weight_map = np.zeros(mask.shape, dtype=np.float64)
+        remaining = inner_band.copy()
+        for layer_i in range(layers):
+            # Fraction: outermost layer = 1.0, innermost = close to 0
+            frac = 1.0 - layer_i / layers
+            layer_mask = remaining & (~_be(remaining, _circular_structuring_element(1)))
+            weight_map[layer_mask] = frac
+            remaining = remaining & (~layer_mask)
+        # Any remaining pixels in inner_band that weren't peeled
+        weight_map[remaining] = 0.0
+
+        # Blend between original patch and colour-matched result
+        weight_3d = weight_map[..., np.newaxis]
+        output_f[inner_band] = (
+            weight_3d[inner_band] * result_srgb[inner_band]
+            + (1.0 - weight_3d[inner_band]) * patch_f[inner_band]
+        )
 
     if is_uint8:
         output_f = np.clip(output_f * 255.0, 0.0, 255.0)
@@ -414,9 +442,16 @@ def _forward_warp_bilinear(
     Pixels that receive no contribution retain the original value from
     *img* (fallback).
 
+    Convention: ``flow[y, x] = (dx, dy)`` is the screen-space displacement
+    of pixel ``(x, y)`` from the current frame to the next.  The flow sign
+    follows the camera coordinate system: positive dx = rightward motion,
+    positive dy = downward motion (consistent with rasterizer motion
+    vectors ``current_screen - prev_screen``).
+
     Args:
         img: ``[H, W, 3]`` uint8 or float source image.
-        flow: ``[H, W, 2]`` float32 flow field (dx, dy).
+        flow: ``[H, W, 2]`` float32 flow field (dx, dy) in the standard
+            camera coordinate sign convention.
 
     Returns:
         Warped image with the same shape and dtype as *img*.
@@ -427,6 +462,7 @@ def _forward_warp_bilinear(
     weight = np.zeros((h, w), dtype=np.float64)
 
     yy, xx = np.mgrid[:h, :w]
+    # Forward warp: pixel at (x,y) splatted to (x+dx, y+dy)
     tx = xx.astype(np.float64) + flow[..., 0].astype(np.float64)
     ty = yy.astype(np.float64) + flow[..., 1].astype(np.float64)
 
@@ -627,24 +663,33 @@ def composite_optical_increments(
         cid = cryptomatte_ids[t]
         guide = _cryptomatte_boundary_guide(cid)
 
-        # Apply guided filter to align the frame to Cryptomatte
+        # IMPORTANT: Do NOT apply guided filter to the original video
+        # background. The guided filter is only used for aligning
+        # optical increment layers (shadow/caustics) to Cryptomatte
         # boundaries.
-        if guided_filter_r > 0:
-            frame_acescg = _guided_filter_box(
-                guide, frame_acescg, guided_filter_r,
-            )
 
-        # 3. Multiplicative contact shadow.
+        # 3. Multiplicative contact shadow (with boundary-aware smoothing).
         if contact_shadow_map is not None:
             shadow = contact_shadow_map[t].astype(np.float64)
             # Clamp to prevent dead blacks (min attenuation 0.01).
             shadow = np.clip(shadow, 0.01, 1.0)
+            # Apply guided filter to the shadow map for boundary alignment
+            if guided_filter_r > 0:
+                shadow = _guided_filter_box(
+                    guide, shadow[..., np.newaxis], guided_filter_r,
+                )[..., 0]
+                shadow = np.clip(shadow, 0.01, 1.0)
             frame_acescg = frame_acescg * shadow[..., np.newaxis]
 
-        # 4. Additive HDR caustics.
+        # 4. Additive HDR caustics (with boundary-aware smoothing).
         if caustics_map is not None:
             caustics_linear = caustics_map[t].astype(np.float64)
             caustics_acescg = linear_srgb_to_acescg(caustics_linear)
+            # Apply guided filter to the caustics layer for boundary alignment
+            if guided_filter_r > 0:
+                caustics_acescg = _guided_filter_box(
+                    guide, caustics_acescg, guided_filter_r,
+                )
             frame_acescg = frame_acescg + caustics_acescg
 
         # 5. ACEScg → linear sRGB → sRGB display.

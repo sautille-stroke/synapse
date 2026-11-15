@@ -127,12 +127,17 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     grain using per-frame statistics aggregated via cross-frame median.
 
     Args:
-        frames_srgb: sRGB video frames, shape (T, H, W, 3), dtype uint8.
+        frames_srgb: sRGB video frames, shape (T, H, W, 3), dtype uint8
+            or float32/float64 (already in [0,1] range).
 
     Returns:
         Populated ``StyleDescriptor`` with optical estimates.
     """
-    frames = np.asarray(frames_srgb, dtype=np.float64) / 255.0
+    frames = np.asarray(frames_srgb, dtype=np.float64)
+    # Only divide by 255.0 for integer (uint8) input; float HDR input
+    # is already in [0, 1] or wider range and must NOT be re-normalised.
+    if np.issubdtype(frames_srgb.dtype, np.integer):
+        frames = frames / 255.0
     T = frames.shape[0]
 
     cct_list: list[float] = []
@@ -172,7 +177,11 @@ def extract_style_fgpp_intrinsic(
     """
     # Start with optical estimates
     desc = extract_style_optical(frames_srgb)
-    frames_f = np.asarray(frames_srgb, dtype=np.float64) / 255.0
+    frames_f = np.asarray(frames_srgb, dtype=np.float64)
+    # Only divide by 255.0 for integer (uint8) input; float HDR input
+    # is already in [0, 1] or wider range.
+    if np.issubdtype(frames_srgb.dtype, np.integer):
+        frames_f = frames_f / 255.0
 
     T = min(frames_f.shape[0], fgpp_seq.num_frames)
 
@@ -203,6 +212,25 @@ def extract_style_fgpp_intrinsic(
                 fgpp_frame.roughness_metallic, dtype=np.float64,
             )
             fg_mask = fg_mask & (rm[..., 0] > 0.3)
+
+        # Filter backfacing and invalid normal pixels.
+        # Only include pixels where (normal · -view_dir) > 0.05
+        # to ensure the normal faces toward the camera.
+        view_dir = fgpp_frame.camera.forward().astype(np.float64)
+        neg_view_dir = -view_dir  # direction from surface toward camera
+        # dot(normal, -view_dir) for each pixel
+        ndotv = (
+            normals[..., 0] * neg_view_dir[0]
+            + normals[..., 1] * neg_view_dir[1]
+            + normals[..., 2] * neg_view_dir[2]
+        )
+        # Also filter normals with near-zero magnitude (invalid)
+        normal_len = np.sqrt(
+            normals[..., 0] ** 2
+            + normals[..., 1] ** 2
+            + normals[..., 2] ** 2
+        )
+        fg_mask = fg_mask & (ndotv > 0.05) & (normal_len > 0.1)
 
         # Flatten valid pixels
         valid = fg_mask.ravel()
