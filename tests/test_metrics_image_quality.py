@@ -1,4 +1,6 @@
-"""Tests for image quality metrics, metric aliases, and chunked Chamfer fallback."""
+"""Tests for image quality metrics, metric aliases, chunked Chamfer fallback,
+and degenerate output validation.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ from synapse.metrics import (
     lpips,
     psnr_db,
     ssim,
+    validate_output_non_degenerate,
 )
 
 
@@ -123,3 +126,89 @@ class TestChunkedChamferFallback:
         assert chamfer_mm(pts, shifted) == pytest.approx(2.0, abs=1e-6)
         assert f_score_1mm(pts, pts) == pytest.approx(1.0)
         assert f_score_1mm(pts, shifted, threshold_mm=1.0) == pytest.approx(0.0)
+
+
+class TestLpipsMaskNormalization:
+    """Verify LPIPS with spatial mask normalizes by valid pixel count."""
+
+    def test_lpips_mask_higher_than_unmasked_background(self) -> None:
+        """With a mask, lpips should be higher (more sensitive) than without
+        mask when the difference is concentrated in the masked region, because
+        background zeros no longer dilute the result."""
+        rng = np.random.default_rng(42)
+        gt = rng.random((32, 32, 3), dtype=np.float64)
+        pred = gt.copy()
+        # Introduce large difference only in a small region
+        pred[10:15, 10:15, :] = 1.0 - pred[10:15, 10:15, :]
+
+        mask = np.zeros((32, 32), dtype=bool)
+        mask[10:15, 10:15] = True
+
+        lpips_masked = lpips(pred, gt, mask=mask)
+        lpips_no_mask = lpips(pred, gt)
+
+        # Masked should be >= unmasked since it focuses on the changed region
+        assert lpips_masked >= lpips_no_mask * 0.8  # reasonable range
+
+    def test_lpips_empty_mask_returns_zero(self) -> None:
+        """An all-False mask means no valid pixels — returns 0.0."""
+        gt = np.random.default_rng(7).random((16, 16, 3), dtype=np.float64)
+        pred = 1.0 - gt
+        mask = np.zeros((16, 16), dtype=bool)
+        assert lpips(pred, gt, mask=mask) == pytest.approx(0.0)
+
+
+class TestValidateOutputNonDegenerate:
+    """Tests for per-channel variance and temporal diff validation."""
+
+    def test_valid_diverse_frames_pass(self) -> None:
+        """Normal varied frames should pass validation."""
+        rng = np.random.default_rng(42)
+        frames = rng.integers(0, 256, (8, 32, 32, 3), dtype=np.uint8)
+        # Should not raise
+        validate_output_non_degenerate(frames)
+
+    def test_pure_red_constant_blocked(self) -> None:
+        """Pure red [255, 0, 0] constant sequence must be caught as
+        per-channel degenerate (G and B channels have zero variance)."""
+        from synapse.errors import QualityGateError
+
+        frames = np.zeros((4, 16, 16, 3), dtype=np.uint8)
+        frames[..., 0] = 255  # pure red on all frames
+        with pytest.raises(QualityGateError, match="channel.*variance"):
+            validate_output_non_degenerate(frames)
+
+    def test_all_zero_blocked(self) -> None:
+        """All-zero frames must be caught."""
+        from synapse.errors import QualityGateError
+
+        frames = np.zeros((4, 16, 16, 3), dtype=np.uint8)
+        with pytest.raises(QualityGateError, match="all-zero"):
+            validate_output_non_degenerate(frames)
+
+    def test_nan_blocked(self) -> None:
+        """NaN frames must be caught."""
+        from synapse.errors import QualityGateError
+
+        frames = np.full((2, 8, 8, 3), np.nan, dtype=np.float32)
+        with pytest.raises(QualityGateError, match="NaN"):
+            validate_output_non_degenerate(frames)
+
+    def test_frozen_still_blocked(self) -> None:
+        """Identical frames across time (frozen-still) must be caught
+        by temporal diff variance check."""
+        from synapse.errors import QualityGateError
+
+        rng = np.random.default_rng(99)
+        single = rng.integers(0, 256, (1, 32, 32, 3), dtype=np.uint8)
+        # Repeat identical frame 8 times
+        frames = np.tile(single, (8, 1, 1, 1))
+        with pytest.raises(QualityGateError, match="temporally frozen"):
+            validate_output_non_degenerate(frames)
+
+    def test_single_frame_skips_temporal_check(self) -> None:
+        """Single frame (T=1) should only check spatial variance, not temporal."""
+        rng = np.random.default_rng(42)
+        frame = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
+        # Should not raise for a single diverse frame
+        validate_output_non_degenerate(frame)

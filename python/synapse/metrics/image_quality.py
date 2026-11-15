@@ -313,8 +313,16 @@ def lpips(
             if m.ndim == 2
             else _expand_mask(m, p4.shape)
         )
+        # Normalize by valid mask pixel count, not total pixel count,
+        # to avoid diluting the distance with background zeros.
+        valid_count = int(np.count_nonzero(m4))
+        if valid_count == 0:
+            return 0.0
         p4 = np.where(m4, p4, 0.0)
         g4 = np.where(m4, g4, 0.0)
+
+    # Track whether we have a spatial mask for normalization
+    _has_mask = mask is not None
 
     # Convert to perceptual opponent channels (Y, C1, C2)
     def _to_opponent(rgb: np.ndarray) -> np.ndarray:
@@ -336,7 +344,12 @@ def lpips(
     cur_g = op_g
     for w in scale_weights:
         _, h_s, w_s, _ = cur_p.shape
-        l1_val = float(np.mean(np.abs(cur_p - cur_g)))
+        abs_diff = np.abs(cur_p - cur_g)
+        if _has_mask:
+            # Sum over all elements, normalize by valid_count
+            l1_val = float(np.sum(abs_diff)) / valid_count
+        else:
+            l1_val = float(np.mean(abs_diff))
 
         if h_s >= 3 and w_s >= 3:
             gx_p = cur_p[:, :, 1:, :] - cur_p[:, :, :-1, :]
@@ -373,21 +386,29 @@ def lpips(
 def validate_output_non_degenerate(
     frames: np.ndarray,
     min_variance: float = 1e-4,
+    min_temporal_diff_variance: float = 1e-6,
 ) -> None:
     """Validate that generated video frames are non-degenerate (Tier-2 quality gate).
 
     Ensures that output frames:
     1. Are finite (no NaN or Inf values).
     2. Are not completely all-zero / blank.
-    3. Have spatial-temporal variance Var(X) > min_variance (preventing flat constant frames).
+    3. Have per-channel spatial variance > min_variance on **every** channel
+       (prevents single-color frames like pure red ``[1, 0, 0]``).
+    4. For multi-frame sequences (T >= 2), have cross-frame temporal diff
+       variance > min_temporal_diff_variance (prevents frozen-still video).
 
     Args:
         frames: Video frames array ``[T, H, W, C]`` or ``[H, W, C]``.
-        min_variance: Variance floor in normalized ``[0, 1]`` space (default 1e-4).
+        min_variance: Per-channel spatial variance floor in normalized
+            ``[0, 1]`` space (default 1e-4).
+        min_temporal_diff_variance: Temporal difference variance floor
+            (default 1e-6).
 
     Raises:
-        QualityGateError: If frames contain NaN/Inf, are all zero, or have
-            variance <= min_variance (exit code 40).
+        QualityGateError: If frames contain NaN/Inf, are all zero, have
+            any channel below variance floor, or are temporally frozen
+            (exit code 40).
     """
     from synapse.errors import QualityGateError
 
@@ -411,10 +432,53 @@ def validate_output_non_degenerate(
     else:
         arr_norm = arr.astype(np.float64)
 
-    variance = float(np.var(arr_norm))
-    if variance <= min_variance:
-        raise QualityGateError(
-            f"Generated video frames are degenerate: variance {variance:.6e} <= floor {min_variance:.6e}.",
-            agent_fix_hint="Ensure model produces varied textures and dynamic motion instead of constant color.",
-            details={"measured_variance": variance, "min_variance": min_variance},
-        )
+    # Ensure 4D [T, H, W, C]
+    if arr_norm.ndim == 3:
+        arr_norm = arr_norm[np.newaxis, ...]  # [1, H, W, C]
+
+    n_channels = arr_norm.shape[-1]
+
+    # Check 1: Per-channel spatial variance across all frames
+    # Flatten spatial+temporal dims per channel: [T*H*W]
+    flat = arr_norm.reshape(-1, n_channels)
+    channel_variances = np.var(flat, axis=0)  # [C]
+
+    for ch_idx in range(n_channels):
+        ch_var = float(channel_variances[ch_idx])
+        if ch_var <= min_variance:
+            raise QualityGateError(
+                f"Generated video frames are degenerate: channel {ch_idx} "
+                f"spatial variance {ch_var:.6e} <= floor {min_variance:.6e}. "
+                f"Possible single-color constant output.",
+                agent_fix_hint=(
+                    "Ensure model produces varied textures and per-channel diversity "
+                    "instead of constant color (e.g. pure red)."
+                ),
+                details={
+                    "channel": ch_idx,
+                    "channel_variance": ch_var,
+                    "min_variance": min_variance,
+                    "all_channel_variances": [float(v) for v in channel_variances],
+                },
+            )
+
+    # Check 2: Cross-frame temporal diff variance (frozen-still detection)
+    if arr_norm.shape[0] >= 2:
+        # Compute frame-to-frame differences [T-1, H, W, C]
+        temporal_diffs = np.diff(arr_norm, axis=0)
+        temporal_var = float(np.var(temporal_diffs))
+        if temporal_var <= min_temporal_diff_variance:
+            raise QualityGateError(
+                f"Generated video frames are temporally frozen: "
+                f"temporal diff variance {temporal_var:.6e} <= "
+                f"floor {min_temporal_diff_variance:.6e}.",
+                agent_fix_hint=(
+                    "Ensure model produces dynamic motion across frames "
+                    "instead of frozen-still identical frames."
+                ),
+                details={
+                    "temporal_diff_variance": temporal_var,
+                    "min_temporal_diff_variance": min_temporal_diff_variance,
+                    "num_frames": arr_norm.shape[0],
+                },
+            )

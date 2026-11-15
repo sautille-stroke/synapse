@@ -59,6 +59,7 @@ from synapse.metrics.style_consistency import (
     tone_curve_rmse,
 )
 from synapse.metrics.temporal import (
+    FVDResult,
     compute_fvd_from_videos,
     flicker_score,
     fvd_feature_distance,
@@ -82,6 +83,7 @@ __all__ = [
     "temporal_warp_error",
     "flicker_score",
     "fvd_feature_distance",
+    "FVDResult",
     "compute_fvd_from_videos",
     # fgpp_fidelity
     "depth_rmse_m",

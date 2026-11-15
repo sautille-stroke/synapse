@@ -26,6 +26,63 @@ class TestProfiles:
         assert len(TRACK_A_ASSET) == 16
         assert len(RSI_PROMOTION) == 16
 
+    def test_all_profile_keys_registered_in_metric_directions(self) -> None:
+        """Every metric key in every tier MUST be explicitly registered in
+        _METRIC_DIRECTIONS — no silent fallback to _LOWER allowed."""
+        from synapse.metrics.profiles import (
+            _METRIC_DIRECTIONS,
+            RSI_PROMOTION,
+            RSI_PROMOTION_TARGET,
+            TRACK_A_ASSET,
+            TRACK_B_VIDEO,
+        )
+
+        all_profiles = {
+            "track_b_video": TRACK_B_VIDEO,
+            "track_a_asset": TRACK_A_ASSET,
+            "rsi_promotion": RSI_PROMOTION,
+            "rsi_promotion_target": RSI_PROMOTION_TARGET,
+        }
+        for profile_name, profile in all_profiles.items():
+            for key in profile:
+                assert key in _METRIC_DIRECTIONS, (
+                    f"Metric key {key!r} in profile {profile_name!r} is NOT "
+                    f"registered in _METRIC_DIRECTIONS. All keys must be "
+                    f"explicitly registered to prevent silent direction fallback."
+                )
+
+    def test_f_score_5mm_and_watertight_directions(self) -> None:
+        """f_score_5mm and watertight_pct must be higher_is_better."""
+        from synapse.metrics.profiles import _METRIC_DIRECTIONS
+
+        assert _METRIC_DIRECTIONS["f_score_5mm"] == "higher_is_better"
+        assert _METRIC_DIRECTIONS["watertight_pct"] == "higher_is_better"
+
+    def test_watertight_pct_100_passes_gate(self) -> None:
+        """watertight_pct=100.0 with higher_is_better must pass gate."""
+        from synapse.metrics import evaluate_metrics_gate
+
+        verdict = evaluate_metrics_gate(
+            {"watertight_pct": 100.0},
+            "track_b_video",
+            scenario_overrides={"watertight_pct": 50.0},
+        )
+        assert verdict.passed is True
+
+    def test_watertight_pct_0_fails_gate(self) -> None:
+        """watertight_pct=0.0 with higher_is_better threshold must fail."""
+        from synapse.metrics import evaluate_metrics_gate
+
+        verdict = evaluate_metrics_gate(
+            {"watertight_pct": 0.0},
+            "track_b_video",
+            scenario_overrides={"watertight_pct": 50.0},
+        )
+        assert verdict.passed is False
+        assert any(
+            v.metric_name == "watertight_pct" for v in verdict.violations
+        )
+
     def test_profile_strictness_ordering(self) -> None:
         """RSI thresholds must be equal or stricter than Track-A."""
         from synapse.metrics.profiles import (
@@ -178,6 +235,72 @@ class TestTemporal:
         gen = rng.standard_normal((100, 8)) + 5.0
         fvd = fvd_feature_distance(real, gen)
         assert fvd > 0.0
+
+    def test_fvd_singular_covariance_no_warning(self) -> None:
+        """Singular covariance (constant features) must NOT trigger
+        scipy.linalg.LinAlgWarning thanks to Tikhonov regularization."""
+        from synapse.metrics import fvd_feature_distance
+
+        # All rows identical -> covariance is zero matrix -> singular
+        feats_real = np.ones((10, 4), dtype=np.float64)
+        feats_gen = np.ones((10, 4), dtype=np.float64) * 2.0
+        # With -W error::scipy.linalg.LinAlgWarning, this would raise
+        # if regularization is missing.
+        fvd = fvd_feature_distance(feats_real, feats_gen)
+        assert fvd >= 0.0
+        assert np.isfinite(fvd)
+
+    def test_fvd_near_singular_covariance_stable(self) -> None:
+        """Near-singular covariance (low-rank features) remains stable."""
+        from synapse.metrics import fvd_feature_distance
+
+        rng = np.random.default_rng(99)
+        # 50 samples of 16-D but only rank 2
+        basis = rng.standard_normal((2, 16))
+        coeffs_real = rng.standard_normal((50, 2))
+        coeffs_gen = rng.standard_normal((50, 2)) + 3.0
+        feats_real = coeffs_real @ basis
+        feats_gen = coeffs_gen @ basis
+        fvd = fvd_feature_distance(feats_real, feats_gen)
+        assert fvd > 0.0
+        assert np.isfinite(fvd)
+
+    def test_compute_fvd_from_videos_proxy(self) -> None:
+        """compute_fvd_from_videos with allow_statistical_proxy returns FVDResult."""
+        from synapse.metrics import compute_fvd_from_videos
+
+        rng = np.random.default_rng(42)
+        real = rng.random((3, 4, 8, 8, 3)).astype(np.float32)
+        gen = rng.random((3, 4, 8, 8, 3)).astype(np.float32) + 0.5
+
+        result = compute_fvd_from_videos(
+            real, gen, allow_statistical_proxy=True,
+        )
+        assert result.is_proxy_metric is True
+        assert result.value >= 0.0
+        assert np.isfinite(result.value)
+
+    def test_compute_fvd_from_videos_no_proxy_raises(self) -> None:
+        """compute_fvd_from_videos with require_pretrained=True raises
+        BackendUnavailableError when torch is not available."""
+        from synapse.metrics import compute_fvd_from_videos
+
+        rng = np.random.default_rng(42)
+        real = rng.random((3, 4, 8, 8, 3)).astype(np.float32)
+        gen = rng.random((3, 4, 8, 8, 3)).astype(np.float32)
+
+        # This test may pass or raise depending on torch availability,
+        # but at minimum it should not crash with unhandled exception.
+        try:
+            result = compute_fvd_from_videos(
+                real, gen, require_pretrained=True,
+            )
+            # If torch is available, we get a real result
+            assert result.is_proxy_metric is False
+        except Exception as exc:
+            from synapse.errors import BackendUnavailableError
+            assert isinstance(exc, BackendUnavailableError)
+            assert exc.exit_code == 30
 
 
 # ---------------------------------------------------------------------------
