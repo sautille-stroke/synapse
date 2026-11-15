@@ -276,13 +276,13 @@ flowchart LR
 - **涉及文件**：
   - `python/synapse/metrics/temporal.py`
   - `python/synapse/metrics/roundtrip.py`
-  - `tests/test_metrics_parity.py`, `tests/test_temporal.py`（或新增 `tests/test_rfc0063_metrics.py`）
+  - `tests/test_metrics_parity.py`, `tests/test_rfc0063_metrics.py`
 - **核心变更**：
   1. **对齐 $E_{\text{warp}}$ L1 定义**：在 `metrics/temporal.py` 新增清晰的 L1 遮挡加权光流弯曲误差实现（及对原生 `@aether//metrics` 与 `RFC-0063` L1 定义之间 RMSE/L1 口径差异的显式 `metric="l1" | "rmse"` 参数与默认校准），并消除空壳 `_warn_fallback`。
   2. **接入 FVD 视频特征提取桥**：为 `fvd_feature_distance` 新增轻量可插拔特征提取入口 `compute_fvd_from_videos(real_videos, gen_videos, feature_extractor=...)`（支持延迟加载 `torchvision`/I3D 或明确抛出带指引的 `BackendUnavailableError (30)`，避免仅停留在矩阵 API）。
   3. **补全 3D 几何评测指标**：在 `metrics/roundtrip.py` 补全 `f_score_5mm` 与 `watertight_pct`，并在 `chamfer_mm` 增加 `reduction: Literal["mean", "sum"] = "mean"` 与行业对比换算说明（消除与 PointNet/TRELLIS `sum` 惯例的 $2\times$ 误比）。
 - **验收门禁 (`ubuntu24`)**：
-  - `/root/venv-synapse/bin/pytest tests/test_rfc0063_metrics.py tests/test_temporal.py tests/test_roundtrip_metrics.py -v`
+  - `/root/venv-synapse/bin/pytest tests/test_rfc0063_metrics.py tests/test_roundtrip_reconstruction.py -v`
 
 ---
 
@@ -315,14 +315,14 @@ flowchart LR
   - `python/synapse/cli/_rsi.py`
   - `python/synapse/cli/_fgpp.py`
   - `python/synapse/cli/_generate.py`
-  - `tests/test_cli.py`, `tests/test_fgpp.py`
+  - `tests/test_cli.py`, `tests/test_fgpp_contract.py`, `tests/test_cli_deterministic_codes.py`
 - **核心变更**：
   1. `_cmd_bench_run`：当启用门禁 Profile（`--profile`）且任一场景 `gate_verdict.passed is False` 时，严格抛出 `QualityGateError`（返回退出码 **`40`**）而非悄然以 `0` 成功退出。
   2. `_cmd_rsi_gate_promote`：新增独立参数 `--baseline-geom`、`--candidate-geom`、`--baseline-temporal`、`--candidate-temporal`（当未提供细粒度轴分时显式校验并拒绝把单一 `overall` 伪造广播为三轴）。
   3. `_cmd_fgpp_validate`：在校验 `metadata.json` 之外，真实调用 `import_fgpp` / OpenEXR 读取器逐帧核验 `.exr` 文件是否包含完整 15 通道、对应 `PixelType`（含 `Cryptomatte.ID == UINT32`）及非 NaN/Inf 有限值。
   4. `main_data_gen`（`cli/_generate.py:20-100`）：补齐 `--json` 与 `_run_with_json_mode` 统一信封支持，消除独立 CLI 入口纯文本泄漏。
 - **验收门禁 (`ubuntu24`)**：
-  - `/root/venv-synapse/bin/pytest tests/test_cli.py tests/test_fgpp.py -v`
+  - `/root/venv-synapse/bin/pytest tests/test_cli.py tests/test_fgpp_contract.py tests/test_cli_deterministic_codes.py -v`
 
 ---
 
@@ -334,13 +334,13 @@ flowchart LR
   - `python/synapse/adapters/wan.py`
   - `python/synapse/adapters/scheduler.py`
   - `python/synapse/telemetry.py`（或 `python/synapse/metrics/gates.py`）
-  - `tests/test_wan_adapter.py`, `tests/test_fgpp.py`
+  - `tests/test_wan_lora_wiring.py`, `tests/test_fgpp_contract.py`
 - **核心变更**：
   1. **接入 48 帧物理锚点**：将 `DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES (48)` 接入 `ConditionScheduler` 与 `WanAdapter.prepare_conditions()`，在输出 `PreparedConditionPayload.extra` 中生成并校验 `physical_anchor_indices` 与局部重锚定窗口标注。
   2. **消除 `float32` 提前截断**：在 `WanAdapter.prepare_conditions` 调用 `linear_to_log_normalized_depth` 时保留 `float64` 中间态与可选高精通道校验钩子（仅在最终组装视频模型张量切片时转为 `float32`/target dtype），确保物理深度编解码往返误差在科学计算端 `< 1e-12`。
   3. **落地 Tier-2 输出非退化检查**：新增 `validate_output_non_degenerate(frames, min_variance=1e-4)`（检验有限性、全零退化与方差 `Var(X) > 1e-4`，不达标抛出 `QualityGateError (40)`），并在 Adapter 生成链路末端可选/默认开启。
 - **验收门禁 (`ubuntu24`)**：
-  - `/root/venv-synapse/bin/pytest tests/test_wan_adapter.py tests/test_scheduler.py tests/test_fgpp.py -v`
+  - `/root/venv-synapse/bin/pytest tests/test_wan_lora_wiring.py tests/test_condition_scheduler.py tests/test_fgpp_contract.py -v`
   - **防静默断言**：纯常数灰帧测试触发 `validate_output_non_degenerate` 严格报错（`exit_code=40`）。
 
 ---

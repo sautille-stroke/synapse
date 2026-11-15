@@ -1,6 +1,8 @@
 # RFC 0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范
 
-- **RFC 编号**: `RFC 0060`
+> **Namespace Alias**: `SYN-RFC-0060` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0060`.
+
+- **RFC 编号**: `SYN-RFC-0060`
 - **文档状态**: `Accepted (v1.1 — Aligned with M9)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联设计文档 (Layer B)**: [DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)

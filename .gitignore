@@ -63,4 +63,12 @@ assets/*/
 
 # Synapse-generated session data
 data/sessions/
-data/datasets/
+
+# Node.js (data-inspector)
+node_modules/
+
+# Mypy cache
+.mypy_cache/
+
+# Ruff cache
+.ruff_cache/
