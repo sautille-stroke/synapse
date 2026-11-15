@@ -9,6 +9,8 @@ from synapse.bench.model_loader import load_mesh
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.inspect.model_evaluator import (
     GATE_PROFILES,
+    ModelEvaluator,
+    _collect_model_files,
     evaluate_3d_models_directory,
     evaluate_profile_gates,
     evaluate_single_model,
@@ -72,6 +74,21 @@ class TestModelEvaluatorGateProfiles:
         assert "is_watertight" in GATE_PROFILES["TRACK_A_ASSET"]
         assert "is_watertight" in GATE_PROFILES["RSI_PROMOTION"]
         assert "is_watertight" in GATE_PROFILES["RSI_PROMOTION_TARGET"]
+
+    def test_all_16_canonical_metrics_aligned(self) -> None:
+        """Verify full 16-item profiles.py metrics are present in GATE_PROFILES."""
+        for name, p_dict in [
+            ("TRACK_A_ASSET", TRACK_A_ASSET),
+            ("TRACK_B_VIDEO", TRACK_B_VIDEO),
+            ("RSI_PROMOTION", RSI_PROMOTION),
+            ("RSI_PROMOTION_TARGET", RSI_PROMOTION_TARGET),
+        ]:
+            gate = GATE_PROFILES[name]
+            assert len(p_dict) >= 16
+            for metric_key, expected_thresh in p_dict.items():
+                assert metric_key in gate, f"{metric_key} missing from {name}"
+                thresh, op = gate[metric_key]
+                assert thresh == float(expected_thresh)
 
     def test_profile_normalization(self) -> None:
         assert normalize_eval_profile("track_a_asset") == "TRACK_A_ASSET"
@@ -193,3 +210,39 @@ class TestModelDirectoryEvaluation:
                 output_dir=tmp_path / "out",
                 resolution=-1,
             )
+
+    def test_nested_assets_no_key_collision(self, tmp_path: Path) -> None:
+        """Verify nested assets (e.g. asset_a/meshes/model.obj and asset_b/meshes/model.obj)
+
+        coexist without key collision and produce two independent evaluation records.
+        """
+        in_dir = tmp_path / "inputs_nested"
+        out_dir = tmp_path / "outputs_nested"
+        ref_dir = tmp_path / "refs_nested"
+
+        _create_test_obj(in_dir / "asset_a" / "meshes" / "model.obj")
+        _create_test_obj(ref_dir / "asset_a" / "meshes" / "model.obj")
+        _create_test_obj(in_dir / "asset_b" / "meshes" / "model.obj")
+        _create_test_obj(ref_dir / "asset_b" / "meshes" / "model.obj")
+
+        evaluator = ModelEvaluator(
+            profile_name="TRACK_A_ASSET",
+            resolution=64,
+            num_views=6,
+            geometry_backend=_BACKEND,
+        )
+        res = evaluator.evaluate_directory(
+            input_dir=in_dir,
+            output_dir=out_dir,
+            reference_dir=ref_dir,
+        )
+
+        assert res["summary"]["total"] == 2
+        assert res["summary"]["passed"] == 2
+        model_names = [m["name"] for m in res["models"]]
+        assert len(model_names) == 2
+        assert "asset_a/meshes/model" in model_names
+        assert "asset_b/meshes/model" in model_names
+        # Ensure files were collected by helper
+        collected = _collect_model_files(in_dir)
+        assert len(collected) == 2

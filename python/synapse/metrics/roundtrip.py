@@ -13,6 +13,8 @@ import numpy as np
 
 __all__ = [
     "chamfer_mm",
+    "compute_chamfer_distance_mm",
+    "sample_mesh_surface",
     "f_score_1mm",
     "f_score_5mm",
     "watertight_pct",
@@ -99,6 +101,123 @@ def chamfer_mm(
         raise ValueError(f"Unsupported reduction: '{reduction}'. Choose 'mean' or 'sum'.")
 
     return chamfer_m * 1000.0  # metres → mm
+
+
+def sample_mesh_surface(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    num_samples: int = 10000,
+    seed: int | None = 42,
+) -> np.ndarray:
+    """Sample points uniformly on a triangle mesh surface weighted by face area.
+
+    Solves vertex-density sensitivity: models with non-uniform tessellation
+    (dense planar faces vs sparse curvature) receive unbiased, surface-area-proportional
+    point clouds for geometry evaluation.
+
+    Args:
+        vertices: ``[N, 3]`` float array of vertex coordinates in metres.
+        faces: ``[M, 3]`` int array of triangle face vertex indices.
+        num_samples: Number of surface points to sample (default: 10000).
+        seed: Optional RNG seed for reproducible sampling.
+
+    Returns:
+        ``[num_samples, 3]`` float64 array of sampled 3D points on the mesh surface.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    if len(v) == 0 or len(f) == 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    # Triangle vertices: [M, 3]
+    v0 = v[f[:, 0]]
+    v1 = v[f[:, 1]]
+    v2 = v[f[:, 2]]
+
+    # Face areas: Area = 0.5 * ||(v1 - v0) x (v2 - v0)||
+    cross = np.cross(v1 - v0, v2 - v0)
+    areas = 0.5 * np.linalg.norm(cross, axis=1)
+    total_area = float(np.sum(areas))
+
+    rng = np.random.default_rng(seed)
+    if total_area <= 1e-12:
+        indices = rng.integers(0, len(v), size=num_samples)
+        return v[indices]
+
+    probs = areas / total_area
+    face_choices = rng.choice(len(f), size=num_samples, p=probs)
+
+    # Turk/Osada uniform triangle interior sampling via square root folding
+    r1 = rng.uniform(0.0, 1.0, size=num_samples)
+    r2 = rng.uniform(0.0, 1.0, size=num_samples)
+    sqrt_r1 = np.sqrt(r1)
+    u = 1.0 - sqrt_r1
+    val_v = sqrt_r1 * (1.0 - r2)
+    w = sqrt_r1 * r2
+
+    pts_v0 = v0[face_choices]
+    pts_v1 = v1[face_choices]
+    pts_v2 = v2[face_choices]
+
+    sampled = (
+        u[:, np.newaxis] * pts_v0
+        + val_v[:, np.newaxis] * pts_v1
+        + w[:, np.newaxis] * pts_v2
+    )
+    return sampled
+
+
+def _extract_or_sample_points(
+    mesh_or_points: Any,
+    faces: np.ndarray | None = None,
+    num_samples: int = 10000,
+    seed: int = 42,
+) -> np.ndarray:
+    """Extract or sample points from mesh or point cloud."""
+    if hasattr(mesh_or_points, "vertices") and hasattr(mesh_or_points, "faces"):
+        verts = np.asarray(mesh_or_points.vertices, dtype=np.float64)
+        mesh_faces = np.asarray(mesh_or_points.faces, dtype=np.int64)
+        if len(mesh_faces) > 0:
+            return sample_mesh_surface(verts, mesh_faces, num_samples=num_samples, seed=seed)
+        return verts
+
+    arr = np.asarray(mesh_or_points, dtype=np.float64)
+    if faces is not None and len(faces) > 0:
+        return sample_mesh_surface(arr, np.asarray(faces, dtype=np.int64), num_samples=num_samples, seed=seed)
+    return arr
+
+
+def compute_chamfer_distance_mm(
+    mesh_or_points_a: Any,
+    mesh_or_points_b: Any,
+    faces_a: np.ndarray | None = None,
+    faces_b: np.ndarray | None = None,
+    num_samples: int = 10000,
+    reduction: Literal["mean", "sum"] = "mean",
+    seed: int = 42,
+) -> float:
+    """Bilateral Chamfer distance in millimetres with area-weighted surface sampling.
+
+    Accepts point clouds, mesh objects (with ``.vertices`` and ``.faces``),
+    or vertex arrays with explicit face indices. When faces are provided,
+    applies area-weighted triangle uniform surface sampling (:func:`sample_mesh_surface`)
+    to eliminate vertex density bias.
+
+    Args:
+        mesh_or_points_a: Point cloud [N, 3] or mesh A.
+        mesh_or_points_b: Point cloud [M, 3] or mesh B.
+        faces_a: Optional triangle faces for A.
+        faces_b: Optional triangle faces for B.
+        num_samples: Number of surface samples when sampling from faces (default: 10000).
+        reduction: "mean" (default) or "sum".
+        seed: RNG seed for reproducible surface sampling.
+
+    Returns:
+        Symmetric Chamfer distance in millimetres.
+    """
+    pts_a = _extract_or_sample_points(mesh_or_points_a, faces_a, num_samples, seed)
+    pts_b = _extract_or_sample_points(mesh_or_points_b, faces_b, num_samples, seed)
+    return chamfer_mm(pts_a, pts_b, reduction=reduction)
 
 
 def f_score_1mm(

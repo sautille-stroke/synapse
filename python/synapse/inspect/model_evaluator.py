@@ -33,10 +33,16 @@ from synapse.inspect.geometry_gate import validate_mesh_geometry
 # Gate profiles (dynamically derived from synapse.metrics.profiles)
 # -------------------------------------------------------------------
 from synapse.metrics.profiles import (
+    _LOWER,
+    _METRIC_DIRECTIONS,
     RSI_PROMOTION,
     RSI_PROMOTION_TARGET,
     TRACK_A_ASSET,
     TRACK_B_VIDEO,
+)
+from synapse.metrics.roundtrip import (
+    compute_chamfer_distance_mm,
+    sample_mesh_surface,
 )
 
 
@@ -57,8 +63,11 @@ def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
             gate["is_watertight"] = (1.0, "eq")
             gate["num_degenerate_faces"] = (0.0, "eq")
             gate["self_intersecting_pairs"] = (0.0, "eq")
-        if "chamfer_mm" in p_dict:
-            gate["chamfer_mm"] = (float(p_dict["chamfer_mm"]), "le")
+        # Full 16-item profiles.py SSOT gate alignment
+        for metric_name, thresh in p_dict.items():
+            dir_str = _METRIC_DIRECTIONS.get(metric_name, _LOWER)
+            op = "le" if dir_str == _LOWER else "ge"
+            gate[metric_name] = (float(thresh), op)
         profiles[name] = gate
     return profiles
 
@@ -156,18 +165,27 @@ def subsample_point_cloud(
 def evaluate_profile_gates(
     metrics: dict[str, float],
     profile_name: str,
+    required_keys: set[str] | list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, bool]:
     """Evaluate gate thresholds from *profile_name* against *metrics* (fail-closed)."""
     canonical = normalize_eval_profile(profile_name)
     profile = GATE_PROFILES[canonical]
     results: dict[str, bool] = {}
+
+    base_required = {"is_manifold", "chamfer_mm"}
+    if canonical != "TRACK_B_VIDEO":
+        base_required.update({"is_watertight", "num_degenerate_faces", "self_intersecting_pairs"})
+    if required_keys is not None:
+        base_required.update(required_keys)
+
     for metric_name, (threshold, op) in profile.items():
         value = metrics.get(metric_name)
         if value is None:
-            # Fail-closed: missing metric cannot pass gate
-            if metric_name == "chamfer_mm":
-                results["reference_required_not_evaluated"] = False
-            results[metric_name] = False
+            # Fail-closed: missing metric in base_required cannot pass gate
+            if metric_name in base_required:
+                if metric_name == "chamfer_mm":
+                    results["reference_required_not_evaluated"] = False
+                results[metric_name] = False
             continue
         if not np.isfinite(value):
             results[metric_name] = False
@@ -240,30 +258,48 @@ def render_orbit_views(
     return stacked, screenshots, labels[:num_views]
 
 
+def _collect_model_files(directory: Path) -> list[Path]:
+    """Collect all supported 3D model files recursively in directory."""
+    directory = Path(directory)
+    if not directory.exists() or not directory.is_dir():
+        return []
+    return sorted(
+        p
+        for p in directory.rglob("*")
+        if p.is_file() and p.suffix.lower() in MODEL_EXTENSIONS
+    )
+
+
 def evaluate_single_model(
     model_path: Path,
     profile_name: str,
     resolution: int = 256,
     num_views: int = 8,
     reference_mesh: Any | None = None,
+    model_name: str | None = None,
     log_fn: Callable[[str], None] | None = None,
     geometry_backend: Literal["native", "python"] = "native",
 ) -> ModelEvalResult:
     """Evaluate a single 3D model file against *profile_name*."""
     from synapse.bench.model_loader import load_mesh
     from synapse.metrics.image_quality import ciede2000, lpips, psnr_db, ssim
-    from synapse.metrics.roundtrip import chamfer_mm, f_score_1mm
+    from synapse.metrics.roundtrip import (
+        compute_chamfer_distance_mm,
+        f_score_1mm,
+        sample_mesh_surface,
+    )
 
     canonical_profile = normalize_eval_profile(profile_name)
+    effective_name = model_name if model_name is not None else model_path.name
 
     if log_fn:
-        log_fn(f"  Loading {model_path.name}...")
+        log_fn(f"  Loading {effective_name}...")
 
     try:
         mesh = load_mesh(str(model_path), normalize=True)
     except Exception as exc:
         return ModelEvalResult(
-            model_name=model_path.name,
+            model_name=effective_name,
             model_path=str(model_path),
             topology=TopologyResult(
                 is_manifold=False,
@@ -331,7 +367,7 @@ def evaluate_single_model(
     except Exception as exc:
         if log_fn:
             log_fn(
-                f"  Warning: failed to render orbit views for {model_path.name}: {exc}"
+                f"  Warning: failed to render orbit views for {effective_name}: {exc}"
             )
         pred_rgb = np.empty((0, resolution, resolution, 3), dtype=np.uint8)
         screenshots, labels = [], []
@@ -339,11 +375,21 @@ def evaluate_single_model(
     if reference_mesh is not None:
         if log_fn:
             log_fn("  Computing reference Chamfer / F-score / multi-view metrics...")
-        src_pts = subsample_point_cloud(verts, max_points=10000, seed=42)
-        tgt_pts = subsample_point_cloud(
-            reference_mesh.vertices, max_points=10000, seed=42
-        )
-        metrics["chamfer_mm"] = chamfer_mm(src_pts, tgt_pts)
+        # Area-weighted triangle surface sampling for vertex-density independence
+        if hasattr(mesh, "faces") and len(mesh.faces) > 0:
+            src_pts = sample_mesh_surface(verts, faces_arr, num_samples=10000, seed=42)
+        else:
+            src_pts = subsample_point_cloud(verts, max_points=10000, seed=42)
+
+        if hasattr(reference_mesh, "faces") and len(reference_mesh.faces) > 0:
+            tgt_pts = sample_mesh_surface(
+                reference_mesh.vertices, reference_mesh.faces, num_samples=10000, seed=42
+            )
+        else:
+            tgt_pts = subsample_point_cloud(
+                reference_mesh.vertices, max_points=10000, seed=42
+            )
+        metrics["chamfer_mm"] = compute_chamfer_distance_mm(src_pts, tgt_pts)
         metrics["f_score_1mm"] = f_score_1mm(src_pts, tgt_pts)
 
         if len(pred_rgb) > 0:
@@ -363,14 +409,14 @@ def evaluate_single_model(
             except Exception as exc:
                 if log_fn:
                     log_fn(
-                        f"  Warning: failed to compute multi-view comparison for {model_path.name}: {exc}"
+                        f"  Warning: failed to compute multi-view comparison for {effective_name}: {exc}"
                     )
 
     gate_results = evaluate_profile_gates(metrics, canonical_profile)
     overall_passed = bool(gate_results) and all(gate_results.values())
 
     return ModelEvalResult(
-        model_name=model_path.name,
+        model_name=effective_name,
         model_path=str(model_path),
         topology=topology,
         metrics=metrics,
@@ -413,11 +459,7 @@ def evaluate_3d_models_directory(
             agent_fix_hint="Provide a valid --input-dir directory path.",
         )
 
-    model_files = sorted(
-        p
-        for p in input_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in MODEL_EXTENSIONS
-    )
+    model_files = _collect_model_files(input_dir)
     if not model_files:
         raise AssetNotFoundError(
             f"No model files found in {input_dir}",
@@ -433,17 +475,18 @@ def evaluate_3d_models_directory(
         if ref_dir.exists() and ref_dir.is_dir():
             from synapse.bench.model_loader import load_mesh
 
-            for ref_path in sorted(ref_dir.rglob("*")):
-                if ref_path.is_file() and ref_path.suffix.lower() in MODEL_EXTENSIONS:
-                    try:
-                        reference_meshes[ref_path.stem] = load_mesh(
-                            str(ref_path), normalize=True,
+            for ref_path in _collect_model_files(ref_dir):
+                try:
+                    loaded = load_mesh(str(ref_path), normalize=True)
+                    rel_key = ref_path.relative_to(ref_dir).with_suffix("").as_posix()
+                    reference_meshes[rel_key] = loaded
+                    if ref_path.stem not in reference_meshes:
+                        reference_meshes[ref_path.stem] = loaded
+                except Exception as exc:
+                    if log_fn:
+                        log_fn(
+                            f"  Warning: failed to load reference mesh {ref_path.name}: {exc}"
                         )
-                    except Exception as exc:
-                        if log_fn:
-                            log_fn(
-                                f"  Warning: failed to load reference mesh {ref_path.name}: {exc}"
-                            )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     results: list[ModelEvalResult] = []
@@ -455,12 +498,15 @@ def evaluate_3d_models_directory(
         )
 
     for i, model_path in enumerate(model_files, 1):
+        rel_key = model_path.relative_to(input_dir).with_suffix("").as_posix()
         if log_fn:
-            log_fn(f"[{i}/{len(model_files)}] {model_path.name}")
-        ref_mesh = reference_meshes.get(model_path.stem)
+            log_fn(f"[{i}/{len(model_files)}] {rel_key}")
+        ref_mesh = reference_meshes.get(rel_key)
+        if ref_mesh is None:
+            ref_mesh = reference_meshes.get(model_path.stem)
         if reference_dir is not None and ref_mesh is None and log_fn:
             log_fn(
-                f"  Warning: no matching reference mesh found for {model_path.stem} in {reference_dir}"
+                f"  Warning: no matching reference mesh found for {rel_key} in {reference_dir}"
             )
         res = evaluate_single_model(
             model_path=model_path,
@@ -468,6 +514,7 @@ def evaluate_3d_models_directory(
             resolution=resolution,
             num_views=num_views,
             reference_mesh=ref_mesh,
+            model_name=rel_key,
             log_fn=log_fn,
             geometry_backend=geometry_backend,
         )
@@ -542,3 +589,57 @@ def evaluate_3d_models_directory(
         )
 
     return json_data
+
+
+class ModelEvaluator:
+    """Batch 3D model evaluation orchestrator."""
+
+    def __init__(
+        self,
+        profile_name: str = "TRACK_A_ASSET",
+        resolution: int = 256,
+        num_views: int = 8,
+        geometry_backend: Literal["native", "python"] = "native",
+    ) -> None:
+        self.profile_name = profile_name
+        self.resolution = resolution
+        self.num_views = num_views
+        self.geometry_backend = geometry_backend
+
+    def evaluate_directory(
+        self,
+        input_dir: Path,
+        output_dir: Path,
+        reference_dir: Path | None = None,
+        log_fn: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate all models in directory."""
+        return evaluate_3d_models_directory(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            reference_dir=reference_dir,
+            profile_name=self.profile_name,
+            resolution=self.resolution,
+            num_views=self.num_views,
+            log_fn=log_fn,
+            geometry_backend=self.geometry_backend,
+        )
+
+    def evaluate_model(
+        self,
+        model_path: Path,
+        reference_mesh: Any | None = None,
+        model_name: str | None = None,
+        log_fn: Callable[[str], None] | None = None,
+    ) -> ModelEvalResult:
+        """Evaluate a single 3D model."""
+        return evaluate_single_model(
+            model_path=model_path,
+            profile_name=self.profile_name,
+            resolution=self.resolution,
+            num_views=self.num_views,
+            reference_mesh=reference_mesh,
+            model_name=model_name,
+            log_fn=log_fn,
+            geometry_backend=self.geometry_backend,
+        )

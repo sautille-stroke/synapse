@@ -369,3 +369,26 @@ class TestEvaluateBundle:
             result = evaluate_bundle(bundle, profile=profile)
             assert isinstance(result, dict)
             assert "gate_passed" in result
+
+    def test_evaluate_bundle_array_or_no_truth_value_error(
+        self, tmp_path: Path,
+    ) -> None:
+        """Verify presence of depth.npy in both locations does not trigger array truth value error.
+
+        The pred depth/normals live at bundle root level (not inside frames/,
+        which is reserved for generated video frames and would break
+        ``_load_array_dir`` shape stacking).
+        """
+        bundle = self._create_bundle(tmp_path)
+        rng = np.random.Generator(np.random.PCG64(123))
+        depth_arr = rng.uniform(0.5, 5.0, size=(32, 32)).astype(np.float32)
+        # Put depth.npy in bundle/ root (pred fallback path) — NOT in frames/
+        # which is reserved for video frames and must have uniform shapes.
+        np.save(str(bundle / "depth.npy"), depth_arr)
+        np.save(str(bundle / "normals.npy"), np.ones((32, 32, 3), dtype=np.float32))
+
+        # This previously failed with ValueError: The truth value of an array is ambiguous
+        # when code used ``_try_load_npy(...) or _try_load_npy(...)``
+        result = evaluate_bundle(bundle, profile="track_b_video")
+        assert "depth_rmse_m" in result
+        assert "normal_angular_error_deg" in result

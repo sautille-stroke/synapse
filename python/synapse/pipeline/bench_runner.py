@@ -201,7 +201,53 @@ class BenchPipelineRunner:
             mesh = load_mesh(str(asset_path), normalize=True)
         except Exception:
             mesh = load_mesh(scenario.asset.id, normalize=True)
-        rasterizer = SoftwareRasterizer(width=width, height=height)
+
+        # Drive physical rasterizer params from scenario.conditions
+        rasterizer_kwargs: dict[str, Any] = {
+            "width": width,
+            "height": height,
+        }
+        if "ambient" in scenario.conditions:
+            rasterizer_kwargs["ambient"] = float(scenario.conditions["ambient"])
+        elif "ambient_light" in scenario.conditions:
+            rasterizer_kwargs["ambient"] = float(scenario.conditions["ambient_light"])
+
+        if "light_dir" in scenario.conditions:
+            ld = np.asarray(scenario.conditions["light_dir"], dtype=np.float64)
+            norm = np.linalg.norm(ld)
+            if norm > 1e-8:
+                ld = ld / norm
+            rasterizer_kwargs["light_dir"] = ld
+        elif "key_light_elevation_deg" in scenario.conditions:
+            elev = np.radians(float(scenario.conditions["key_light_elevation_deg"]))
+            azim = np.radians(float(scenario.conditions.get("key_light_azimuth_deg", 45.0)))
+            ld = np.array([
+                np.cos(elev) * np.sin(azim),
+                np.sin(elev),
+                np.cos(elev) * np.cos(azim),
+            ], dtype=np.float64)
+            norm = np.linalg.norm(ld)
+            if norm > 1e-8:
+                ld = ld / norm
+            rasterizer_kwargs["light_dir"] = ld
+
+        if "light_color" in scenario.conditions:
+            rasterizer_kwargs["light_color"] = np.asarray(
+                scenario.conditions["light_color"], dtype=np.float64
+            )
+        elif "color_temperature_k" in scenario.conditions:
+            temp = float(scenario.conditions["color_temperature_k"]) / 100.0
+            if temp <= 66:
+                r_c = 255.0
+                g_c = max(0.0, min(255.0, 99.4708025861 * np.log(temp) - 161.1195681661))
+                b_c = 0.0 if temp <= 19 else max(0.0, min(255.0, 138.5177312231 * np.log(temp - 10) - 305.0447927307))
+            else:
+                r_c = max(0.0, min(255.0, 329.698727446 * ((temp - 60) ** -0.1332047592)))
+                g_c = max(0.0, min(255.0, 288.1221695283 * ((temp - 60) ** -0.0755148492)))
+                b_c = 255.0
+            rasterizer_kwargs["light_color"] = np.array([r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64)
+
+        rasterizer = SoftwareRasterizer(**rasterizer_kwargs)
 
         fgpp_frames: list[FGPPFrame] = []
         for i, cam in enumerate(cameras):
@@ -225,12 +271,19 @@ class BenchPipelineRunner:
 
         # --- Phase 3: Prepare & Generate via adapter -------------------
         t0 = time.perf_counter()
+        config_extra: dict[str, Any] = dict(scenario.conditions)
+        if scenario.expected is not None:
+            config_extra["expected"] = scenario.expected.to_dict()
+
         config = VideoGenerationConfig(
             seed=seed,
             width=width,
             height=height,
             num_frames=num_frames,
             fps=scenario.camera_params.get("fps", 24.0),
+            guidance_scale=float(scenario.conditions.get("guidance_scale", 7.5)),
+            num_inference_steps=int(scenario.conditions.get("num_inference_steps", 50)),
+            extra=config_extra,
         )
 
         payload = self._adapter.prepare_conditions(fgpp_sequence, config)
@@ -254,10 +307,21 @@ class BenchPipelineRunner:
         if self._gate_profile is not None:
             from typing import cast
 
-            from synapse.metrics.profiles import GateProfileName, evaluate_metrics_gate
+            from synapse.metrics.profiles import (
+                _PROFILES,
+                GateProfileName,
+                _normalize_profile_name,
+                evaluate_gate,
+            )
 
-            report.gate_verdict = evaluate_metrics_gate(
-                metrics, cast(GateProfileName, self._gate_profile),
+            norm_prof = _normalize_profile_name(cast(GateProfileName, self._gate_profile))
+            required_keys = list(_PROFILES[norm_prof].keys())
+            scenario_overrides = scenario.expected.to_dict() if scenario.expected else None
+            report.gate_verdict = evaluate_gate(
+                measured=metrics,
+                profile=norm_prof,
+                required_keys=required_keys,
+                scenario_overrides=scenario_overrides,
             )
 
         report.timings["total_ms"] = _elapsed_ms(t_total_start)
@@ -357,12 +421,13 @@ def evaluate_bundle(
         gen_float = gen_frames.astype(np.float32) / 255.0
         metrics["flicker_score"] = flicker_score(gen_float)
 
-    pred_depth = _try_load_npy(frames_dir / "depth.npy") or _try_load_npy(
-        bundle_dir / "depth.npy"
-    )
-    pred_normals = _try_load_npy(frames_dir / "normals.npy") or _try_load_npy(
-        bundle_dir / "normals.npy"
-    )
+    pred_depth = _try_load_npy(frames_dir / "depth.npy")
+    if pred_depth is None:
+        pred_depth = _try_load_npy(bundle_dir / "depth.npy")
+
+    pred_normals = _try_load_npy(frames_dir / "normals.npy")
+    if pred_normals is None:
+        pred_normals = _try_load_npy(bundle_dir / "normals.npy")
 
     if gt_depth is not None and pred_depth is not None:
         from synapse.metrics.fgpp_fidelity import depth_rmse_m
@@ -399,9 +464,20 @@ def evaluate_bundle(
     # --- Gate evaluation ----------------------------------------------
     from typing import cast
 
-    from synapse.metrics.profiles import GateProfileName, evaluate_metrics_gate
+    from synapse.metrics.profiles import (
+        _PROFILES,
+        GateProfileName,
+        _normalize_profile_name,
+        evaluate_gate,
+    )
 
-    gate = evaluate_metrics_gate(metrics, cast(GateProfileName, profile))
+    norm_profile = _normalize_profile_name(cast(GateProfileName, profile))
+    required_keys = list(_PROFILES[norm_profile].keys())
+    gate = evaluate_gate(
+        measured=metrics,
+        profile=norm_profile,
+        required_keys=required_keys,
+    )
     gate_passed = gate.passed and len(metrics) > 0
     metrics["gate_passed"] = float(gate_passed)
 
@@ -486,10 +562,9 @@ def _compute_metrics(
 
     pred_normal_seq = getattr(video_result, "world_normal", None)
     if pred_normal_seq is None and isinstance(video_result.metadata, dict):
-        pred_normal_seq = (
-            video_result.metadata.get("world_normal")
-            or video_result.metadata.get("normals")
-        )
+        pred_normal_seq = video_result.metadata.get("world_normal")
+        if pred_normal_seq is None:
+            pred_normal_seq = video_result.metadata.get("normals")
 
     for i in range(n_frames):
         gt = fgpp_frames[i]
