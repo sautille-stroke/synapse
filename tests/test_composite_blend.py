@@ -558,3 +558,67 @@ class TestMorphologyAndPyramidShared:
         assert "e2" in EXPERIMENTS
         assert "e3" in EXPERIMENTS
         assert "e4" in EXPERIMENTS
+
+
+# ---------------------------------------------------------------------------
+# PR-78 — background PSNR test for composite_optical_increments
+# ---------------------------------------------------------------------------
+
+
+class TestOpticalIncrementsBackgroundPreservation:
+    """composite_optical_increments must NOT blur the original video
+    background.  Only optical increment layers (shadow, caustics) may
+    be guided-filter-smoothed at Cryptomatte boundaries."""
+
+    @staticmethod
+    def _psnr(a: np.ndarray, b: np.ndarray) -> float:
+        """Compute PSNR between two uint8 images."""
+        a_f = a.astype(np.float64)
+        b_f = b.astype(np.float64)
+        mse = np.mean((a_f - b_f) ** 2)
+        if mse < 1e-10:
+            return 100.0
+        return float(10.0 * np.log10(255.0 ** 2 / mse))
+
+    def test_non_masked_area_preserves_high_freq(self) -> None:
+        """Background (Cryptomatte == 0) high-frequency PSNR matches
+        original within tight tolerance — proves no full-image blur."""
+        H, W, T = 64, 64, 2
+        rng = np.random.RandomState(42)
+
+        # Create a textured background with high-frequency detail
+        bg = rng.randint(0, 256, (T, H, W, 3), dtype=np.uint8)
+
+        # Cryptomatte: small foreground patch in center, 0 = background
+        cids = np.zeros((T, H, W), dtype=np.uint32)
+        cids[:, 20:44, 20:44] = 12345  # small object
+
+        # FGPP frames (unused directly, placeholder)
+        fgpp = np.zeros((T, H, W, 3), dtype=np.float32)
+
+        # No shadow, no caustics — pure passthrough
+        result = composite_optical_increments(
+            bg, fgpp, cids,
+            contact_shadow_map=None,
+            caustics_map=None,
+            guided_filter_r=4,
+        )
+
+        # Check PSNR of background region (cid == 0)
+        bg_mask = cids[0] == 0
+        bg_original = bg[0].copy()
+        bg_result = result[0].copy()
+
+        # Extract background-only pixels
+        bg_orig_pixels = bg_original[bg_mask]
+        bg_result_pixels = bg_result[bg_mask]
+
+        psnr_val = self._psnr(bg_orig_pixels, bg_result_pixels)
+
+        # Background should have high PSNR (> 25 dB) since we're NOT
+        # blurring the background. Perfect passthrough would give > 30 dB
+        # (only lossy due to sRGB→linear→tonemap→ACEScg→back rounding).
+        assert psnr_val > 25.0, (
+            f"Background PSNR {psnr_val:.1f} dB is too low — "
+            f"guided filter may be blurring the entire image"
+        )

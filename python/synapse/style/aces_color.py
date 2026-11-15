@@ -116,15 +116,25 @@ def _fallback_acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
 
 # --- Soft-knee inverse tonemapping ---------------------------------
 
-_SOFT_KNEE_THRESHOLD: float = 4.0
-_SOFT_KNEE_RANGE: float = 8.0
+_SOFT_KNEE_THRESHOLD: float = 0.8
+_SOFT_KNEE_ACCEL: float = 1.0
 
 
 def _fallback_soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
+    """Strictly monotonically increasing inverse tonemap with C1 continuity.
+
+    Below ``t_knee`` (0.8): identity ``f(x) = x``.
+    Above ``t_knee``: super-linear recovery via quadratic ramp
+    ``f(x) = t + (x - t) + accel * (x - t)^2`` which is:
+    - C1-continuous at the knee: ``f(t) = t``, ``f'(t) = 1`` (matches identity)
+    - Strictly monotonically increasing (derivative ``1 + 2*accel*(x-t) > 0``)
+    - Super-linear: ``f''(t) = 2*accel > 0`` gives accelerating recovery
+    """
     x = np.asarray(ldr_linear, dtype=np.float64)
     x = np.where(np.isfinite(x), x, 0.0)
-    excess = (x - _SOFT_KNEE_THRESHOLD) / _SOFT_KNEE_RANGE
-    high = _SOFT_KNEE_THRESHOLD + _SOFT_KNEE_RANGE * np.tanh(excess)
+    excess = x - _SOFT_KNEE_THRESHOLD
+    # C1-continuous quadratic: derivative at knee = 1.0, matching identity
+    high = _SOFT_KNEE_THRESHOLD + excess + _SOFT_KNEE_ACCEL * excess * excess
     result = np.where(x <= _SOFT_KNEE_THRESHOLD, x, high)
     return result
 
@@ -336,17 +346,18 @@ def acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
 
 
 def soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
-    """Apply soft-knee inverse tonemapping.
+    """Apply soft-knee inverse tonemapping — strictly monotonically increasing.
 
-    - When L <= 4.0: output = L (identity)
-    - When L > 4.0: output = 4.0 + 8.0 * tanh((L - 4.0) / 8.0)
-    - C1 continuous at L = 4.0, max output strictly <= 12.0, zero NaN/Inf.
+    - When L <= 0.8: output = L (identity)
+    - When L > 0.8: output = 0.8 + (L-0.8) + (L-0.8)^2  (super-linear)
+    - C1 continuous at L = 0.8, strictly monotonic, no NaN/Inf.
 
     Args:
         ldr_linear: Input linear values. Any shape.
 
     Returns:
-        Tonemapped array, same shape. Max value strictly < 12.0.
+        Inverse-tonemapped array, same shape. Strictly monotonically
+        increasing for highlight recovery.
     """
     # soft_knee_inverse_tonemap has no direct upstream equivalent — always
     # use the local implementation.  No deprecation warning needed.

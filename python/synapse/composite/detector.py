@@ -294,7 +294,14 @@ def _detect_ground_violation(
     fgpp_frames: list[FGPPFrame],
     ground_y: float,
 ) -> list[VideoDefectRegion]:
-    """Detect entities whose world-space Y drops below ground."""
+    """Detect entities whose world-space Y drops below ground.
+
+    Uses the convention that +Y is the world-space up direction
+    (consistent with the camera coordinate system where the camera
+    looks along -Z and Y points up).  An entity is considered to
+    violate the ground plane when its minimum world Y coordinate
+    drops below ``ground_y``.
+    """
     defects: list[VideoDefectRegion] = []
 
     # Collect per-entity, per-frame minimum world Y.
@@ -313,9 +320,10 @@ def _detect_ground_violation(
         yy, xx = np.mgrid[:h, :w]
         z = depth.astype(np.float64)
 
-        # Camera-space 3D coordinates
-        x_cam = (xx.astype(np.float64) - cam.cx) * z / cam.fx
-        y_cam = (yy.astype(np.float64) - cam.cy) * z / cam.fy
+        # Camera-space 3D coordinates.
+        # Convention: camera looks along -Z, Y is up, X is right.
+        x_cam = (xx.astype(np.float64) - cam.cx) * z / max(cam.fx, 1e-6)
+        y_cam = (yy.astype(np.float64) - cam.cy) * z / max(cam.fy, 1e-6)
         z_cam = z
 
         # Build [N, 4] homogeneous coordinates
@@ -323,9 +331,11 @@ def _detect_ground_violation(
         pts_cam = np.stack([x_cam, y_cam, z_cam, ones], axis=-1)  # [H,W,4]
         pts_flat = pts_cam.reshape(-1, 4)
 
-        # Camera-to-world
+        # Camera-to-world: world_matrix is the inverse of view_matrix
         world_mat = cam.world_matrix.astype(np.float64)
         pts_world = (world_mat @ pts_flat.T).T  # [N, 4]
+
+        # World Y coordinate (+Y = up direction)
         world_y = pts_world[:, 1].reshape(h, w)
 
         # Check per entity
