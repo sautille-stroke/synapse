@@ -62,8 +62,22 @@ def handle_video_to_3d_invert(
     p_mesh = Path(mesh_path)
     p_mesh.parent.mkdir(parents=True, exist_ok=True)
     if result.mesh is not None:
-        np.save(str(p_mesh), result.mesh.vertices)
-        output_paths["mesh"] = str(p_mesh)
+        # Save full mesh geometry: vertices, faces, and uvs (if available)
+        npz_path = str(p_mesh).rsplit(".", 1)[0] + ".npz"
+        if result.mesh.uvs is not None:
+            np.savez(
+                npz_path,
+                vertices=result.mesh.vertices,
+                faces=result.mesh.faces,
+                uvs=result.mesh.uvs,
+            )
+        else:
+            np.savez(
+                npz_path,
+                vertices=result.mesh.vertices,
+                faces=result.mesh.faces,
+            )
+        output_paths["mesh"] = npz_path
 
     # Save trajectory
     traj_path = manifest.outputs.get(

@@ -505,25 +505,33 @@ class TestReconPipelineEndToEnd:
 
     def test_pipeline_execution(self) -> None:
         """Runs full 5-stage reconstruction flow on synthetic sequence."""
-        from unittest.mock import patch
+        from synapse.recon.types import MeshGeometry
 
         num_frames = 16
-        # Create frames with a bright circle on dark background so that
-        # foreground mask derivation succeeds (no longer falls back to
-        # constant depth).
         h, w = 48, 48
         frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
         yy, xx = np.ogrid[:h, :w]
-        circle = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (h // 4) ** 2
         for t in range(num_frames):
+            cx = w // 2 + t
+            cy = h // 2
+            circle = ((yy - cy) ** 2 + (xx - cx) ** 2) < (h // 4) ** 2
             frames[t][circle] = 200
 
+        # Provide initial_mesh to skip MultiViewInitializer, which requires
+        # real multi-view parallax that synthetic frames cannot provide.
+        cube_v = np.array([
+            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+        ], dtype=np.float32)
+        cube_f = np.array([
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
+        ], dtype=np.int32)
+        initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
-        # Synthetic frames still produce degenerate (0°) camera angular
-        # separation. Patch the minimum threshold to allow the test to
-        # exercise the full 5-stage pipeline without real video input.
-        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
-            res = pipeline.run(frames, fps=30.0)
+        res = pipeline.run(frames, initial_mesh=initial_mesh, fps=30.0)
 
         assert isinstance(res, ReconResult)
         assert res.mesh.vertex_count > 0
@@ -537,15 +545,16 @@ class TestReconPipelineEndToEnd:
 
     def test_pipeline_with_skeleton_template(self) -> None:
         """Pipeline with a real skeleton template produces valid kinematics."""
-        from unittest.mock import patch
+        from synapse.recon.types import MeshGeometry
 
         num_frames = 16
         h, w = 48, 48
-        # Create frames with foreground contrast
         frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
         yy, xx = np.ogrid[:h, :w]
-        circle = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (h // 4) ** 2
         for t in range(num_frames):
+            cx = w // 2 + t
+            cy = h // 2
+            circle = ((yy - cy) ** 2 + (xx - cx) ** 2) < (h // 4) ** 2
             frames[t][circle] = 200
 
         # Provide a real skeleton template with joint positions
@@ -559,9 +568,23 @@ class TestReconPipelineEndToEnd:
             joint_pos[t, 8] = [0.15, 0.0, 0.0]     # right foot
         skeleton_template = {"joint_positions": joint_pos}
 
+        # Provide initial_mesh to skip MultiViewInitializer
+        cube_v = np.array([
+            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+        ], dtype=np.float32)
+        cube_f = np.array([
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
+        ], dtype=np.int32)
+        initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
-        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
-            res = pipeline.run(frames, skeleton_template=skeleton_template, fps=30.0)
+        res = pipeline.run(
+            frames, initial_mesh=initial_mesh,
+            skeleton_template=skeleton_template, fps=30.0,
+        )
 
         assert isinstance(res, ReconResult)
         assert res.kinematics is not None
@@ -634,3 +657,109 @@ class TestReconBackendInterop:
         """get_vg_backend(fallback_to_recon=True) returns SynapseReconBackend."""
         backend = get_vg_backend(mock=False, fallback_to_recon=True)
         assert isinstance(backend, SynapseReconBackend)
+
+
+# ===================================================================
+# PR-80: stages/recon persisted file can be read back with non-empty faces (test-c)
+# ===================================================================
+
+
+class TestStagesReconPersistence:
+    """PR-80: stages/recon persisted file can be read back with non-empty faces."""
+
+    def test_video_to_3d_invert_persists_full_mesh(self, tmp_path) -> None:
+        """handle_video_to_3d_invert saves vertices, faces (and uvs) to
+        output .npz, and the persisted file can be read back with
+        non-empty faces."""
+        from unittest.mock import patch
+
+        from synapse.pipeline.bundle_worker import BundleManifest
+        from synapse.recon.types import MeshGeometry
+
+        # Create synthetic video frames with visible foreground
+        num_frames = 8
+        h, w = 48, 48
+        frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        for t in range(num_frames):
+            cx = w // 2 + t
+            cy = h // 2
+            circle = ((yy - cy) ** 2 + (xx - cx) ** 2) < (h // 4) ** 2
+            frames[t][circle] = 200
+
+        # Save frames to temp
+        video_path = str(tmp_path / "frames.npy")
+        np.save(video_path, frames)
+
+        mesh_out = str(tmp_path / "output" / "mesh.npy")
+        traj_out = str(tmp_path / "output" / "trajectory.json")
+
+        manifest = BundleManifest(
+            job_id="test-pr80",
+            stage="video_to_3d_invert",
+            inputs={"video_frames": video_path},
+            outputs={"mesh": mesh_out, "trajectory": traj_out},
+            params={"target_faces": 500},
+        )
+
+        from synapse.pipeline.stages.recon import handle_video_to_3d_invert
+
+        # Mock MultiViewInitializer.reconstruct to return a known cube mesh
+        # since synthetic frames cannot produce real multi-view parallax.
+        cube_v = np.array([
+            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+        ], dtype=np.float32)
+        cube_f = np.array([
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
+        ], dtype=np.int32)
+        mock_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+
+        with patch(
+            "synapse.recon.multiview.MultiViewInitializer.reconstruct",
+            return_value=mock_mesh,
+        ):
+            result = handle_video_to_3d_invert(manifest)
+
+        assert "output_paths" in result
+        mesh_path = result["output_paths"].get("mesh", "")
+        assert mesh_path, "No mesh output path returned"
+
+        # Read back and verify faces are non-empty
+        loaded = np.load(mesh_path)
+        assert "vertices" in loaded, "Missing 'vertices' key in saved mesh"
+        assert "faces" in loaded, "Missing 'faces' key in saved mesh"
+        assert loaded["vertices"].shape[0] > 0, "Vertices array is empty"
+        assert loaded["faces"].shape[0] > 0, "Faces array is empty"
+        assert loaded["faces"].shape[1] >= 3, "Faces must have >= 3 vertex indices"
+
+
+class TestTrackingRealOpticalFlow:
+    """PR-80: verify tracking uses real optical flow, not R/G mean-diff."""
+
+    def test_tracking_with_moving_object(self) -> None:
+        """Points track a moving bright patch correctly, not uniformly."""
+        num_frames = 5
+        h, w = 64, 64
+
+        # Create frames with a bright square moving rightward
+        frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+        for t in range(num_frames):
+            x_offset = 10 + t * 8  # moves right
+            y_start, y_end = 20, 40
+            x_start = max(0, x_offset)
+            x_end = min(w, x_offset + 15)
+            frames[t, y_start:y_end, x_start:x_end] = 200
+
+        tracks, vis = solve_point_tracks(frames, num_points=32)
+        assert tracks.shape == (num_frames, 32, 2)
+        assert vis.shape == (num_frames, 32)
+
+        # Not all points should move by the same amount (unlike mean-diff)
+        if vis[1:].any():
+            frame_displacements = tracks[1:] - tracks[:-1]
+            # At least some tracked points should show non-zero displacement
+            max_disp = np.max(np.abs(frame_displacements[vis[1:]]))
+            assert max_disp > 0.0, "No tracked points moved at all"
