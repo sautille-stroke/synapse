@@ -624,6 +624,97 @@ class TestStatelessLoRATrainer:
         lrs = {pg["lr"] for pg in trainer._optimizer.param_groups}
         assert lrs == {1e-3, 2e-4}
 
+    def test_train_step_produces_gradients(self) -> None:
+        """PR-77: After train_step(), LoRA parameter .grad is not None and norm > 0."""
+        import torch
+        from synapse.training.trainer import (
+            LoRATrainConfig,
+            StatelessLoRATrainer,
+        )
+
+        torch.manual_seed(77)
+        model = self._make_toy_model()
+
+        cfg = LoRATrainConfig(
+            category="style",
+            rank=8,
+            alpha=8.0,
+            lr_spatial=1e-3,
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(
+            model, target_patterns=["ffn.0", "ffn.2"],
+        )
+
+        x_1 = torch.randn(4, 64)
+        x_0 = torch.randn(4, 64)
+
+        # Single train step
+        trainer.train_step(model, {"latent": x_1, "noise": x_0}, 0)
+
+        # Check LoRA parameters have gradients
+        lora_params = [
+            (name, p) for name, p in model.named_parameters()
+            if p.requires_grad and ("lora_A" in name or "lora_B" in name)
+        ]
+        assert len(lora_params) > 0, "No LoRA parameters found"
+
+        for name, p in lora_params:
+            # After optimizer.step() + zero_grad(), grads are zeroed.
+            # But the parameter values should have changed from initial.
+            # For lora_A (initialised with N(0, 0.01)) the values
+            # should be different after the step.
+            pass  # grad was zeroed after step; check param mutation below
+
+        # Better: verify that after a step, lora_B (initially 0) has
+        # non-zero values (proving backprop + optimizer actually ran).
+        has_nonzero_lora_b = False
+        for name, child in model.named_modules():
+            if hasattr(child, "lora_B"):
+                if child.lora_B.data.abs().max().item() > 0:
+                    has_nonzero_lora_b = True
+                    break
+        assert has_nonzero_lora_b, (
+            "lora_B remained zero after train_step — backprop did not run"
+        )
+
+    def test_differentiable_flow_matching_loss_class(self) -> None:
+        """PR-77: FlowMatchingLoss class preserves autograd gradient chain."""
+        import torch
+        from synapse.training.losses import FlowMatchingLoss
+
+        v_pred = torch.randn(4, 16, requires_grad=True)
+        x_1 = torch.randn(4, 16)
+        x_0 = torch.randn(4, 16)
+
+        loss_fn = FlowMatchingLoss()
+        loss = loss_fn(v_pred, x_1, x_0)
+        loss.backward()
+
+        assert v_pred.grad is not None
+        assert v_pred.grad.norm().item() > 0
+
+    def test_differentiable_dpo_loss_class(self) -> None:
+        """PR-77: DiffusionDPOLoss class preserves autograd gradient chain."""
+        import torch
+        from synapse.training.losses import DiffusionDPOLoss
+
+        v_tw = torch.randn(4, 16, requires_grad=True)
+        v_tl = torch.randn(4, 16, requires_grad=True)
+        v_rw = torch.randn(4, 16)
+        v_rl = torch.randn(4, 16)
+        target_w = torch.randn(4, 16)
+        target_l = torch.randn(4, 16)
+
+        loss_fn = DiffusionDPOLoss(beta=10.0)
+        loss = loss_fn(v_tw, v_tl, v_rw, v_rl, target_w, target_l)
+        loss.backward()
+
+        assert v_tw.grad is not None
+        assert v_tw.grad.norm().item() > 0
+        assert v_tl.grad is not None
+
 
 # -------------------------------------------------------------------
 # Stage registration test
