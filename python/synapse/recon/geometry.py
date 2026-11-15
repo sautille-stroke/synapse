@@ -390,11 +390,41 @@ def quad_remesh(
     # If all paired or partially paired
     if quad_faces and not unpaired_triangles:
         new_faces = np.array(quad_faces, dtype=np.int32)
-    elif quad_faces and unpaired_triangles:
-        # Convert unpaired triangles to degenerate quads [a, b, c, c] or keep quad dominant
-        # In graphics standard, a quad-dominant list converts triangles by repeating last index
-        padded_tris = [[tri[0], tri[1], tri[2], tri[2]] for tri in unpaired_triangles]
-        all_quads = quad_faces + padded_tris
+    elif unpaired_triangles:
+        # Mixed tri/quad mesh: convert remaining triangles into quads via
+        # Catmull-Clark midpoint subdivision — each triangle [a, b, c] is
+        # split into 3 quads by inserting edge midpoints and a face centroid.
+        # This avoids degenerate [a, b, c, c] duplicate-vertex quads.
+        extra_verts: list[np.ndarray] = []
+        subdivided_quads: list[list[int]] = []
+        vert_offset = len(v)
+
+        for tri in unpaired_triangles:
+            a, b, c = tri[0], tri[1], tri[2]
+            # Compute edge midpoints and face centroid
+            mid_ab = (v[a] + v[b]) * 0.5
+            mid_bc = (v[b] + v[c]) * 0.5
+            mid_ca = (v[c] + v[a]) * 0.5
+            centroid = (v[a] + v[b] + v[c]) / 3.0
+
+            idx_mid_ab = vert_offset + len(extra_verts)
+            extra_verts.append(mid_ab)
+            idx_mid_bc = vert_offset + len(extra_verts)
+            extra_verts.append(mid_bc)
+            idx_mid_ca = vert_offset + len(extra_verts)
+            extra_verts.append(mid_ca)
+            idx_centroid = vert_offset + len(extra_verts)
+            extra_verts.append(centroid)
+
+            # Three quads per triangle
+            subdivided_quads.append([a, idx_mid_ab, idx_centroid, idx_mid_ca])
+            subdivided_quads.append([b, idx_mid_bc, idx_centroid, idx_mid_ab])
+            subdivided_quads.append([c, idx_mid_ca, idx_centroid, idx_mid_bc])
+
+        if extra_verts:
+            v = np.vstack([v, np.array(extra_verts, dtype=np.float32)])
+
+        all_quads = quad_faces + subdivided_quads
         new_faces = np.array(all_quads, dtype=np.int32)
     else:
         new_faces = f
@@ -906,8 +936,8 @@ def validate_recon_mesh_manifold(
             res = _cg.validate_mesh_geometry(
                 v, f, verts_per_face=verts_per_face, require_watertight=False
             )
-            return bool(res.is_manifold)
-        except (ImportError, AttributeError):
+            return bool(res["is_manifold"])
+        except (ImportError, AttributeError, KeyError, TypeError):
             pass
     return bool(check_manifold(vertices, faces))
 

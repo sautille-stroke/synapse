@@ -26,6 +26,7 @@ from synapse.recon.geometry import (
     check_watertight,
     find_connected_components,
     prune_floating_islands,
+    quad_remesh,
 )
 
 # ===================================================================
@@ -477,3 +478,191 @@ class TestBuildNativeScript:
             text=True,
         )
         assert res.returncode == 0, f"build_native.py --dry-run --backend=direct failed: {res.stderr}"
+
+
+# ===================================================================
+# PR-80: New tests for tracking, geometry, and stages
+# ===================================================================
+
+
+class TestGeometryGateNativeBackend:
+    """PR-80: backend="native" validate_recon_mesh_manifold hits C++ path
+    without fallback exception (test-a)."""
+
+    def test_native_backend_validate_recon_mesh_manifold_dict_access(self) -> None:
+        """When _c_geometry returns a dict, validate_recon_mesh_manifold
+        reads result["is_manifold"] without AttributeError."""
+        import sys
+        from unittest.mock import MagicMock
+
+        import synapse
+        from synapse.recon.geometry import validate_recon_mesh_manifold
+
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
+        f = np.array([[0, 1, 2]], dtype=np.int64)
+
+        # Mock _c_geometry returning a dict (not an object with attributes)
+        mock_cg = MagicMock()
+        mock_cg.validate_mesh_geometry.return_value = {
+            "is_manifold": True,
+            "is_watertight": False,
+            "degenerate_face_indices": [],
+            "self_intersecting_pairs": [],
+            "num_connected_components": 1,
+            "floating_island_face_indices": [],
+            "num_faces": 1,
+        }
+
+        old_mod = sys.modules.get("synapse._c_geometry")
+        old_attr = getattr(synapse, "_c_geometry", None)
+        sys.modules["synapse._c_geometry"] = mock_cg
+        synapse._c_geometry = mock_cg  # type: ignore[attr-defined]
+        try:
+            result = validate_recon_mesh_manifold(v, f, backend="native")
+            assert result is True
+            mock_cg.validate_mesh_geometry.assert_called_once()
+        finally:
+            if old_mod is None:
+                sys.modules.pop("synapse._c_geometry", None)
+            else:
+                sys.modules["synapse._c_geometry"] = old_mod
+            if old_attr is None:
+                if hasattr(synapse, "_c_geometry"):
+                    delattr(synapse, "_c_geometry")
+            else:
+                synapse._c_geometry = old_attr  # type: ignore[attr-defined]
+
+    def test_native_backend_validate_mesh_geometry_dict_access(self) -> None:
+        """validate_mesh_geometry with backend='native' reads dict keys
+        without AttributeError."""
+        import sys
+        from unittest.mock import MagicMock
+
+        import synapse
+
+        mock_cg = MagicMock()
+        mock_cg.validate_mesh_geometry.return_value = {
+            "is_manifold": True,
+            "is_watertight": True,
+            "degenerate_face_indices": np.array([], dtype=np.int64),
+            "self_intersecting_pairs": [],
+            "num_connected_components": 1,
+            "floating_island_face_indices": np.array([], dtype=np.int64),
+            "num_faces": 4,
+        }
+
+        v = np.array([
+            [1.0, 1.0, 1.0], [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0], [1.0, -1.0, -1.0],
+        ], dtype=np.float64)
+        f = np.array([
+            [0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2],
+        ], dtype=np.int64)
+
+        old_mod = sys.modules.get("synapse._c_geometry")
+        old_attr = getattr(synapse, "_c_geometry", None)
+        sys.modules["synapse._c_geometry"] = mock_cg
+        synapse._c_geometry = mock_cg  # type: ignore[attr-defined]
+        try:
+            result = validate_mesh_geometry(v, f, backend="native")
+            assert result.passed is True
+            assert result.is_manifold is True
+            mock_cg.validate_mesh_geometry.assert_called_once()
+        finally:
+            if old_mod is None:
+                sys.modules.pop("synapse._c_geometry", None)
+            else:
+                sys.modules["synapse._c_geometry"] = old_mod
+            if old_attr is None:
+                if hasattr(synapse, "_c_geometry"):
+                    delattr(synapse, "_c_geometry")
+            else:
+                synapse._c_geometry = old_attr  # type: ignore[attr-defined]
+
+
+# ===================================================================
+# PR-80: quad_remesh no duplicate-vertex faces (test-b)
+# ===================================================================
+
+
+class TestQuadRemeshNoDuplicateVertex:
+    """PR-80: quad_remesh output has no duplicate-vertex faces."""
+
+    def test_odd_triangle_count_no_duplicate_vertex_quads(self) -> None:
+        """When triangle count is odd, quad_remesh must not generate
+        [a,b,c,c] duplicate-vertex quad faces. Uses Catmull-Clark
+        midpoint subdivision instead."""
+        # 3 triangles forming a fan — one will remain unpaired
+        v = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [-0.5, 1.0, 0.0],
+        ], dtype=np.float32)
+        f = np.array([
+            [0, 1, 2],  # can pair with tri 1
+            [0, 2, 3],  # can pair with tri 0
+            [0, 3, 1],  # unpaired (odd one out)
+        ], dtype=np.int32)
+
+        new_v, new_f = quad_remesh(v, f)
+
+        # All output faces must be quads (4 vertices each)
+        assert new_f.shape[1] == 4, f"Expected quad faces, got {new_f.shape[1]}-gons"
+
+        # No face should have duplicate vertices
+        for face_idx in range(len(new_f)):
+            face = new_f[face_idx]
+            unique_verts = set(int(x) for x in face)
+            assert len(unique_verts) == 4, (
+                f"Face {face_idx} has duplicate vertices: {face.tolist()}"
+            )
+
+    def test_even_triangle_count_all_quads(self) -> None:
+        """Cube (12 triangles) should remesh to 6 quads with no duplicates."""
+        v = np.array([
+            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+        ], dtype=np.float32)
+        f = np.array([
+            [0, 2, 1], [0, 3, 2],
+            [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4],
+            [2, 3, 7], [2, 7, 6],
+            [0, 4, 7], [0, 7, 3],
+            [1, 2, 6], [1, 6, 5],
+        ], dtype=np.int32)
+
+        new_v, new_f = quad_remesh(v, f)
+        assert new_f.shape[1] == 4
+        assert len(new_f) == 6
+
+        for face_idx in range(len(new_f)):
+            face = new_f[face_idx]
+            unique_verts = set(int(x) for x in face)
+            assert len(unique_verts) == 4, (
+                f"Face {face_idx} has duplicate vertices: {face.tolist()}"
+            )
+
+    def test_single_triangle_subdivision(self) -> None:
+        """A single triangle should be subdivided into 3 quads."""
+        v = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+        ], dtype=np.float32)
+        f = np.array([[0, 1, 2]], dtype=np.int32)
+
+        new_v, new_f = quad_remesh(v, f)
+
+        # No pairing possible → all tris subdivided
+        # Single triangle → 3 quads, 4 new verts
+        assert new_f.shape[1] == 4
+        for face_idx in range(len(new_f)):
+            face = new_f[face_idx]
+            unique_verts = set(int(x) for x in face)
+            assert len(unique_verts) == 4, (
+                f"Face {face_idx} has duplicate vertices: {face.tolist()}"
+            )

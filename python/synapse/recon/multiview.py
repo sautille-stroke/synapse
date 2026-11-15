@@ -6,6 +6,18 @@ volumetric reconstruction from multi-view depth maps or silhouette masks.
 
 All heavy dependencies (``torch``, ``trimesh``, ``open3d``) are lazy-imported
 inside methods to keep module-level import lightweight (numpy + synapse only).
+
+World-to-Camera (w2c) convention
+---------------------------------
+All ``CameraExtrinsics.transform`` matrices consumed by this module follow
+the **world-to-camera (w2c)** convention:
+
+    p_cam = R @ p_world + t          (3-vector form)
+    p_cam = T @ [p_world; 1]         (4x4 homogeneous form)
+
+Where ``T[:3,:3] = R`` (rotation) and ``T[:3,3] = t`` (translation).
+The camera position in world space is ``CameraExtrinsics.position = -R^T @ t``.
+This convention is consistent with ``synapse.recon.tracking`` output.
 """
 
 from __future__ import annotations
@@ -113,10 +125,8 @@ def _marching_cubes_naive(
                         faces.append((a, d, c))
 
     if len(vertices) == 0:
-        # Degenerate: return minimal valid mesh (single triangle)
-        verts_arr = np.zeros((3, 3), dtype=np.float32)
-        faces_arr = np.array([[0, 1, 2]], dtype=np.int32)
-        return verts_arr, faces_arr
+        # Return empty arrays — callers check and raise ContractValidationError.
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.int32)
 
     verts_arr = np.array(vertices, dtype=np.float32)
     faces_arr = np.array(faces, dtype=np.int32)
@@ -472,6 +482,18 @@ class MultiViewInitializer:
             weight = w_new.reshape(nx, ny, nz)
 
         verts, faces = _marching_cubes_naive(tsdf, effective_voxel, origin)
+
+        if verts.size == 0 or faces.size == 0:
+            raise ContractValidationError(
+                "TSDF fusion produced an empty mesh: marching cubes extracted "
+                f"no valid iso-surface from {n_views} input depth views.",
+                agent_fix_hint=(
+                    "Ensure depth maps have non-zero values within the "
+                    "volume bounds. Consider adjusting `sdf_trunc` or "
+                    "`volume_bounds` parameters."
+                ),
+            )
+
         return MeshGeometry(vertices=verts, faces=faces)
 
     # ------------------------------------------------------------------
@@ -552,4 +574,17 @@ class MultiViewInitializer:
         # occupied=True → SDF < 0 (inside), occupied=False → SDF > 0 (outside).
         sdf = np.where(occupied, -1.0, 1.0).astype(np.float32)
         verts, faces = _marching_cubes_naive(sdf, effective_voxel, origin)
+
+        if verts.size == 0 or faces.size == 0:
+            raise ContractValidationError(
+                "Visual hull reconstruction produced an empty mesh: no "
+                "voxels survived silhouette carving from "
+                f"{n_views} input views.",
+                agent_fix_hint=(
+                    "Ensure silhouette masks contain visible foreground "
+                    "pixels and that camera extrinsics are calibrated "
+                    "correctly."
+                ),
+            )
+
         return MeshGeometry(vertices=verts, faces=faces)
