@@ -520,7 +520,6 @@ if (nativeBin) {
       JSON.stringify({ type: 'camera', action: 'orbit', dx: 25.0, dy: 10.0 }),
       JSON.stringify({ type: 'set_debug_view', mode: 'normal' }),
       JSON.stringify({ type: 'export_screenshot', path: shotPath }),
-      JSON.stringify({ type: 'quit' }),
     ].join('\n') + '\n';
 
     const run = spawnSync(
@@ -530,6 +529,7 @@ if (nativeBin) {
         '--rhi=null',
         '--width=32',
         '--height=32',
+        '--frames=4',
         `--shm-name=${shmName}`,
         '--keep-shm',
         `--bundle=${MINIMAL_BUNDLE}`,

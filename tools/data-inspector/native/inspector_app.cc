@@ -404,7 +404,7 @@ void InspectorApp::run() {
     const float elapsed =
         std::chrono::duration<float>(frameEnd - now).count();
     const float sleepTime = (1.0f / 60.0f) - elapsed;
-    if (sleepTime > 0.001f && m_config.maxFrames == 0) {
+    if (sleepTime > 0.001f) {
       std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
     }
   }
