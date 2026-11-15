@@ -158,16 +158,32 @@ class DPORecord(BaseModel):
         """Canonical alias for ``PreferencePair`` compatibility."""
         return self.state_before
 
-    def to_preference_pair(self) -> Any:
-        """Convert this ``DPORecord`` into a ``synapse.rsi.pair_builder.PreferencePair``."""
-        from synapse.rsi.pair_builder import PreferencePair
+    def to_preference_pair_dict(self) -> dict[str, Any]:
+        """Export fields needed by ``synapse.rsi.pair_builder.PreferencePair.from_dpo_record``.
 
-        return PreferencePair.from_dpo_record(
-            self,
-            source=self.source,
-            category=self.category,
-            is_golden=self.is_golden,
-        )
+        Returns a plain dict so that ``inspect`` (Tier 2) does NOT import
+        ``synapse.rsi`` (Tier 3).  Callers in Tier 3+ can pass the dict to
+        ``PreferencePair.from_dpo_record()`` directly::
+
+            from synapse.rsi.pair_builder import PreferencePair
+            pair = PreferencePair.from_dpo_record(dpo_record.to_preference_pair_dict())
+        """
+        return {
+            "pair_id": self.pair_id,
+            "prompt": self.prompt,
+            "chosen": self.chosen,
+            "rejected": self.rejected,
+            "state_before": self.state_before,
+            "asset_id": self.asset_id,
+            "source_intent_id": self.source_intent_id,
+            "source": self.source,
+            "category": self.category,
+            "is_golden": self.is_golden,
+        }
+
+    # Backward-compat alias (deprecated — callers should migrate to
+    # ``to_preference_pair_dict()`` to avoid Tier 2→3 coupling).
+    to_preference_pair = to_preference_pair_dict
 
 
 class PRMRecord(BaseModel):

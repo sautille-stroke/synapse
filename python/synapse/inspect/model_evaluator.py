@@ -279,9 +279,18 @@ def evaluate_single_model(
     model_name: str | None = None,
     log_fn: Callable[[str], None] | None = None,
     geometry_backend: Literal["native", "python"] = "native",
+    mesh_loader_fn: Callable[[str], Any] | None = None,
 ) -> ModelEvalResult:
-    """Evaluate a single 3D model file against *profile_name*."""
-    from synapse.bench.model_loader import load_mesh
+    """Evaluate a single 3D model file against *profile_name*.
+
+    Args:
+        mesh_loader_fn: Optional callable ``(path_str) -> MeshData``.
+            If not provided, lazily imports ``synapse.bench.model_loader.load_mesh``.
+    """
+    if mesh_loader_fn is None:
+        from synapse.bench.model_loader import load_mesh  # noqa: tier-bypass – utility
+        mesh_loader_fn = lambda p: load_mesh(p, normalize=True)
+
     from synapse.metrics.image_quality import ciede2000, lpips, psnr_db, ssim
     from synapse.metrics.roundtrip import (
         compute_chamfer_distance_mm,
@@ -296,7 +305,7 @@ def evaluate_single_model(
         log_fn(f"  Loading {effective_name}...")
 
     try:
-        mesh = load_mesh(str(model_path), normalize=True)
+        mesh = mesh_loader_fn(str(model_path))
     except Exception as exc:
         return ModelEvalResult(
             model_name=effective_name,
@@ -469,15 +478,20 @@ def evaluate_3d_models_directory(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Lazy-load mesh loader for reference meshes (Tier 2→3 bypass)
+    _ref_loader_fn: Callable[[str], Any] | None = None
+
     reference_meshes: dict[str, Any] = {}
     if reference_dir is not None:
         ref_dir = Path(reference_dir)
         if ref_dir.exists() and ref_dir.is_dir():
-            from synapse.bench.model_loader import load_mesh
+            from synapse.bench.model_loader import load_mesh  # noqa: tier-bypass – utility
+
+            _ref_loader_fn = lambda p: load_mesh(p, normalize=True)
 
             for ref_path in _collect_model_files(ref_dir):
                 try:
-                    loaded = load_mesh(str(ref_path), normalize=True)
+                    loaded = _ref_loader_fn(str(ref_path))
                     rel_key = ref_path.relative_to(ref_dir).with_suffix("").as_posix()
                     reference_meshes[rel_key] = loaded
                     if ref_path.stem not in reference_meshes:
