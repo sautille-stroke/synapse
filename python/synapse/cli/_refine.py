@@ -85,31 +85,95 @@ def _cmd_refine_anatomical(
 
     height, width = frames.shape[1], frames.shape[2]
 
-    # Build ROIs from input frames (no external ROI metadata)
-    # AUD-P0-04: Without --roi-meta or FGPP source, initial confidence
-    # must be <= 0.5 to avoid silently bypassing the > 0.8 threshold.
-    rois_per_frame: list[list[RefinementROI]] = []
+    # Real ROI input required (H6-P1-05: no fake ROI synthesis)
     roi_meta_path = getattr(args, "roi_meta", None)
-    default_confidence = 0.5 if not roi_meta_path else 0.9
-    for t in range(frames.shape[0]):
-        frame_rois: list[RefinementROI] = []
-        for rname in region_names:
-            region = _REGION_MAP.get(rname)
-            if region is None:
-                continue
-            h4, w4 = height // 4, width // 4
-            bbox = np.array(
-                [w4, h4, w4 * 3, h4 * 3], dtype=np.float32,
-            )
-            crop = frames[t, h4:h4 * 3, w4:w4 * 3, :].copy()
-            roi = RefinementROI(
-                region=region,
-                bbox_xyxy=bbox,
-                crop_acescg=crop,
-                confidence=default_confidence,
-            )
-            frame_rois.append(roi)
-        rois_per_frame.append(frame_rois)
+    if not roi_meta_path:
+        raise AssetNotFoundError(
+            "Missing required '--roi-meta' argument for anatomical refinement",
+            agent_fix_hint=(
+                "Provide '--roi-meta <path>' pointing to a valid ROI metadata file (JSON or NPY)."
+            ),
+        )
+    if not Path(roi_meta_path).is_file():
+        raise AssetNotFoundError(
+            f"ROI metadata file not found: {roi_meta_path!r}",
+            agent_fix_hint=(
+                "Provide '--roi-meta <path>' pointing to an existing ROI metadata file."
+            ),
+        )
+
+    meta_path = Path(roi_meta_path)
+    rois_per_frame: list[list[RefinementROI]] = [[] for _ in range(frames.shape[0])]
+    if meta_path.suffix.lower() == ".json":
+        meta_content = json.loads(meta_path.read_text(encoding="utf-8"))
+        roi_items = meta_content.get("rois", meta_content) if isinstance(meta_content, dict) else meta_content
+        if isinstance(roi_items, list):
+            for item in roi_items:
+                if not isinstance(item, dict):
+                    continue
+                t_idx = int(item.get("frame_index", item.get("t", 0)))
+                if t_idx < 0 or t_idx >= frames.shape[0]:
+                    continue
+                rname = str(item.get("region", "HAND")).upper()
+                region = _REGION_MAP.get(rname, _REGION_MAP.get("HAND"))
+                if region is None:
+                    continue
+                bbox = np.asarray(item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])), dtype=np.float32)
+                conf = float(item.get("confidence", 0.9))
+                x1, y1 = max(0, int(round(bbox[0]))), max(0, int(round(bbox[1])))
+                x2, y2 = min(width, int(round(bbox[2]))), min(height, int(round(bbox[3])))
+                if x2 <= x1 or y2 <= y1:
+                    continue
+                crop = frames[t_idx, y1:y2, x1:x2, :].copy()
+                rois_per_frame[t_idx].append(
+                    RefinementROI(
+                        region=region,
+                        bbox_xyxy=bbox,
+                        crop_acescg=crop,
+                        confidence=conf,
+                        frame_index=t_idx,
+                    )
+                )
+    elif meta_path.suffix.lower() == ".npy":
+        arr = np.load(str(meta_path))
+        if arr.ndim == 2 and arr.shape[1] == 4:
+            for t_idx in range(min(frames.shape[0], arr.shape[0])):
+                bbox = arr[t_idx].astype(np.float32)
+                x1, y1 = max(0, int(round(bbox[0]))), max(0, int(round(bbox[1])))
+                x2, y2 = min(width, int(round(bbox[2]))), min(height, int(round(bbox[3])))
+                if x2 > x1 and y2 > y1:
+                    crop = frames[t_idx, y1:y2, x1:x2, :].copy()
+                    region = _REGION_MAP.get(region_names[0], _REGION_MAP.get("HAND"))
+                    if region:
+                        rois_per_frame[t_idx].append(
+                            RefinementROI(
+                                region=region,
+                                bbox_xyxy=bbox,
+                                crop_acescg=crop,
+                                confidence=0.9,
+                                frame_index=t_idx,
+                            )
+                        )
+        elif arr.ndim == 3 and arr.shape[2] == 4:
+            for t_idx in range(min(frames.shape[0], arr.shape[0])):
+                for k in range(arr.shape[1]):
+                    bbox = arr[t_idx, k].astype(np.float32)
+                    x1, y1 = max(0, int(round(bbox[0]))), max(0, int(round(bbox[1])))
+                    x2, y2 = min(width, int(round(bbox[2]))), min(height, int(round(bbox[3])))
+                    if x2 > x1 and y2 > y1:
+                        crop = frames[t_idx, y1:y2, x1:x2, :].copy()
+                        rname = region_names[k % len(region_names)]
+                        region = _REGION_MAP.get(rname, _REGION_MAP.get("HAND"))
+                        if region:
+                            rois_per_frame[t_idx].append(
+                                RefinementROI(
+                                    region=region,
+                                    bbox_xyxy=bbox,
+                                    crop_acescg=crop,
+                                    confidence=0.9,
+                                    frame_index=t_idx,
+                                )
+                            )
 
     pipeline = LocalRefinementPipeline()
     result = pipeline.run(
@@ -153,6 +217,10 @@ def register_refine_subparser(
     refine_anatomical.add_argument(
         "--video", default=None,
         help="Path to video frames .npy file (T, H, W, 3) float32 ACEScg",
+    )
+    refine_anatomical.add_argument(
+        "--roi-meta", default=None,
+        help="Path to ROI metadata JSON or .npy file",
     )
     refine_anatomical.add_argument(
         "--output", "-o", default="./output/refine",

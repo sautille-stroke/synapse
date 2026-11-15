@@ -113,15 +113,43 @@ def _cmd_recon_closed_loop(
 
     t_count, h, w, _ = frames.shape
 
-    # Synthesize normals (pointing +Z) and UV maps
-    normals = np.zeros_like(frames)
-    normals[..., 2] = 1.0
+    # Real normals input required (H6-P1-05: no fake +Z synthesis)
+    normals_path_raw = getattr(args, "normals", None)
+    if not normals_path_raw:
+        raise AssetNotFoundError(
+            "Missing required '--normals' argument for closed-loop",
+            agent_fix_hint=(
+                "Provide '--normals <path>' pointing to an existing .npy "
+                "file of shape (T, H, W, 3) float32."
+            ),
+        )
+    if not Path(normals_path_raw).is_file():
+        raise AssetNotFoundError(
+            f"Normals file not found: {normals_path_raw!r}",
+            agent_fix_hint=(
+                "Provide '--normals <path>' pointing to an existing .npy "
+                "file of shape (T, H, W, 3) float32."
+            ),
+        )
+    normals = np.load(normals_path_raw).astype(np.float32)
 
-    uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
-    u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
-    v_lin = np.linspace(0.0, 1.0, h, dtype=np.float32)
-    uv_maps[:, :, :, 0] = u_lin[np.newaxis, np.newaxis, :]
-    uv_maps[:, :, :, 1] = v_lin[np.newaxis, :, np.newaxis]
+    uv_maps_path_raw = getattr(args, "uv_maps", None)
+    if uv_maps_path_raw:
+        if not Path(uv_maps_path_raw).is_file():
+            raise AssetNotFoundError(
+                f"UV maps file not found: {uv_maps_path_raw!r}",
+                agent_fix_hint=(
+                    "Provide '--uv-maps <path>' pointing to an existing .npy "
+                    "file of shape (T, H, W, 2) float32."
+                ),
+            )
+        uv_maps = np.load(uv_maps_path_raw).astype(np.float32)
+    else:
+        uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
+        u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
+        v_lin = np.linspace(0.0, 1.0, h, dtype=np.float32)
+        uv_maps[:, :, :, 0] = u_lin[np.newaxis, np.newaxis, :]
+        uv_maps[:, :, :, 1] = v_lin[np.newaxis, :, np.newaxis]
 
     from synapse.recon.loop.mitsuba_optimizer import InverseOptimConfig
     from synapse.recon.loop.types import LoopConfig
@@ -210,6 +238,14 @@ def register_recon_subparser(
     recon_closed_loop.add_argument(
         "--video", default=None,
         help="Path to video frames .npy file (T, H, W, 3) float32",
+    )
+    recon_closed_loop.add_argument(
+        "--normals", default=None,
+        help="Path to surface normals .npy file (T, H, W, 3) float32",
+    )
+    recon_closed_loop.add_argument(
+        "--uv-maps", default=None,
+        help="Path to UV maps .npy file (T, H, W, 2) float32",
     )
     recon_closed_loop.add_argument(
         "--output", "-o", default="./output/closed-loop",

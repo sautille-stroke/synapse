@@ -27,7 +27,11 @@ import math
 import numpy as np
 import pytest
 from synapse.metrics.image_quality import psnr_db, ssim
-from synapse.metrics.roundtrip import chamfer_mm
+from synapse.metrics.roundtrip import (
+    chamfer_mm,
+    compute_chamfer_distance_mm,
+    sample_mesh_surface,
+)
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
@@ -384,3 +388,43 @@ class TestDelightMultiviewAlbedo:
         assert result.delta_e_residual >= 0.0
         assert np.all(np.isfinite(result.albedo))
         assert np.all(np.isfinite(result.delta_e_residual))
+
+
+class TestSurfaceSamplingAndChamfer:
+    """Verify area-weighted triangle uniform surface sampling and Chamfer distance."""
+
+    def test_sample_mesh_surface_area_weighted(self) -> None:
+        # Triangle 1: large [0,0,0], [10,0,0], [0,10,0] -> area = 50.0
+        # Triangle 2: tiny [20,0,0], [20.1,0,0], [20,0.1,0] -> area = 0.005
+        vertices = np.array([
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [20.1, 0.0, 0.0],
+            [20.0, 0.1, 0.0],
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 1, 2],
+            [3, 4, 5],
+        ], dtype=np.int64)
+
+        samples = sample_mesh_surface(vertices, faces, num_samples=2000, seed=42)
+        assert samples.shape == (2000, 3)
+        assert np.all(np.isfinite(samples))
+
+        # Almost all points should fall in Triangle 1 (x <= 10)
+        in_t1 = np.sum(samples[:, 0] <= 10.5)
+        ratio_t1 = in_t1 / len(samples)
+        assert ratio_t1 > 0.98, f"Expected >98% in large triangle, got {ratio_t1:.4f}"
+
+    def test_compute_chamfer_distance_mm_mesh_and_points(self) -> None:
+        verts, faces = _make_sphere_mesh(subdivisions=2, radius=0.5)
+        mesh_a = MeshGeometry(vertices=verts, faces=faces)
+        mesh_b = MeshGeometry(vertices=verts + 0.001, faces=faces)  # 1mm shift
+
+        cd_self = compute_chamfer_distance_mm(mesh_a, mesh_a, num_samples=2000)
+        assert cd_self < 0.01, f"Self-CD should be ~0 mm, got {cd_self}"
+
+        cd_shift = compute_chamfer_distance_mm(mesh_a, mesh_b, num_samples=2000)
+        assert 0.5 <= cd_shift <= 2.0, f"Expected ~1mm shift CD, got {cd_shift}"

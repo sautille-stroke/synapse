@@ -151,54 +151,89 @@ def _cmd_rsi_gate_promote(
     """Evaluate monotonic promotion gate."""
     from synapse.rsi.promotion_gate import (
         BenchReport,
+        BenchScenarioScore,
         evaluate_monotonic_promotion,
     )
 
-    baseline_overall_raw = getattr(args, "baseline_overall", None)
-    candidate_overall_raw = getattr(args, "candidate_overall", None)
+    baseline_report_raw = getattr(args, "baseline_report", None)
+    candidate_report_raw = getattr(args, "candidate_report", None)
 
-    if baseline_overall_raw is None or candidate_overall_raw is None:
-        raise ContractValidationError(
-            "Both --baseline-overall and --candidate-overall are "
-            "required for 'synapse rsi gate-promote'. Hardcoded "
-            "defaults are forbidden.",
-            agent_fix_hint=(
-                "Pass explicit '--baseline-overall <float>' and "
-                "'--candidate-overall <float>' arguments."
-            ),
+    if baseline_report_raw and candidate_report_raw:
+        base_p = Path(baseline_report_raw)
+        cand_p = Path(candidate_report_raw)
+        if not base_p.is_file():
+            raise AssetNotFoundError(f"Baseline report file not found: {baseline_report_raw!r}")
+        if not cand_p.is_file():
+            raise AssetNotFoundError(f"Candidate report file not found: {candidate_report_raw!r}")
+        baseline = BenchReport.model_validate_json(base_p.read_text(encoding="utf-8"))
+        candidate = BenchReport.model_validate_json(cand_p.read_text(encoding="utf-8"))
+    else:
+        baseline_overall_raw = getattr(args, "baseline_overall", None)
+        candidate_overall_raw = getattr(args, "candidate_overall", None)
+        baseline_geom_raw = getattr(args, "baseline_geom", None)
+        candidate_geom_raw = getattr(args, "candidate_geom", None)
+        baseline_temporal_raw = getattr(args, "baseline_temporal", None)
+        candidate_temporal_raw = getattr(args, "candidate_temporal", None)
+
+        missing_fields: list[str] = []
+        if baseline_overall_raw is None:
+            missing_fields.append("--baseline-overall")
+        if baseline_geom_raw is None:
+            missing_fields.append("--baseline-geom")
+        if baseline_temporal_raw is None:
+            missing_fields.append("--baseline-temporal")
+        if candidate_overall_raw is None:
+            missing_fields.append("--candidate-overall")
+        if candidate_geom_raw is None:
+            missing_fields.append("--candidate-geom")
+        if candidate_temporal_raw is None:
+            missing_fields.append("--candidate-temporal")
+
+        if missing_fields:
+            raise ContractValidationError(
+                f"Missing required 3-axis score argument(s): {', '.join(missing_fields)}. "
+                "Independent 3-axis scores (overall, geom, temporal) are required; "
+                "single-score broadcasting across axes is forbidden.",
+                agent_fix_hint=(
+                    "Provide explicit values for --baseline-overall, --baseline-geom, --baseline-temporal, "
+                    "--candidate-overall, --candidate-geom, and --candidate-temporal (or pass "
+                    "--baseline-report and --candidate-report JSON files)."
+                ),
+            )
+
+        baseline_overall = float(baseline_overall_raw)
+        candidate_overall = float(candidate_overall_raw)
+        baseline_geom = float(baseline_geom_raw)
+        candidate_geom = float(candidate_geom_raw)
+        baseline_temporal = float(baseline_temporal_raw)
+        candidate_temporal = float(candidate_temporal_raw)
+
+        # Parse scenarios if provided
+        scenarios_raw = getattr(args, "scenarios", None)
+        scenarios_list: list[BenchScenarioScore] = []
+        if scenarios_raw:
+            sc_p = Path(scenarios_raw)
+            if sc_p.is_file():
+                sc_data = json.loads(sc_p.read_text(encoding="utf-8"))
+            else:
+                sc_data = json.loads(scenarios_raw)
+            if isinstance(sc_data, list):
+                for item in sc_data:
+                    if isinstance(item, dict):
+                        scenarios_list.append(BenchScenarioScore.model_validate(item))
+
+        baseline = BenchReport(
+            overall_score=baseline_overall,
+            geom_score=baseline_geom,
+            temporal_score=baseline_temporal,
+            scenarios=scenarios_list,
         )
-
-    baseline_overall = float(baseline_overall_raw)
-    candidate_overall = float(candidate_overall_raw)
-
-    baseline_geom_raw = getattr(args, "baseline_geom", None)
-    candidate_geom_raw = getattr(args, "candidate_geom", None)
-    baseline_temporal_raw = getattr(args, "baseline_temporal", None)
-    candidate_temporal_raw = getattr(args, "candidate_temporal", None)
-
-    baseline_geom = float(baseline_geom_raw) if baseline_geom_raw is not None else baseline_overall
-    candidate_geom = float(candidate_geom_raw) if candidate_geom_raw is not None else candidate_overall
-    baseline_temporal = (
-        float(baseline_temporal_raw)
-        if baseline_temporal_raw is not None
-        else baseline_overall
-    )
-    candidate_temporal = (
-        float(candidate_temporal_raw)
-        if candidate_temporal_raw is not None
-        else candidate_overall
-    )
-
-    baseline = BenchReport(
-        overall_score=baseline_overall,
-        geom_score=baseline_geom,
-        temporal_score=baseline_temporal,
-    )
-    candidate = BenchReport(
-        overall_score=candidate_overall,
-        geom_score=candidate_geom,
-        temporal_score=candidate_temporal,
-    )
+        candidate = BenchReport(
+            overall_score=candidate_overall,
+            geom_score=candidate_geom,
+            temporal_score=candidate_temporal,
+            scenarios=scenarios_list,
+        )
 
     result = evaluate_monotonic_promotion(
         baseline=baseline, candidate=candidate,
@@ -286,27 +321,39 @@ def register_rsi_subparser(
     )
     rsi_gate.add_argument(
         "--baseline-overall", type=float, default=None,
-        help="Baseline overall score (required)",
+        help="Baseline overall score",
     )
     rsi_gate.add_argument(
         "--candidate-overall", type=float, default=None,
-        help="Candidate overall score (required)",
+        help="Candidate overall score",
     )
     rsi_gate.add_argument(
         "--baseline-geom", type=float, default=None,
-        help="Baseline geometry score (defaults to --baseline-overall)",
+        help="Baseline geometry score",
     )
     rsi_gate.add_argument(
         "--candidate-geom", type=float, default=None,
-        help="Candidate geometry score (defaults to --candidate-overall)",
+        help="Candidate geometry score",
     )
     rsi_gate.add_argument(
         "--baseline-temporal", type=float, default=None,
-        help="Baseline temporal score (defaults to --baseline-overall)",
+        help="Baseline temporal score",
     )
     rsi_gate.add_argument(
         "--candidate-temporal", type=float, default=None,
-        help="Candidate temporal score (defaults to --candidate-overall)",
+        help="Candidate temporal score",
+    )
+    rsi_gate.add_argument(
+        "--baseline-report", default=None,
+        help="Path to baseline BenchReport JSON file",
+    )
+    rsi_gate.add_argument(
+        "--candidate-report", default=None,
+        help="Path to candidate BenchReport JSON file",
+    )
+    rsi_gate.add_argument(
+        "--scenarios", default=None,
+        help="Optional JSON string or path to JSON file with scenario scores list",
     )
     rsi_gate.add_argument(
         "--strict", action="store_true", default=False,

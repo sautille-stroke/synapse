@@ -505,13 +505,31 @@ class TestRsiGatePromote:
         )
         assert code == ExitCode.CONTRACT_ERROR
 
-    def test_gate_promote_with_both_args_succeeds(self) -> None:
-        """With both args provided, gate-promote should succeed."""
+    def test_gate_promote_omitting_geom_exits_10(self) -> None:
+        """With only overall scores and no geom/temporal, exit 10 (broadcast forbidden)."""
         code, out, err = _capture_main_synapse(
             [
                 "--json", "rsi", "gate-promote",
                 "--baseline-overall", "0.5",
                 "--candidate-overall", "0.8",
+            ]
+        )
+        assert code == ExitCode.CONTRACT_ERROR
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.CONTRACT_ERROR
+        assert "agent_fix_hint" in data
+
+    def test_gate_promote_with_both_args_succeeds(self) -> None:
+        """With independent 3-axis args provided, gate-promote should succeed."""
+        code, out, err = _capture_main_synapse(
+            [
+                "--json", "rsi", "gate-promote",
+                "--baseline-overall", "0.5",
+                "--baseline-geom", "0.5",
+                "--baseline-temporal", "0.5",
+                "--candidate-overall", "0.8",
+                "--candidate-geom", "0.8",
+                "--candidate-temporal", "0.8",
             ]
         )
         assert code == 0
@@ -561,12 +579,73 @@ class TestAntiSilentFailureCLI:
         assert "agent_fix_hint" in data
 
     def test_rsi_gate_promote_with_args_succeeds(self) -> None:
-        """synapse rsi gate-promote with explicit args → exit_code=0."""
+        """synapse rsi gate-promote with explicit 3-axis args → exit_code=0."""
         code, out, err = _capture_main_synapse(
             [
                 "--json", "rsi", "gate-promote",
                 "--baseline-overall", "0.7",
+                "--baseline-geom", "0.7",
+                "--baseline-temporal", "0.7",
                 "--candidate-overall", "0.8",
+                "--candidate-geom", "0.8",
+                "--candidate-temporal", "0.8",
+            ]
+        )
+        assert code == 0
+        data = json.loads(out)
+        assert data["status"] == "ok"
+
+    def test_recon_closed_loop_missing_normals_exits_20(self, tmp_path: Path) -> None:
+        """synapse recon closed-loop without --normals → exit_code=20."""
+        import numpy as np
+        video_file = tmp_path / "frames.npy"
+        np.save(str(video_file), np.zeros((2, 32, 32, 3), dtype=np.float32))
+        code, out, err = _capture_main_synapse(
+            [
+                "--json", "recon", "closed-loop",
+                "--video", str(video_file),
+            ]
+        )
+        assert code == ExitCode.RESOURCE_MISSING
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.RESOURCE_MISSING
+        assert "agent_fix_hint" in data
+
+    def test_refine_anatomical_missing_roi_meta_exits_20(self, tmp_path: Path) -> None:
+        """synapse refine anatomical without --roi-meta → exit_code=20."""
+        import numpy as np
+        video_file = tmp_path / "video.npy"
+        np.save(str(video_file), np.zeros((2, 32, 32, 3), dtype=np.float32))
+        code, out, err = _capture_main_synapse(
+            [
+                "--json", "refine", "anatomical",
+                "--video", str(video_file),
+            ]
+        )
+        assert code == ExitCode.RESOURCE_MISSING
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.RESOURCE_MISSING
+        assert "agent_fix_hint" in data
+
+    def test_inspect_eval_without_mock_exits_50(self) -> None:
+        """synapse inspect eval in non-mock mode forbids silent mock injection → exit_code=50."""
+        code, out, err = _capture_main_synapse(
+            [
+                "--json", "inspect", "eval",
+                "--asset-id", "test_asset",
+            ]
+        )
+        assert code == ExitCode.NOT_IMPLEMENTED
+        data = json.loads(out)
+        assert data["exit_code"] == ExitCode.NOT_IMPLEMENTED
+
+    def test_inspect_eval_with_mock_succeeds(self) -> None:
+        """synapse inspect eval --mock succeeds → exit_code=0."""
+        code, out, err = _capture_main_synapse(
+            [
+                "--json", "inspect", "eval",
+                "--asset-id", "test_asset",
+                "--mock",
             ]
         )
         assert code == 0

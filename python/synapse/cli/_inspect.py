@@ -118,6 +118,16 @@ def _cmd_inspect_align(args: argparse.Namespace) -> dict[str, Any]:
 
 def _cmd_inspect_eval(args: argparse.Namespace) -> dict[str, Any]:
     """Evaluate asset using Visual Jev critic."""
+    from synapse.errors import NotImplementedStageError
+
+    is_mock = bool(getattr(args, "mock", False))
+    if not is_mock:
+        raise NotImplementedStageError(
+            "CLI 'synapse inspect eval' requires real VLM transport; "
+            "silent MockJevTransport injection is forbidden in non-mock mode.",
+            agent_fix_hint="Pass '--mock' to explicitly enable MockJevTransport for local evaluation.",
+        )
+
     from synapse.inspect.jev_critic import MockJevTransport, VisualJevCritic
 
     asset_id = getattr(args, "asset_id", "unknown")
@@ -227,6 +237,7 @@ def register_inspect_subparser(
     ev = sub.add_parser("eval", help="Evaluate asset using Visual Jev critic")
     ev.add_argument("--asset-id", default="unknown", help="Asset identifier")
     ev.add_argument("--asset-name", default="Unknown", help="Human-readable asset name")
+    ev.add_argument("--mock", action="store_true", help="Enable MockJevTransport for testing")
 
     evl = sub.add_parser("evaluate",
                           help="Batch-evaluate 3D models and generate HTML/JSON reports")
