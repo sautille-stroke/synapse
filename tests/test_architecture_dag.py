@@ -5,11 +5,11 @@ any future import cycle, tier violation, or lazy import leak.
 """
 
 from __future__ import annotations
-from typing import Any
 
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -133,7 +133,6 @@ def sneaky() -> None:
 
 def test_relative_import_resolved_by_guard(tmp_path: Path) -> None:
     """Relative imports (``from .. import X``) are resolved to real package paths."""
-    import ast
 
     mod = _load_guard()
 

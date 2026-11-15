@@ -14,11 +14,11 @@ Test fixtures include:
 """
 
 from __future__ import annotations
-from typing import Any
 
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -490,11 +490,8 @@ class TestBuildNativeScript:
         and _build_direct_fallback with a rigged environment where pybind11
         is genuinely unreachable.
         """
-        import importlib
-        import importlib.util
         import subprocess
         import sys
-        import tempfile
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent

@@ -56,7 +56,7 @@ def test_rfc0062_l_asset_manifest_structure() -> None:
         vital = pkg["vital_file"]
         assert "name" in vital, f"vital_file for {pkg_name} missing 'name'"
         assert "sha256" in vital, f"vital_file for {pkg_name} missing 'sha256'"
-        assert len(vital["sha256"]) == 64, f"vital_file sha256 must be 64 hex chars"
+        assert len(vital["sha256"]) == 64, "vital_file sha256 must be 64 hex chars"
         # hf_repo and hf_filename for remote distribution
         assert "hf_repo" in pkg, f"Package {pkg_name} missing hf_repo"
         assert "hf_filename" in pkg, f"Package {pkg_name} missing hf_filename"

@@ -1,10 +1,10 @@
-from typing import Any
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
 import socketserver
 import urllib.error
 import urllib.request
+from typing import Any
 
 import numpy as np
 import pytest

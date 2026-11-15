@@ -1,7 +1,7 @@
-from typing import Any
 """Tests for synapse.bench — Synapse-Bench evaluation dataset."""
 
 import json
+from typing import Any
 
 import numpy as np
 import pytest

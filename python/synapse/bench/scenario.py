@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any,  Literal
+from typing import Any, Literal
 
 
 class ScenarioTier(str, Enum):

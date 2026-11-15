@@ -7,13 +7,13 @@ Covers:
 """
 
 from __future__ import annotations
-from typing import Any
 
 import json
 import math
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest

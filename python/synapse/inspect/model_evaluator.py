@@ -288,14 +288,13 @@ def evaluate_single_model(
             If not provided, lazily imports ``synapse.bench.model_loader.load_mesh``.
     """
     if mesh_loader_fn is None:
-        from synapse.bench.model_loader import load_mesh  # noqa: tier-bypass – utility
-        mesh_loader_fn = lambda p: load_mesh(p, normalize=True)
+        from synapse.bench.model_loader import load_mesh  # tier-bypass utility
+        def mesh_loader_fn(p: str) -> Any:
+            return load_mesh(p, normalize=True)
 
     from synapse.metrics.image_quality import ciede2000, lpips, psnr_db, ssim
     from synapse.metrics.roundtrip import (
-        compute_chamfer_distance_mm,
         f_score_1mm,
-        sample_mesh_surface,
     )
 
     canonical_profile = normalize_eval_profile(profile_name)
@@ -485,9 +484,10 @@ def evaluate_3d_models_directory(
     if reference_dir is not None:
         ref_dir = Path(reference_dir)
         if ref_dir.exists() and ref_dir.is_dir():
-            from synapse.bench.model_loader import load_mesh  # noqa: tier-bypass – utility
+            from synapse.bench.model_loader import load_mesh  # tier-bypass utility
 
-            _ref_loader_fn = lambda p: load_mesh(p, normalize=True)
+            def _ref_loader_fn(p: str) -> Any:
+                return load_mesh(p, normalize=True)
 
             for ref_path in _collect_model_files(ref_dir):
                 try:

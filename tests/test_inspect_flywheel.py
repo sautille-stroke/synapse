@@ -10,10 +10,10 @@ Validates:
 """
 
 from __future__ import annotations
-from typing import Any
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from synapse.errors import QualityGateError
@@ -638,6 +638,7 @@ class TestInspectCLI:
                 "--json", "inspect", "eval",
                 "--asset-id", "test_001",
                 "--asset-name", "Test Asset",
+                "--mock",
             ])
         finally:
             sys.stdout = old

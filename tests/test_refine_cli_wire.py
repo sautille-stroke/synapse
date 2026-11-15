@@ -48,10 +48,14 @@ def test_refine_anatomical_cli_with_video_success() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         video_path = Path(tmp_dir) / "test_video.npy"
+        roi_meta_path = Path(tmp_dir) / "roi_meta.json"
         # Create a small valid test video (T=2, H=64, W=64, C=3)
         np.save(video_path, np.full((2, 64, 64, 3), 0.5, dtype=np.float32))
+        # Create minimal ROI metadata
+        import json as _json
+        roi_meta_path.write_text(_json.dumps({"regions": [], "asset_id": "test"}))
 
-        rc = main_synapse(["--json", "refine", "anatomical", "--video", str(video_path)])
+        rc = main_synapse(["--json", "refine", "anatomical", "--video", str(video_path), "--roi-meta", str(roi_meta_path)])
         assert rc == 0
 
 

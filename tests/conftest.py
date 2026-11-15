@@ -7,7 +7,6 @@ from typing import Any, Generator
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # SYNAPSE_CI_STRICT_DEPS: when set to "1", tests that would normally skip
 # due to missing optional dependencies (torch, trimesh, safetensors, etc.)
@@ -79,9 +78,9 @@ def cached_rasterizer_64() -> Any:
     key = "64x64"
     if key not in _rasterizer_cache:
         try:
-            from synapse.generators.rasterizer import SoftwareRasterizer
-
             import warnings
+
+            from synapse.generators.rasterizer import SoftwareRasterizer
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 _rasterizer_cache[key] = SoftwareRasterizer(width=64, height=64)
@@ -96,9 +95,9 @@ def cached_rasterizer_128() -> Any:
     key = "128x128"
     if key not in _rasterizer_cache:
         try:
-            from synapse.generators.rasterizer import SoftwareRasterizer
-
             import warnings
+
+            from synapse.generators.rasterizer import SoftwareRasterizer
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 _rasterizer_cache[key] = SoftwareRasterizer(width=128, height=128)

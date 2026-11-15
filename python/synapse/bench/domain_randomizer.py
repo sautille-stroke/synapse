@@ -13,10 +13,10 @@ satisfies the 3-D causal VAE constraint ``T = 4k + 1``.
 """
 
 from __future__ import annotations
-from typing import Any
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
