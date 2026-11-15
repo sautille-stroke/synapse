@@ -542,13 +542,17 @@ if (nativeBin) {
     );
 
     assert.strictEqual(run.status, 0, `Native binary exited with ${run.status}: ${run.stderr}`);
+    const outMessages = run.stdout.trim().split('\n').filter(Boolean).map((l) => {
+      try { return JSON.parse(l); } catch (_) { return {}; }
+    });
+    const acks = outMessages.filter((m) => m.type === 'ack');
     assert.ok(
-      run.stdout.includes('"type":"ack","command":"load_bundle","ok":true'),
+      acks.some((a) => a.command === 'load_bundle' && a.ok === true),
       `Missing load_bundle ack. STDOUT was:\n${run.stdout}\nSTDERR was:\n${run.stderr}`,
     );
-    assert.ok(run.stdout.includes('"type":"ack","command":"camera","ok":true'));
-    assert.ok(run.stdout.includes('"type":"ack","command":"set_debug_view","ok":true'));
-    assert.ok(run.stdout.includes('"type":"frame_ready"'));
+    assert.ok(acks.some((a) => a.command === 'camera' && a.ok === true));
+    assert.ok(acks.some((a) => a.command === 'set_debug_view' && a.ok === true));
+    assert.ok(outMessages.some((m) => m.type === 'frame_ready'));
 
     const reader = new ShmFrameReader(shmName);
     try {
