@@ -266,7 +266,7 @@ def test_stage_from_remote_huggingface_returns_nonempty(tmp_path: Path) -> None:
             "sys.modules",
             {"huggingface_hub": mock.MagicMock(hf_hub_download=mock_hf_hub_download)},
         ),
-    ) -> None:
+    ):
         records = stage_from_remote_huggingface(target_root, tier="starter_dev", verbose=False)
 
     assert len(records) > 0, "stage_from_remote_huggingface must return non-empty list"
@@ -319,6 +319,6 @@ def test_stage_from_remote_huggingface_rejects_sha256_mismatch(tmp_path: Path) -
             "sys.modules",
             {"huggingface_hub": mock.MagicMock(hf_hub_download=mock_hf_hub_download)},
         ),
-    ) -> None:
+    ):
         with pytest.raises(ValueError, match="SHA-256 mismatch"):
             stage_from_remote_huggingface(target_root, tier="starter_dev", verbose=False)

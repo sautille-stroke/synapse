@@ -431,7 +431,7 @@ class TestJobBundleWorker:
         worker = JobBundleWorker()
         with unittest.mock.patch.dict(
             "sys.modules", {"PIL": None, "PIL.Image": None},
-        ) -> None:
+        ):
             result = worker.execute(manifest)
 
         assert result.exit_code == 30

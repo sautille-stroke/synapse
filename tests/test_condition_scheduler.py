@@ -64,7 +64,7 @@ def _make_frame(
 
 def _make_sequence(n: int, **kwargs: object) -> FGPPSequence:
     """Build an FGPPSequence of *n* default frames."""
-    frames = [_make_frame(i, **kwargs)  # type: ignore[arg-type] for i in range(n)]
+    frames = [_make_frame(i, **kwargs) for i in range(n)]  # type: ignore[arg-type]
     return FGPPSequence(frames=frames, fps=24.0, scene_id="test")
 
 
