@@ -1,6 +1,7 @@
 // electron/native-process.js — Manages the native C++ inspector subprocess.
 // Includes line-buffered stdout/stderr parsing, strict command schema validation,
 // and SHM frame reader integration.
+// H6-P0-10: Added 'normals', 'albedo', 'motion' to allowed debug modes.
 'use strict';
 
 const { spawn } = require('child_process');
@@ -8,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
 const EventEmitter = require('events');
-const { ShmFrameReader, DEFAULT_SHM_NAME } = require('./shm-reader');
+const { ShmFrameReader, DEFAULT_SHM_NAME, validateShmName } = require('./shm-reader');
 
 const ALLOWED_COMMAND_TYPES = new Set([
   'camera',
@@ -21,15 +22,27 @@ const ALLOWED_COMMAND_TYPES = new Set([
 ]);
 
 const ALLOWED_CAMERA_ACTIONS = new Set(['orbit', 'pan', 'zoom']);
+
+// H6-P0-10: Decoupled debug view modes from nav tabs. Full native AOV set.
 const ALLOWED_DEBUG_MODES = new Set([
   'lit',
   'wireframe',
   'normal',
+  'normals',     // alias for 'normal'
   'uv',
   'depth',
+  'albedo',
+  'motion',
   'cryptomatte',
   'rgb',
 ]);
+
+// Normalize debug view mode aliases to their canonical form.
+function normalizeDebugMode(mode) {
+  if (mode === 'rgb') return 'lit';
+  if (mode === 'normals') return 'normal';
+  return mode;
+}
 
 /**
  * Validate a command object before serialising it to the native process stdin.
@@ -65,7 +78,7 @@ function validateNativeCommand(cmd) {
       if (!ALLOWED_DEBUG_MODES.has(mode)) {
         return { ok: false, error: `Invalid debug view mode: '${String(mode)}'` };
       }
-      const normMode = mode === 'rgb' ? 'lit' : mode;
+      const normMode = normalizeDebugMode(mode);
       return { ok: true, command: { type: 'set_debug_view', mode: normMode } };
     }
     case 'set_entity_visible': {
@@ -102,6 +115,13 @@ class InspectorProcessManager extends EventEmitter {
     this._inspectorRoot = inspectorRoot;
     this._nativeRoot = path.join(inspectorRoot, 'native');
     this._shmName = options.shmName || `${DEFAULT_SHM_NAME}-${process.pid}`;
+
+    // Validate SHM name for cross-platform correctness.
+    const shmCheck = validateShmName(this._shmName);
+    if (!shmCheck.valid) {
+      console.warn(`[shm] SHM name validation warning: ${shmCheck.error}`);
+    }
+
     this._proc = null;
     this._stdoutRl = null;
     this._stderrRl = null;

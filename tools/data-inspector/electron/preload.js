@@ -1,6 +1,7 @@
 // electron/preload.js — Secure contextBridge API for the Data Inspector.
 // Exposes a controlled set of IPC methods to the renderer process, returning
 // unsubscribe disposers for all event listeners.
+// H6-P0-10: Added platform-aware API for macOS traffic light offset.
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');

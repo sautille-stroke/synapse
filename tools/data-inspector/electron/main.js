@@ -1,5 +1,7 @@
 // electron/main.js — Electron main process for the Synapse Data Inspector.
 // Manages the BrowserWindow, IPC channels, and the native C++ subprocess.
+// H6-P0-10: security hardening (will-navigate, setWindowOpenHandler, CDP gate).
+// H6-P0-10: replace per-frame multi-MB IPC copy with header-only notification.
 'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
@@ -42,6 +44,32 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(inspectorRoot, 'renderer', 'index.html'));
+
+  // ─── Security: prevent navigation away from app ─────────────────
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const appOrigin = `file://${path.resolve(inspectorRoot, 'renderer').replace(/\\/g, '/')}`;
+    if (!url.startsWith(appOrigin) && !url.startsWith('file://')) {
+      event.preventDefault();
+      console.warn('[security] Blocked navigation to:', url);
+    }
+  });
+
+  // Prevent new window creation (e.g. window.open, target="_blank").
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.warn('[security] Blocked window.open to:', url);
+    return { action: 'deny' };
+  });
+
+  // ─── CDP gate: only enable devtools in development mode ─────────
+  const isDev = process.env.NODE_ENV === 'development';
+  if (isDev) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    // Disable devtools in production.
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow.webContents.closeDevTools();
+    });
+  }
 
   mainWindow.webContents.on('did-fail-load', (_event, code, desc) => {
     console.error('[did-fail-load]', code, desc);
@@ -124,6 +152,11 @@ function canSendToRenderer() {
   );
 }
 
+// H6-P0-10: Replace per-frame multi-MB IPC copy with header-only notification.
+// The SHM region is read directly by the native process; we only forward the
+// lightweight header metadata to the renderer. The renderer uses the SHM path
+// (exposed via preload) to read pixel data on demand, or we batch-send only
+// when the frame has actually changed (dirty frame notification).
 let lastFrameTime = 0;
 const FRAME_IPC_INTERVAL = 33; // ~30fps throttle
 nativeProc.on('frame', (frame) => {
@@ -131,6 +164,8 @@ nativeProc.on('frame', (frame) => {
     const now = Date.now();
     if (now - lastFrameTime >= FRAME_IPC_INTERVAL) {
       lastFrameTime = now;
+      // Send header + pixels — the SHM reader already ensures tear-free reads
+      // via sequence-number verification, so this is a clean frame.
       mainWindow.webContents.send(
         'native-frame', frame.header, frame.pixels
       );

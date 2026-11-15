@@ -1,6 +1,8 @@
 // test/test-bundle-loading.js — Tests for InspectionBundle loading, security,
 // SHM protocol parsing, command whitelist, and native binary integration.
 // Run with: node test/test-bundle-loading.js
+// H6-P1-07: Static test/fixtures/ are read-only immutable. All dynamic/negative
+// test cases use os.tmpdir() with try/finally cleanup. Zero git status pollution.
 'use strict';
 
 const path = require('path');
@@ -14,6 +16,8 @@ const {
   SCHEMA_VERSION,
   ACCEPTED_SCHEMA_VERSIONS,
   extractEntryPath,
+  extractEntryLabel,
+  isMultiInstanceKey,
 } = require('../electron/bundle-manager');
 const {
   InspectorProcessManager,
@@ -22,94 +26,48 @@ const {
 const {
   ShmFrameReader,
   parseShmHeader,
+  validateShmName,
   INSPECTOR_SHM_MAGIC,
   INSPECTOR_SHM_VERSION,
   HEADER_SIZE,
   SHM_BUFFER_COUNT,
+  MACOS_PSHMNAMLEN,
 } = require('../electron/shm-reader');
 
-// ─── Test fixtures ───────────────────────────────────────────────
+// ─── Test fixtures (read-only, committed to git) ─────────────────
+// These are STATIC and IMMUTABLE. Tests must NOT write to FIXTURES_DIR.
+// All dynamic / negative test cases create temp dirs under os.tmpdir().
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
+const MINIMAL_BUNDLE = path.join(FIXTURES_DIR, 'minimal-bundle');
+const FULL_BUNDLE = path.join(FIXTURES_DIR, 'full-bundle');
 
-function ensureFixtures() {
-  const minimalDir = path.join(FIXTURES_DIR, 'minimal-bundle');
-  const sourceDir = path.join(minimalDir, 'source');
+// Helper: create a temp directory for a test case.
+function makeTempDir(suffix) {
+  return fs.mkdtempSync(path.join(os.tmpdir(), `inspector-test-${suffix}-`));
+}
+
+// Helper: create a minimal valid bundle in a temp directory.
+function createTempBundle(tmpDir, manifestOverrides = {}) {
+  const sourceDir = path.join(tmpDir, 'source');
   fs.mkdirSync(sourceDir, { recursive: true });
-
   const glbHeader = Buffer.alloc(12);
-  glbHeader.writeUInt32LE(0x46546C67, 0); // magic: "glTF"
-  glbHeader.writeUInt32LE(2, 4);           // version: 2
-  glbHeader.writeUInt32LE(12, 8);          // length: 12
+  glbHeader.writeUInt32LE(0x46546C67, 0);
+  glbHeader.writeUInt32LE(2, 4);
+  glbHeader.writeUInt32LE(12, 8);
   fs.writeFileSync(path.join(sourceDir, 'model.glb'), glbHeader);
 
   const manifest = {
     schema_version: SCHEMA_VERSION,
-    bundle_id: 'test_minimal_001',
-    created_at: new Date().toISOString(),
-    description: 'Minimal test bundle for unit testing',
-    sources: {
-      source_model: 'source/model.glb',
-    },
-    scene: {
-      up_axis: 'Y',
-      units: 'meters',
-    },
+    bundle_id: 'temp_test',
+    sources: { source_model: 'source/model.glb' },
+    ...manifestOverrides,
   };
   fs.writeFileSync(
-    path.join(minimalDir, 'bundle.json'),
+    path.join(tmpDir, 'bundle.json'),
     JSON.stringify(manifest, null, 2),
   );
-
-  const fullDir = path.join(FIXTURES_DIR, 'full-bundle');
-  const fullSource = path.join(fullDir, 'source');
-  const fullAnimations = path.join(fullDir, 'source', 'animations');
-  const fullFgpp = path.join(fullDir, 'fgpp');
-  const fullGenerated = path.join(fullDir, 'generated');
-  const fullRecon = path.join(fullDir, 'reconstructed');
-  const fullMetrics = path.join(fullDir, 'metrics');
-
-  for (const d of [fullSource, fullAnimations, fullFgpp, fullGenerated,
-                    fullRecon, fullMetrics]) {
-    fs.mkdirSync(d, { recursive: true });
-  }
-
-  fs.writeFileSync(path.join(fullSource, 'model.glb'), glbHeader);
-  fs.writeFileSync(path.join(fullAnimations, 'walk.glb'), glbHeader);
-  fs.writeFileSync(path.join(fullFgpp, 'metadata.json'), '{}');
-  fs.writeFileSync(path.join(fullGenerated, 'video.mp4'), Buffer.alloc(8));
-  fs.writeFileSync(path.join(fullRecon, 'model.glb'), glbHeader);
-  fs.writeFileSync(
-    path.join(fullMetrics, 'comparison.json'),
-    JSON.stringify({ chamfer_mm: 2.34 }),
-  );
-
-  const fullManifest = {
-    schema_version: SCHEMA_VERSION,
-    bundle_id: 'test_full_roundtrip',
-    created_at: new Date().toISOString(),
-    description: 'Full roundtrip test bundle',
-    sources: {
-      source_model: 'source/model.glb',
-      animations: ['source/animations/walk.glb'],
-      fgpp_sequence: 'fgpp/',
-      generated_video: 'generated/video.mp4',
-      reconstructed_model: 'reconstructed/model.glb',
-      metrics: 'metrics/comparison.json',
-    },
-    scene: {
-      up_axis: 'Y',
-      units: 'meters',
-      scenario_id: 't2_humanoid_walk_orbit',
-      adapter_id: 'wan_2.1_controlnext',
-    },
-  };
-  fs.writeFileSync(
-    path.join(fullDir, 'bundle.json'),
-    JSON.stringify(fullManifest, null, 2),
-  );
-
-  return { minimalDir, fullDir };
+  return tmpDir;
 }
 
 // ─── Tests ───────────────────────────────────────────────────────
@@ -131,21 +89,22 @@ function test(name, fn) {
 
 console.log('=== Data Inspector Bundle, Security & SHM Tests ===\n');
 
-const { minimalDir, fullDir } = ensureFixtures();
 const mgr = new BundleManager();
 
-// Test 1: Load minimal bundle.
+// ── Section 1: Static fixture tests (read-only, no writes) ──────
+
+// Test 1: Load minimal bundle from static fixtures.
 test('loads minimal bundle successfully', () => {
-  const result = mgr.loadBundle(minimalDir);
+  const result = mgr.loadBundle(MINIMAL_BUNDLE);
   assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
   assert.strictEqual(result.manifest.schema_version, SCHEMA_VERSION);
   assert.strictEqual(result.manifest.bundle_id, 'test_minimal_001');
   assert.ok(result.inventory.fileCount >= 2, 'Should have at least 2 files');
 });
 
-// Test 2: Load full roundtrip bundle.
+// Test 2: Load full roundtrip bundle from static fixtures.
 test('loads full roundtrip bundle successfully', () => {
-  const result = mgr.loadBundle(fullDir);
+  const result = mgr.loadBundle(FULL_BUNDLE);
   assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
   assert.strictEqual(result.manifest.bundle_id, 'test_full_roundtrip');
   assert.ok(result.manifest.sources.animations.length > 0);
@@ -154,7 +113,7 @@ test('loads full roundtrip bundle successfully', () => {
 
 // Test 3: getBundleInfo after load.
 test('getBundleInfo returns loaded state', () => {
-  mgr.loadBundle(minimalDir);
+  mgr.loadBundle(MINIMAL_BUNDLE);
   const info = mgr.getBundleInfo();
   assert.strictEqual(info.loaded, true);
   assert.ok(info.path.includes('minimal-bundle'));
@@ -162,92 +121,88 @@ test('getBundleInfo returns loaded state', () => {
   assert.ok(info.inventory);
 });
 
+// ── Section 2: Dynamic / negative tests (os.tmpdir(), try/finally) ──
+
 // Test 4: Reject non-existent directory.
 test('rejects non-existent directory', () => {
-  const result = mgr.loadBundle('/tmp/does-not-exist-xyz-12345');
+  const result = mgr.loadBundle(path.join(os.tmpdir(), 'does-not-exist-xyz-12345'));
   assert.strictEqual(result.ok, false);
   assert.ok(result.error.includes('not found'));
 });
 
 // Test 5: Reject directory without bundle.json.
 test('rejects directory without bundle.json', () => {
-  const emptyDir = path.join(FIXTURES_DIR, 'empty-dir');
-  fs.mkdirSync(emptyDir, { recursive: true });
-  const result = mgr.loadBundle(emptyDir);
-  assert.strictEqual(result.ok, false);
-  assert.ok(result.error.includes('Missing'));
-  fs.rmdirSync(emptyDir);
+  const tmpDir = makeTempDir('no-manifest');
+  try {
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('Missing'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // Test 6: Reject wrong schema version.
 test('rejects wrong schema version', () => {
-  const wrongDir = path.join(FIXTURES_DIR, 'wrong-schema');
-  const wrongSource = path.join(wrongDir, 'source');
-  fs.mkdirSync(wrongSource, { recursive: true });
-  fs.writeFileSync(path.join(wrongSource, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(wrongDir, 'bundle.json'),
-    JSON.stringify({ schema_version: 'inspection.v999', sources: { source_model: 'source/model.glb' } }),
-  );
-  const result = mgr.loadBundle(wrongDir);
-  assert.strictEqual(result.ok, false);
-  assert.ok(result.error.includes('version mismatch'));
-  fs.rmSync(wrongDir, { recursive: true, force: true });
+  const tmpDir = makeTempDir('wrong-schema');
+  try {
+    createTempBundle(tmpDir, { schema_version: 'inspection.v999' });
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('version mismatch'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // Test 7: Reject path traversal.
 test('rejects path traversal in sources', () => {
-  const traverseDir = path.join(FIXTURES_DIR, 'path-traverse');
-  const traverseSource = path.join(traverseDir, 'source');
-  fs.mkdirSync(traverseSource, { recursive: true });
-  fs.writeFileSync(path.join(traverseSource, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(traverseDir, 'bundle.json'),
-    JSON.stringify({
-      schema_version: SCHEMA_VERSION,
+  const tmpDir = makeTempDir('path-traverse');
+  try {
+    createTempBundle(tmpDir, {
       sources: { source_model: '../../../etc/passwd' },
-    }),
-  );
-  const result = mgr.loadBundle(traverseDir);
-  assert.strictEqual(result.ok, false);
-  assert.ok(result.error.includes('Unsafe path'));
-  fs.rmSync(traverseDir, { recursive: true, force: true });
+    });
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('Unsafe path'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // Test 8: Reject absolute path in sources.
 test('rejects absolute path in sources', () => {
-  const absDir = path.join(FIXTURES_DIR, 'abs-path');
-  const absSource = path.join(absDir, 'source');
-  fs.mkdirSync(absSource, { recursive: true });
-  fs.writeFileSync(path.join(absSource, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(absDir, 'bundle.json'),
-    JSON.stringify({
-      schema_version: SCHEMA_VERSION,
+  const tmpDir = makeTempDir('abs-path');
+  try {
+    createTempBundle(tmpDir, {
       sources: { source_model: '/absolute/path/model.glb' },
-    }),
-  );
-  const result = mgr.loadBundle(absDir);
-  assert.strictEqual(result.ok, false);
-  assert.ok(result.error.includes('Unsafe path'));
-  fs.rmSync(absDir, { recursive: true, force: true });
+    });
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('Unsafe path'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // Test 9: Reject missing source model file.
 test('rejects missing source model file', () => {
-  const missingDir = path.join(FIXTURES_DIR, 'missing-model');
-  fs.mkdirSync(missingDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(missingDir, 'bundle.json'),
-    JSON.stringify({
-      schema_version: SCHEMA_VERSION,
-      sources: { source_model: 'source/model.glb' },
-    }),
-  );
-  const result = mgr.loadBundle(missingDir);
-  assert.strictEqual(result.ok, false);
-  assert.ok(result.error.includes('not found'));
-  fs.rmSync(missingDir, { recursive: true, force: true });
+  const tmpDir = makeTempDir('missing-model');
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, 'bundle.json'),
+      JSON.stringify({
+        schema_version: SCHEMA_VERSION,
+        sources: { source_model: 'source/model.glb' },
+      }),
+    );
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, false);
+    assert.ok(result.error.includes('not found'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // Test 10: Schema version constant and accepted versions are correct.
@@ -259,14 +214,9 @@ test('schema version constants match expected values', () => {
 
 // Test 10b: Load bundle where sources.source_model is a SourceEntry object.
 test('loads bundle with SourceEntry object for source_model', () => {
-  const objDir = path.join(FIXTURES_DIR, 'source-entry-obj');
-  const sourceDir = path.join(objDir, 'source');
-  fs.mkdirSync(sourceDir, { recursive: true });
-  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(objDir, 'bundle.json'),
-    JSON.stringify({
-      schema_version: 'inspection.v1.0',
+  const tmpDir = makeTempDir('source-entry-obj');
+  try {
+    createTempBundle(tmpDir, {
       bundle_id: 'test_source_entry_obj',
       sources: {
         source_model: {
@@ -275,26 +225,20 @@ test('loads bundle with SourceEntry object for source_model', () => {
           sha256: 'a'.repeat(64),
         },
       },
-    }),
-  );
-  try {
-    const result = mgr.loadBundle(objDir);
+    });
+    const result = mgr.loadBundle(tmpDir);
     assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
     assert.strictEqual(result.manifest.bundle_id, 'test_source_entry_obj');
   } finally {
-    fs.rmSync(objDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
 // Test 10c: Load bundle with synapse.bundle.v1.0 schema.
 test('loads bundle with synapse.bundle.v1.0 schema version', () => {
-  const v1Dir = path.join(FIXTURES_DIR, 'synapse-bundle-v1');
-  const sourceDir = path.join(v1Dir, 'source');
-  fs.mkdirSync(sourceDir, { recursive: true });
-  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(v1Dir, 'bundle.json'),
-    JSON.stringify({
+  const tmpDir = makeTempDir('synapse-bundle-v1');
+  try {
+    createTempBundle(tmpDir, {
       schema_version: 'synapse.bundle.v1.0',
       bundle_id: 'test_synapse_bundle_v1',
       sources: {
@@ -303,45 +247,106 @@ test('loads bundle with synapse.bundle.v1.0 schema version', () => {
           media_type: 'model/gltf-binary',
         },
       },
-    }),
-  );
-  try {
-    const result = mgr.loadBundle(v1Dir);
+    });
+    const result = mgr.loadBundle(tmpDir);
     assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
     assert.strictEqual(result.manifest.schema_version, 'synapse.bundle.v1.0');
   } finally {
-    fs.rmSync(v1Dir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
 // Test 10d: Reject path traversal when source entry is an object.
 test('rejects path traversal when source entry is an object', () => {
-  const badObjDir = path.join(FIXTURES_DIR, 'bad-source-obj');
-  const sourceDir = path.join(badObjDir, 'source');
-  fs.mkdirSync(sourceDir, { recursive: true });
-  fs.writeFileSync(path.join(sourceDir, 'model.glb'), Buffer.alloc(12));
-  fs.writeFileSync(
-    path.join(badObjDir, 'bundle.json'),
-    JSON.stringify({
-      schema_version: 'inspection.v1.0',
+  const tmpDir = makeTempDir('bad-source-obj');
+  try {
+    createTempBundle(tmpDir, {
       sources: {
         source_model: {
           path: '../../etc/passwd',
           media_type: 'model/gltf-binary',
         },
       },
-    }),
-  );
-  try {
-    const result = mgr.loadBundle(badObjDir);
+    });
+    const result = mgr.loadBundle(tmpDir);
     assert.strictEqual(result.ok, false);
     assert.ok(result.error.includes('Unsafe path'));
   } finally {
-    fs.rmSync(badObjDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-// Test 11: validateNativeCommand whitelist and schema checks.
+// ── Section 3: extractEntryPath / extractEntryLabel ─────────────
+
+test('extractEntryPath handles string and object entries', () => {
+  assert.strictEqual(extractEntryPath('source/model.glb'), 'source/model.glb');
+  assert.strictEqual(extractEntryPath({ path: 'source/model.glb' }), 'source/model.glb');
+  assert.strictEqual(extractEntryPath({ url: 'http://example.com/model.glb' }), 'http://example.com/model.glb');
+  assert.strictEqual(extractEntryPath(null), null);
+  assert.strictEqual(extractEntryPath(42), null);
+});
+
+test('extractEntryLabel returns display-safe strings', () => {
+  assert.strictEqual(extractEntryLabel('source/model.glb'), 'source/model.glb');
+  assert.strictEqual(extractEntryLabel({ path: 'source/model.glb' }), 'source/model.glb');
+  assert.strictEqual(extractEntryLabel({ label: 'My Model' }), 'My Model');
+  assert.strictEqual(extractEntryLabel(null), '');
+  // Must NOT produce '[object Object]'.
+  const label = extractEntryLabel({ path: 'a.glb', media_type: 'x' });
+  assert.ok(!label.includes('[object'), `extractEntryLabel should not return [object Object]: got '${label}'`);
+});
+
+// ── Section 4: Multi-instance source keys ────────────────────────
+
+test('isMultiInstanceKey identifies animation_*, generated_*, fgpp_* prefixes', () => {
+  assert.strictEqual(isMultiInstanceKey('animation_walk'), true);
+  assert.strictEqual(isMultiInstanceKey('animation_run'), true);
+  assert.strictEqual(isMultiInstanceKey('generated_video_01'), true);
+  assert.strictEqual(isMultiInstanceKey('fgpp_sequence_02'), true);
+  assert.strictEqual(isMultiInstanceKey('source_model'), false);
+  assert.strictEqual(isMultiInstanceKey('metrics'), false);
+});
+
+test('loads bundle with multi-instance source keys', () => {
+  const tmpDir = makeTempDir('multi-instance');
+  try {
+    const animDir = path.join(tmpDir, 'anims');
+    fs.mkdirSync(animDir, { recursive: true });
+    const glbHeader = Buffer.alloc(12);
+    glbHeader.writeUInt32LE(0x46546C67, 0);
+    glbHeader.writeUInt32LE(2, 4);
+    glbHeader.writeUInt32LE(12, 8);
+
+    const sourceDir = path.join(tmpDir, 'source');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'model.glb'), glbHeader);
+    fs.writeFileSync(path.join(animDir, 'walk.glb'), glbHeader);
+    fs.writeFileSync(path.join(animDir, 'run.glb'), glbHeader);
+
+    fs.writeFileSync(
+      path.join(tmpDir, 'bundle.json'),
+      JSON.stringify({
+        schema_version: SCHEMA_VERSION,
+        bundle_id: 'test_multi_instance',
+        sources: {
+          source_model: 'source/model.glb',
+          animation_walk: 'anims/walk.glb',
+          animation_run: 'anims/run.glb',
+        },
+      }),
+    );
+
+    const result = mgr.loadBundle(tmpDir);
+    assert.strictEqual(result.ok, true, `Expected ok=true, got: ${JSON.stringify(result)}`);
+    assert.strictEqual(result.manifest.sources.animation_walk, 'anims/walk.glb');
+    assert.strictEqual(result.manifest.sources.animation_run, 'anims/run.glb');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── Section 5: Command whitelist and validation ──────────────────
+
 test('validateNativeCommand enforces command whitelist and schemas', () => {
   assert.strictEqual(
     validateNativeCommand({ type: 'camera', action: 'orbit', dx: 12.5, dy: -4.0 }).ok,
@@ -359,6 +364,23 @@ test('validateNativeCommand enforces command whitelist and schemas', () => {
     validateNativeCommand({ type: 'set_debug_view', mode: 'cryptomatte' }).ok,
     true,
   );
+  // H6-P0-10: New debug modes.
+  assert.strictEqual(
+    validateNativeCommand({ type: 'set_debug_view', mode: 'albedo' }).ok,
+    true,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'set_debug_view', mode: 'motion' }).ok,
+    true,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'set_debug_view', mode: 'normals' }).ok,
+    true,
+  );
+  // 'normals' normalizes to 'normal'.
+  const normalsCmd = validateNativeCommand({ type: 'set_debug_view', mode: 'normals' });
+  assert.strictEqual(normalsCmd.command.mode, 'normal');
+
   const rgbNorm = validateNativeCommand({ type: 'set_debug_view', mode: 'rgb' });
   assert.strictEqual(rgbNorm.ok, true);
   assert.strictEqual(rgbNorm.command.mode, 'lit');
@@ -370,7 +392,7 @@ test('validateNativeCommand enforces command whitelist and schemas', () => {
     true,
   );
   assert.strictEqual(
-    validateNativeCommand({ type: 'load_bundle', path: minimalDir }).ok,
+    validateNativeCommand({ type: 'load_bundle', path: MINIMAL_BUNDLE }).ok,
     true,
   );
   assert.strictEqual(
@@ -387,7 +409,8 @@ test('validateNativeCommand enforces command whitelist and schemas', () => {
   assert.strictEqual(validateNativeCommand({ type: 'load_bundle', path: 'bad"quote' }).ok, false);
 });
 
-// Test 12: Security hardening static assertions (sandbox, preload unsubscribe, no innerHTML).
+// ── Section 6: Security hardening static assertions ──────────────
+
 test('security hardening checks on main.js, preload.js, and app.js', () => {
   const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
   const preloadSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
@@ -395,11 +418,37 @@ test('security hardening checks on main.js, preload.js, and app.js', () => {
 
   assert.ok(mainSrc.includes('sandbox: true'), 'main.js must enable sandbox: true');
   assert.ok(!mainSrc.includes('sandbox: false'), 'main.js must not contain sandbox: false');
+  assert.ok(mainSrc.includes('will-navigate'), 'main.js must intercept will-navigate');
+  assert.ok(mainSrc.includes('setWindowOpenHandler'), 'main.js must use setWindowOpenHandler');
+  assert.ok(mainSrc.includes('NODE_ENV'), 'main.js must gate CDP on NODE_ENV');
   assert.ok(preloadSrc.includes('removeListener'), 'preload.js must return removeListener disposer');
   assert.ok(!appSrc.includes('.innerHTML'), 'renderer/src/app.js must not use innerHTML');
+  assert.ok(appSrc.includes('extractDisplayLabel'), 'app.js must use extractDisplayLabel for source entries');
+  assert.ok(appSrc.includes('.catch('), 'app.js must catch Promise rejections on nativeSendCommand');
 });
 
-// Test 13: ShmFrameReader parses triple-buffered SHM regions accurately.
+// ── Section 7: SHM validation ────────────────────────────────────
+
+test('validateShmName enforces POSIX rules and macOS PSHMNAMLEN', () => {
+  const ok1 = validateShmName('/inspector-frame');
+  assert.strictEqual(ok1.valid, true);
+  assert.strictEqual(ok1.normalized, '/inspector-frame');
+
+  const ok2 = validateShmName('inspector-frame');
+  assert.strictEqual(ok2.valid, true);
+  assert.strictEqual(ok2.normalized, '/inspector-frame');
+
+  const bad1 = validateShmName('');
+  assert.strictEqual(bad1.valid, false);
+
+  const bad2 = validateShmName(null);
+  assert.strictEqual(bad2.valid, false);
+
+  // Reject embedded slashes.
+  const bad3 = validateShmName('/a/b');
+  assert.strictEqual(bad3.valid, false);
+});
+
 test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
   const w = 4;
   const h = 4;
@@ -448,7 +497,7 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
     assert.strictEqual(polled.pixels[2], 126);
     assert.strictEqual(polled.pixels[3], 255);
 
-    // Subsequent poll without frame_ready increment returns null.
+    // Subsequent poll without frame_ready increment returns null (spin-lock dedup).
     assert.strictEqual(reader.pollOnce(), null);
     reader.close();
   } finally {
@@ -456,7 +505,8 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
   }
 });
 
-// Test 14: End-to-end native binary + SHM + command verification (when compiled).
+// ── Section 8: End-to-end native binary (conditional) ────────────
+
 const inspectorRoot = path.resolve(__dirname, '..');
 const procMgr = new InspectorProcessManager(inspectorRoot);
 const nativeBin = procMgr._resolveBinaryPath();
@@ -466,7 +516,7 @@ if (nativeBin) {
     const shmName = `/inspector-e2e-${process.pid}`;
     const shotPath = path.join(os.tmpdir(), `inspector-shot-${process.pid}.ppm`);
     const commands = [
-      JSON.stringify({ type: 'load_bundle', path: minimalDir }),
+      JSON.stringify({ type: 'load_bundle', path: MINIMAL_BUNDLE }),
       JSON.stringify({ type: 'camera', action: 'orbit', dx: 25.0, dy: 10.0 }),
       JSON.stringify({ type: 'set_debug_view', mode: 'normal' }),
       JSON.stringify({ type: 'export_screenshot', path: shotPath }),
@@ -482,7 +532,7 @@ if (nativeBin) {
         '--frames=3',
         `--shm-name=${shmName}`,
         '--keep-shm',
-        `--bundle=${minimalDir}`,
+        `--bundle=${MINIMAL_BUNDLE}`,
       ],
       {
         input: commands,

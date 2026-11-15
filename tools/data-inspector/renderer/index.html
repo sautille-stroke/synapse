@@ -31,6 +31,8 @@
       --toolbar-h:    40px;
       --radius:       6px;
       --radius-sm:    4px;
+      /* H6-P2-01: macOS traffic light inset (76px left offset for hiddenInset). */
+      --traffic-light-inset: 0px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -53,6 +55,8 @@
       display: flex;
       align-items: center;
       padding: 0 12px;
+      /* H6-P2-01: macOS traffic light padding. */
+      padding-left: calc(12px + var(--traffic-light-inset));
       gap: 8px;
       -webkit-app-region: drag;
     }
@@ -205,7 +209,7 @@
       font-size: 11px;
     }
 
-    /* ─── View tabs ─── */
+    /* ─── View tabs (top panel navigation — decoupled from debug AOV) ─── */
     .view-tabs {
       display: flex;
       gap: 2px;
@@ -227,7 +231,7 @@
       border-bottom-color: var(--accent);
     }
 
-    /* ─── Debug view mode buttons ─── */
+    /* ─── Debug view mode buttons (native AOV selector) ─── */
     .debug-modes {
       display: flex;
       gap: 4px;
@@ -253,6 +257,8 @@
       <button data-mode="normal" title="Normal">Norm</button>
       <button data-mode="uv" title="UV">UV</button>
       <button data-mode="depth" title="Linear Depth">Depth</button>
+      <button data-mode="albedo" title="Albedo">Alb</button>
+      <button data-mode="motion" title="Motion Vectors">Mot</button>
       <button data-mode="cryptomatte" title="Cryptomatte ID">Crypto</button>
     </div>
 
@@ -335,6 +341,7 @@
     </div>
   </div>
 
+  <script src="src/views/source-model.js"></script>
   <script src="src/app.js"></script>
 </body>
 </html>

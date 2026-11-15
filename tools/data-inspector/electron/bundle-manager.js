@@ -1,4 +1,5 @@
 // electron/bundle-manager.js — Loads and validates InspectionBundle directories.
+// H6-P1-07: Support animation_*/generated_*/fgpp_* multi-instance source keys.
 'use strict';
 
 const fs = require('fs');
@@ -10,6 +11,13 @@ const ACCEPTED_SCHEMA_VERSIONS = new Set([
   'synapse.bundle.v1.0',
 ]);
 const MANIFEST_FILENAME = 'bundle.json';
+
+// Prefixes for multi-instance source keys.
+const MULTI_INSTANCE_PREFIXES = [
+  'animation_',
+  'generated_',
+  'fgpp_',
+];
 
 /**
  * Extract relative path from a source entry, which can be either a string
@@ -28,6 +36,22 @@ function extractEntryPath(entry) {
 }
 
 /**
+ * Extract a display label from a source entry.
+ * Returns the path string for display (handles both string and object entries).
+ * @param {unknown} entry
+ * @returns {string}
+ */
+function extractEntryLabel(entry) {
+  const p = extractEntryPath(entry);
+  if (p) return p;
+  if (entry && typeof entry === 'object') {
+    if (typeof entry.label === 'string') return entry.label;
+    if (typeof entry.name === 'string') return entry.name;
+  }
+  return String(entry || '');
+}
+
+/**
  * Check if a path string contains traversal segments or is absolute.
  * @param {unknown} p
  * @returns {boolean}
@@ -35,6 +59,15 @@ function extractEntryPath(entry) {
 function isUnsafePath(p) {
   if (typeof p !== 'string') return false;
   return p.includes('..') || path.isAbsolute(p) || /^[a-zA-Z]:[/\\]/.test(p);
+}
+
+/**
+ * Check if a key matches any of the multi-instance source prefixes.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isMultiInstanceKey(key) {
+  return MULTI_INSTANCE_PREFIXES.some(prefix => key.startsWith(prefix));
 }
 
 class BundleManager {
@@ -104,33 +137,9 @@ class BundleManager {
     }
 
     // Security: reject path traversal.
-    if (Array.isArray(sources)) {
-      for (let i = 0; i < sources.length; i++) {
-        const p = extractEntryPath(sources[i]);
-        if (p && isUnsafePath(p)) {
-          return { ok: false, error: `Unsafe path in sources[${i}]: '${p}'` };
-        }
-      }
-    } else if (typeof sources === 'object') {
-      for (const [key, val] of Object.entries(sources)) {
-        if (typeof val === 'string') {
-          if (isUnsafePath(val)) {
-            return { ok: false, error: `Unsafe path in sources.${key}: '${val}'` };
-          }
-        } else if (val && typeof val === 'object' && !Array.isArray(val)) {
-          const p = extractEntryPath(val);
-          if (p && isUnsafePath(p)) {
-            return { ok: false, error: `Unsafe path in sources.${key}: '${p}'` };
-          }
-        } else if (Array.isArray(val)) {
-          for (const entry of val) {
-            const p = extractEntryPath(entry);
-            if (p && isUnsafePath(p)) {
-              return { ok: false, error: `Unsafe path in sources.${key}: '${p}'` };
-            }
-          }
-        }
-      }
+    const traversalError = this._checkPathTraversal(sources);
+    if (traversalError) {
+      return { ok: false, error: traversalError };
     }
 
     // Check source model file exists.
@@ -147,6 +156,45 @@ class BundleManager {
     this._inventory = inventory;
 
     return { ok: true, manifest, inventory };
+  }
+
+  /**
+   * Check all source entries for path traversal.
+   * Supports multi-instance keys (animation_*, generated_*, fgpp_*).
+   * @param {object|Array} sources
+   * @returns {string|null} Error message or null if clean.
+   * @private
+   */
+  _checkPathTraversal(sources) {
+    if (Array.isArray(sources)) {
+      for (let i = 0; i < sources.length; i++) {
+        const p = extractEntryPath(sources[i]);
+        if (p && isUnsafePath(p)) {
+          return `Unsafe path in sources[${i}]: '${p}'`;
+        }
+      }
+    } else if (typeof sources === 'object') {
+      for (const [key, val] of Object.entries(sources)) {
+        if (typeof val === 'string') {
+          if (isUnsafePath(val)) {
+            return `Unsafe path in sources.${key}: '${val}'`;
+          }
+        } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const p = extractEntryPath(val);
+          if (p && isUnsafePath(p)) {
+            return `Unsafe path in sources.${key}: '${p}'`;
+          }
+        } else if (Array.isArray(val)) {
+          for (const entry of val) {
+            const p = extractEntryPath(entry);
+            if (p && isUnsafePath(p)) {
+              return `Unsafe path in sources.${key}: '${p}'`;
+            }
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -200,6 +248,9 @@ module.exports = {
   SCHEMA_VERSION,
   ACCEPTED_SCHEMA_VERSIONS,
   MANIFEST_FILENAME,
+  MULTI_INSTANCE_PREFIXES,
   extractEntryPath,
+  extractEntryLabel,
   isUnsafePath,
+  isMultiInstanceKey,
 };

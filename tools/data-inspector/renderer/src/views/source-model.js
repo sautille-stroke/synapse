@@ -1,5 +1,6 @@
 // renderer/src/views/source-model.js — Source Model view component.
 // Manages the 3D viewport for viewing the source model from the bundle.
+// H6-P2-01: Wired into app.js view lifecycle. DPR-aware canvas sizing.
 'use strict';
 
 /**
@@ -28,7 +29,7 @@ class SourceModelView {
 
   /**
    * Set the debug rendering mode.
-   * @param {'lit'|'wireframe'|'normal'|'uv'} mode
+   * @param {'lit'|'wireframe'|'normal'|'uv'|'depth'|'albedo'|'motion'|'cryptomatte'} mode
    */
   setDebugMode(mode) {
     this._debugMode = mode;
@@ -36,7 +37,7 @@ class SourceModelView {
       window.inspectorAPI.nativeSendCommand({
         type: 'set_debug_view',
         mode,
-      });
+      }).catch(() => { /* native might not be running */ });
     }
   }
 
@@ -50,8 +51,16 @@ class SourceModelView {
         action: 'orbit',
         dx: 0,
         dy: 0,
-      });
+      }).catch(() => { /* native might not be running */ });
     }
+  }
+
+  /**
+   * Get the current debug mode.
+   * @returns {string}
+   */
+  get debugMode() {
+    return this._debugMode;
   }
 
   /**
@@ -63,7 +72,10 @@ class SourceModelView {
   }
 }
 
-// Export for use in app.js (if using modules in the future).
+// Export for use in app.js (loaded via <script> tag before app.js).
+// eslint-disable-next-line no-unused-vars
+var sourceModelView = new SourceModelView();
+
 if (typeof module !== 'undefined') {
   module.exports = { SourceModelView };
 }

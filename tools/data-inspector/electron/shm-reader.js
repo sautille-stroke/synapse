@@ -1,5 +1,6 @@
 // electron/shm-reader.js — Shared-memory frame reader for the Data Inspector.
 // Reads triple-buffered frames written by InspectorShmServer (@aether//pal:shm).
+// Uses sequence-number spin-lock for tear-free reads and dirty-frame detection.
 'use strict';
 
 const EventEmitter = require('events');
@@ -10,6 +11,9 @@ const path = require('path');
 const DEFAULT_SHM_NAME = '/inspector-frame';
 const HEADER_SIZE = 64;
 const SHM_BUFFER_COUNT = 3;
+
+// macOS POSIX SHM name limit (31 usable bytes after leading '/').
+const MACOS_PSHMNAMLEN = 31;
 
 // Header field offsets (must match InspectorShmHeader in inspector_shm_server.h).
 const OFF_MAGIC       = 0;   // u32
@@ -27,9 +31,39 @@ const OFF_DEBUG_VIEW  = 40;  // u8
 const INSPECTOR_SHM_MAGIC = 0x494E5350;
 const INSPECTOR_SHM_VERSION = 1;
 
+// Maximum spin iterations for tear-free read (sequence lock).
+const MAX_SPIN_RETRIES = 4;
+
+/**
+ * Validate a POSIX SHM name for cross-platform correctness.
+ * On macOS, shm_open names must be <= PSHMNAMLEN (31) bytes.
+ * @param {string} shmName
+ * @returns {{ valid: boolean, error?: string, normalized: string }}
+ */
+function validateShmName(shmName) {
+  if (!shmName || typeof shmName !== 'string') {
+    return { valid: false, error: 'SHM name must be a non-empty string', normalized: '' };
+  }
+  // Ensure leading slash for POSIX compliance.
+  const normalized = shmName.startsWith('/') ? shmName : `/${shmName}`;
+  if (os.platform() === 'darwin' && normalized.length > MACOS_PSHMNAMLEN) {
+    return {
+      valid: false,
+      error: `SHM name '${normalized}' exceeds macOS PSHMNAMLEN limit of ${MACOS_PSHMNAMLEN} bytes`,
+      normalized,
+    };
+  }
+  // Reject embedded slashes (only leading '/' allowed in POSIX shm_open).
+  if (normalized.indexOf('/', 1) !== -1) {
+    return { valid: false, error: 'SHM name must not contain slashes after the leading "/"', normalized };
+  }
+  return { valid: true, normalized };
+}
+
 /**
  * Resolve a POSIX SHM name (e.g. "/inspector-frame-123") to its backing path.
  * On Linux, POSIX shm_open() creates files under /dev/shm/<name>.
+ * On macOS / other platforms, falls back to os.tmpdir().
  * @param {string} shmName
  * @returns {string}
  */
@@ -37,14 +71,17 @@ function resolveShmFilePath(shmName) {
   if (!shmName || typeof shmName !== 'string') {
     throw new Error('Invalid SHM name');
   }
+  // If the name is already a valid filesystem path, use it directly.
   if (fs.existsSync(shmName)) {
     return shmName;
   }
   const cleanName = shmName.replace(/^\/+/, '');
+  // Linux: /dev/shm is the standard POSIX SHM backing store.
   const devShmPath = path.join('/dev/shm', cleanName);
   if (fs.existsSync('/dev/shm')) {
     return devShmPath;
   }
+  // macOS / fallback: use tmpdir.
   return path.join(os.tmpdir(), cleanName);
 }
 
@@ -99,6 +136,7 @@ class ShmFrameReader extends EventEmitter {
     this._timer = null;
     this._lastFrameReady = 0;
     this._headerBuf = Buffer.alloc(HEADER_SIZE);
+    this._headerBuf2 = Buffer.alloc(HEADER_SIZE);  // Second header read for spin-lock verification
   }
 
   /**
@@ -127,6 +165,8 @@ class ShmFrameReader extends EventEmitter {
 
   /**
    * Poll the SHM region once and emit 'frame' if a new completed frame is ready.
+   * Uses a sequence-number spin-lock: reads header, then pixel data, then re-reads
+   * header to verify frameReady has not changed (no torn frame).
    * @returns {{ header: object, pixels: Buffer }|null}
    */
   pollOnce() {
@@ -146,17 +186,36 @@ class ShmFrameReader extends EventEmitter {
       const frameBytes = header.width * header.height * 4;
       const slot = header.writeIdx % header.bufferCount;
       const pixelOffset = HEADER_SIZE + slot * frameBytes;
-      const pixels = Buffer.allocUnsafe(frameBytes);
 
-      const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
-      if (pixRead < frameBytes) {
-        return null;
+      // Spin-lock: retry if writer changes frame during our read (torn frame detection).
+      for (let attempt = 0; attempt < MAX_SPIN_RETRIES; attempt++) {
+        const pixels = Buffer.allocUnsafe(frameBytes);
+        const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
+        if (pixRead < frameBytes) {
+          return null;
+        }
+
+        // Re-read header to verify frame counter hasn't changed.
+        const verifyRead = fs.readSync(this._fd, this._headerBuf2, 0, HEADER_SIZE, 0);
+        if (verifyRead < HEADER_SIZE) return null;
+
+        const verifyHeader = parseShmHeader(this._headerBuf2);
+        if (!verifyHeader) return null;
+
+        // If frameReady is still the same, we have a consistent (tear-free) read.
+        if (verifyHeader.frameReady === header.frameReady) {
+          this._lastFrameReady = header.frameReady;
+          const frame = { header, pixels };
+          this.emit('frame', frame);
+          return frame;
+        }
+        // Frame changed during read — retry with the new frame.
+        // Update header for next attempt.
+        this._headerBuf2.copy(this._headerBuf);
       }
 
-      this._lastFrameReady = header.frameReady;
-      const frame = { header, pixels };
-      this.emit('frame', frame);
-      return frame;
+      // All retries exhausted (writer is faster than reader); skip this cycle.
+      return null;
     } catch (_) {
       return null;
     }
@@ -203,9 +262,11 @@ module.exports = {
   ShmFrameReader,
   parseShmHeader,
   resolveShmFilePath,
+  validateShmName,
   DEFAULT_SHM_NAME,
   INSPECTOR_SHM_MAGIC,
   INSPECTOR_SHM_VERSION,
   HEADER_SIZE,
   SHM_BUFFER_COUNT,
+  MACOS_PSHMNAMLEN,
 };
