@@ -5,11 +5,9 @@
 # 0. Shared DervGen C++20 strict baseline (when sibling all-overview is present)
 try-import %workspace%/../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
-# 1. Bzlmod Registry & Platform Auto-Detection
+# 1. Bzlmod Registries — DervGen private BCR has priority, public BCR as fallback
+common --registry=https://bcr.dervgen.com/bcr
 common --registry=https://bcr.bazel.build
-# Prevent duplicate expansion of unix-common when --config=linux (or other platform configs)
-# is explicitly passed, resolving [P1-ARCH-03] Bazel configuration warnings.
-common --noenable_platform_specific_config
 
 # 2. C++20 Standard (propagated across Bzlmod boundaries for @aether//math)
 build:macos --cxxopt=-std=c++20
@@ -38,5 +36,9 @@ build:windows --compiler=msvc-cl
 build:macos --per_file_copt=bindings\.cc$@-fexceptions,-frtti
 build:linux --per_file_copt=bindings\.cc$@-fexceptions,-frtti
 build:windows --per_file_copt=bindings\.cc$@/EHsc,/GR,/U_HAS_EXCEPTIONS
+
+# 4. Default optimised build (RelWithDebInfo)
+build:opt --compilation_mode=opt
+build --config=opt
 
 try-import %workspace%/.bazelrc.user
