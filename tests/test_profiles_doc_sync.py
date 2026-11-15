@@ -83,9 +83,12 @@ class TestProfilesDocSync:
             ), f"rsi_promotion.{metric} mismatch"
 
     def test_rsi_promotion_target_stricter_or_equal(self) -> None:
+        from synapse.metrics.profiles import _METRIC_DIRECTIONS
+
         for key, val in RSI_PROMOTION.items():
             assert key in RSI_PROMOTION_TARGET
-            if key in ("silhouette_iou", "f_score_1mm"):
+            direction = _METRIC_DIRECTIONS.get(key, "lower_is_better")
+            if direction == "higher_is_better":
                 assert RSI_PROMOTION_TARGET[key] >= val
             else:
                 assert RSI_PROMOTION_TARGET[key] <= val

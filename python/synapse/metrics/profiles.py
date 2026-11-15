@@ -49,6 +49,9 @@ _METRIC_DIRECTIONS: dict[str, str] = {
     # Style consistency
     "border_ring_ciede2000": _LOWER,
     "light_dir_error_deg": _LOWER,
+    # Roundtrip (additional)
+    "f_score_5mm": _HIGHER,
+    "watertight_pct": _HIGHER,
     # Image quality & Synapse-Bench scenario aliases
     "psnr_db": _HIGHER,
     "ssim": _HIGHER,

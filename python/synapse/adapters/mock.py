@@ -317,6 +317,10 @@ class MockVideoAdapter(VideoModelAdapter):
             np.round(frames_srgb * 255.0), 0, 255
         ).astype(np.uint8)
 
+        # Validate generated frames are non-degenerate
+        from synapse.metrics.image_quality import validate_output_non_degenerate
+        validate_output_non_degenerate(frames_u8)
+
         return VideoResult(
             frames_srgb_u8=frames_u8,
             fps=config.fps,

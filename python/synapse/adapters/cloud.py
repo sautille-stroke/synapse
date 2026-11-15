@@ -672,6 +672,10 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
 
         result_frames = np.concatenate(all_frames, axis=0)
 
+        # Validate generated frames are non-degenerate
+        from synapse.metrics.image_quality import validate_output_non_degenerate
+        validate_output_non_degenerate(result_frames)
+
         return VideoResult(
             frames_srgb_u8=result_frames,
             fps=config.fps,

@@ -168,6 +168,33 @@ class VideoModelAdapter(ABC):
         """
         ...
 
+    def generate_and_validate(
+        self,
+        conditions: PreparedConditionPayload,
+        config: VideoGenerationConfig,
+    ) -> VideoResult:
+        """Generate video and validate output is non-degenerate.
+
+        Calls ``generate()`` then runs
+        :func:`~synapse.metrics.image_quality.validate_output_non_degenerate`
+        on the result frames to catch constant-color, frozen-still, or
+        NaN/Inf outputs early.
+
+        Args:
+            conditions: Output of ``prepare_conditions()``.
+            config: Generation configuration.
+
+        Returns:
+            A :class:`VideoResult` containing validated sRGB uint8 frames.
+
+        Raises:
+            QualityGateError: If the generated frames are degenerate.
+        """
+        result = self.generate(conditions, config)
+        from synapse.metrics.image_quality import validate_output_non_degenerate
+        validate_output_non_degenerate(result.frames_srgb_u8)
+        return result
+
 
 # ---------------------------------------------------------------------------
 # Global plugin registry

@@ -473,3 +473,71 @@ class TestIdempotencyKey:
         assert len(keys) == 2
         for k in keys:
             assert len(k) == 64
+
+
+# ---------------------------------------------------------------------------
+# TestDegenerateOutputValidation
+# ---------------------------------------------------------------------------
+
+
+class TestDegenerateOutputValidation:
+    """Verify validate_output_non_degenerate is wired into cloud adapters."""
+
+    def test_cloud_adapter_rejects_degenerate_transport(self) -> None:
+        """A transport returning constant-color frames triggers QualityGateError."""
+        from synapse.errors import QualityGateError
+
+        class ConstantRedTransport(MockCloudTransport):
+            """Transport that always returns pure red frames."""
+
+            def submit_segment(
+                self,
+                segment: DegradedSegment,
+                config: VideoGenerationConfig,
+            ) -> np.ndarray:
+                num_frames = segment.end_frame - segment.start_frame + 1
+                frames = np.zeros(
+                    (num_frames, config.height, config.width, 3),
+                    dtype=np.uint8,
+                )
+                frames[..., 0] = 255  # pure red
+                return frames
+
+        transport = ConstantRedTransport()
+        adapter = SeedanceAdapter(transport=transport)
+
+        seq = _make_fgpp_sequence(97)
+        config = VideoGenerationConfig(
+            seed=42, width=64, height=64, num_frames=97,
+        )
+        conditions = adapter.prepare_conditions(seq, config)
+
+        with pytest.raises(QualityGateError, match="channel.*variance"):
+            adapter.generate(conditions, config)
+
+    def test_generate_and_validate_on_base_adapter(self) -> None:
+        """VideoModelAdapter.generate_and_validate catches degenerate output."""
+        from synapse.adapters.mock import MockVideoAdapter
+
+        adapter = MockVideoAdapter()
+        seq = _make_fgpp_sequence(8, h=16, w=16)
+        config = VideoGenerationConfig(
+            seed=42, width=16, height=16, num_frames=8,
+        )
+        conditions = adapter.prepare_conditions(seq, config)
+        # Normal generation should pass validation
+        result = adapter.generate_and_validate(conditions, config)
+        assert result.frames_srgb_u8.shape[0] == 8
+
+    def test_mock_adapter_normal_generation_passes(self) -> None:
+        """MockVideoAdapter with varied FGPP input should pass inline validation."""
+        from synapse.adapters.mock import MockVideoAdapter
+
+        adapter = MockVideoAdapter()
+        seq = _make_fgpp_sequence(8, h=16, w=16)
+        config = VideoGenerationConfig(
+            seed=42, width=16, height=16, num_frames=8,
+        )
+        conditions = adapter.prepare_conditions(seq, config)
+        result = adapter.generate(conditions, config)
+        assert result.frames_srgb_u8.shape == (8, 16, 16, 3)
