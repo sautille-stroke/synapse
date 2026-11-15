@@ -94,20 +94,20 @@ mkdir -p /content/synapse_checkpoints
 
 DERVGEN_DRIVE_ROOT="${DERVGEN_DRIVE_ROOT:-/content/drive/MyDrive/dervgen}"
 USER_ID="${COLAB_USER:-yanglei}"
+JOB_DATE="$(date +%F)"
 if [ -d "/content/drive/MyDrive" ]; then
-    mkdir -p "${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/$(date +%F)/e1-e4/checkpoints"
-    mkdir -p "${DERVGEN_DRIVE_ROOT}/data/video/base_models"
-    mkdir -p "${DERVGEN_DRIVE_ROOT}/data/common/foundations"
-    # Backward compatibility
-    mkdir -p "${DERVGEN_DRIVE_ROOT}/data/models/video_gen"
-    echo "✅ Google Drive SSOT V2.1 ready: ${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/$(date +%F)/e1-e4"
+    # SSOT V2.0: All experiment output under /dervgen/work/{user}/synapse/{date}/{job_id}/
+    mkdir -p "${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/${JOB_DATE}/e1-e4/checkpoints"
+    echo "✅ Google Drive SSOT V2.0 ready: ${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/${JOB_DATE}/e1-e4"
 else
     echo "ℹ️ Note: /content/drive/MyDrive not mounted yet. Checkpoints will fall back to /content/synapse_checkpoints"
 fi
 
 echo ""
 echo ">>> Staging Starter Benchmark Datasets (RFC 0063 ~250MB suite)..."
-python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir "${DERVGEN_DRIVE_ROOT}/data/benchmarks" || \
+# Stage to experiment output area, never to read-only data/ in the repo checkout.
+BENCH_TARGET="${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/${JOB_DATE}/benchmarks"
+python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir "${BENCH_TARGET}" || \
 python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir /content/datasets/benchmarks
 
 echo ""

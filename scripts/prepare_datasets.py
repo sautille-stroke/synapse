@@ -416,6 +416,7 @@ def main() -> int:
     bundle_out_path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(bundle_out_path, "w:gz") as tar:
         tar.add(dir_102_17f, arcname="track_b_fulgur/course_102_pbr_17f")
+        tar.add(dir_102_97f, arcname="track_b_fulgur/course_102_pbr_97f")
         tar.add(dir_caelum_17f, arcname="track_a_caelum/cornell_spheres_17f")
         tar.add(args.manifest_out, arcname="golden_dataset_manifest.json")
 
