@@ -298,3 +298,72 @@ class TestViewerServer:
         assert "test_static" in content
         # Check base64 data URI is embedded
         assert "data:image/png;base64," in content
+
+
+# =========================================================================
+# PR-75: Viewer XSS prevention
+# =========================================================================
+
+
+class TestViewerXSSPrevention:
+    """Verify that XSS payloads in manifest data are safely escaped
+    in the exported static HTML."""
+
+    def test_script_injection_escaped_in_static_html(
+        self, tmp_path,
+    ):
+        """Manifest containing '</script><script>alert(1)</script>'
+        generates HTML without bare '</script>' closing tag that
+        could break out of the embedded JSON script block."""
+        xss_payload = '</script><script>alert(1)</script>'
+        manifest_data = {
+            "dataset_id": xss_payload,
+            "frames": [{"frame_index": 0, "label": xss_payload}],
+            "splits": {"train_count": 1, "val_count": 0},
+        }
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(manifest_data), encoding="utf-8",
+        )
+
+        out_html = export_static_html(tmp_path)
+        content = out_html.read_text(encoding="utf-8")
+
+        # The raw </script> must NOT appear unescaped inside the
+        # embedded JSON — it should be \u003c/script\u003e
+        # Count actual script tags vs expected structure
+        # The HTML template has legitimate <script> and </script> tags;
+        # the XSS payload must NOT introduce additional unescaped ones.
+
+        # Find the embedded manifest section between the markers
+        # The key assertion: no bare </script> inside the JSON data
+
+        # Stronger assertion: the XSS string should be escaped
+        assert '\\u003c/script\\u003e' in content or '\\u003C/script\\u003E' in content, (
+            "XSS payload should be escaped with unicode escapes in embedded JSON"
+        )
+        # The bare XSS payload must NOT appear in the HTML
+        assert xss_payload not in content, (
+            "Raw XSS payload '</script><script>alert(1)</script>' "
+            "must not appear unescaped in the HTML output"
+        )
+
+    def test_ampersand_and_angle_brackets_escaped(
+        self, tmp_path,
+    ):
+        """Verify that &, <, > in manifest values are escaped."""
+        manifest_data = {
+            "dataset_id": "test<>&",
+            "frames": [],
+            "splits": {"train_count": 0, "val_count": 0},
+        }
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(manifest_data), encoding="utf-8",
+        )
+
+        out_html = export_static_html(tmp_path)
+        content = out_html.read_text(encoding="utf-8")
+
+        # The < > & should be escaped in the embedded JSON
+        assert "\\u003c" in content, "< should be escaped as \\u003c"
+        assert "\\u003e" in content, "> should be escaped as \\u003e"
+        assert "\\u0026" in content, "& should be escaped as \\u0026"

@@ -6,7 +6,9 @@ import json
 import threading
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 from synapse.pipeline.bundle_worker import (
     _STAGE_HANDLERS,
@@ -18,6 +20,59 @@ from synapse.pipeline.bundle_worker import (
     register_stage,
     run_worker_cli,
 )
+
+
+def _make_fgpp_dir_with_metadata(
+    base_dir: Path,
+    *,
+    num_frames: int = 2,
+    width: int = 64,
+    height: int = 64,
+) -> Path:
+    """Create an FGPP directory with metadata.json."""
+    from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
+
+    fgpp_dir = base_dir / "fgpp"
+    fgpp_dir.mkdir(exist_ok=True)
+    meta = {
+        "schema_version": FGPP_SCHEMA_VERSION,
+        "scene_id": "test_scene",
+        "fps": 24,
+        "num_frames": num_frames,
+        "total_frames": num_frames,
+        "resolution": [width, height],
+        "frames": [{"frame_index": i} for i in range(num_frames)],
+    }
+    (fgpp_dir / "metadata.json").write_text(
+        json.dumps(meta), encoding="utf-8",
+    )
+    return fgpp_dir
+
+
+def _make_mock_fgpp_sequence(
+    *,
+    num_frames: int = 2,
+    width: int = 64,
+    height: int = 64,
+) -> Any:
+    """Create a mock FGPPSequence with real depth and normal data."""
+    from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+
+    frames = []
+    for i in range(num_frames):
+        cam = CameraParams(
+            fx=float(width), fy=float(height),
+            cx=float(width) / 2, cy=float(height) / 2,
+            width=width, height=height,
+        )
+        depth = np.full((height, width), 2.5, dtype=np.float32)
+        normal = np.zeros((height, width, 3), dtype=np.float16)
+        normal[:, :, 2] = np.float16(1.0)
+        frames.append(FGPPFrame(
+            camera=cam, depth=depth,
+            world_normal=normal, frame_index=i,
+        ))
+    return FGPPSequence(frames=frames, fps=24.0, scene_id="test_scene")
 
 # =========================================================================
 # BundleManifest
@@ -203,25 +258,8 @@ class TestJobBundleWorker:
         self, tmp_path: Path,
     ) -> None:
         """neural_video_generate with valid fgpp_dir should succeed."""
-        from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
-
-        fgpp_dir = tmp_path / "fgpp"
-        fgpp_dir.mkdir()
-        meta = {
-            "schema_version": FGPP_SCHEMA_VERSION,
-            "scene_id": "test_scene",
-            "fps": 24,
-            "num_frames": 2,
-            "total_frames": 2,
-            "resolution": [64, 64],
-            "frames": [
-                {"frame_index": 0},
-                {"frame_index": 1},
-            ],
-        }
-        (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
-        )
+        fgpp_dir = _make_fgpp_dir_with_metadata(tmp_path)
+        mock_seq = _make_mock_fgpp_sequence()
 
         output_video = tmp_path / "video.npy"
 
@@ -243,7 +281,8 @@ class TestJobBundleWorker:
         )
 
         worker = JobBundleWorker()
-        result = worker.execute(manifest)
+        with patch("synapse.fgpp.import_fgpp", return_value=mock_seq):
+            result = worker.execute(manifest)
 
         assert result.exit_code == 0
         assert result.status in ("success", "fallback")
@@ -488,8 +527,10 @@ class TestJobBundleWorker:
             ),
         )
 
+        mock_seq = _make_mock_fgpp_sequence()
         worker = JobBundleWorker()
-        result = worker.execute(manifest)
+        with patch("synapse.fgpp.import_fgpp", return_value=mock_seq):
+            result = worker.execute(manifest)
 
         assert result.exit_code == 0
         assert result.status == "fallback"
@@ -602,8 +643,10 @@ class TestJobBundleWorker:
             ),
         )
 
+        mock_seq = _make_mock_fgpp_sequence(width=32, height=32)
         worker = JobBundleWorker()
-        result = worker.execute(manifest)
+        with patch("synapse.fgpp.import_fgpp", return_value=mock_seq):
+            result = worker.execute(manifest)
 
         assert result.exit_code == 0
         assert "video" in result.output_files
@@ -657,8 +700,10 @@ class TestJobBundleWorker:
             ),
         )
 
+        mock_seq = _make_mock_fgpp_sequence(width=32, height=32)
         worker = JobBundleWorker()
-        result = worker.execute(manifest)
+        with patch("synapse.fgpp.import_fgpp", return_value=mock_seq):
+            result = worker.execute(manifest)
 
         assert result.exit_code == 0
         # Worker should not spawn persistent threads
@@ -933,3 +978,124 @@ class TestMissingInputErrors:
         # It will fail because weights_path doesn't exist, but the
         # important thing is that skip_bench was False
         assert result.exit_code != 0
+
+
+# =========================================================================
+# PR-75: True EXR read — import_fgpp with real pixel data
+# =========================================================================
+
+
+class TestNeuralVideoGenerateTrueEXR:
+    """Verify neural_video_generate loads real FGPP pixel data via import_fgpp."""
+
+    def test_import_fgpp_with_missing_exr_exits_20(
+        self, tmp_path: Path,
+    ) -> None:
+        """neural_video_generate with metadata-only FGPP dir (no EXR files)
+        should return exit_code=20 since import_fgpp finds no frames."""
+        fgpp_dir = _make_fgpp_dir_with_metadata(tmp_path)
+        output_video = tmp_path / "video_no_exr.npy"
+
+        manifest = BundleManifest(
+            job_id="test-nvg-no-exr",
+            stage="neural_video_generate",
+            inputs={"fgpp_dir": str(fgpp_dir)},
+            outputs={"video": str(output_video)},
+            params={
+                "num_frames": 2,
+                "height": 64,
+                "width": 64,
+                "adapter": "mock",
+                "model_variant": "wan2.1_1.3b",
+            },
+            hardware_budget=HardwareBudget(free_vram_gb=48.0),
+        )
+        worker = JobBundleWorker()
+        result = worker.execute(manifest)
+        assert result.exit_code == 20, (
+            f"Expected exit_code=20 for missing EXR, got {result.exit_code}"
+        )
+        assert "exr" in (result.agent_fix_hint or "").lower()
+
+    def test_import_fgpp_with_real_data_enters_adapter(
+        self, tmp_path: Path,
+    ) -> None:
+        """neural_video_generate with mock FGPP sequence containing
+        non-zero depth/normal should succeed via the adapter."""
+        fgpp_dir = _make_fgpp_dir_with_metadata(tmp_path)
+        mock_seq = _make_mock_fgpp_sequence()
+        output_video = tmp_path / "video.npy"
+
+        manifest = BundleManifest(
+            job_id="test-nvg-real-data",
+            stage="neural_video_generate",
+            inputs={"fgpp_dir": str(fgpp_dir)},
+            outputs={"video": str(output_video)},
+            params={
+                "num_frames": 2,
+                "height": 64,
+                "width": 64,
+                "adapter": "mock",
+                "model_variant": "wan2.1_1.3b",
+            },
+            hardware_budget=HardwareBudget(free_vram_gb=48.0),
+        )
+        worker = JobBundleWorker()
+        with patch("synapse.fgpp.import_fgpp", return_value=mock_seq):
+            result = worker.execute(manifest)
+
+        assert result.exit_code == 0
+        assert result.status in ("success", "fallback")
+        assert "video" in result.output_files
+        assert output_video.exists()
+
+    def test_run_worker_cli_invalid_json(
+        self, tmp_path: Path,
+    ) -> None:
+        """run_worker_cli with malformed JSON should return exit_code=10."""
+        bad_manifest = tmp_path / "bundle_manifest.json"
+        bad_manifest.write_text("{invalid json }", encoding="utf-8")
+
+        exit_code = run_worker_cli(str(tmp_path), json_mode=False)
+        assert exit_code == 10
+
+    def test_run_worker_cli_invalid_json_json_mode(
+        self, tmp_path: Path,
+    ) -> None:
+        """run_worker_cli with invalid JSON in --json mode
+        emits a valid JSON error envelope."""
+        import sys
+        from io import StringIO
+
+        bad_manifest = tmp_path / "bundle_manifest.json"
+        bad_manifest.write_text("{not valid JSON!", encoding="utf-8")
+
+        old_stdout = sys.stdout
+        sys.stdout = capture = StringIO()
+        try:
+            exit_code = run_worker_cli(str(tmp_path), json_mode=True)
+        finally:
+            sys.stdout = old_stdout
+
+        assert exit_code == 10
+        output = capture.getvalue().strip()
+        payload = json.loads(output)
+        assert payload["exit_code"] == 10
+        assert "agent_fix_hint" in payload
+
+    def test_run_worker_cli_schema_validation_error(
+        self, tmp_path: Path,
+    ) -> None:
+        """run_worker_cli with schema mismatch should return exit_code=10."""
+        bad_manifest = tmp_path / "bundle_manifest.json"
+        bad_manifest.write_text(
+            json.dumps({
+                "schema_version": "bad.schema.v99",
+                "job_id": "j1",
+                "stage": "fgpp_validate",
+            }),
+            encoding="utf-8",
+        )
+
+        exit_code = run_worker_cli(str(tmp_path), json_mode=False)
+        assert exit_code == 10

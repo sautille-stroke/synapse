@@ -647,3 +647,110 @@ class TestCliView:
         assert data["output_path"] == str(custom_out)
         assert custom_out.is_file()
 
+
+# =========================================================================
+# PR-75: Bench gate failure → exit code 40
+# =========================================================================
+
+
+class TestBenchGateFailure:
+    """Verify synapse-bench run with quality gate failures returns exit 40."""
+
+    def test_bench_run_gate_fail_exits_40(self) -> None:
+        """synapse-bench run --profile ... --json returns exit_code=40
+        when quality gate fails."""
+        from unittest.mock import MagicMock, patch
+
+        from synapse.metrics.profiles import GateVerdict, GateViolation
+
+        # Create a mock GateVerdict that fails
+        violation = GateViolation(
+            metric_name="psnr_db",
+            measured=15.0,
+            threshold=25.0,
+            direction="higher",
+        )
+        fake_verdict = GateVerdict(
+            passed=False,
+            profile="track_b_video",
+            violations=[violation],
+        )
+
+        # Mock the run to produce a report with a failing gate verdict
+        from synapse.pipeline.bench_runner import ScenarioRunReport
+
+        fake_report = ScenarioRunReport(
+            scenario_name="test_scenario",
+            adapter_id="mock",
+            metrics={"psnr_db": 15.0},
+            gate_verdict=fake_verdict,
+            num_frames=4,
+            resolution=(64, 64),
+        )
+
+        with patch(
+            "synapse.pipeline.bench_runner.BenchPipelineRunner",
+        ) as mock_runner_cls, patch(
+            "synapse.adapters.create_adapter",
+        ), patch(
+            "synapse.adapters.MockVideoAdapter",
+        ):
+            mock_runner = MagicMock()
+            mock_runner.run_all.return_value = [fake_report]
+            mock_runner_cls.return_value = mock_runner
+
+            code, out, err = _capture_main_bench([
+                "--json", "run", "--all", "--profile", "track_b_video",
+            ])
+
+        assert code == 40, (
+            f"Expected exit_code=40 for gate failure, got {code}. "
+            f"stdout={out!r}, stderr={err!r}"
+        )
+        payload = json.loads(out)
+        assert payload["exit_code"] == 40
+        assert "agent_fix_hint" in payload
+
+    def test_bench_run_gate_pass_exits_0(self) -> None:
+        """synapse-bench run --profile ... --json returns exit_code=0
+        when quality gate passes."""
+        from unittest.mock import MagicMock, patch
+
+        from synapse.metrics.profiles import GateVerdict
+
+        fake_verdict = GateVerdict(
+            passed=True,
+            profile="track_b_video",
+            violations=[],
+        )
+
+        from synapse.pipeline.bench_runner import ScenarioRunReport
+
+        fake_report = ScenarioRunReport(
+            scenario_name="test_scenario",
+            adapter_id="mock",
+            metrics={"psnr_db": 30.0},
+            gate_verdict=fake_verdict,
+            num_frames=4,
+            resolution=(64, 64),
+        )
+
+        with patch(
+            "synapse.pipeline.bench_runner.BenchPipelineRunner",
+        ) as mock_runner_cls, patch(
+            "synapse.adapters.create_adapter",
+        ), patch(
+            "synapse.adapters.MockVideoAdapter",
+        ):
+            mock_runner = MagicMock()
+            mock_runner.run_all.return_value = [fake_report]
+            mock_runner_cls.return_value = mock_runner
+
+            code, out, err = _capture_main_bench([
+                "--json", "run", "--all", "--profile", "track_b_video",
+            ])
+
+        assert code == 0, (
+            f"Expected exit_code=0 for gate pass, got {code}. "
+            f"stdout={out!r}, stderr={err!r}"
+        )
