@@ -3,8 +3,9 @@
 
 #include "inspector_app.h"
 
+#include <aether/fs/filesystem.h>
+#include <aether/json.h>
 #include <aether/pal/console.h>
-#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -221,39 +222,37 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
   }
   manifestPath += "bundle.json";
 
-  std::ifstream ifs(manifestPath, std::ios::in | std::ios::binary);
-  if (!ifs.is_open()) {
+  auto textRes = aether::fs::readAllText(manifestPath);
+  if (textRes.isError()) {
     std::cerr << "[inspector] Bundle manifest not found: " << manifestPath << "\n";
     return false;
   }
 
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                      std::istreambuf_iterator<char>());
-  auto j = nlohmann::json::parse(content, nullptr, false);
-  if (j.is_discarded()) {
+  auto docRes = aether::json::JsonDocument::parse(textRes.value());
+  if (docRes.isError()) {
     std::cerr << "[inspector] Malformed bundle manifest: " << manifestPath << "\n";
     return false;
   }
 
   m_config.bundlePath = std::string(bundlePath);
+  const auto& j = docRes.value().root();
 
   // Look for any .obj mesh referenced in sources
-  if (j.contains("sources") && j["sources"].is_object()) {
-    for (auto it = j["sources"].begin(); it != j["sources"].end(); ++it) {
+  if (j.hasKey("sources") && j["sources"].isObject()) {
+    j["sources"].forEachMember([&](std::string_view, aether::json::JsonValue val) {
       std::string relPath;
-      if (it.value().is_string()) {
-        relPath = it.value().get<std::string>();
-      } else if (it.value().is_object() && it.value().contains("path")) {
-        relPath = it.value()["path"].get<std::string>();
+      if (val.isString()) {
+        relPath = std::string(val.getStringOr(""));
+      } else if (val.isObject() && val.hasKey("path")) {
+        relPath = std::string(val["path"].getStringOr(""));
       }
       if (relPath.size() > 4 && relPath.substr(relPath.size() - 4) == ".obj") {
         std::string fullObjPath = std::string(bundlePath) + "/" + relPath;
         if (loadObjMesh(fullObjPath)) {
           std::cerr << "[inspector] Loaded mesh: " << fullObjPath << "\n";
-          break;
         }
       }
-    }
+    });
   }
 
   std::cerr << "[inspector] Loaded bundle: " << m_config.bundlePath
@@ -375,9 +374,11 @@ void InspectorApp::run() {
     m_shm.publishFrame(measuredFps, deltaTime, static_cast<uint8_t>(m_debugView));
 
     // Emit structured JSON-RPC frame notification on stdout (pure JSON only)
-    nlohmann::json frameMsg;
-    frameMsg["type"] = "frame_ready";
-    std::cout << frameMsg.dump() << "\n";
+    aether::json::JsonWriter frameWriter;
+    frameWriter.beginObject();
+    frameWriter.write("type", "frame_ready");
+    frameWriter.endObject();
+    std::cout << frameWriter.toString(false) << "\n";
     std::cout.flush();
 
     totalFrames++;
@@ -682,26 +683,29 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   }
   if (jsonStr.empty()) return;
 
-  auto j = nlohmann::json::parse(jsonStr, nullptr, false);
-  if (j.is_discarded()) {
-    nlohmann::json errResp;
-    errResp["type"] = "ack";
-    errResp["command"] = "unknown";
-    errResp["ok"] = false;
-    std::cout << errResp.dump() << "\n";
+  auto docRes = aether::json::JsonDocument::parse(jsonStr);
+  if (docRes.isError()) {
+    aether::json::JsonWriter errResp;
+    errResp.beginObject();
+    errResp.write("type", "ack");
+    errResp.write("command", "unknown");
+    errResp.write("ok", false);
+    errResp.endObject();
+    std::cout << errResp.toString(false) << "\n";
     std::cout.flush();
     return;
   }
 
-  const std::string type = j.value("type", "");
+  const auto& j = docRes.value().root();
+  const std::string type = std::string(j["type"].getStringOr(""));
   bool ok = true;
 
   if (type == "quit") {
     requestQuit();
   } else if (type == "camera") {
-    const std::string action = j.value("action", "");
-    const double dx = j.value("dx", 0.0);
-    const double dy = j.value("dy", 0.0);
+    const std::string action = std::string(j["action"].getStringOr(""));
+    const double dx = j["dx"].getRealOr(0.0);
+    const double dy = j["dy"].getRealOr(0.0);
 
     if (action == "orbit") {
       m_orbitYaw += static_cast<float>(dx) * 0.01f;
@@ -717,7 +721,9 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       ok = false;
     }
   } else if (type == "set_debug_view" || type == "switch_view") {
-    const std::string mode = j.value("mode", j.value("view", ""));
+    std::string_view modeView = j["mode"].getStringOr("");
+    if (modeView.empty()) modeView = j["view"].getStringOr("");
+    const std::string mode(modeView);
     if (mode == "lit" || mode == "rgb") {
       m_debugView = DebugViewMode::kLit;
     } else if (mode == "wireframe") {
@@ -734,26 +740,30 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       ok = false;
     }
   } else if (type == "load_bundle" || type == "open_bundle") {
-    const std::string path = j.value("path", j.value("bundle_dir", ""));
+    std::string_view pathView = j["path"].getStringOr("");
+    if (pathView.empty()) pathView = j["bundle_dir"].getStringOr("");
+    const std::string path(pathView);
     ok = validateAndLoadBundle(path);
   } else if (type == "set_entity_visible") {
-    const std::string name = j.value("name", "");
-    m_entityVisible = j.value("visible", true);
+    const std::string name = std::string(j["name"].getStringOr(""));
+    m_entityVisible = j["visible"].getBoolOr(true);
     std::cerr << "[inspector] Entity '" << name
               << "' visible=" << (m_entityVisible ? "true" : "false") << "\n";
   } else if (type == "export_screenshot") {
-    const std::string path = j.value("path", "");
+    const std::string path = std::string(j["path"].getStringOr(""));
     ok = exportScreenshotPpm(path);
   } else {
     std::cerr << "[inspector] Unknown command type: " << type << "\n";
     ok = false;
   }
 
-  nlohmann::json ackResp;
-  ackResp["type"] = "ack";
-  ackResp["command"] = type;
-  ackResp["ok"] = ok;
-  std::cout << ackResp.dump() << "\n";
+  aether::json::JsonWriter ackResp;
+  ackResp.beginObject();
+  ackResp.write("type", "ack");
+  ackResp.write("command", type);
+  ackResp.write("ok", ok);
+  ackResp.endObject();
+  std::cout << ackResp.toString(false) << "\n";
   std::cout.flush();
 }
 

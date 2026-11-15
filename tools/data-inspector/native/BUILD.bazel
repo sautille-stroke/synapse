@@ -30,9 +30,10 @@ cc_library(
     }),
     deps = [
         "@aether//core",
+        "@aether//fs",
+        "@aether//json",
         "@aether//pal:console",
         "@aether//pal:shm",
-        "@nlohmann_json//:json",
     ],
     visibility = ["//visibility:public"],
 )
@@ -54,6 +55,7 @@ cc_test(
     copts = COMMON_COPTS,
     deps = [
         ":inspector_lib",
+        "@aether//fs",
         "@googletest//:gtest_main",
     ],
 )

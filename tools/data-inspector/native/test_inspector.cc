@@ -6,10 +6,11 @@
 
 #include <gtest/gtest.h>
 
+#include <aether/fs/file_utils.h>
+#include <aether/fs/filesystem.h>
+
 #include <chrono>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <sstream>
 
 using namespace synapse::inspector;
@@ -99,9 +100,9 @@ TEST(InspectorApp, LifecycleAndAovs) {
   const std::string tmpPpm = "test_viewport_screenshot.ppm";
   bool exportOk = app.exportScreenshotPpm(tmpPpm);
   EXPECT_TRUE(exportOk) << "exportScreenshotPpm failed";
-  EXPECT_TRUE(std::filesystem::exists(tmpPpm)) << "PPM file does not exist";
-  EXPECT_GT(std::filesystem::file_size(tmpPpm), 1000u) << "PPM file too small";
-  std::filesystem::remove(tmpPpm);
+  EXPECT_TRUE(aether::fs::exists(tmpPpm)) << "PPM file does not exist";
+  EXPECT_GT(aether::fs::getFileSize(tmpPpm).valueOr(0), 1000u) << "PPM file too small";
+  (void)aether::fs::remove(tmpPpm);
 
   // Run the loop for remaining frames
   app.run();
@@ -114,7 +115,7 @@ TEST(InspectorApp, LifecycleAndAovs) {
 TEST(InspectorApp, BundleManifestLoading) {
   // Create temporary bundle directory
   const std::string bundleDir = "test_temp_bundle";
-  std::filesystem::create_directories(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir);
 
   const std::string manifestContent = R"({
   "schema_version": "synapse.bundle.v1.0",
@@ -127,20 +128,15 @@ TEST(InspectorApp, BundleManifestLoading) {
   }
 })";
 
-  {
-    std::ofstream ofs(bundleDir + "/bundle.json");
-    ofs << manifestContent;
-  }
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json", manifestContent);
 
   // Create OBJ model
-  std::filesystem::create_directories(bundleDir + "/source");
-  {
-    std::ofstream ofs(bundleDir + "/source/test_cube.obj");
-    ofs << "v -0.5 -0.5 0.0\n"
-        << "v  0.5 -0.5 0.0\n"
-        << "v  0.0  0.5 0.0\n"
-        << "f 1 2 3\n";
-  }
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+  (void)aether::fs::writeAllText(bundleDir + "/source/test_cube.obj",
+      "v -0.5 -0.5 0.0\n"
+      "v  0.5 -0.5 0.0\n"
+      "v  0.0  0.5 0.0\n"
+      "f 1 2 3\n");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-bundle-load";
@@ -160,7 +156,7 @@ TEST(InspectorApp, BundleManifestLoading) {
   EXPECT_NE(pixels, nullptr);
 
   // Clean up
-  std::filesystem::remove_all(bundleDir);
+  (void)aether::fs::removeAll(bundleDir);
 }
 
 // ---------------------------------------------------------------------------
@@ -169,24 +165,20 @@ TEST(InspectorApp, BundleManifestLoading) {
 
 TEST(InspectorApp, ObjLoaderOutOfBoundsIndices) {
   const std::string bundleDir = "test_oob_bundle";
-  std::filesystem::create_directories(bundleDir + "/source");
+  (void)aether::fs::createDirectories(bundleDir + "/source");
 
-  {
-    std::ofstream ofs(bundleDir + "/bundle.json");
-    ofs << R"({"sources":{"model":{"path":"source/bad.obj"}}})";
-  }
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":{"path":"source/bad.obj"}}})");
 
   // OBJ with out-of-bounds positive index (9999) and negative relative index
-  {
-    std::ofstream ofs(bundleDir + "/source/bad.obj");
-    ofs << "v 0.0 0.0 0.0\n"
-        << "v 1.0 0.0 0.0\n"
-        << "v 0.5 1.0 0.0\n"
-        << "v 0.5 0.5 1.0\n"
-        << "f 1 2 9999\n"        // out-of-bounds: should be dropped
-        << "f -4 -3 -2\n"        // negative relative: valid (resolves to 0 1 2)
-        << "f 1 2 3 4\n";        // quad: should be fan-triangulated
-  }
+  (void)aether::fs::writeAllText(bundleDir + "/source/bad.obj",
+      "v 0.0 0.0 0.0\n"
+      "v 1.0 0.0 0.0\n"
+      "v 0.5 1.0 0.0\n"
+      "v 0.5 0.5 1.0\n"
+      "f 1 2 9999\n"        // out-of-bounds: should be dropped
+      "f -4 -3 -2\n"        // negative relative: valid (resolves to 0 1 2)
+      "f 1 2 3 4\n");        // quad: should be fan-triangulated
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-oob";
@@ -206,7 +198,7 @@ TEST(InspectorApp, ObjLoaderOutOfBoundsIndices) {
   const uint8_t* pixels = app.shmServer().publishedBuffer();
   EXPECT_NE(pixels, nullptr);
 
-  std::filesystem::remove_all(bundleDir);
+  (void)aether::fs::removeAll(bundleDir);
 }
 
 // ---------------------------------------------------------------------------
