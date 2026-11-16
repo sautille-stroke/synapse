@@ -51,6 +51,10 @@ class LoRAPatchHook:
         """
         import torch  # lazy
 
+        # Clean up existing handle to avoid double-attaching leak
+        if self._handle is not None:
+            self.detach(module)
+
         delta = self._delta
         if not isinstance(delta, torch.Tensor):
             delta = torch.tensor(delta, dtype=torch.float32)
@@ -85,9 +89,27 @@ class LoRAPatchHook:
                     )
                 else:
                     m = m.to(dtype=output.dtype, device=output.device)
-                # Broadcast mask to match lora_contrib shape
-                while m.dim() < lora_contrib.dim():
-                    m = m.unsqueeze(-1)
+
+                # Robust 3D DiT token reshaping [B, L, D]
+                if lora_contrib.dim() == 3:
+                    b_dim, l_dim, _ = lora_contrib.shape
+                    if m.dim() == 1 and m.shape[0] == l_dim:
+                        m = m.unsqueeze(0).unsqueeze(-1)
+                    elif m.dim() == 2 and m.shape == (b_dim, l_dim):
+                        m = m.unsqueeze(-1)
+                    elif m.dim() == 2 and m.shape == (1, l_dim):
+                        m = m.unsqueeze(-1)
+                    elif m.dim() >= 3 and m.numel() == b_dim * l_dim:
+                        m = m.reshape(b_dim, l_dim, 1)
+                    elif m.dim() >= 3 and m.numel() == l_dim:
+                        m = m.reshape(1, l_dim, 1)
+                    else:
+                        while m.dim() < lora_contrib.dim():
+                            m = m.unsqueeze(-1)
+                else:
+                    while m.dim() < lora_contrib.dim():
+                        m = m.unsqueeze(-1)
+
                 lora_contrib = lora_contrib * m
             return cast(torch.Tensor, output + lora_contrib)
 

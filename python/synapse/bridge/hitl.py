@@ -24,6 +24,9 @@ from synapse.errors import (
 
 __all__ = [
     "CircuitBreakerError",
+    "CommandIRRecord",
+    "OperatorIdentity",
+    "PersistentHitlLedger",
     "evaluate_hitl_circuit_breaker",
 ]
 
@@ -102,5 +105,100 @@ FallbackAction = Literal[
 # -----------------------------------------------------------------------
 # Circuit breaker — canonical implementation moved to synapse.errors
 # -----------------------------------------------------------------------
+
+# -----------------------------------------------------------------------
+# Persistent HITL Ledger with cross-process file locking
+# -----------------------------------------------------------------------
+
+import json
+import os
+import tempfile
+from pathlib import Path
+
+
+class PersistentHitlLedger:
+    """Thread-safe and process-safe persistent ledger for HITL actions and timing.
+
+    Uses file locking (fcntl on POSIX) and atomic tempfile replacement to guarantee
+    consistent cross-process tracking across CLI worker invocations.
+    """
+
+    def __init__(self, ledger_path: str | Path | None = None) -> None:
+        if ledger_path is None:
+            ledger_path = os.environ.get(
+                "SYNAPSE_HITL_LEDGER_PATH",
+                str(Path(tempfile.gettempdir()) / "synapse_hitl_ledger.json"),
+            )
+        self.ledger_path = Path(ledger_path)
+
+    def _lock_and_read(self) -> tuple[dict[str, Any], Any]:
+        """Read state with exclusive or shared lock."""
+        self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = self.ledger_path.with_suffix(".lock")
+        f = open(lock_file, "a+", encoding="utf-8")
+        try:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+
+        data: dict[str, Any] = {}
+        if self.ledger_path.is_file():
+            try:
+                data = json.loads(self.ledger_path.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+        return data, f
+
+    def _unlock_and_write(self, data: dict[str, Any], lock_handle: Any) -> None:
+        """Write state via atomic replace and release lock."""
+        try:
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.ledger_path.parent),
+                prefix="synapse_hitl_tmp_",
+                suffix=".json",
+            )
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tf:
+                json.dump(data, tf, indent=2)
+            os.replace(tmp_path, self.ledger_path)
+        finally:
+            try:
+                import fcntl
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+            except (ImportError, OSError):
+                pass
+            lock_handle.close()
+
+    def record_action(
+        self,
+        record: CommandIRRecord,
+        max_seconds: float = _DEFAULT_MAX_SECONDS,
+        domain: Literal["video_shot", "asset_3d"] = "video_shot",
+    ) -> float:
+        """Record a CommandIR action and verify circuit breaker timeout."""
+        data, handle = self._lock_and_read()
+        group_id = record.intent_group_id
+        entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
+        entry["elapsed_seconds"] += float(record.elapsed_seconds)
+        entry["records"].append({
+            "intent": record.intent,
+            "elapsed_seconds": record.elapsed_seconds,
+            "feedback": record.feedback,
+            "actions": record.actions,
+        })
+        total_elapsed = float(entry["elapsed_seconds"])
+        self._unlock_and_write(data, handle)
+
+        evaluate_hitl_circuit_breaker(total_elapsed, max_seconds=max_seconds, domain=domain)
+        return total_elapsed
+
+    def get_accumulated_elapsed(self, group_id: str) -> float:
+        """Return total elapsed time for a given group/asset."""
+        data, handle = self._lock_and_read()
+        try:
+            return float(data.get(group_id, {}).get("elapsed_seconds", 0.0))
+        finally:
+            self._unlock_and_write(data, handle)
+
 
 _DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes (kept for backward compat)

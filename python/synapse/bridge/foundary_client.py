@@ -113,37 +113,109 @@ class MockFoundaryTransport(FoundaryTransport):
 class HttpFoundaryTransport(FoundaryTransport):
     """HTTP transport for foundary container endpoint.
 
-    In production this would make real HTTP POST requests to the
-    ``foundary`` container.  The current implementation raises
-    :class:`~synapse.errors.BackendUnavailableError` because no
-    endpoint is configured.
+    Supports unary binary payload, /healthz health checking, W3C traceparent
+    forwarding, and exponential backoff retry on 502/503/504 errors.
 
     Args:
         base_url: Base URL of the foundary HTTP service.
         timeout_seconds: HTTP request timeout in seconds.
+        max_retries: Maximum attempts for transient server errors (502, 503, 504).
     """
 
     def __init__(
         self,
-        base_url: str,
+        base_url: str = "",
         timeout_seconds: float = 300.0,
+        max_retries: int = 3,
     ) -> None:
-        self._base_url = base_url
+        self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
+        self._max_retries = max_retries
+
+    def is_available(self) -> bool:
+        """Check if the foundary endpoint is responding."""
+        if not self._base_url:
+            return False
+        import urllib.error
+        import urllib.request
+
+        health_url = f"{self._base_url}/healthz"
+        for url in (health_url, self._base_url):
+            try:
+                with urllib.request.urlopen(url, timeout=3.0) as resp:
+                    if resp.status in (200, 204):
+                        return True
+            except urllib.error.HTTPError as exc:
+                if exc.code in (200, 204, 405):
+                    return True
+            except Exception:
+                continue
+        return False
 
     def submit(self, request: FoundaryRequest) -> FoundaryResponse:
-        """Raise — no live endpoint configured yet.
+        """Submit a request to the foundary service endpoint.
 
         Raises:
-            BackendUnavailableError: Always, until a real endpoint is
-                deployed.
+            BackendUnavailableError: If base_url is empty, connection refused,
+                or server times out.
         """
+        import json
+        import time
+        import urllib.error
+        import urllib.request
         from synapse.errors import BackendUnavailableError
+        from synapse.telemetry import TraceContext
+
+        if not self._base_url:
+            raise BackendUnavailableError(
+                "Foundary HTTP endpoint not configured",
+                agent_fix_hint=(
+                    "Set FOUNDARY_URL environment variable or use "
+                    "MockFoundaryTransport for testing."
+                ),
+            )
+
+        url = f"{self._base_url}/v1/{request.service}"
+        payload = request.model_dump_json().encode("utf-8")
+        trace_headers = TraceContext.current().to_headers()
+        headers = {
+            "Content-Type": "application/json",
+            **trace_headers,
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
+
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return FoundaryResponse.model_validate(data)
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code in (502, 503, 504) and attempt < self._max_retries - 1:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise BackendUnavailableError(
+                    f"Foundary service '{request.service}' HTTP {exc.code}: {exc.reason}",
+                    agent_fix_hint="Check foundary container logs and GPU health.",
+                ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+                if attempt < self._max_retries - 1:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise BackendUnavailableError(
+                    f"Cannot reach foundary service at {url}: {exc}",
+                    agent_fix_hint="Ensure the foundary container is running and port is forwarded.",
+                ) from exc
 
         raise BackendUnavailableError(
-            f"Foundary HTTP endpoint not configured: {self._base_url}",
-            agent_fix_hint=(
-                "Set FOUNDARY_URL environment variable or use "
-                "MockFoundaryTransport for testing."
-            ),
+            f"Failed to submit to foundary after {self._max_retries} attempts: {last_error}",
+            agent_fix_hint="Verify foundary endpoint availability and network connectivity.",
         )
