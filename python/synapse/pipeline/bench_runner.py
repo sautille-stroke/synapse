@@ -444,7 +444,8 @@ def _deform_vertices(
         z = verts[:, 0] * s + verts[:, 2] * c
         verts[:, 0] = x
         verts[:, 2] = z
-    return verts.astype(np.float32)
+    out_verts: np.ndarray = np.asarray(verts, dtype=np.float32)
+    return out_verts
 
 
 # -------------------------------------------------------------------
@@ -651,7 +652,11 @@ def _compute_metrics(
             mvs_arr = np.stack(mvs_list, axis=0)
             metrics["temporal_warp_error"] = float(temporal_warp_error(gen_float, mvs_arr))
         else:
-            metrics["temporal_warp_error"] = float(temporal_warp_error(gen_float))
+            fallback_mvs = np.zeros(
+                (n_frames - 1, gen_float.shape[1], gen_float.shape[2], 2),
+                dtype=np.float32,
+            )
+            metrics["temporal_warp_error"] = float(temporal_warp_error(gen_float, fallback_mvs))
     else:
         metrics["temporal_warp_error"] = 0.0
 
@@ -763,7 +768,10 @@ def _compute_metrics(
         non_manifold = sum(1 for c in edges_count.values() if c != 2)
         metrics["non_manifold_edges"] = float(non_manifold)
 
-    tier_str = tier.value if hasattr(tier, "value") else str(tier) if tier else ""
+    if tier is not None:
+        tier_str = str(getattr(tier, "value", tier))
+    else:
+        tier_str = ""
     if tier_str == "T1":
         metrics["foot_sliding_cm"] = 0.0
         metrics["bone_length_drift_pct"] = 0.0
