@@ -10,7 +10,6 @@ from synapse.cli.common import (
     ContractValidationError,
     ExitCode,
     Path,
-    QualityGateError,
     SynapseError,
     _run_with_json_mode,
     argparse,
