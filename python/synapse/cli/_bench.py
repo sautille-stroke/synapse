@@ -331,11 +331,13 @@ def register_bench_subparser(
     json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``bench`` subcommand tree under ``synapse bench``."""
+    from typing import cast
+
     parents = [json_parent] if json_parent is not None else []
     bench_parser = subparsers.add_parser("bench", help="Benchmark operations", parents=parents)
     bench_sub = bench_parser.add_subparsers(dest="bench_command")
     register_bench_subparsers(bench_sub, json_parent=json_parent)
-    return bench_parser
+    return cast(argparse.ArgumentParser, bench_parser)
 
 
 def dispatch_bench(

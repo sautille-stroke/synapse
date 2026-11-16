@@ -197,7 +197,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
                 agent_fix_hint="Install OpenCV, OpenEXR, and Pillow via pip install 'synapse[image]'.",
             ) from exc
 
-        from synapse.fgpp.io import read_fgpp_frame
+        from synapse.fgpp.io import import_fgpp
         from synapse.generators.visualizer import (
             colorize_depth,
             colorize_flow,
@@ -207,17 +207,17 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
         vis_dir = fgpp_dir / "visualizations"
         vis_dir.mkdir(parents=True, exist_ok=True)
+        seq = import_fgpp(fgpp_dir)
         exported_count = 0
-        for ef in exr_files:
-            frame = read_fgpp_frame(ef)
-            stem = ef.stem
+        for frame in seq.frames:
+            stem = f"frame_{frame.frame_index:06d}"
             if frame.cryptomatte_id is not None:
                 mask_2d = (frame.cryptomatte_id > 0).astype(np.uint8)
             else:
                 mask_2d = np.ones(frame.depth.shape, dtype=np.uint8)
 
-            depth_vis = colorize_depth(frame.depth, mask_2d)
-            normal_vis = colorize_normal(frame.normal, mask_2d)
+            depth_vis = colorize_depth(frame.depth.astype(np.float32), mask_2d)
+            normal_vis = colorize_normal(frame.world_normal.astype(np.float32), mask_2d)
             mask_vis = colorize_mask(mask_2d)
 
             Image.fromarray(depth_vis).save(vis_dir / f"depth_{stem}.png")
@@ -225,7 +225,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
             Image.fromarray(mask_vis).save(vis_dir / f"mask_{stem}.png")
 
             if frame.motion_vector is not None:
-                flow_vis = colorize_flow(frame.motion_vector, mask_2d)
+                flow_vis = colorize_flow(frame.motion_vector.astype(np.float32), mask_2d)
                 Image.fromarray(flow_vis).save(vis_dir / f"flow_{stem}.png")
             exported_count += 1
 
@@ -241,7 +241,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def register_fgpp_subparser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
     json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``fgpp`` subcommand tree."""

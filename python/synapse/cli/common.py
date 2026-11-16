@@ -12,7 +12,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from synapse.errors import (
     AssetNotFoundError,
@@ -50,7 +50,7 @@ __all__ = [
 class SynapseArgumentParser(argparse.ArgumentParser):
     """Custom ArgumentParser that converts argument parse errors to ContractValidationError(10)."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise ContractValidationError(
             f"Invalid CLI argument: {message}",
             agent_fix_hint="Check CLI arguments with --help.",

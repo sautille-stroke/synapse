@@ -87,14 +87,13 @@ def handle_anatomical_refine(
 
     max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
     elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
-    if elapsed_seconds >= max_elapsed_seconds:
-        from synapse.errors import CircuitBreakerError
+    if elapsed_seconds > max_elapsed_seconds:
+        from synapse.errors import evaluate_hitl_circuit_breaker
 
-        raise CircuitBreakerError(
-            f"HITL refinement budget exceeded: {elapsed_seconds:.1f}s >= {max_elapsed_seconds:.1f}s",
-            elapsed_seconds=elapsed_seconds,
+        evaluate_hitl_circuit_breaker(
+            elapsed_seconds,
+            domain="video_shot",
             max_seconds=max_elapsed_seconds,
-            agent_fix_hint="Split refinement into smaller ROIs or downgrade stage to automated fallback.",
         )
 
     rois_per_frame: list[list[RefinementROI]] = []
@@ -122,11 +121,15 @@ def handle_anatomical_refine(
             frame_rois.append(roi)
         rois_per_frame.append(frame_rois)
 
-    pipeline = LocalRefinementPipeline(max_elapsed_seconds=max_elapsed_seconds)
+    from synapse.refine.gates import GateThresholds
+
+    gate_thresholds = GateThresholds(max_elapsed_seconds=max_elapsed_seconds)
+    pipeline = LocalRefinementPipeline(gate_thresholds=gate_thresholds)
     result = pipeline.run(
         frames_acescg=frames,
         rois_per_frame=rois_per_frame,
         fusion_method=fusion_method,
+        elapsed_seconds_override=elapsed_seconds if elapsed_seconds > 0 else None,
     )
 
     output_paths: dict[str, str] = {}
