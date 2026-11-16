@@ -1,5 +1,6 @@
 // electron/bundle-manager.js — Loads and validates InspectionBundle directories.
 // H6-P1-07: Support animation_*/generated_*/fgpp_* multi-instance source keys.
+// PR-105: Symlink escape protection via fs.realpathSync.
 'use strict';
 
 const fs = require('fs');
@@ -59,6 +60,26 @@ function extractEntryLabel(entry) {
 function isUnsafePath(p) {
   if (typeof p !== 'string') return false;
   return p.includes('..') || path.isAbsolute(p) || /^[a-zA-Z]:[/\\]/.test(p);
+}
+
+/**
+ * Check if a target file or symlink escapes outside the bundle root directory.
+ * @param {string} bundleDir
+ * @param {string} targetPath
+ * @returns {boolean} true if escaping outside bundleDir
+ */
+function isPathEscaping(bundleDir, targetPath) {
+  try {
+    if (!fs.existsSync(bundleDir)) return false;
+    const realBundleDir = fs.realpathSync(bundleDir);
+    const fullTarget = path.isAbsolute(targetPath) ? targetPath : path.join(bundleDir, targetPath);
+    if (!fs.existsSync(fullTarget)) return false;
+    const realTarget = fs.realpathSync(fullTarget);
+    const rel = path.relative(realBundleDir, realTarget);
+    return rel.startsWith('..') || path.isAbsolute(rel);
+  } catch (_) {
+    return true; // Fail-closed on resolution errors
+  }
 }
 
 /**
@@ -136,16 +157,19 @@ class BundleManager {
       return { ok: false, error: 'Missing required sources.source_model in manifest' };
     }
 
-    // Security: reject path traversal.
-    const traversalError = this._checkPathTraversal(sources);
+    // Security: reject path traversal and symlink escapes.
+    const traversalError = this._checkPathTraversal(sources, bundlePath);
     if (traversalError) {
       return { ok: false, error: traversalError };
     }
 
-    // Check source model file exists.
+    // Check source model file exists and stays inside bundle.
     const modelPath = path.join(bundlePath, sourceModelPath);
     if (!fs.existsSync(modelPath)) {
       return { ok: false, error: `Source model not found: ${sourceModelPath}` };
+    }
+    if (isPathEscaping(bundlePath, sourceModelPath)) {
+      return { ok: false, error: `Source model escapes bundle root via symlink: ${sourceModelPath}` };
     }
 
     // Build inventory.
@@ -159,37 +183,45 @@ class BundleManager {
   }
 
   /**
-   * Check all source entries for path traversal.
+   * Check all source entries for path traversal and symlink escapes.
    * Supports multi-instance keys (animation_*, generated_*, fgpp_*).
    * @param {object|Array} sources
+   * @param {string} [bundlePath]
    * @returns {string|null} Error message or null if clean.
    * @private
    */
-  _checkPathTraversal(sources) {
+  _checkPathTraversal(sources, bundlePath) {
+    const checkEntry = (p, loc) => {
+      if (!p) return null;
+      if (isUnsafePath(p)) {
+        return `Unsafe path in ${loc}: '${p}'`;
+      }
+      if (bundlePath && isPathEscaping(bundlePath, p)) {
+        return `Symlink escape in ${loc}: '${p}'`;
+      }
+      return null;
+    };
+
     if (Array.isArray(sources)) {
       for (let i = 0; i < sources.length; i++) {
         const p = extractEntryPath(sources[i]);
-        if (p && isUnsafePath(p)) {
-          return `Unsafe path in sources[${i}]: '${p}'`;
-        }
+        const err = checkEntry(p, `sources[${i}]`);
+        if (err) return err;
       }
     } else if (typeof sources === 'object') {
       for (const [key, val] of Object.entries(sources)) {
         if (typeof val === 'string') {
-          if (isUnsafePath(val)) {
-            return `Unsafe path in sources.${key}: '${val}'`;
-          }
+          const err = checkEntry(val, `sources.${key}`);
+          if (err) return err;
         } else if (val && typeof val === 'object' && !Array.isArray(val)) {
           const p = extractEntryPath(val);
-          if (p && isUnsafePath(p)) {
-            return `Unsafe path in sources.${key}: '${p}'`;
-          }
+          const err = checkEntry(p, `sources.${key}`);
+          if (err) return err;
         } else if (Array.isArray(val)) {
-          for (const entry of val) {
-            const p = extractEntryPath(entry);
-            if (p && isUnsafePath(p)) {
-              return `Unsafe path in sources.${key}: '${p}'`;
-            }
+          for (let i = 0; i < val.length; i++) {
+            const p = extractEntryPath(val[i]);
+            const err = checkEntry(p, `sources.${key}[${i}]`);
+            if (err) return err;
           }
         }
       }
@@ -228,6 +260,9 @@ class BundleManager {
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
         const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (isPathEscaping(bundlePath, fullPath)) {
+          continue; // Skip symlinks resolving outside the bundle
+        }
         if (entry.isDirectory()) {
           walk(fullPath, relPath);
         } else if (entry.isFile()) {
@@ -252,5 +287,6 @@ module.exports = {
   extractEntryPath,
   extractEntryLabel,
   isUnsafePath,
+  isPathEscaping,
   isMultiInstanceKey,
 };

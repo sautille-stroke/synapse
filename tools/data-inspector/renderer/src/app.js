@@ -243,6 +243,14 @@ if (window.inspectorAPI) {
   window.inspectorAPI.onNativeFrame((header, pixels) => {
     if (!canvas || !ctx || !imageData) return;
 
+    if (header && (header.width !== canvas.width || header.height !== canvas.height)) {
+      canvas.width = header.width;
+      canvas.height = header.height;
+      imageData = ctx.createImageData(header.width, header.height);
+      const resEl = document.getElementById('prop-resolution');
+      if (resEl) resEl.textContent = `${header.width}x${header.height}`;
+    }
+
     // `pixels` is a Buffer/Uint8Array of RGBA data.
     if (pixels && pixels.length === imageData.data.length) {
       imageData.data.set(pixels);
@@ -251,13 +259,20 @@ if (window.inspectorAPI) {
 
     // Update FPS display.
     if (header && header.fps !== undefined) {
-      document.getElementById('prop-fps').textContent =
-        `${Math.round(header.fps * 10) / 10}`;
+      const fpsEl = document.getElementById('prop-fps');
+      if (fpsEl) fpsEl.textContent = `${Math.round(header.fps * 10) / 10}`;
     }
   });
 
   window.inspectorAPI.onNativeLog((msg) => {
     console.log('[native]', msg);
+    const match = /verts=(\d+),\s*faces=(\d+)/.exec(msg);
+    if (match) {
+      const vertEl = document.getElementById('prop-vertices');
+      const triEl = document.getElementById('prop-triangles');
+      if (vertEl) vertEl.textContent = match[1];
+      if (triEl) triEl.textContent = match[2];
+    }
   });
 
   window.inspectorAPI.onNativeError((msg) => {
@@ -307,20 +322,24 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
 
 document.querySelectorAll('.debug-modes button').forEach((btn) => {
   btn.addEventListener('click', () => {
+    if (currentDebugMode === btn.dataset.mode) return; // Deduplicate redundant switches
     document.querySelectorAll('.debug-modes button').forEach((b) =>
       b.classList.remove('active'));
     btn.classList.add('active');
     currentDebugMode = btn.dataset.mode;
-    document.getElementById('prop-debug-view').textContent =
-      btn.dataset.mode.charAt(0).toUpperCase() + btn.dataset.mode.slice(1);
-
-    // Update SourceModelView state.
-    if (typeof sourceModelView !== 'undefined') {
-      sourceModelView.setDebugMode(btn.dataset.mode);
+    const propDebug = document.getElementById('prop-debug-view');
+    if (propDebug) {
+      propDebug.textContent =
+        btn.dataset.mode.charAt(0).toUpperCase() + btn.dataset.mode.slice(1);
     }
 
-    // H6-P0-10: Guard against uncaught Promise rejection when native is not running.
-    if (nativeRunning) {
+    // Update SourceModelView state (suppress redundant IPC send).
+    if (typeof sourceModelView !== 'undefined') {
+      sourceModelView.setDebugMode(btn.dataset.mode, false);
+    }
+
+    // Single source of truth for set_debug_view IPC command.
+    if (nativeRunning && window.inspectorAPI) {
       window.inspectorAPI.nativeSendCommand({
         type: 'set_debug_view',
         mode: btn.dataset.mode,

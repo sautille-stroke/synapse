@@ -1,6 +1,7 @@
 // renderer/src/views/source-model.js — Source Model view component.
 // Manages the 3D viewport for viewing the source model from the bundle.
 // H6-P2-01: Wired into app.js view lifecycle. DPR-aware canvas sizing.
+// PR-105: Deduplicate set_debug_view IPC dispatches.
 'use strict';
 
 /**
@@ -30,10 +31,12 @@ class SourceModelView {
   /**
    * Set the debug rendering mode.
    * @param {'lit'|'wireframe'|'normal'|'uv'|'depth'|'albedo'|'motion'|'cryptomatte'} mode
+   * @param {boolean} [sendIpc=false] - Whether to send the IPC command (app.js handles UI dispatches)
    */
-  setDebugMode(mode) {
+  setDebugMode(mode, sendIpc = false) {
+    if (this._debugMode === mode && !sendIpc) return;
     this._debugMode = mode;
-    if (this._active && window.inspectorAPI) {
+    if (sendIpc && this._active && window.inspectorAPI) {
       window.inspectorAPI.nativeSendCommand({
         type: 'set_debug_view',
         mode,
