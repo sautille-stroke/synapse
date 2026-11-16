@@ -5,7 +5,7 @@
   "description": "Standardized registry of industry benchmark datasets for Synapse evaluation on Google Colab and cloud instances (RFC 0063 compliant).",
   "storage_contract": {
     "colab_local_dir": "/content/datasets/benchmarks",
-    "drive_ssot_root": "data/benchmarks",
+    "drive_ssot_root": "open_data/benchmarks",
     "dev_local_root": "data/benchmarks"
   },
   "tiers": {

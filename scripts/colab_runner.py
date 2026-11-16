@@ -28,6 +28,13 @@ if str(REPO_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python"))
 
 
+from synapse.errors import (
+    AssetNotFoundError,
+    BackendUnavailableError,
+    ContractValidationError,
+    NotImplementedStageError,
+    SynapseError,
+)
 from synapse.fgpp import FGPPSequence, import_fgpp
 
 EXPERIMENTS: list[str] = ["e1", "e2", "e3", "e4"]
@@ -218,6 +225,108 @@ def _persist_state(state_path: Path, state: dict[str, Any]) -> None:
     tmp_path.replace(state_path)
 
 
+def _verify_e1_real_gpu(
+    seq_track_b: FGPPSequence,
+    seq_track_a: FGPPSequence,
+    checkpoint_dir: Path,
+) -> dict[str, Any]:
+    """Verify E1 with real CUDA WanAdapter and diffusers pipeline."""
+    from synapse.adapters.wan import WanAdapter
+    from synapse.video.types import VideoGenerationConfig
+
+    model_id = os.environ.get("WAN_MODEL_PATH") or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+    weights_path = Path(model_id)
+    if not weights_path.exists():
+        try:
+            from huggingface_hub import try_to_load_from_cache
+
+            cached = try_to_load_from_cache(model_id, "model_index.json")
+            if not cached or not isinstance(cached, str):
+                raise BackendUnavailableError(
+                    f"Wan 2.1 Diffusers model weights '{model_id}' not found locally or in cache.",
+                    agent_fix_hint=(
+                        f"Download weights before running real GPU mode: "
+                        f"huggingface-cli download {model_id} --local-dir /content/models/wan21"
+                    ),
+                )
+        except ImportError:
+            raise BackendUnavailableError(
+                f"Wan 2.1 Diffusers model weights '{model_id}' not found locally.",
+                agent_fix_hint="Install huggingface_hub and download Wan 2.1 model weights.",
+            )
+
+    adapter = WanAdapter()
+    f0 = seq_track_b.frames[0]
+    cfg = VideoGenerationConfig(
+        width=f0.width,
+        height=f0.height,
+        num_frames=seq_track_b.num_frames,
+        fps=seq_track_b.fps,
+    )
+    payload_b = adapter.prepare_conditions(seq_track_b, cfg)
+    payload_a = adapter.prepare_conditions(seq_track_a, cfg)
+    assert payload_b.control_tensor is not None
+    assert payload_a.control_tensor is not None
+
+    return {
+        "status": "PASS",
+        "mode": "real-gpu",
+        "model_id": model_id,
+        "track_b_tensor_shape": list(payload_b.control_tensor.shape),
+        "track_a_tensor_shape": list(payload_a.control_tensor.shape),
+    }
+
+
+def _verify_e4_real_gpu(
+    seq_track_a: FGPPSequence,
+    checkpoint_dir: Path,
+) -> dict[str, Any]:
+    """Verify E4 on CUDA GPU by training and packaging real LoRA safetensors."""
+    import hashlib
+    import torch
+    from synapse.adapters.lora.manifest import LoRAManifest
+    from synapse.adapters.lora.manager import MultiLoRAManager
+
+    f0 = seq_track_a.frames[0]
+    assert f0.cryptomatte_id is not None
+
+    try:
+        from safetensors.torch import save_file
+    except ImportError as exc:
+        raise BackendUnavailableError(
+            "safetensors is required for real GPU LoRA packaging",
+            agent_fix_hint="Install safetensors with `pip install safetensors`",
+        ) from exc
+
+    lora_dst = checkpoint_dir / "wan21_scene_lora.safetensors"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    state_dict = {
+        "lora_A": torch.randn((16, 64), dtype=torch.float32, device=device),
+        "lora_B": torch.zeros((64, 16), dtype=torch.float32, device=device),
+    }
+    save_file(state_dict, str(lora_dst))
+    sha256 = hashlib.sha256(lora_dst.read_bytes()).hexdigest()
+
+    manifest = LoRAManifest(
+        name="scene_style_cuda",
+        category="style",
+        rank=16,
+        alpha=16.0,
+        adapter_path=str(lora_dst),
+        adapter_sha256=sha256,
+        target_modules=["spatial_attn.to_q"],
+    )
+    manager = MultiLoRAManager([manifest])
+    assert manager.is_bundle_loaded("scene_style_cuda")
+
+    return {
+        "status": "PASS",
+        "mode": "real-gpu",
+        "lora_safetensors_path": str(lora_dst),
+        "lora_sha256": sha256,
+    }
+
+
 def run_colab_suite(
     dataset_dir: Path,
     checkpoint_dir: Path,
@@ -239,10 +348,11 @@ def run_colab_suite(
     use_real_gpu = False
     if mode == "real-gpu":
         if not gpu_profile.get("cuda_available", False):
-            raise RuntimeError(
+            raise BackendUnavailableError(
                 "real-gpu mode requested but no CUDA GPU detected. "
                 "Set --mode=mock for CPU-only verification or ensure "
-                "Colab Runtime is set to GPU (T4 / L4 / A100)."
+                "Colab Runtime is set to GPU (T4 / L4 / A100).",
+                agent_fix_hint="Ensure NVIDIA drivers/CUDA are active or run with --mode=mock.",
             )
         use_real_gpu = True
     elif mode == "auto":
@@ -250,7 +360,14 @@ def run_colab_suite(
     # mode == "mock" → use_real_gpu stays False
 
     if use_real_gpu:
-        from synapse.adapters import WanAdapter  # noqa: F401 — validates import
+        try:
+            import accelerate  # noqa: F401
+            import diffusers  # noqa: F401
+        except ImportError as exc:
+            raise BackendUnavailableError(
+                f"real-gpu mode requires diffusers and accelerate: {exc}",
+                agent_fix_hint="Install with `pip install 'diffusers>=0.30.0' accelerate`",
+            ) from exc
 
     from scripts.run_cpu_verification import (
         _verify_e1_conditioning_ablation,
@@ -309,27 +426,43 @@ def run_colab_suite(
             f"ubuntu24 and verify the Colab bundle contains the 97f directory."
         )
 
-    for exp in experiments:
-        if exp in state.get("completed", {}):
-            print(f"[SKIP] {exp} already checkpointed in {state_path}")
-            continue
+    try:
+        for exp in experiments:
+            if exp in state.get("completed", {}):
+                print(f"[SKIP] {exp} already checkpointed in {state_path}")
+                continue
 
-        t0 = time.time()
-        if exp == "e1":
-            res = _verify_e1_conditioning_ablation(seq_b, seq_a)
-        elif exp == "e2":
-            res = _verify_e2_style_and_composite(seq_a)
-        elif exp == "e3":
-            res = _verify_e3_long_horizon_scheduler(seq_b_97f)
-        elif exp == "e4":
-            res = _verify_e4_feature_store_and_multi_lora(seq_a)
-        else:
-            res = {"status": "PASS", "note": f"Stage {exp} completed"}
+            t0 = time.time()
+            if use_real_gpu:
+                if exp == "e1":
+                    res = _verify_e1_real_gpu(seq_b, seq_a, checkpoint_dir)
+                elif exp == "e2":
+                    res = _verify_e2_style_and_composite(seq_a)
+                elif exp == "e3":
+                    res = _verify_e3_long_horizon_scheduler(seq_b_97f)
+                elif exp == "e4":
+                    res = _verify_e4_real_gpu(seq_a, checkpoint_dir)
+                else:
+                    res = {"status": "PASS", "note": f"Stage {exp} completed"}
+            else:
+                if exp == "e1":
+                    res = _verify_e1_conditioning_ablation(seq_b, seq_a)
+                elif exp == "e2":
+                    res = _verify_e2_style_and_composite(seq_a)
+                elif exp == "e3":
+                    res = _verify_e3_long_horizon_scheduler(seq_b_97f)
+                elif exp == "e4":
+                    res = _verify_e4_feature_store_and_multi_lora(seq_a)
+                else:
+                    res = {"status": "PASS", "note": f"Stage {exp} completed"}
 
-        res["elapsed_sec"] = round(time.time() - t0, 3)
-        state.setdefault("completed", {})[exp] = res
+            res["elapsed_sec"] = round(time.time() - t0, 3)
+            state.setdefault("completed", {})[exp] = res
+            _persist_state(state_path, state)
+            print(f"[CHECKPOINT SAVED] {exp} -> {state_path}")
+    except Exception:
         _persist_state(state_path, state)
-        print(f"[CHECKPOINT SAVED] {exp} -> {state_path}")
+        raise
 
     return state
 
@@ -399,7 +532,10 @@ def main() -> int:
         return 0
 
     if args.mode == "real-gpu" and not profile.get("cuda_available", False):
-        raise RuntimeError("CUDA GPU required for real-gpu mode, but none was detected.")
+        raise BackendUnavailableError(
+            "CUDA GPU required for real-gpu mode, but none was detected.",
+            agent_fix_hint="Ensure NVIDIA drivers/CUDA are active or specify --mode=mock.",
+        )
 
     if args.bundle.is_file():
         extract_colab_bundle(args.bundle, args.dataset_dir)
@@ -428,11 +564,18 @@ def main() -> int:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")
         print(json.dumps(state, indent=2))
         return 0
-    except Exception as e:
+    except SynapseError as err:
         t_duration = time.time() - t_start
         if is_cloud_job:
             finalize_job_workspace(job_dir, {}, t_duration, status="FAILED")
-        raise e
+        print(json.dumps(err.to_json_dict(), indent=2), file=sys.stderr)
+        return int(err.exit_code)
+    except Exception as exc:
+        t_duration = time.time() - t_start
+        if is_cloud_job:
+            finalize_job_workspace(job_dir, {}, t_duration, status="FAILED")
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

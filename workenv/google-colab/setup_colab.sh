@@ -52,7 +52,8 @@ python3 -m pip install --quiet \
     "transformers>=4.44.0" \
     "sentencepiece>=0.2.0" \
     "webdataset>=0.2.86" \
-    "huggingface_hub>=0.24.0"
+    "huggingface_hub>=0.24.0" \
+    "pybind11>=2.12.0"
 
 # Build and install native C++20 geometry kernel (_c_geometry)
 echo ">>> Building native _c_geometry extension kernel..."
@@ -105,10 +106,11 @@ fi
 
 echo ""
 echo ">>> Staging Starter Benchmark Datasets (RFC 0063 ~250MB suite)..."
-# Stage to experiment output area, never to read-only data/ in the repo checkout.
-BENCH_TARGET="${DERVGEN_DRIVE_ROOT}/work/${USER_ID}/synapse/${JOB_DATE}/benchmarks"
-python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir "${BENCH_TARGET}" || \
-python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir /content/datasets/benchmarks
+# SSOT V2.0: Benchmark datasets are staged exclusively to fast NVMe local disk (/content/datasets/benchmarks),
+# NEVER to Drive FUSE mount (prevents I/O bottlenecks and Drive quota pollution).
+BENCH_TARGET="/content/datasets/benchmarks"
+mkdir -p "${BENCH_TARGET}"
+python3 scripts/prepare_benchmark_assets.py --tier starter_dev --allow-synthetic-smoke --target-dir "${BENCH_TARGET}"
 
 echo ""
 echo "======================================================================"

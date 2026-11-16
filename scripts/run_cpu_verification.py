@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -106,7 +107,7 @@ def _verify_e1_conditioning_ablation(
     assert bool(np.all(np.isfinite(ctrl_a)))
 
     # Construct the 4 ablation tensor masks:
-    # ch 0: log-depth, ch 1..3: world normal, ch 4..5: motion vector, ch 6: occlusion
+    # ch 0: log-depth, ch 1..3: camera-space normal, ch 4..6: ACEScg direct radiance
     ablation_norms: dict[str, float] = {}
     for name, active_ch in (
         ("E1-A_rgb_only", []),
@@ -382,6 +383,12 @@ def main() -> int:
     dir_b_17f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_17f"
     dir_b_97f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_97f"
     dir_a_17f = args.dataset_root / "track_a_caelum" / "cornell_spheres_17f"
+
+    bundle_tar = args.dataset_root / "synapse_colab_bundle_v1.tar.gz"
+    if not dir_b_17f.exists() and bundle_tar.is_file():
+        print(f"Extracting {bundle_tar} -> {args.dataset_root} ...")
+        with tarfile.open(bundle_tar, "r:gz") as tar:
+            tar.extractall(path=args.dataset_root)
 
     print("Loading Golden FGPP sequences from", args.dataset_root)
     seq_b_17f = import_fgpp(dir_b_17f, lazy=False)

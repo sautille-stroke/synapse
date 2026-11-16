@@ -63,10 +63,10 @@
     "vbench_prompts": {
       "version": "1.0.0",
       "archive": "vbench_prompts.tar.gz",
-      "sha256": "07c94a4aab06568eb776fd4256beabbcc36e194c7016c5e1bbb8b4ae5a70b541",
+      "sha256": "d60462bcb05906809a3cf3dfe9ae793855c76a742dca64f1e55aa3c0feddf2ca",
       "install_dir": "data/benchmarks/vbench_prompts",
-      "size_bytes": 2097152,
-      "size_mb": 2.0,
+      "size_bytes": 4531,
+      "size_mb": 0.004,
       "license": "Apache 2.0",
       "description": "VBench official 16-dimension canonical prompts suite",
       "hf_repo": "sautille-stroke/synapse-benchmark-assets",
@@ -74,7 +74,7 @@
       "category": "video_generation",
       "vital_file": {
         "name": "prompts_per_dimension.json",
-        "sha256": "07c94a4aab06568eb776fd4256beabbcc36e194c7016c5e1bbb8b4ae5a70b541"
+        "sha256": "d60462bcb05906809a3cf3dfe9ae793855c76a742dca64f1e55aa3c0feddf2ca"
       }
     }
   }

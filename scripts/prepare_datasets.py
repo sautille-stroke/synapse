@@ -70,6 +70,15 @@ def _export_fulgur_course102(
     ]
     subprocess.run(cmd, cwd=str(fulgur_repo), check=True)
 
+    meta_path = out_dir / "metadata.json"
+    if meta_path.is_file():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["fps"] = 24.0
+        for f in meta.get("frames", []):
+            if "frame_index" in f:
+                f["timestamp_sec"] = f["frame_index"] / 24.0
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
 
 def _build_long_horizon_97f_from_base(
     base_17f_dir: Path,
@@ -131,6 +140,7 @@ def _build_long_horizon_97f_from_base(
     meta_97["scene_id"] = "fulgur_course102_97f"
     meta_97["total_frames"] = 97
     meta_97["num_frames"] = 97
+    meta_97["fps"] = 24.0
     meta_97["frames"] = frames_meta
     (out_97f_dir / "metadata.json").write_text(
         json.dumps(meta_97, indent=2), encoding="utf-8"
