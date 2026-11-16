@@ -22,7 +22,6 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -155,10 +154,11 @@ def _export_caelum_track_a_17f(
     height: int = 480,
 ) -> None:
     """Export 17-frame Track-A FGPP + Beauty GT using self-contained FGPP generator."""
-    from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
-    from synapse.render_core.rasterizer import entity_hash
     import Imath
     import OpenEXR
+
+    from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
+    from synapse.render_core.rasterizer import entity_hash
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
