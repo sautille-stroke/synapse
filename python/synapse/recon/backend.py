@@ -57,10 +57,23 @@ class SynapseReconBackend(VgBackend):
         vertices: np.ndarray,
         faces: np.ndarray,
     ) -> bool:
-        """Check 2-manifold status using synapse.recon.geometry."""
-        from synapse.recon.geometry import check_manifold as recon_check_manifold
+        """Check 2-manifold status using native C++ kernel with Oracle fallback."""
+        try:
+            import synapse._c_geometry as _cg
 
-        return recon_check_manifold(vertices, faces)
+            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
+            f_arr = np.ascontiguousarray(faces, dtype=np.int32)
+            is_m = bool(_cg.check_manifold(v_arr, f_arr))
+            if not is_m:
+                return False
+            # Check watertight boundary status
+            if hasattr(_cg, "check_watertight"):
+                return bool(_cg.check_watertight(v_arr, f_arr))
+            return True
+        except (ImportError, AttributeError):
+            from synapse.recon.geometry import check_manifold as recon_check_manifold
+
+            return recon_check_manifold(vertices, faces)
 
     def solve_zero_slip_ik(
         self,

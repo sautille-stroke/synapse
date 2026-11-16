@@ -74,12 +74,17 @@ class CausalWindowPlan:
     overlap_frames: int = 33
     total_frames: int = 97
 
-    def compute_windows(self) -> list[WindowSlice]:
+    def compute_windows(
+        self,
+        discontinuity_frames: list[int] | None = None,
+    ) -> list[WindowSlice]:
         """Compute the list of causal generation windows.
 
         For window k >= 1, the causal warm-up prefix consists of 3
         frames immediately preceding the window start:
         ``[stride*k - 3, stride*k - 2, stride*k - 1]``.
+        If a scene cut / discontinuity occurred in the prefix or at the boundary,
+        warmup is cleared to ``[]`` to avoid cross-cut ghosting.
 
         The last window may be shorter than ``window_frames`` if
         ``total_frames`` does not align evenly.
@@ -91,6 +96,7 @@ class CausalWindowPlan:
         if self.total_frames <= 0:
             return []
 
+        disc_set = set(discontinuity_frames or [])
         windows: list[WindowSlice] = []
         k = 0
         while True:
@@ -103,7 +109,11 @@ class CausalWindowPlan:
             warmup: list[int] = []
             if k >= 1:
                 base = self.stride_frames * k
-                warmup = [base - 3, base - 2, base - 1]
+                # If cut occurs in warmup or at boundary, clear warmup to avoid ghosting
+                if any(df in disc_set for df in range(base - 3, base + 1)):
+                    warmup = []
+                else:
+                    warmup = [base - 3, base - 2, base - 1]
 
             windows.append(WindowSlice(
                 start=start,
@@ -429,7 +439,6 @@ class ConditionScheduler:
             List of ``ScheduledWindow`` instances, one per generation
             window.
         """
-        windows = self._plan.compute_windows()
         reanchors = self._detector.detect(fgpp_sequence)
 
         # Index reanchor requests by frame
@@ -440,6 +449,7 @@ class ConditionScheduler:
         # Track which frames had real discontinuities from the detector
         # BEFORE physical anchor injection, so we can preserve them.
         detector_flagged_frames: set[int] = set(reanchor_by_frame.keys())
+        windows = self._plan.compute_windows(discontinuity_frames=list(detector_flagged_frames))
 
         # Add physical anchor frames
         frames = getattr(fgpp_sequence, "frames", [])
@@ -498,33 +508,34 @@ def fuse_overlapping_latents(
     z_curr: np.ndarray,
     overlap_steps: int = 9,
     lam: float = 8.0,
+    rho: float | None = None,
 ) -> np.ndarray:
     """Fuse overlapping latent tensors with variance-preserving sigmoid
     causal annealing.
 
-    The blending weight at overlap step tau' is::
+    The blending weight at overlap step tau' is rescaled to [0.0, 1.0]::
 
         alpha(0) = 0.0          (keep z_prev entirely)
-        alpha(tau') = sigmoid(lam * (tau' / (overlap_steps - 1) - 0.5))
-            for tau' = 1 .. overlap_steps - 1
+        alpha(overlap_steps - 1) = 1.0 (transition entirely to z_curr)
 
-    The fused output preserves unit variance::
+    The fused output preserves unit variance via correlation-aware normalization::
 
         z_fused = ((1 - alpha) * z_prev + alpha * z_curr)
-                / sqrt((1 - alpha)^2 + alpha^2)
+                / sqrt((1 - alpha)^2 + alpha^2 + 2 * alpha * (1 - alpha) * rho)
 
     Args:
-        z_prev: Latent tensor from the previous window; first
-            dimension is the overlap time axis with size
-            ``>= overlap_steps``.
-        z_curr: Latent tensor from the current window; first dimension
-            must be ``>= overlap_steps``.
+        z_prev: Latent tensor from the previous window; the tail
+            ``z_prev[-overlap_steps:]`` is used for the overlap.
+        z_curr: Latent tensor from the current window; the head
+            ``z_curr[:overlap_steps]`` is used.
         overlap_steps: Number of overlapping latent steps (default 9).
         lam: Steepness of the sigmoid transition (default 8.0).
+        rho: Optional correlation coefficient between z_prev and z_curr.
+            If None, computed empirically from the overlap tensors.
 
     Returns:
         Fused latent tensor with the same shape as
-        ``z_prev[:overlap_steps]``.
+        ``z_curr[:overlap_steps]``.
 
     Raises:
         ValueError: If either tensor has fewer steps than
@@ -541,24 +552,42 @@ def fuse_overlapping_latents(
             f"need >= {overlap_steps}"
         )
 
-    zp = z_prev[:overlap_steps].astype(np.float64)
+    zp = z_prev[-overlap_steps:].astype(np.float64)
     zc = z_curr[:overlap_steps].astype(np.float64)
 
-    # Build alpha schedule
+    # Build alpha schedule rescaled to [0.0, 1.0]
     alphas = np.zeros(overlap_steps, dtype=np.float64)
-    for tau in range(1, overlap_steps):
-        x = lam * (tau / (overlap_steps - 1) - 0.5)
-        alphas[tau] = 1.0 / (1.0 + math.exp(-x))
+    if overlap_steps > 1:
+        s0 = 1.0 / (1.0 + math.exp(lam * 0.5))
+        s1 = 1.0 / (1.0 + math.exp(-lam * 0.5))
+        for tau in range(overlap_steps):
+            t_norm = tau / (overlap_steps - 1)
+            raw_sig = 1.0 / (1.0 + math.exp(-lam * (t_norm - 0.5)))
+            alphas[tau] = (raw_sig - s0) / (s1 - s0)
+        alphas[0] = 0.0
+        alphas[-1] = 1.0
 
     # Reshape for broadcasting: [overlap_steps, 1, 1, ...]
     extra_dims = len(zp.shape) - 1
     shape = (overlap_steps,) + (1,) * extra_dims
     a = alphas.reshape(shape)
 
+    # Compute correlation rho if not supplied
+    if rho is None:
+        zp_c = zp - zp.mean(axis=tuple(range(1, zp.ndim)), keepdims=True)
+        zc_c = zc - zc.mean(axis=tuple(range(1, zc.ndim)), keepdims=True)
+        zp_var = np.mean(zp_c ** 2, axis=tuple(range(1, zp.ndim)), keepdims=True)
+        zc_var = np.mean(zc_c ** 2, axis=tuple(range(1, zc.ndim)), keepdims=True)
+        denom = np.sqrt(np.maximum(zp_var * zc_var, 1e-12))
+        cov = np.mean(zp_c * zc_c, axis=tuple(range(1, zp.ndim)), keepdims=True)
+        rho_val = np.clip(cov / denom, -0.99, 0.99)
+    else:
+        rho_val = np.clip(float(rho), -0.99, 0.99)
+
     blended = (1.0 - a) * zp + a * zc
-    normaliser = np.sqrt((1.0 - a) ** 2 + a ** 2)
-    # Avoid division by zero (should not happen with valid alpha)
-    normaliser = np.maximum(normaliser, 1e-12)
+    normaliser = np.sqrt(
+        np.maximum((1.0 - a) ** 2 + a ** 2 + 2.0 * a * (1.0 - a) * rho_val, 1e-12)
+    )
     fused = blended / normaliser
 
     return fused.astype(z_prev.dtype)

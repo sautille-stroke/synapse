@@ -140,24 +140,27 @@ class MultiLoRAManager:
                     continue
 
                 delta = self._compute_delta(
-                    submodule, manifest, scale,
+                    submodule, manifest, scale, module_name=name,
                 )
                 delta_np = delta.detach().cpu().float().numpy()
                 if name not in layer_deltas:
                     layer_deltas[name] = []
                 layer_deltas[name].append(delta_np)
 
-        # Orthogonalise pairwise then apply combined delta
+        # Orthogonalise pairwise via Modified Gram-Schmidt then apply combined delta
         for name, submodule in module.named_modules():
             if name not in layer_deltas:
                 continue
 
             deltas = layer_deltas[name]
-            if len(deltas) >= 2:
-                for i in range(1, len(deltas)):
-                    deltas[i] = self.orthogonalize_conflicting_loras(
-                        deltas[0], deltas[i],
-                    )
+            n_deltas = len(deltas)
+            if n_deltas >= 2:
+                # Full iterative Modified Gram-Schmidt across all delta pairs
+                for i in range(n_deltas):
+                    for j in range(i + 1, n_deltas):
+                        deltas[j] = self.orthogonalize_conflicting_loras(
+                            deltas[i], deltas[j],
+                        )
 
             combined = sum(deltas[1:], deltas[0])
 
@@ -213,7 +216,7 @@ class MultiLoRAManager:
                     )
 
                 delta = self._compute_delta(
-                    submodule, manifest, scale,
+                    submodule, manifest, scale, module_name=name,
                 )
                 submodule.weight.data.add_(delta)
 
@@ -225,12 +228,26 @@ class MultiLoRAManager:
                 :meth:`apply_merged_weights`.
 
         Raises:
+            ContractValidationError: If NaN/Inf weights are detected.
             RuntimeError: If max element-wise restoration error
                 exceeds ``1e-7``.
         """
+        import torch  # lazy
 
         for key, (submodule, original_w) in self._original_weights.items():
+            if not torch.isfinite(submodule.weight.data).all():
+                raise ContractValidationError(
+                    f"Weight corruption detected (NaN/Inf) in module {key}",
+                    agent_fix_hint="Check LoRA training hyperparameters or scaling factors.",
+                )
+
             submodule.weight.data.copy_(original_w)
+
+            if not torch.isfinite(submodule.weight.data).all():
+                raise ContractValidationError(
+                    f"Restored weight contains NaN/Inf in module {key}",
+                    agent_fix_hint="Original weight was corrupted.",
+                )
 
             max_err = (
                 (submodule.weight.data - original_w).abs().max().item()
@@ -270,24 +287,38 @@ class MultiLoRAManager:
         h_ds = h // spatial_block
         w_ds = w // spatial_block
 
-        mask = np.zeros((t, h_ds, w_ds), dtype=bool)
+        if not target_entity_ids:
+            return np.zeros((t, h_ds, w_ds), dtype=bool)
 
-        for ti in range(t):
-            for yi in range(h_ds):
-                for xi in range(w_ds):
-                    block = cryptomatte_ids[
-                        ti,
-                        yi * spatial_block : (yi + 1) * spatial_block,
-                        xi * spatial_block : (xi + 1) * spatial_block,
-                    ]
-                    # Dominant-entity voting
-                    unique, counts = np.unique(
-                        block.ravel(), return_counts=True,
-                    )
-                    dominant = unique[np.argmax(counts)]
-                    mask[ti, yi, xi] = int(dominant) in target_entity_ids
+        try:
+            from scipy import stats  # lazy
 
-        return mask
+            cropped = cryptomatte_ids[:, :h_ds * spatial_block, :w_ds * spatial_block]
+            blocks = (
+                cropped.reshape(t, h_ds, spatial_block, w_ds, spatial_block)
+                .transpose(0, 1, 3, 2, 4)
+                .reshape(t, h_ds, w_ds, spatial_block * spatial_block)
+            )
+            dominant = np.asarray(
+                stats.mode(blocks, axis=-1, keepdims=False).mode
+            ).reshape(t, h_ds, w_ds)
+            return np.isin(dominant, list(target_entity_ids))
+        except ImportError:
+            mask = np.zeros((t, h_ds, w_ds), dtype=bool)
+            for ti in range(t):
+                for yi in range(h_ds):
+                    for xi in range(w_ds):
+                        block = cryptomatte_ids[
+                            ti,
+                            yi * spatial_block : (yi + 1) * spatial_block,
+                            xi * spatial_block : (xi + 1) * spatial_block,
+                        ]
+                        unique, counts = np.unique(
+                            block.ravel(), return_counts=True,
+                        )
+                        dominant_val = unique[np.argmax(counts)]
+                        mask[ti, yi, xi] = int(dominant_val) in target_entity_ids
+            return mask
 
     @staticmethod
     def orthogonalize_conflicting_loras(
@@ -295,11 +326,11 @@ class MultiLoRAManager:
         lora_b_delta: np.ndarray,
         threshold: float = 0.25,
     ) -> np.ndarray:
-        """Gram-Schmidt project *lora_b_delta* away from *lora_a_delta*.
+        """Modified Gram-Schmidt project *lora_b_delta* away from *lora_a_delta*.
 
         If the absolute cosine similarity between the flattened deltas
         exceeds *threshold*, the component of ``lora_b`` parallel to
-        ``lora_a`` is subtracted (Gram-Schmidt).
+        ``lora_a`` is subtracted (Modified Gram-Schmidt with re-projection).
 
         Args:
             lora_a_delta: Reference delta weight matrix.
@@ -325,9 +356,13 @@ class MultiLoRAManager:
         if abs(cos_theta) <= threshold:
             return np.asarray(lora_b_delta.copy())
 
-        # Gram-Schmidt: remove component of b parallel to a
-        proj_coeff = np.dot(a_flat, b_flat) / np.dot(a_flat, a_flat)
+        # Modified Gram-Schmidt projection + iterative refinement
+        denom = np.dot(a_flat, a_flat)
+        proj_coeff = np.dot(a_flat, b_flat) / denom
         b_orth = b_flat - proj_coeff * a_flat
+
+        residual_coeff = np.dot(a_flat, b_orth) / denom
+        b_orth = b_orth - residual_coeff * a_flat
 
         return np.asarray(
             b_orth.reshape(lora_b_delta.shape).astype(lora_b_delta.dtype)
@@ -338,15 +373,23 @@ class MultiLoRAManager:
     @staticmethod
     def _name_matches(name: str, patterns: list[str]) -> bool:
         """Check if *name* matches any target-module pattern."""
+        import fnmatch
         import re
 
-        return any(re.search(p, name) for p in patterns)
+        for p in patterns:
+            if fnmatch.fnmatch(name, p) or fnmatch.fnmatch(name, f"*{p}*"):
+                return True
+            safe_pattern = re.escape(p).replace(r"\*", ".*")
+            if re.search(safe_pattern, name):
+                return True
+        return False
 
     def _compute_delta(
         self,
         linear: Any,
         manifest: LoRAManifest,
         scale: float,
+        module_name: str | None = None,
     ) -> Any:
         """Compute LoRA delta: scale * (alpha/rank) * B @ A.
 
@@ -376,7 +419,7 @@ class MultiLoRAManager:
 
             # Find matching A and B tensors in the state dict
             a_mat, b_mat = _extract_lora_ab(
-                state_dict, in_features, out_features, rank,
+                state_dict, in_features, out_features, rank, module_name=module_name,
             )
 
         effective_scale = scale * (manifest.alpha / manifest.rank)
@@ -389,37 +432,82 @@ def _extract_lora_ab(
     in_features: int,
     out_features: int,
     rank: int,
+    module_name: str | None = None,
 ) -> tuple[Any, Any]:
     """Extract lora_A and lora_B tensors from a safetensors state dict.
 
     Searches for keys containing ``lora_A`` and ``lora_B`` (or
-    ``lora_down`` / ``lora_up``). Falls back to the first pair whose
-    shapes match ``[rank, in_features]`` and ``[out_features, rank]``.
+    ``lora_down`` / ``lora_up``) matching *module_name*.
 
     Returns:
         Tuple of ``(a_mat, b_mat)`` tensors.
 
     Raises:
-        ContractValidationError: If no matching A/B pair is found.
+        ContractValidationError: If ambiguous keys or dimension mismatch.
     """
     import torch  # lazy
 
-    a_key: str | None = None
-    b_key: str | None = None
+    filtered_dict = state_dict
+    if module_name:
+        matching = {k: v for k, v in state_dict.items() if module_name in k}
+        if not matching:
+            # Try leaf component (e.g. "spatial_attn.to_q")
+            parts = module_name.split(".")
+            if len(parts) >= 2:
+                short_name = ".".join(parts[-2:])
+                matching = {k: v for k, v in state_dict.items() if short_name in k}
+        if matching:
+            filtered_dict = matching
 
-    for key in state_dict:
+    a_candidates: list[str] = []
+    b_candidates: list[str] = []
+
+    for key, tensor in filtered_dict.items():
         lk = key.lower()
         if "lora_a" in lk or "lora_down" in lk:
-            t = state_dict[key]
-            if t.shape == (rank, in_features):
-                a_key = key
+            if tensor.shape == torch.Size([rank, in_features]):
+                a_candidates.append(key)
+            elif module_name and module_name in key:
+                raise ContractValidationError(
+                    f"Dimension mismatch for lora_A key '{key}': "
+                    f"expected [{rank}, {in_features}], got {list(tensor.shape)}",
+                    agent_fix_hint="Verify adapter target_modules and rank configuration.",
+                )
         elif "lora_b" in lk or "lora_up" in lk:
-            t = state_dict[key]
-            if t.shape == (out_features, rank):
-                b_key = key
+            if tensor.shape == torch.Size([out_features, rank]):
+                b_candidates.append(key)
+            elif module_name and module_name in key:
+                raise ContractValidationError(
+                    f"Dimension mismatch for lora_B key '{key}': "
+                    f"expected [{out_features}, {rank}], got {list(tensor.shape)}",
+                    agent_fix_hint="Verify adapter target_modules and rank configuration.",
+                )
+
+    if len(a_candidates) > 1 and module_name:
+        exact_a = [k for k in a_candidates if module_name in k]
+        if len(exact_a) == 1:
+            a_candidates = exact_a
+        elif len(exact_a) > 1:
+            raise ContractValidationError(
+                f"Ambiguous lora_A candidate keys for module '{module_name}': {exact_a}",
+                agent_fix_hint="Ensure adapter keys uniquely identify target modules.",
+            )
+
+    if len(b_candidates) > 1 and module_name:
+        exact_b = [k for k in b_candidates if module_name in k]
+        if len(exact_b) == 1:
+            b_candidates = exact_b
+        elif len(exact_b) > 1:
+            raise ContractValidationError(
+                f"Ambiguous lora_B candidate keys for module '{module_name}': {exact_b}",
+                agent_fix_hint="Ensure adapter keys uniquely identify target modules.",
+            )
+
+    a_key = a_candidates[0] if a_candidates else None
+    b_key = b_candidates[0] if b_candidates else None
 
     if a_key is None or b_key is None:
-        # Fallback: scan all tensors for matching shapes
+        # Fallback: scan all tensors for matching shapes if no module-specific match
         for key, tensor in state_dict.items():
             if tensor.shape == torch.Size([rank, in_features]) and a_key is None:
                 a_key = key
@@ -429,8 +517,8 @@ def _extract_lora_ab(
     if a_key is None or b_key is None:
         raise ContractValidationError(
             f"Cannot find lora_A [{rank}, {in_features}] and "
-            f"lora_B [{out_features}, {rank}] in safetensors state dict. "
-            f"Available keys: {list(state_dict.keys())}",
+            f"lora_B [{out_features}, {rank}] in safetensors state dict "
+            f"(module_name={module_name}). Available keys: {list(state_dict.keys())}",
             agent_fix_hint=(
                 "Ensure the .safetensors file contains 'lora_A'/'lora_B' "
                 "or 'lora_down'/'lora_up' tensors with correct shapes."

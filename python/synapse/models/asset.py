@@ -61,9 +61,11 @@ class ModelAsset:
 
     def normalize(self, target_radius: float = 1.0) -> ModelAsset:
         """Center the mesh at origin and scale so its bounding sphere radius equals target_radius."""
+        import copy
+
         center, radius = self.bounding_sphere()
         if radius <= 1e-8:
-            return self
+            return copy.deepcopy(self)
 
         scale = target_radius / radius
         norm_vertices = ((self.vertices - center) * scale).astype(np.float32)
@@ -115,21 +117,27 @@ class ModelAsset:
         for vert in self.vertices:
             lines.append(f"v {vert[0]:.6f} {vert[1]:.6f} {vert[2]:.6f}")
 
-        for norm in self.normals:
-            lines.append(f"vn {norm[0]:.6f} {norm[1]:.6f} {norm[2]:.6f}")
+        has_normals = self.normals is not None and len(self.normals) == len(self.vertices)
+        if has_normals:
+            for norm in self.normals:
+                lines.append(f"vn {norm[0]:.6f} {norm[1]:.6f} {norm[2]:.6f}")
 
-        if self.uvs is not None:
+        has_uv = self.uvs is not None and len(self.uvs) == len(self.vertices)
+        if has_uv and self.uvs is not None:
             for uv in self.uvs:
                 lines.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
 
-        has_uv = self.uvs is not None and len(self.uvs) == len(self.vertices)
         for face in self.faces:
             # 1-based indexing for OBJ
             f1, f2, f3 = face[0] + 1, face[1] + 1, face[2] + 1
-            if has_uv:
+            if has_uv and has_normals:
                 lines.append(f"f {f1}/{f1}/{f1} {f2}/{f2}/{f2} {f3}/{f3}/{f3}")
-            else:
+            elif has_uv and not has_normals:
+                lines.append(f"f {f1}/{f1} {f2}/{f2} {f3}/{f3}")
+            elif not has_uv and has_normals:
                 lines.append(f"f {f1}//{f1} {f2}//{f2} {f3}//{f3}")
+            else:
+                lines.append(f"f {f1} {f2} {f3}")
 
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return path

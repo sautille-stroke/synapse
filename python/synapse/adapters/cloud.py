@@ -164,9 +164,15 @@ def _fit_camera_motion(
     # Extract translation vectors [T, 3]
     positions = trajectory[:, :3, 3].copy()
 
-    # Compute per-frame velocity vectors [T-1, 3]
+    # Compute per-frame velocity vectors [T-1, 3] in world space
     velocities = np.diff(positions, axis=0)  # [T-1, 3]
-    mean_vel = np.mean(velocities, axis=0)  # [3]
+
+    # Transform velocities into local camera coordinates via R_cam^T
+    local_velocities = np.zeros_like(velocities)
+    for t in range(n - 1):
+        r_cam = trajectory[t, :3, :3]
+        local_velocities[t] = r_cam.T @ velocities[t]
+    mean_local_vel = np.mean(local_velocities, axis=0)  # [3]
 
     # Total displacement magnitude
     total_displacement = np.linalg.norm(positions[-1] - positions[0])
@@ -198,12 +204,14 @@ def _fit_camera_motion(
         # Intensity from yaw magnitude
         raw_intensity = yaw_magnitude / np.pi * 10.0
     elif displacement > 0.01:
-        # Check dominant translation direction
-        forward_vel = float(mean_vel[2])
-        lateral_vel = float(mean_vel[0])
+        # Check dominant translation direction in local camera frame
+        # In OpenGL/camera convention: -Z is forward (dolly in), +Z is backward (dolly out)
+        # +X is right (pan right), -X is left (pan left)
+        forward_vel = float(mean_local_vel[2])
+        lateral_vel = float(mean_local_vel[0])
 
         if abs(forward_vel) > abs(lateral_vel):
-            # Dolly motion (along camera Z)
+            # Dolly motion (along camera Z axis)
             if forward_vel > 0:
                 motion = "dolly_out"
             else:
@@ -211,7 +219,7 @@ def _fit_camera_motion(
             raw_intensity = abs(forward_vel) / max(mean_speed, 1e-8)
             raw_intensity *= 10.0
         else:
-            # Pan motion (lateral)
+            # Pan motion (lateral camera X axis)
             if lateral_vel > 0:
                 motion = "pan_right"
             else:
@@ -490,6 +498,82 @@ class MockCloudTransport(CloudApiTransport):
         return True
 
 
+class HttpCloudTransport(CloudApiTransport):
+    """HTTP transport for live cloud video generation services.
+
+    Makes authenticated HTTP calls to the cloud provider's API.
+    Raises BackendUnavailableError when endpoint is unreachable.
+    """
+
+    def __init__(
+        self,
+        provider: str,
+        api_token: str,
+        endpoint_url: str = "",
+        timeout_s: float = 180.0,
+    ) -> None:
+        self._provider = provider
+        self._api_token = api_token
+        self._endpoint_url = endpoint_url or os.environ.get(
+            f"{provider.upper()}_API_URL", ""
+        )
+        self._timeout = timeout_s
+
+    @property
+    def provider_name(self) -> str:
+        return self._provider
+
+    def is_available(self) -> bool:
+        return bool(self._api_token and self._endpoint_url)
+
+    def submit_segment(
+        self,
+        segment: DegradedSegment,
+        config: VideoGenerationConfig,
+    ) -> np.ndarray:
+        if not self._endpoint_url:
+            raise BackendUnavailableError(
+                f"No endpoint URL configured for cloud provider '{self._provider}'.",
+                agent_fix_hint=f"Set {self._provider.upper()}_API_URL to the service endpoint.",
+            )
+        import json
+        import urllib.error
+        import urllib.request
+
+        from synapse.telemetry import TraceContext
+
+        req_payload = {
+            "camera_motion": segment.camera_motion_enum,
+            "motion_intensity": segment.motion_intensity,
+            "start_frame": segment.start_frame,
+            "end_frame": segment.end_frame,
+            "seed": config.seed,
+            "fps": config.fps,
+            "width": config.width,
+            "height": config.height,
+        }
+        trace_headers = TraceContext.current().to_headers()
+        req = urllib.request.Request(
+            self._endpoint_url,
+            data=json.dumps(req_payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_token}",
+                **trace_headers,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return np.array(data["frames"], dtype=np.uint8)
+        except Exception as exc:
+            raise BackendUnavailableError(
+                f"Failed to submit to {self._provider} at {self._endpoint_url}: {exc}",
+                agent_fix_hint="Check API endpoint health and network connectivity.",
+            ) from exc
+
+
 # ---------------------------------------------------------------------------
 # _BaseCloudAdapter — shared logic for all cloud adapters
 # ---------------------------------------------------------------------------
@@ -570,6 +654,14 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
                     f"export {self._env_var_name}=<your-token>"
                 ),
             )
+
+        endpoint_url = os.environ.get(f"{self.adapter_id.upper()}_API_URL", "")
+        if endpoint_url:
+            live_transport = HttpCloudTransport(
+                self.adapter_id, self._api_token, endpoint_url=endpoint_url
+            )
+            if live_transport.is_available():
+                return live_transport
 
         raise BackendUnavailableError(
             f"No transport configured for {self.adapter_id}.",

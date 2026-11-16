@@ -191,7 +191,12 @@ class DatasetGenerator:
         train_writer = cv2.VideoWriter(str(train_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
         val_writer = cv2.VideoWriter(str(val_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
 
-        max_flow_val = 0.0
+        from synapse.errors import BackendUnavailableError
+        if not video_writer.isOpened() or not train_writer.isOpened() or not val_writer.isOpened():
+            raise BackendUnavailableError(
+                "cv2.VideoWriter failed to open video codecs for writing",
+                agent_fix_hint="Check ffmpeg and OpenCV video codec availability for mp4v.",
+            )
 
         try:
             for i in range(num_frames):
@@ -208,25 +213,23 @@ class DatasetGenerator:
                 # Derive mask and RGB from FGPPFrame channels
                 _mask = (render_res.cryptomatte_id > 0).astype(np.uint8) if render_res.cryptomatte_id is not None else np.zeros(render_res.depth.shape, dtype=np.uint8)
                 _radiance = render_res.direct_radiance.astype(np.float32) if render_res.direct_radiance is not None else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)
-                _rgb = np.clip(_radiance * 255.0, 0, 255).astype(np.uint8)
+                
+                from synapse.style.aces_color import acescg_to_linear_srgb, linear_to_srgb
+                _lin = acescg_to_linear_srgb(_radiance)
+                _srgb = linear_to_srgb(_lin)
+                _rgb = np.clip(np.round(_srgb * 255.0), 0, 255).astype(np.uint8)
 
                 # Assert required channels are present (rasterizer always produces them)
                 assert render_res.world_normal is not None
                 assert render_res.motion_vector is not None
 
-                # Store stats
-                if np.any(_mask > 0):
-                    flow_mag = np.linalg.norm(render_res.motion_vector[_mask > 0], axis=-1)
-                    if len(flow_mag) > 0:
-                        max_flow_val = max(max_flow_val, float(np.max(flow_mag)))
-
                 is_val = i in val_indices
                 split_tag = "val" if is_val else "train"
 
-                # Colorize channels for inspection
+                # Colorize channels for inspection (using fixed flow scale to avoid frame-to-frame drift)
                 depth_rgb = colorize_depth(render_res.depth, _mask)
                 normal_rgb = colorize_normal(render_res.world_normal, _mask)
-                flow_rgb = colorize_flow(render_res.motion_vector, _mask, max_flow=max(1.0, max_flow_val))
+                flow_rgb = colorize_flow(render_res.motion_vector, _mask, max_flow=20.0)
                 mask_rgb = colorize_mask(_mask)
 
                 # Save individual RGB frame
@@ -260,8 +263,10 @@ class DatasetGenerator:
                 fgpp_frame = FGPPFrame(
                     camera=cam,
                     depth=render_res.depth,
+                    direct_radiance=render_res.direct_radiance,
                     world_normal=render_res.world_normal.astype(np.float16),
                     motion_vector=render_res.motion_vector.astype(np.float16),
+                    cryptomatte_id=render_res.cryptomatte_id,
                     frame_index=i,
                 )
                 fgpp_frames.append(fgpp_frame)
@@ -296,13 +301,17 @@ class DatasetGenerator:
             train_writer.release()
             val_writer.release()
 
-        # 5. FGPP sequence metadata
+        # 5. FGPP sequence metadata and OpenEXR export
         fgpp_seq = FGPPSequence(
             frames=fgpp_frames,
             fps=cfg.fps,
             scene_id=f"{cfg.model_name}_{cfg.trajectory_type}",
         )
-        fgpp_seq.save_metadata(fgpp_dir)
+        try:
+            from synapse.fgpp.io import export_fgpp
+            export_fgpp(fgpp_seq, fgpp_dir)
+        except Exception:
+            fgpp_seq.save_metadata(fgpp_dir)
 
         # 6. Overall Dataset Manifest
         manifest = {

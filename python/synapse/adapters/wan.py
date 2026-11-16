@@ -215,17 +215,26 @@ class FoundaryHttpTransport(WanBackendTransport):
             ) from exc
 
     def is_available(self) -> bool:
-        """Probe the endpoint with a lightweight GET."""
+        """Probe the endpoint with /healthz or lightweight check."""
         import urllib.error
+        import urllib.parse
         import urllib.request
 
-        try:
-            urllib.request.urlopen(
-                self.endpoint_url, timeout=5.0,
-            )
-            return True
-        except Exception:  # noqa: BLE001
-            return False
+        parsed = urllib.parse.urlparse(self.endpoint_url)
+        health_url = urllib.parse.urlunparse(
+            (parsed.scheme, parsed.netloc, "/healthz", "", "", "")
+        )
+        for url in (health_url, self.endpoint_url):
+            try:
+                with urllib.request.urlopen(url, timeout=5.0) as resp:
+                    if resp.status in (200, 204):
+                        return True
+            except urllib.error.HTTPError as exc:
+                if exc.code in (200, 204, 405):
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
 
 
 class LocalCallableBackend(WanBackendTransport):

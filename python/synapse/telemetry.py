@@ -47,6 +47,11 @@ class TraceContext:
             self.trace_flags = "01"
 
     @classmethod
+    def current(cls) -> TraceContext:
+        """Obtain the current trace context from environment or generate fresh IDs."""
+        return cls.from_env_or_dict()
+
+    @classmethod
     def from_env_or_dict(
         cls,
         env: dict[str, str] | None = None,

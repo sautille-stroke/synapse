@@ -227,9 +227,22 @@ def register_adapter(
             f"got {cls!r}"
         )
 
-    # Instantiate with no args to read the adapter_id property.
-    instance = cls()
-    aid = instance.adapter_id
+    # Obtain adapter_id without running full __init__ side effects
+    aid: str | None = getattr(cls, "ADAPTER_ID", None)
+    if aid is None:
+        prop = getattr(cls, "adapter_id", None)
+        if isinstance(prop, property) and prop.fget is not None:
+            try:
+                dummy = object.__new__(cls)
+                aid = prop.fget(dummy)
+            except Exception:
+                aid = None
+    if aid is None:
+        try:
+            instance = cls()
+            aid = instance.adapter_id
+        except Exception:
+            aid = cls.__name__.lower().replace("adapter", "")
 
     if aid in _ADAPTER_REGISTRY:
         existing = _ADAPTER_REGISTRY[aid]

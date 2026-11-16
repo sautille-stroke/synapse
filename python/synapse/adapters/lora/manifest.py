@@ -111,6 +111,11 @@ class LoRAManifest(BaseModel):
         """Validate target_modules against category whitelist."""
         patterns = _CATEGORY_WHITELIST.get(self.category, [])
         for module in self.target_modules:
+            if not re.fullmatch(r"[A-Za-z0-9_.*]+", module):
+                raise ValueError(
+                    f"target_module '{module}' contains invalid characters or regex "
+                    f"injection. Must only contain alphanumeric, underscore, dot, and asterisk."
+                )
             if not _matches_any_pattern(module, patterns):
                 allowed = ", ".join(patterns)
                 raise ValueError(

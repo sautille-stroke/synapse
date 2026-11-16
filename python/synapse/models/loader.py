@@ -8,11 +8,13 @@ from typing import Any
 
 import numpy as np
 
+from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.models.asset import ModelAsset
 
 # Potential locations where sample/benchmark models reside
+_MODELS_ENV = os.environ.get("SYNAPSE_MODELS_DIR")
 _ASSET_SEARCH_PATHS: list[Path] = [
-    Path(os.environ.get("SYNAPSE_MODELS_DIR", "")),
+    *([Path(_MODELS_ENV)] if _MODELS_ENV else []),
     Path(__file__).resolve().parents[3] / "data" / "models",
     Path("../fulgur/assets/models"),
 ]
@@ -20,8 +22,10 @@ _ASSET_SEARCH_PATHS: list[Path] = [
 
 def _find_asset_file(filename: str) -> Path | None:
     """Search for an asset filename in standard locations."""
+    if not filename or not filename.strip():
+        return None
     for base in _ASSET_SEARCH_PATHS:
-        if not base or not base.exists():
+        if not str(base) or not base.exists():
             continue
         p = base / filename
         if p.is_file():
@@ -172,6 +176,11 @@ def load_model(
 ) -> ModelAsset:
     """Load a 3D model asset by built-in name or file path."""
     name_str = str(name_or_path).lower().strip()
+    if not name_str or name_str == ".":
+        raise ContractValidationError(
+            "Model name or path cannot be empty",
+            agent_fix_hint="Specify a valid built-in model or mesh file path.",
+        )
 
     # 1. Check if it's a known built-in keyword
     if name_str in ("damaged_helmet", "helmet", "damagedhelmet"):
@@ -212,7 +221,10 @@ def load_model(
         if found is not None:
             path = found
         else:
-            raise FileNotFoundError(f"Model file or built-in model '{name_or_path}' not found.")
+            raise AssetNotFoundError(
+                f"Model file or built-in model '{name_or_path}' not found.",
+                agent_fix_hint=f"Check the path '{name_or_path}' or use a built-in model: {list_builtin_models()}.",
+            )
 
     # Load via trimesh
     import trimesh  # lazy: heavy native dependency
