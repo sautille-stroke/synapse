@@ -46,7 +46,14 @@ def frame_to_tensors(
     dict[str, torch.Tensor]
         Keys match :class:`FGPPFrame` field names.
     """
-    import torch
+    try:
+        import torch
+    except ImportError as e:
+        from synapse.errors import BackendUnavailableError
+        raise BackendUnavailableError(
+            "PyTorch is required for tensor bridge",
+            agent_fix_hint="Install PyTorch: pip install 'synapse[gpu]'",
+        ) from e
     tensors: dict[str, Any] = {}
 
     for field in _IMAGE_FIELDS:
@@ -56,7 +63,8 @@ def frame_to_tensors(
 
         if field == "cryptomatte_id":
             # uint32 → int32 bit-level reinterpret
-            arr_i32 = np.ascontiguousarray(arr).view(np.int32)
+            arr_u32 = np.ascontiguousarray(arr, dtype=np.uint32)
+            arr_i32 = arr_u32.view(np.int32)
             t = torch.from_numpy(arr_i32)
         else:
             arr_c = np.ascontiguousarray(arr)
@@ -120,6 +128,10 @@ def tensors_to_frame(
         kwargs[field] = arr
 
     if "depth" not in kwargs:
-        raise ValueError("tensors dict must contain 'depth'")
+        from synapse.errors import ContractValidationError
+        raise ContractValidationError(
+            "tensors dict must contain 'depth'",
+            agent_fix_hint="Ensure the tensor dict includes a 'depth' key.",
+        )
 
     return FGPPFrame(**kwargs)

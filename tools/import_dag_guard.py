@@ -196,6 +196,23 @@ class _ImportVisitor(ast.NodeVisitor):
                 module_name = node.args[0].value
             elif node.args:
                 is_dynamic_non_constant = True
+        elif isinstance(func, ast.Name) and func.id == "import_module":
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                module_name = node.args[0].value
+            elif node.args and isinstance(node.args[0], ast.JoinedStr):
+                first_val = node.args[0].values[0] if node.args[0].values else None
+                if isinstance(first_val, ast.Constant) and isinstance(first_val.value, str):
+                    if first_val.value.startswith("synapse.") and self.source_pkg == "__init__":
+                        # Known aggregator pattern in __init__.py — not a violation
+                        pass
+                    elif first_val.value.startswith("synapse."):
+                        is_dynamic_non_constant = True
+                    else:
+                        is_dynamic_non_constant = True
+                else:
+                    is_dynamic_non_constant = True
+            elif node.args:
+                is_dynamic_non_constant = True
         elif isinstance(func, ast.Attribute) and func.attr == "import_module":
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 module_name = node.args[0].value
@@ -204,9 +221,11 @@ class _ImportVisitor(ast.NodeVisitor):
                 # with "synapse." (common pattern in __init__.py __getattr__)
                 first_val = node.args[0].values[0] if node.args[0].values else None
                 if isinstance(first_val, ast.Constant) and isinstance(first_val.value, str):
-                    if first_val.value.startswith("synapse."):
-                        # Known aggregator pattern — not a real violation
+                    if first_val.value.startswith("synapse.") and self.source_pkg == "__init__":
+                        # Known aggregator pattern in __init__.py — not a violation
                         pass
+                    elif first_val.value.startswith("synapse."):
+                        is_dynamic_non_constant = True
                     else:
                         is_dynamic_non_constant = True
                 else:
@@ -418,6 +437,13 @@ def validate(
     for u, v in all_edges:
         all_pkgs.add(u)
         all_pkgs.add(v)
+
+    # Check for unregistered packages in TIER_MAP
+    for pkg in sorted(all_pkgs):
+        if pkg == "__init__" or pkg.startswith(_PRIVATE_PREFIX):
+            continue
+        if pkg not in TIER_MAP:
+            errors.append(f"Package {pkg!r} is not registered in TIER_MAP (add it to TIER_MAP or mark as private)")
 
     sccs = _tarjan_scc(all_pkgs, all_edges)
     cycles = [scc for scc in sccs if len(scc) > 1]

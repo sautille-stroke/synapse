@@ -82,8 +82,8 @@ class CameraParams:
         if self.fx > 0 and self.fy > 0:
             p00 = 2.0 * float(self.fx) / w
             p11 = 2.0 * float(self.fy) / h
-            p02 = (2.0 * float(self.cx) - w) / w
-            p12 = (2.0 * float(self.cy) - h) / h
+            p02 = (w - 2.0 * float(self.cx)) / w
+            p12 = (h - 2.0 * float(self.cy)) / h
         else:
             fov_rad = math.radians(self.fov_degrees or 60.0)
             f = 1.0 / math.tan(fov_rad / 2.0)
@@ -344,9 +344,9 @@ class FGPPSequence:
                         fov_deg = math.degrees(2.0 * math.atan(float(height) / (2.0 * fy)))
 
                     if width > 0:
-                        cx = (p02 + 1.0) * float(width) / 2.0
+                        cx = (1.0 - p02) * float(width) / 2.0
                     if height > 0:
-                        cy = (p12 + 1.0) * float(height) / 2.0
+                        cy = (1.0 - p12) * float(height) / 2.0
 
                     # Near and far reconstruction
                     denom_near = p22 - 1.0
