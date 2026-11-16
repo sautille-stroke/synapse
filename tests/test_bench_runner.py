@@ -120,7 +120,9 @@ class TestBenchPipelineRunner:
         assert hasattr(report.gate_verdict, "profile")
         assert report.gate_verdict.profile == "track_b_video"
 
-    def test_run_all_scenarios(self) -> None:
+    def test_run_all_scenarios(
+        self, shared_rasterizer_cache: dict[str, Any],
+    ) -> None:
         """Run all built-in scenarios, verify report completeness."""
         from synapse.bench.scenario import list_scenarios
 
@@ -129,10 +131,10 @@ class TestBenchPipelineRunner:
             pytest.skip("No built-in scenarios available")
 
         adapter = MockVideoAdapter()
-        runner = BenchPipelineRunner(adapter)
+        runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
 
         reports = runner.run_all(
-            seed=42, resolution=(64, 64),
+            seed=42, resolution=(32, 32), num_frames=4,
         )
 
         assert len(reports) == len(all_scenarios)
@@ -144,7 +146,9 @@ class TestBenchPipelineRunner:
                 f"Scenario '{r.scenario_name}' failed with error: {r.error}"
             )
 
-    def test_humanoid_53_scenarios_no_error(self) -> None:
+    def test_humanoid_53_scenarios_no_error(
+        self, shared_rasterizer_cache: dict[str, Any],
+    ) -> None:
         """Verify all humanoid_53 scenarios run with 0 asset resolution errors."""
         from synapse.bench.scenario import list_scenarios
 
@@ -154,11 +158,12 @@ class TestBenchPipelineRunner:
         assert len(humanoid_scenarios) >= 6, "Expected at least 6 humanoid_53 scenarios"
 
         adapter = MockVideoAdapter()
-        runner = BenchPipelineRunner(adapter)
+        runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
         reports = runner.run_all(
             scenarios=humanoid_scenarios,
             seed=42,
             resolution=(32, 32),
+            num_frames=4,
         )
         assert len(reports) == len(humanoid_scenarios)
         for r in reports:

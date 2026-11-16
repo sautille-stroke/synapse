@@ -114,9 +114,11 @@ class BenchPipelineRunner:
         self,
         adapter: Any,  # VideoModelAdapter
         gate_profile: str | None = None,
+        rasterizer_cache: dict[str, Any] | None = None,
     ) -> None:
         self._adapter = adapter
         self._gate_profile = gate_profile
+        self._rasterizer_cache = rasterizer_cache
 
     # ── single scenario ──────────────────────────────────────────────
 
@@ -125,6 +127,7 @@ class BenchPipelineRunner:
         scenario_name: str,
         seed: int = 42,
         resolution: tuple[int, int] = (512, 512),
+        num_frames: int | None = None,
     ) -> ScenarioRunReport:
         """Run a single benchmark scenario end-to-end.
 
@@ -136,6 +139,8 @@ class BenchPipelineRunner:
             RNG seed for reproducible generation.
         resolution:
             ``(width, height)`` of the rendered / generated frames.
+        num_frames:
+            Optional frame count override. When omitted, uses scenario default.
 
         Returns
         -------
@@ -153,7 +158,7 @@ class BenchPipelineRunner:
         t_total_start = time.perf_counter()
         try:
             report = self._run_scenario_inner(
-                scenario_name, seed, resolution, report, t_total_start,
+                scenario_name, seed, resolution, report, t_total_start, num_frames=num_frames,
             )
         except Exception as exc:
             report.error = str(exc)
@@ -167,6 +172,7 @@ class BenchPipelineRunner:
         resolution: tuple[int, int],
         report: ScenarioRunReport,
         t_total_start: float,
+        num_frames: int | None = None,
     ) -> ScenarioRunReport:
         """Core logic extracted for cleaner error handling."""
         from synapse.adapters.base import VideoGenerationConfig
@@ -186,10 +192,10 @@ class BenchPipelineRunner:
         # --- Phase 2: Generate FGPP conditions -------------------------
         t0 = time.perf_counter()
 
-        num_frames = scenario.camera_params.get("num_frames", 97)
+        actual_num_frames = num_frames if num_frames is not None else scenario.camera_params.get("num_frames", 97)
         cameras = generate_cameras(
             scenario,
-            num_frames=num_frames,
+            num_frames=actual_num_frames,
             width=width,
             height=height,
         )
@@ -247,7 +253,13 @@ class BenchPipelineRunner:
                 b_c = 255.0
             rasterizer_kwargs["light_color"] = np.array([r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64)
 
-        rasterizer = SoftwareRasterizer(**rasterizer_kwargs)
+        cache_key = f"{width}x{height}"
+        if self._rasterizer_cache is not None and cache_key in self._rasterizer_cache:
+            rasterizer = self._rasterizer_cache[cache_key]
+        else:
+            rasterizer = SoftwareRasterizer(**rasterizer_kwargs)
+            if self._rasterizer_cache is not None:
+                self._rasterizer_cache[cache_key] = rasterizer
 
         fgpp_frames: list[FGPPFrame] = []
         prev_verts: np.ndarray | None = None
@@ -288,7 +300,7 @@ class BenchPipelineRunner:
             seed=seed,
             width=width,
             height=height,
-            num_frames=num_frames,
+            num_frames=actual_num_frames,
             fps=scenario.camera_params.get("fps", 24.0),
             guidance_scale=float(scenario.conditions.get("guidance_scale", 7.5)),
             num_inference_steps=int(scenario.conditions.get("num_inference_steps", 50)),
@@ -369,6 +381,7 @@ class BenchPipelineRunner:
         scenarios: list[str] | None = None,
         seed: int = 42,
         resolution: tuple[int, int] = (512, 512),
+        num_frames: int | None = None,
     ) -> list[ScenarioRunReport]:
         """Run multiple (or all) benchmark scenarios.
 
@@ -380,6 +393,8 @@ class BenchPipelineRunner:
             RNG seed forwarded to each scenario run.
         resolution:
             ``(width, height)`` for rendering and generation.
+        num_frames:
+            Optional frame count override for each scenario run.
 
         Returns
         -------
@@ -398,6 +413,7 @@ class BenchPipelineRunner:
                 scenario_name=name,
                 seed=seed,
                 resolution=resolution,
+                num_frames=num_frames,
             )
             reports.append(report)
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from synapse.bench.bundle_exporter import (
     INSPECTION_SCHEMA_VERSION,
     InspectionBundleManifest,
@@ -133,7 +134,7 @@ class TestInspectionBundleManifest:
 
     def test_schema_version_validation(self) -> None:
         """Reject manifests with wrong schema_version."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             InspectionBundleManifest.model_validate({
                 "schema_version": "wrong.v9.9",
                 "bundle_id": "x",
@@ -156,7 +157,7 @@ class TestInspectionBundleManifest:
 
     def test_path_traversal_rejection(self) -> None:
         """Paths containing ``..`` must be rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             SourceEntry(
                 path="../../../etc/passwd",
                 media_type="text/plain",
@@ -164,7 +165,7 @@ class TestInspectionBundleManifest:
 
     def test_absolute_path_rejection(self) -> None:
         """Absolute POSIX paths must be rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             SourceEntry(
                 path="/usr/bin/evil",
                 media_type="application/octet-stream",
@@ -172,7 +173,7 @@ class TestInspectionBundleManifest:
 
     def test_windows_drive_path_rejection(self) -> None:
         """Windows drive letter paths must be rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             SourceEntry(
                 path="C:\\evil",
                 media_type="application/octet-stream",

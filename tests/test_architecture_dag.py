@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 
 def _repo_root() -> Path:
     """Resolve the repository root (parent of ``tests/``)."""
@@ -33,7 +31,6 @@ def _load_guard() -> Any:
     return mod
 
 
-@pytest.mark.slow
 def test_no_import_cycles() -> None:
     """Assert that the synapse import DAG contains no circular dependencies."""
     mod = _load_guard()
@@ -54,7 +51,6 @@ def test_no_import_cycles() -> None:
         )
 
 
-@pytest.mark.slow
 def test_no_tier_violations() -> None:
     """Assert that no import crosses upward in the 5-tier architecture."""
     mod = _load_guard()
@@ -78,7 +74,6 @@ def test_no_tier_violations() -> None:
         )
 
 
-@pytest.mark.slow
 def test_import_dag_guard_cli_check_exits_zero() -> None:
     """``python tools/import_dag_guard.py --check`` exits 0."""
     guard_path = _repo_root() / "tools" / "import_dag_guard.py"
