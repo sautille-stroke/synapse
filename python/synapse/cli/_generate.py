@@ -66,6 +66,27 @@ def _cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _get_dev_launch_viewer() -> Any:
+    """Helper to lazily load dev preview launch_viewer without importing TCPServer into core SDK."""
+    try:
+        from scripts.dev_preview_viewer import launch_viewer
+        return launch_viewer
+    except ImportError:
+        import importlib.util
+        script_path = Path(__file__).resolve().parents[3] / "scripts" / "dev_preview_viewer.py"
+        if script_path.is_file():
+            spec = importlib.util.spec_from_file_location("dev_preview_viewer", script_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod.launch_viewer
+        from synapse.errors import BackendUnavailableError
+        raise BackendUnavailableError(
+            "Local HTTP preview server is not available (dev_preview_viewer script missing).",
+            agent_fix_hint="Use static HTML export (default) or ensure scripts/dev_preview_viewer.py exists.",
+        )
+
+
 def main_data_gen(args: list[str] | None = None) -> int:
     """CLI tool: Generate multi-angle video & FGPP datasets."""
     from synapse.models.loader import list_builtin_models
@@ -124,14 +145,14 @@ def main_data_gen(args: list[str] | None = None) -> int:
     trace_ctx = TraceContext.from_env_or_dict()
     code = _run_with_json_mode(_cmd_generate, parsed, parsed.json, trace_ctx)
     if code == 0 and parsed.view and not parsed.json:
-        from synapse.viewer.server import launch_viewer
+        launch_viewer = _get_dev_launch_viewer()
         launch_viewer(Path(parsed.out), port=8765, open_browser=True, block=True)
     return code
 
 
 def main_viewer(args: list[str] | None = None) -> int:
     """CLI tool: Launch interactive web viewer or export static HTML."""
-    from synapse.viewer.server import export_static_html, launch_viewer
+    from synapse.viewer.server import export_static_html
 
     parser = argparse.ArgumentParser(
         prog="synapse-viewer",
@@ -175,6 +196,7 @@ def main_viewer(args: list[str] | None = None) -> int:
         return 1
 
     if parsed.serve_local:
+        launch_viewer = _get_dev_launch_viewer()
         launch_viewer(
             dataset_path,
             port=parsed.port,
@@ -197,7 +219,7 @@ def _cmd_view(args: argparse.Namespace) -> dict[str, Any]:
     --serve-local: Launch local loopback HTTP preview server.
     --serve-local with --json: Rejected with ContractValidationError (exit_code=10).
     """
-    from synapse.viewer.server import export_static_html, launch_viewer
+    from synapse.viewer.server import export_static_html
 
     json_mode = bool(getattr(args, "json", False))
     serve_local = bool(getattr(args, "serve_local", False))
@@ -220,6 +242,7 @@ def _cmd_view(args: argparse.Namespace) -> dict[str, Any]:
         host = getattr(args, "host", "127.0.0.1")
         port = int(getattr(args, "port", 8765))
         no_browser = bool(getattr(args, "no_browser", False))
+        launch_viewer = _get_dev_launch_viewer()
         launch_viewer(
             dataset_path,
             port=port,
@@ -250,10 +273,13 @@ def _cmd_view(args: argparse.Namespace) -> dict[str, Any]:
 
 def register_generate_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> None:
     """Register ``generate`` and ``view`` subcommands."""
+    parents = [json_parent] if json_parent is not None else []
     gen_parser = subparsers.add_parser(
         "generate", help="Generate multi-angle video & FGPP datasets",
+        parents=parents,
     )
     gen_parser.add_argument("--model", "-m", default="damaged_helmet")
     gen_parser.add_argument(
@@ -273,6 +299,7 @@ def register_generate_subparser(
         "view",
         help="View dataset (default: static HTML export; "
              "--serve-local: loopback preview)",
+        parents=parents,
     )
     view_parser.add_argument(
         "dataset", nargs="?", default="./data/datasets/sample",

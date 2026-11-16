@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -33,28 +34,19 @@ def handle_asset_inspect_3d(
 
     endpoint_url = params.get("vlm_endpoint_url")
     if endpoint_url:
-        try:
-            from synapse.inspect.vlm_transport import (
-                HttpVlmTransport,
-            )
-        except ImportError as exc:
-            raise BackendUnavailableError(
-                f"VLM endpoint '{endpoint_url}' was requested, "
-                "but 'synapse.inspect.vlm_transport' is not "
-                "available. Silent fallback to MockJevTransport "
-                "is FORBIDDEN.",
-                agent_fix_hint=(
-                    "Install VLM transport extra or omit "
-                    "'vlm_endpoint_url' in CI mock mode."
-                ),
-            ) from exc
-        transport: JevTransportProtocol = HttpVlmTransport(
-            endpoint_url=endpoint_url,
+        raise BackendUnavailableError(
+            f"VLM endpoint '{endpoint_url}' was requested, "
+            "but remote VLM transport is not available in core runtime. "
+            "Silent fallback to MockJevTransport is FORBIDDEN.",
+            agent_fix_hint=(
+                "Omit 'vlm_endpoint_url' in CI mock mode or specify "
+                "defect_overrides."
+            ),
         )
-    else:
-        transport = MockJevTransport(
-            defect_overrides=params.get("defect_overrides"),
-        )
+
+    transport: JevTransportProtocol = MockJevTransport(
+        defect_overrides=params.get("defect_overrides"),
+    )
     critic = VisualJevCritic(transport=transport)
     report = critic.evaluate(
         asset_id,
@@ -62,8 +54,16 @@ def handle_asset_inspect_3d(
         image_uris,
     )
 
+    output_paths: dict[str, str] = {}
+    report_target = manifest.outputs.get("report")
+    if report_target:
+        p_rep = Path(report_target)
+        p_rep.parent.mkdir(parents=True, exist_ok=True)
+        p_rep.write_text(json.dumps(report.model_dump(), indent=2), encoding="utf-8")
+        output_paths["report"] = str(p_rep)
+
     return {
-        "output_paths": {},
+        "output_paths": output_paths,
         "report": report.model_dump(),
     }
 
@@ -77,8 +77,17 @@ def handle_inspect_refine(
     report = params.get("report", {})
 
     result = run_targeted_refinement(report=report)
+
+    output_paths: dict[str, str] = {}
+    refined_target = manifest.outputs.get("refined_mesh") or manifest.outputs.get("refinement")
+    if refined_target:
+        p_ref = Path(refined_target)
+        p_ref.parent.mkdir(parents=True, exist_ok=True)
+        p_ref.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+        output_paths["refined_mesh"] = str(p_ref)
+
     return {
-        "output_paths": {},
+        "output_paths": output_paths,
         **result,
     }
 

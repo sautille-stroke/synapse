@@ -44,6 +44,17 @@ def handle_anatomical_refine(
 
     params = dict(manifest.params)
 
+    max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
+    elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
+    if elapsed_seconds > max_elapsed_seconds:
+        from synapse.errors import evaluate_hitl_circuit_breaker
+
+        evaluate_hitl_circuit_breaker(
+            elapsed_seconds,
+            domain="video_shot",
+            max_seconds=max_elapsed_seconds,
+        )
+
     # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
     if not video_path or not Path(video_path).is_file():
@@ -93,22 +104,32 @@ def handle_anatomical_refine(
             if region is None:
                 continue
             bbox = np.array(roi_dict["bbox_xyxy"], dtype=np.float32)
-            x1, y1, x2, y2 = [int(v) for v in bbox]
+            x1 = max(0, min(_width, int(bbox[0])))
+            y1 = max(0, min(_height, int(bbox[1])))
+            x2 = max(0, min(_width, int(bbox[2])))
+            y2 = max(0, min(_height, int(bbox[3])))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            clipped_bbox = np.array([x1, y1, x2, y2], dtype=np.float32)
             crop = frames[t, y1:y2, x1:x2, :].copy()
             roi = RefinementROI(
                 region=region,
-                bbox_xyxy=bbox,
+                bbox_xyxy=clipped_bbox,
                 crop_acescg=crop,
                 confidence=float(roi_dict.get("confidence", 0.9)),
             )
             frame_rois.append(roi)
         rois_per_frame.append(frame_rois)
 
-    pipeline = LocalRefinementPipeline()
+    from synapse.refine.gates import GateThresholds
+
+    gate_thresholds = GateThresholds(max_elapsed_seconds=max_elapsed_seconds)
+    pipeline = LocalRefinementPipeline(gate_thresholds=gate_thresholds)
     result = pipeline.run(
         frames_acescg=frames,
         rois_per_frame=rois_per_frame,
         fusion_method=fusion_method,
+        elapsed_seconds_override=elapsed_seconds if elapsed_seconds > 0 else None,
     )
 
     output_paths: dict[str, str] = {}

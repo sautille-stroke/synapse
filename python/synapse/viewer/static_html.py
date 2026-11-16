@@ -5,6 +5,8 @@ VIEWER_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:;">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <title>Synapse — 3D & Neural Video Dataset Viewer</title>
   <style>
     :root {
@@ -387,6 +389,14 @@ VIEWER_HTML_TEMPLATE = r"""<!DOCTYPE html>
         } else {
           const resp = await fetch('manifest.json');
           manifest = await resp.json();
+        }
+        if (!manifest || !manifest.frames || manifest.frames.length === 0) {
+          console.warn("Dataset manifest is empty or has zero frames.");
+          const totalEl = document.getElementById('lbl-time-total');
+          if (totalEl) totalEl.textContent = "Total: 0 frames";
+          const dsNameEl = document.getElementById('dataset-name');
+          if (dsNameEl) dsNameEl.textContent = (manifest && manifest.dataset_id) || "Empty Dataset";
+          return;
         }
         setupUI();
         renderFrame(0);

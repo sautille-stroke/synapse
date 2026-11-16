@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from synapse.pipeline.bundle_worker import (
@@ -28,7 +30,15 @@ def handle_rsi_dual_verify(
         prm_score=prm_score,
     )
 
+    output_paths: dict[str, str] = {}
+    verdict_target = manifest.outputs.get("verdict")
+    if verdict_target:
+        p_ver = Path(verdict_target)
+        p_ver.parent.mkdir(parents=True, exist_ok=True)
+        p_ver.write_text(json.dumps(verdict.model_dump(), indent=2), encoding="utf-8")
+        output_paths["verdict"] = str(p_ver)
+
     return {
-        "output_paths": {},
+        "output_paths": output_paths,
         "verdict": verdict.model_dump(),
     }

@@ -200,11 +200,14 @@ def _cmd_refine_anatomical(
 
 def register_refine_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``refine`` subcommand tree."""
+    parents = [json_parent] if json_parent is not None else []
     refine_parser = subparsers.add_parser(
         "refine",
         help="Anatomical local refinement commands (RFC 0061)",
+        parents=parents,
     )
     refine_sub = refine_parser.add_subparsers(
         dest="refine_command",
@@ -213,6 +216,7 @@ def register_refine_subparser(
     refine_anatomical = refine_sub.add_parser(
         "anatomical",
         help="Run end-to-end anatomical refinement pipeline",
+        parents=parents,
     )
     refine_anatomical.add_argument(
         "--video", default=None,
@@ -270,4 +274,4 @@ def dispatch_refine(
             print()
             return int(err.exit_code)
         refine_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

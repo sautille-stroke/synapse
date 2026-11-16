@@ -18,6 +18,8 @@ from synapse.pipeline.bundle_worker import BundleManifest, register_stage
 
 
 @register_stage("video_to_3d_invert")
+@register_stage("kinematic_distill")
+@register_stage("inverse_reconstruct")
 def handle_video_to_3d_invert(
     manifest: BundleManifest,
 ) -> dict[str, Any]:

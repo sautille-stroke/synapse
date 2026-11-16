@@ -139,10 +139,10 @@ def handle_lora_package(
     """Package LoRA weights from a job bundle manifest."""
     params = dict(manifest.params)
     output_dir = Path(
-        params.get("output_dir", "/tmp/lora_bundle"),
+        manifest.outputs.get("bundle", params.get("output_dir", "output/lora_bundle")),
     )
     weights_path = Path(
-        params.get("weights_path", "adapter_model.safetensors"),
+        manifest.inputs.get("weights", params.get("weights_path", "adapter_model.safetensors")),
     )
 
     result = package_and_gate_lora_bundle(

@@ -44,6 +44,8 @@ class HardwareBudget(BaseModel):
         max_cpu_cores: Maximum CPU cores the worker may use.
     """
 
+    model_config = {"extra": "forbid"}
+
     free_vram_gb: float = 24.0
     max_cpu_cores: int = 8
 
@@ -62,6 +64,8 @@ class BundleManifest(BaseModel):
         traceparent: Optional W3C traceparent header value.
         tracestate: Optional W3C tracestate header value.
     """
+
+    model_config = {"extra": "forbid"}
 
     schema_version: str = "synapse.job_bundle.v1.0"
     job_id: str
@@ -838,6 +842,20 @@ class JobBundleWorker:
                     path=str(p),
                     sha256=_compute_sha256(p),
                     size_bytes=p.stat().st_size,
+                )
+            elif p.is_dir():
+                subfiles = sorted(f for f in p.rglob("*") if f.is_file())
+                hasher = hashlib.sha256()
+                total_bytes = 0
+                for sf in subfiles:
+                    rel_p = str(sf.relative_to(p)).replace("\\", "/")
+                    hasher.update(rel_p.encode("utf-8"))
+                    hasher.update(sf.read_bytes())
+                    total_bytes += sf.stat().st_size
+                output_files[key] = OutputFileEntry(
+                    path=str(p),
+                    sha256=hasher.hexdigest(),
+                    size_bytes=total_bytes,
                 )
 
         fallback_level = result_data.get("fallback_level")

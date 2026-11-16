@@ -1,9 +1,7 @@
-"""synapse.viewer — Interactive web viewer and dashboard for multi-channel video datasets."""
+"""synapse.viewer — Static HTML exporter and dashboard for multi-channel video datasets."""
 
-from synapse.viewer.server import ViewerServer, export_static_html, launch_viewer
+from synapse.viewer.server import export_static_html
 
 __all__ = [
-    "ViewerServer",
     "export_static_html",
-    "launch_viewer",
 ]

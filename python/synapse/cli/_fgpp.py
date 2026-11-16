@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 from synapse.cli.common import (
@@ -181,6 +183,64 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
         "exr_file_count": len(exr_files),
     }
 
+    if getattr(args, "export_vis", False):
+        if not exr_files:
+            raise AssetNotFoundError(
+                f"No EXR files found in {fgpp_dir} to visualize",
+                agent_fix_hint="Ensure .exr files exist in the FGPP directory before running --export-vis.",
+            )
+        try:
+            import cv2  # noqa: F401
+            import OpenEXR  # noqa: F401
+            from PIL import Image
+        except ImportError as exc:
+            raise BackendUnavailableError(
+                f"Image/EXR processing backend unavailable: {exc}",
+                agent_fix_hint="Install OpenCV, OpenEXR, and Pillow via pip install 'synapse[image]'.",
+            ) from exc
+
+        from synapse.fgpp.frame import FGPPSequence
+        from synapse.fgpp.io import import_fgpp
+        from synapse.generators.visualizer import (
+            colorize_depth,
+            colorize_flow,
+            colorize_mask,
+            colorize_normal,
+        )
+
+        vis_dir = fgpp_dir / "visualizations"
+        vis_dir.mkdir(parents=True, exist_ok=True)
+        seq = import_fgpp(fgpp_dir, lazy=False)
+        if not isinstance(seq, FGPPSequence):
+            raise ContractValidationError("Expected FGPPSequence")
+        exported_count = 0
+        for frame in seq.frames:
+            stem = f"frame_{frame.frame_index:06d}"
+            if frame.cryptomatte_id is not None:
+                mask_2d = (frame.cryptomatte_id > 0).astype(np.uint8)
+            else:
+                mask_2d = np.ones(frame.depth.shape, dtype=np.uint8)
+
+            depth_vis = colorize_depth(frame.depth.astype(np.float32), mask_2d)
+            if frame.world_normal is not None:
+                normal_arr = frame.world_normal.astype(np.float32)
+            else:
+                normal_arr = np.zeros((*frame.depth.shape, 3), dtype=np.float32)
+            normal_vis = colorize_normal(normal_arr, mask_2d)
+            mask_vis = colorize_mask(mask_2d)
+
+            Image.fromarray(depth_vis).save(vis_dir / f"depth_{stem}.png")
+            Image.fromarray(normal_vis).save(vis_dir / f"normal_{stem}.png")
+            Image.fromarray(mask_vis).save(vis_dir / f"mask_{stem}.png")
+
+            if frame.motion_vector is not None:
+                flow_vis = colorize_flow(frame.motion_vector.astype(np.float32), mask_2d)
+                Image.fromarray(flow_vis).save(vis_dir / f"flow_{stem}.png")
+            exported_count += 1
+
+        summary["visualizations_dir"] = str(vis_dir)
+        summary["visualizations_exported"] = exported_count
+
     if not args.json:
         print("[FGPP Inspect]")
         for k, v in summary.items():
@@ -190,14 +250,16 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def register_fgpp_subparser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``fgpp`` subcommand tree."""
-    fgpp_parser = subparsers.add_parser("fgpp", help="FGPP operations")
+    parents = [json_parent] if json_parent is not None else []
+    fgpp_parser = subparsers.add_parser("fgpp", help="FGPP operations", parents=parents)
     fgpp_sub = fgpp_parser.add_subparsers(dest="fgpp_command")
 
     fgpp_validate = fgpp_sub.add_parser(
-        "validate", help="Validate FGPP output directory",
+        "validate", help="Validate FGPP output directory", parents=parents,
     )
     fgpp_validate.add_argument("dir", help="Path to FGPP directory")
     fgpp_validate.add_argument(
@@ -206,14 +268,14 @@ def register_fgpp_subparser(
     )
 
     fgpp_inspect = fgpp_sub.add_parser(
-        "inspect", help="Inspect FGPP directory",
+        "inspect", help="Inspect FGPP directory", parents=parents,
     )
     fgpp_inspect.add_argument("dir", help="Path to FGPP directory")
     fgpp_inspect.add_argument(
         "--export-vis", action="store_true", default=False,
         help="Export visualisation images",
     )
-    return fgpp_parser
+    return cast(argparse.ArgumentParser, fgpp_parser)
 
 
 def dispatch_fgpp(
@@ -250,4 +312,4 @@ def dispatch_fgpp(
             print()
             return int(err.exit_code)
         fgpp_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

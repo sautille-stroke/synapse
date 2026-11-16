@@ -139,6 +139,15 @@ class TestBundleManifest:
         assert m.traceparent == "00-abc123-def456-01"
         assert m.tracestate == "vendor=test"
 
+    def test_extra_fields_forbidden(self) -> None:
+        """Extra fields in BundleManifest or HardwareBudget must raise ValidationError."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            HardwareBudget(free_vram_gb=24.0, unexpected="bad")  # type: ignore[call-arg]
+        with pytest.raises(ValidationError):
+            BundleManifest(job_id="j5", stage="fgpp_validate", invalid_field="forbidden")  # type: ignore[call-arg]
+
 
 # =========================================================================
 # Stage Registry
@@ -1099,3 +1108,94 @@ class TestNeuralVideoGenerateTrueEXR:
 
         exit_code = run_worker_cli(str(tmp_path), json_mode=False)
         assert exit_code == 10
+
+    def test_directory_output_manifest_sha256(self, tmp_path: Path) -> None:
+        """Directories in output_paths must recursively calculate sorted SHA-256 and total bytes."""
+        out_dir = tmp_path / "out_shards"
+        out_dir.mkdir()
+        (out_dir / "b.txt").write_bytes(b"hello")
+        (out_dir / "a.txt").write_bytes(b"world")
+
+        @register_stage("_test_dir_stage")
+        def _handler(m: BundleManifest) -> dict[str, Any]:
+            return {"output_paths": {"shards": str(out_dir)}}
+
+        worker = JobBundleWorker()
+        manifest = BundleManifest(job_id="test-dir", stage="_test_dir_stage")
+        result = worker.execute(manifest)
+        assert result.status == "success"
+        assert "shards" in result.output_files
+        entry = result.output_files["shards"]
+        assert entry.size_bytes == 10
+        assert len(entry.sha256) == 64
+
+    def test_stage_closure_outputs_and_gates(self, tmp_path: Path) -> None:
+        """Verify inspect, rsi, and refine stages write requested output artifacts and respect gates."""
+        from synapse.errors import BackendUnavailableError, CircuitBreakerError
+        from synapse.pipeline.stages.inspect import handle_asset_inspect_3d, handle_inspect_refine
+        from synapse.pipeline.stages.refine import handle_anatomical_refine
+        from synapse.pipeline.stages.rsi import handle_rsi_dual_verify
+
+        # 1. asset_inspect_3d with remote endpoint raises 30
+        m_inspect_remote = BundleManifest(
+            job_id="insp-1",
+            stage="asset_inspect_3d",
+            params={"vlm_endpoint_url": "http://127.0.0.1:9999"},
+        )
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            handle_asset_inspect_3d(m_inspect_remote)
+        assert exc_info.value.exit_code == 30
+
+        # 2. asset_inspect_3d writes report to output_paths
+        report_file = tmp_path / "inspection_report.json"
+        m_inspect = BundleManifest(
+            job_id="insp-2",
+            stage="asset_inspect_3d",
+            outputs={"report": str(report_file)},
+            params={"asset_id": "test_mesh", "asset_name": "Test Mesh"},
+        )
+        res_insp = handle_asset_inspect_3d(m_inspect)
+        assert "report" in res_insp["output_paths"]
+        assert report_file.is_file()
+
+        # 3. rsi_dual_verify writes verdict to output_paths
+        verdict_file = tmp_path / "rsi_verdict.json"
+        m_rsi = BundleManifest(
+            job_id="rsi-1",
+            stage="rsi_dual_verify",
+            outputs={"verdict": str(verdict_file)},
+            params={
+                "sample_id": "s1",
+                "prm_score": 0.95,
+                "physics_metrics": {
+                    "silhouette_iou": 0.95,
+                    "depth_rmse_m": 0.05,
+                    "normal_angular_error_deg": 5.0,
+                },
+            },
+        )
+        res_rsi = handle_rsi_dual_verify(m_rsi)
+        assert "verdict" in res_rsi["output_paths"]
+        assert verdict_file.is_file()
+
+        # 4. inspect_refine writes refined_mesh to output_paths
+        refine_out = tmp_path / "refined.json"
+        m_refine = BundleManifest(
+            job_id="refine-1",
+            stage="inspect_refine",
+            outputs={"refined_mesh": str(refine_out)},
+            params={"report": {"asset_id": "m1"}},
+        )
+        res_refine = handle_inspect_refine(m_refine)
+        assert "refined_mesh" in res_refine["output_paths"]
+        assert refine_out.is_file()
+
+        # 5. anatomical_refine triggers CircuitBreakerError when elapsed_seconds >= 900
+        m_hitl = BundleManifest(
+            job_id="hitl-1",
+            stage="anatomical_refine",
+            params={"elapsed_seconds": 901.0, "max_elapsed_seconds": 900.0},
+        )
+        with pytest.raises(CircuitBreakerError) as exc_hitl:
+            handle_anatomical_refine(m_hitl)
+        assert exc_hitl.value.exit_code == 40

@@ -174,6 +174,7 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     from synapse.bench.rasterizer import SoftwareRasterizer
     from synapse.bench.scenario import load_scenario
     from synapse.fgpp.frame import FGPPFrame, FGPPSequence
+    from synapse.fgpp.io import export_fgpp
 
     try:
         scenario = load_scenario(args.scenario)
@@ -191,7 +192,8 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     width = scenario.width
     height = scenario.height
 
-    output_dir = Path(args.output) if args.output else Path(
+    output_arg = getattr(args, "output_dir", None) or getattr(args, "output", None)
+    output_dir = Path(output_arg) if output_arg else Path(
         f"./data/bench_export/{scenario.id}"
     )
 
@@ -216,10 +218,12 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
             entity_name=scenario.asset.id,
             prev_camera=cameras[i - 1] if i > 0 else None,
         )
+        frame.frame_index = i
         frames.append(frame)
 
     seq = FGPPSequence(frames=frames, fps=fps, scene_id=scenario.id)
-    meta_path = seq.save_metadata(output_dir)
+    export_fgpp(seq, output_dir)
+    meta_path = output_dir / "metadata.json"
 
     result_info: dict[str, Any] = {
         "scenario_id": scenario.id,
@@ -237,10 +241,13 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
 
 def register_bench_subparsers(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> None:
     """Register subcommands for the ``synapse-bench`` CLI."""
+    parents = [json_parent] if json_parent is not None else []
+
     list_parser = subparsers.add_parser(
-        "list", help="List available scenarios",
+        "list", help="List available scenarios", parents=parents,
     )
     list_parser.add_argument(
         "--tier",
@@ -252,12 +259,14 @@ def register_bench_subparsers(
     export_parser = subparsers.add_parser(
         "export-fgpp",
         help="Render scenario to FGPP output directory",
+        parents=parents,
     )
     export_parser.add_argument(
         "--scenario", required=True, help="Scenario ID",
     )
     export_parser.add_argument(
-        "--output", default=None, help="Output directory",
+        "--output-dir", "--output", dest="output_dir", default=None,
+        help="Output directory",
     )
     export_parser.add_argument(
         "--frames", type=int, default=None,
@@ -266,6 +275,7 @@ def register_bench_subparsers(
 
     run_parser = subparsers.add_parser(
         "run", help="Run benchmark scenario(s) through an adapter",
+        parents=parents,
     )
     run_parser.add_argument(
         "--scenario", default=None,
@@ -301,6 +311,7 @@ def register_bench_subparsers(
     eval_parser = subparsers.add_parser(
         "evaluate",
         help="Evaluate a pre-rendered InspectionBundle",
+        parents=parents,
     )
     eval_parser.add_argument(
         "--bundle", required=True,
@@ -316,30 +327,66 @@ def register_bench_subparsers(
     )
 
 
+def register_bench_subparser(
+    subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
+) -> argparse.ArgumentParser:
+    """Register the ``bench`` subcommand tree under ``synapse bench``."""
+    from typing import cast
+
+    parents = [json_parent] if json_parent is not None else []
+    bench_parser = subparsers.add_parser("bench", help="Benchmark operations", parents=parents)
+    bench_sub = bench_parser.add_subparsers(dest="bench_command")
+    register_bench_subparsers(bench_sub, json_parent=json_parent)
+    return cast(argparse.ArgumentParser, bench_parser)
+
+
 def dispatch_bench(
     parsed: argparse.Namespace,
     json_mode: bool,
     trace_ctx: Any,
+    bench_parser: argparse.ArgumentParser | None = None,
 ) -> int:
-    """Dispatch ``synapse-bench`` subcommands."""
-    if parsed.command == "list":
+    """Dispatch ``synapse-bench`` or ``synapse bench`` subcommands."""
+    cmd = getattr(parsed, "bench_command", None) or getattr(parsed, "command", None)
+    if cmd == "list":
         parsed.json = json_mode
         return _run_with_json_mode(
             _cmd_bench_list, parsed, json_mode, trace_ctx,
         )
-    elif parsed.command == "export-fgpp":
+    elif cmd == "export-fgpp":
         parsed.json = json_mode
         return _run_with_json_mode(
             _cmd_bench_export_fgpp, parsed, json_mode, trace_ctx,
         )
-    elif parsed.command == "run":
+    elif cmd == "run":
         parsed.json = json_mode
         return _run_with_json_mode(
             _cmd_bench_run, parsed, json_mode, trace_ctx,
         )
-    elif parsed.command == "evaluate":
+    elif cmd == "evaluate":
         parsed.json = json_mode
         return _run_with_json_mode(
             _cmd_bench_evaluate, parsed, json_mode, trace_ctx,
         )
-    return 0
+    else:
+        from synapse.errors import ExitCode, SynapseError
+        err = SynapseError(
+            "Missing bench sub-command (list|export-fgpp|run|evaluate)",
+            ExitCode.CONTRACT_ERROR,
+            "Use 'synapse-bench list', 'synapse-bench export-fgpp', etc.",
+        )
+        if json_mode:
+            import json
+            import sys
+
+            json.dump(
+                err.to_json_dict(trace_ctx.trace_id),
+                sys.stdout,
+                default=str,
+            )
+            print()
+            return int(err.exit_code)
+        if bench_parser is not None:
+            bench_parser.print_help()
+        return int(ExitCode.CONTRACT_ERROR)

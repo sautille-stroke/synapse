@@ -1,7 +1,6 @@
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
-import socketserver
 import urllib.error
 import urllib.request
 from typing import Any
@@ -19,7 +18,9 @@ from synapse.generators.visualizer import (
     make_contact_sheet,
 )
 from synapse.models import list_builtin_models, load_model
-from synapse.viewer.server import ViewerServer, _ReusableHTTPServer, export_static_html
+from synapse.viewer.server import export_static_html
+
+from scripts.dev_preview_viewer import ViewerServer
 
 
 class TestModels:
@@ -221,15 +222,38 @@ class TestViewerServer:
             assert "Non-loopback host" in str(exc_info.value)
             assert "127.0.0.1" in exc_info.value.agent_fix_hint
 
-    def test_reusable_http_server_instance_attribute(self) -> None:
-        """Verify socketserver.TCPServer.allow_reuse_address is not mutated globally."""
-        # Check global TCPServer class attribute remains default (not True by our code)
-        assert socketserver.TCPServer.allow_reuse_address is False
+    def test_core_sdk_zero_python_server_rule(self) -> None:
+        """Verify core synapse.viewer does NOT export ViewerServer or launch_viewer (Zero-Python rule)."""
+        import synapse.viewer
 
-        # But _ReusableHTTPServer instances have allow_reuse_address = True
-        dummy_server = _ReusableHTTPServer.__new__(_ReusableHTTPServer)
-        dummy_server.allow_reuse_address = True
-        assert dummy_server.allow_reuse_address is True
+        assert not hasattr(synapse.viewer, "ViewerServer")
+        assert not hasattr(synapse.viewer, "launch_viewer")
+        assert hasattr(synapse.viewer, "export_static_html")
+
+    def test_percent_encoded_path_traversal_and_svg_csp(self, tmp_path: Any) -> None:
+        """Verify URL unquoting blocks %2e%2e traversal and SVG files include CSP header."""
+        manifest_data = {"dataset_id": "sec_test2", "frames": []}
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+        (tmp_path / "outside.json").write_text("{}", encoding="utf-8")
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "badge.svg").write_text("<svg></svg>", encoding="utf-8")
+
+        server = ViewerServer(dataset_dir=sub, port=0)
+        url = server.start(open_browser=False)
+        try:
+            # %2e%2e traversal rejected
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(f"{url}/%2e%2e/outside.json")
+            assert exc_info.value.code == 403
+
+            # SVG has Content-Security-Policy header
+            with urllib.request.urlopen(f"{url}/badge.svg") as resp:
+                assert resp.status == 200
+                csp = resp.headers.get("Content-Security-Policy", "")
+                assert "default-src 'none'" in csp
+        finally:
+            server.stop()
 
     def test_security_path_traversal_and_extensions(self, tmp_path: Any) -> None:
         """Verify handler rejects path traversal, hidden files, directory listings, and forbidden extensions."""
