@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -187,8 +187,8 @@ class TestNonDegenerateQualityGate:
 class _CaptureHandler(BaseHTTPRequestHandler):
     """HTTP handler that captures request body and headers for test inspection."""
 
-    captured_body: dict[str, Any] = {}
-    captured_headers: dict[str, str] = {}
+    captured_body: ClassVar[dict[str, Any]] = {}
+    captured_headers: ClassVar[dict[str, str]] = {}
 
     def do_POST(self) -> None:
         content_length = int(self.headers.get("Content-Length", 0))

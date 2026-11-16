@@ -434,7 +434,7 @@ def _check_json_schemas() -> list[str]:
                 )
 
         # Deep constraint validation
-        def _validate_sub_constraints(obj_schema: dict[str, Any], path_prefix: str) -> None:
+        def _validate_sub_constraints(obj_schema: dict[str, Any], path_prefix: str, filename: str = filename) -> None:
             for prop_name, prop_spec in obj_schema.get("properties", {}).items():
                 curr_path = f"{path_prefix}.{prop_name}" if path_prefix else prop_name
                 if not isinstance(prop_spec, dict):
@@ -609,7 +609,7 @@ def _check_against_header(header_path: Path) -> list[str]:
             "Half": PixelType.HALF,
             "Float": PixelType.FLOAT,
         }
-        for (py_ch_name, py_pt, _), cpp_spec in zip(FGPP_CHANNEL_SPECS, cpp_specs):
+        for (py_ch_name, py_pt, _), cpp_spec in zip(FGPP_CHANNEL_SPECS, cpp_specs, strict=False):
             if cpp_spec["name"] != py_ch_name:
                 errors.append(
                     f"Channel order mismatch: Python has '{py_ch_name}', C++ has '{cpp_spec['name']}'"

@@ -490,7 +490,7 @@ class FeatureStoreBuilder:
             nonlocal shard_idx
             name = f"shard-{shard_idx:05d}.tar"
             path = output_dir / name
-            tf = tarfile.open(path, "w")
+            tf = tarfile.open(path, "w")  # noqa: SIM115
             shard_idx += 1
             shard_paths.append(path)
             return tf, path

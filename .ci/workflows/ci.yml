@@ -1,5 +1,9 @@
-# Synapse CI — Horizon 7 Quality Baseline
-# Covers H7-P0-01: Automated gate for lint, types, tests, DAG, wire guard.
+# Synapse CI — Horizon 8 Quality Baseline
+# NOTE: The canonical CI workflow lives at .github/workflows/ci.yml.
+# This file is kept as a reference copy. See .github/workflows/ci.yml for
+# the active workflow that GitHub Actions executes.
+#
+# Covers H8-P0-01: Automated gate for lint, types, tests, DAG, wire guard.
 name: CI
 
 on:
@@ -13,11 +17,65 @@ permissions:
 
 jobs:
   # -----------------------------------------------------------------------
-  # Job 1: Python fast checks (ruff, mypy, guards, pytest)
+  # Job 1: Python fast checks (ruff, mypy, guards, pytest -m 'not slow')
   # -----------------------------------------------------------------------
   python-fast:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout aether (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: dervgen/aether
+          path: aether
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,image,metrics,train,mesh]"
+
+      - name: Build native extensions
+        run: python scripts/build_native.py --backend=auto
+        continue-on-error: true
+
+      - name: Ruff lint
+        run: ruff check python/ tests/ scripts/ tools/
+
+      - name: Mypy strict (207+ source files)
+        run: |
+          OUTPUT=$(mypy --strict python/synapse tests/ scripts/ tools/ 2>&1)
+          echo "$OUTPUT"
+          CHECKED=$(echo "$OUTPUT" | grep -oP 'checked \K[0-9]+')
+          if [ -n "$CHECKED" ] && [ "$CHECKED" -lt 207 ]; then
+            echo "ERROR: Only checked $CHECKED files, expected >= 207"
+            exit 1
+          fi
+
+      - name: Wire guard
+        run: python tools/wire_guard.py --check --require-aether
+
+      - name: Import DAG guard
+        run: python tools/import_dag_guard.py --check
+
+      - name: Pytest (fast)
+        env:
+          SYNAPSE_CI_STRICT_DEPS: "1"
+        run: pytest tests/ -m 'not slow' -q -W error::scipy.linalg.LinAlgWarning
+
+  # -----------------------------------------------------------------------
+  # Job 2: Python slow tests (parallelized)
+  # -----------------------------------------------------------------------
+  python-slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -29,40 +87,28 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,image,metrics]"
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,image,metrics,train,mesh]"
 
-      - name: Ruff lint
-        run: ruff check python/ tests/ scripts/ tools/
-
-      - name: Mypy strict
-        run: mypy python/synapse tests/ scripts/ tools/
-
-      - name: Wire guard
-        run: python tools/wire_guard.py --check
-
-      - name: Import DAG guard
-        run: python tools/import_dag_guard.py --check
-
-      - name: Pytest (fast)
-        env:
-          SYNAPSE_CI_STRICT_DEPS: "1"
-        run: pytest tests/ -m 'not slow' -q -W error::scipy.linalg.LinAlgWarning
+      - name: Pytest (slow, parallel)
+        run: pytest tests/ -m slow -n auto -q
 
   # -----------------------------------------------------------------------
-  # Job 2: Native C++20 geometry core + Data Inspector Bazel tests
+  # Job 3: Native C++20 geometry core + Data Inspector Bazel tests
   # -----------------------------------------------------------------------
   native-bazel:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: synapse
 
       - name: Checkout aether (sibling)
         uses: actions/checkout@v4
         with:
-          repository: sautille-stroke/aether
-          path: ../aether
-        continue-on-error: true
+          repository: dervgen/aether
+          path: aether
 
       - name: Install Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
@@ -72,15 +118,15 @@ jobs:
           repository-cache: ${{ github.workflow }}
 
       - name: Test csrc/geometry
-        working-directory: csrc/geometry
+        working-directory: synapse/csrc/geometry
         run: bazel test //... --config=opt
 
       - name: Test data-inspector native
-        working-directory: tools/data-inspector/native
+        working-directory: synapse/tools/data-inspector/native
         run: bazel test //... --config=opt
 
   # -----------------------------------------------------------------------
-  # Job 3: Electron Data Inspector bundle loading
+  # Job 4: Electron Data Inspector bundle loading
   # -----------------------------------------------------------------------
   electron-inspector:
     runs-on: ubuntu-latest

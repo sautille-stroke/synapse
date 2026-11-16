@@ -144,7 +144,7 @@ class TestCurriculumSampler:
         s2 = CurriculumSampler(cfg).sample_scenarios(
             {"F01_viewpoint": 0.5},
         )
-        for a, b in zip(s1, s2):
+        for a, b in zip(s1, s2, strict=False):
             assert a.scenario_id == b.scenario_id
             assert a.factor == b.factor
             assert a.level == b.level

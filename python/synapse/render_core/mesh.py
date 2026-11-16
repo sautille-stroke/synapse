@@ -122,7 +122,7 @@ def load_obj(path: str | Path) -> MeshData:
         vert_normals = np.zeros_like(verts_arr)
         counts = np.zeros(len(vertices), dtype=np.float32)
         for fi, fn in enumerate(face_normals):
-            for vi, ni in zip(faces[fi], fn):
+            for vi, ni in zip(faces[fi], fn, strict=False):
                 vert_normals[vi] += normals_arr[ni]
                 counts[vi] += 1.0
         counts = np.maximum(counts, 1.0)
@@ -138,7 +138,7 @@ def load_obj(path: str | Path) -> MeshData:
         all_uvs = np.array(uvs, dtype=np.float32)
         vert_uvs = np.zeros((len(vertices), 2), dtype=np.float32)
         for fi, ft in enumerate(face_uvs):
-            for vi, ti in zip(faces[fi], ft):
+            for vi, ti in zip(faces[fi], ft, strict=False):
                 vert_uvs[vi] = all_uvs[ti]
         uvs_arr = vert_uvs
 

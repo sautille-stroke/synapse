@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime
 import math
-from typing import Literal, Protocol, runtime_checkable
+from typing import ClassVar, Literal, Protocol, runtime_checkable
 
 from synapse.errors import (
     BackendUnavailableError,
@@ -223,13 +223,13 @@ class VisualJevCritic:
             for logprob calibration (default 1.5).
     """
 
-    DEFECT_PROBES: list[DefectCategory] = list(_DEFECT_CATEGORIES)
+    DEFECT_PROBES: ClassVar[list[DefectCategory]] = list(_DEFECT_CATEGORIES)
 
     SEVERITY_HITL_THRESHOLD: float = 0.7
     SEVERITY_AUTO_THRESHOLD: float = 0.3
     SEVERITY_REPORT_THRESHOLD: float = 0.1
 
-    _PROBE_PROMPTS: dict[DefectCategory, str] = {
+    _PROBE_PROMPTS: ClassVar[dict[DefectCategory, str]] = {
         "mesh_crumple": (
             "Does this 3D rendered image show mesh crumpling, "
             "folding, or self-intersection artifacts? "

@@ -87,7 +87,7 @@ class EdgePreservingLoss:
             Scalar torch.Tensor loss (retains grad).
         """
         import torch
-        import torch.nn.functional as F  # noqa: N812
+        import torch.nn.functional as F
 
         z = torch.as_tensor(z_pred, dtype=torch.float32)
         d = torch.as_tensor(depth_latent, dtype=torch.float32)
@@ -117,7 +117,7 @@ class EdgePreservingLoss:
     @staticmethod
     def _sobel_magnitude_batch(
         x: Any,
-        F: Any,  # noqa: N803
+        F: Any,
     ) -> Any:
         """Compute Sobel gradient magnitude on [N, 1, H, W] via conv2d."""
         import torch
@@ -146,7 +146,7 @@ class EdgePreservingLoss:
     def _sobel_magnitude(
         cls,
         img: Any,
-        F: Any,  # noqa: N803
+        F: Any,
     ) -> Any:
         """Backward-compatible helper for 2D inputs."""
         import torch

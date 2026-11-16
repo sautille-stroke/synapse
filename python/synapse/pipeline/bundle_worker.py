@@ -471,7 +471,7 @@ def _handle_style_extract_and_map(
                 agent_fix_hint=(
                     "Install Pillow: pip install 'Pillow>=9.0'"
                 ),
-            )
+            ) from None
 
     if not frames:
         from synapse.errors import AssetNotFoundError
@@ -553,7 +553,7 @@ def _handle_surgical_composite(
             "PIL (Pillow) is required for loading frame images "
             "but is not installed.",
             agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
-        )
+        ) from None
 
     rendered_dir = Path(rendered_dir_str)
     neural_dir = Path(neural_dir_str)
@@ -679,7 +679,7 @@ def _handle_inverse_reconstruct(
                 "PIL (Pillow) is required for loading frame images "
                 "but is not installed.",
                 agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
-            )
+            ) from None
 
     if not frames:
         from synapse.errors import AssetNotFoundError

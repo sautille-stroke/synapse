@@ -51,7 +51,7 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
                 f"trimesh is required for loading {mesh_path.suffix!r} "
                 "files. Install with: pip install 'synapse[mesh]'",
                 agent_fix_hint="pip install trimesh>=4.0.0",
-            )
+            ) from None
 
     raw_backend = str(getattr(args, "backend", "native"))
     backend: Literal["native", "python"] = "python" if raw_backend == "python" else "native"

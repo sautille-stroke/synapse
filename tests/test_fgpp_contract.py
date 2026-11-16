@@ -310,7 +310,7 @@ class TestMetadataRoundtrip:
         assert loaded.fps == 24.0
         assert loaded.scene_id == "roundtrip_test"
 
-        for orig, loaded_frame in zip(seq.frames, loaded.frames):
+        for orig, loaded_frame in zip(seq.frames, loaded.frames, strict=False):
             np.testing.assert_allclose(
                 loaded_frame.camera.view_matrix,
                 orig.camera.view_matrix,

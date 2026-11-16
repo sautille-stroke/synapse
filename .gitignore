@@ -58,6 +58,7 @@ output/
 tmp/
 data/datasets/
 data/benchmarks/
+data/golden_datasets/
 
 # L-Asset external cache & archives (RFC 0062)
 assets/*/

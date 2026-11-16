@@ -84,7 +84,7 @@ def _get_dev_launch_viewer() -> Any:
         raise BackendUnavailableError(
             "Local HTTP preview server is not available (dev_preview_viewer script missing).",
             agent_fix_hint="Use static HTML export (default) or ensure scripts/dev_preview_viewer.py exists.",
-        )
+        ) from None
 
 
 def main_data_gen(args: list[str] | None = None) -> int:

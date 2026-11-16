@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from synapse.errors import (
-    CircuitBreakerError,  # noqa: F401
-    evaluate_hitl_circuit_breaker,  # noqa: F401
+    CircuitBreakerError,
+    evaluate_hitl_circuit_breaker,
 )
 
 __all__ = [
@@ -136,7 +136,7 @@ class PersistentHitlLedger:
         """Read state with exclusive or shared lock."""
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
         lock_file = self.ledger_path.with_suffix(".lock")
-        f = open(lock_file, "a+", encoding="utf-8")
+        f = open(lock_file, "a+", encoding="utf-8")  # noqa: SIM115
         try:
             import fcntl
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)

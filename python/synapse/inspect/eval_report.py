@@ -403,7 +403,7 @@ def _append_model_card(parts: list[str], m: ModelEvalResult) -> None:
     if m.screenshots_base64:
         parts.append('<div class="gallery">')
         for img_b64, label in zip(
-            m.screenshots_base64, m.screenshot_labels
+            m.screenshots_base64, m.screenshot_labels, strict=False
         ):
             parts.append('<div class="gallery-item">')
             parts.append(

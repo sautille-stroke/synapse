@@ -52,7 +52,7 @@ def get_recon_backend(mock: bool = False) -> VgBackend:
 
 __all__ = [
     "MockVgBackend",
-    "SynapseReconBackend",  # noqa: F822 — lazy via __getattr__
+    "SynapseReconBackend",  # noqa: F822  # lazy via __getattr__
     "VgBackend",
     "enforce_distillation_geometry_gate",
     "get_recon_backend",

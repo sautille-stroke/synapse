@@ -6,6 +6,7 @@ import json
 import math
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -668,7 +669,7 @@ class TestPR96StyleHardening:
 
         real_import = builtins.__import__
 
-        def fake_import(name: str, *args: object, **kwargs: object) -> object:
+        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
             if name == "yaml":
                 raise ImportError("No module named 'yaml'")
             return real_import(name, *args, **kwargs)

@@ -24,10 +24,34 @@ def pytest_runtest_makereport(
     """Fail-fast on skipped tests when SYNAPSE_CI_STRICT_DEPS=1."""
     outcome = yield
     rep: Any = outcome.get_result()
-    if _STRICT_DEPS and rep.skipped and rep.when in ("setup", "call"):
+    if (
+        _STRICT_DEPS
+        and rep.skipped
+        and rep.when in ("setup", "call")
+        and not getattr(rep, "wasxfail", None)
+    ):
         rep.outcome = "failed"
         rep.longrepr = (
             f"SYNAPSE_CI_STRICT_DEPS=1 forbids skipped tests: {rep.longrepr}"
+        )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(
+    collector: pytest.Collector,
+) -> Generator[None, Any, None]:
+    """Fail collection-time skips when SYNAPSE_CI_STRICT_DEPS=1.
+
+    This catches module-level ``pytest.importorskip(..., allow_module_level=True)``
+    calls that silently skip entire test modules during collection.
+    """
+    outcome = yield
+    rep: Any = outcome.get_result()
+    if _STRICT_DEPS and rep.outcome == "skipped":
+        rep.outcome = "failed"
+        rep.longrepr = (
+            f"SYNAPSE_CI_STRICT_DEPS=1 forbids module-level skips: "
+            f"{getattr(rep, 'longrepr', 'unknown')}"
         )
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synapse"
-version = "0.1.0"
+version = "3.5.0"
 description = "3D CG Rendering & Neural Video Generation Interoperability Hub & Hybrid Cinema Pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -84,6 +84,41 @@ python_version = "3.10"
 strict = true
 files = ["python/synapse", "tests", "scripts", "tools"]
 exclude = ["bazel-.*", ".*\\.runfiles", "\\.pytest_tmp", "tools/data-inspector"]
+
+[[tool.mypy.overrides]]
+module = [
+    "OpenEXR",
+    "Imath",
+    "cv2",
+    "trimesh",
+    "trimesh.*",
+    "mitsuba",
+    "mitsuba.*",
+    "drjit",
+    "drjit.*",
+    "numba",
+    "numba.*",
+    "safetensors",
+    "safetensors.*",
+    "yaml",
+    "scipy",
+    "scipy.*",
+    "pybind11",
+    "pybind11.*",
+    "synapse._c_geometry",
+    "aether.color",
+    "aether.color.*",
+    "aether.metrics",
+    "aether.metrics.*",
+    "huggingface_hub",
+    "huggingface_hub.*",
+    "accelerate",
+    "accelerate.*",
+    "diffusers",
+    "diffusers.*",
+    "torchvision",
+    "torchvision.*",
+]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -92,13 +127,13 @@ line-length = 100
 exclude = ["._*"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF", "S202"]
 ignore = [
     "E712",
-    "B007", "B008", "B009", "B010", "B017", "B023", "B904", "B905",
-    "SIM102", "SIM105", "SIM108", "SIM115", "SIM117", "SIM118", "SIM300",
+    "B007", "B009", "B010",
+    "SIM102", "SIM105", "SIM108", "SIM117", "SIM118", "SIM300",
     "UP006", "UP007", "UP015", "UP035",
-    "RUF001", "RUF002", "RUF003", "RUF005", "RUF012", "RUF015", "RUF022", "RUF043", "RUF046", "RUF059", "RUF100",
+    "RUF001", "RUF002", "RUF003", "RUF005", "RUF015", "RUF022", "RUF043", "RUF046", "RUF059",
 ]
 
 [tool.ruff.lint.per-file-ignores]

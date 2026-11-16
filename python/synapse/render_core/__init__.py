@@ -18,7 +18,7 @@ from synapse.render_core.conditions import (
     Conditions,
 )
 from synapse.render_core.mesh import MeshData, load_obj
-from synapse.render_core.morphology import (  # noqa: F401
+from synapse.render_core.morphology import (
     binary_dilation,
     binary_erosion,
     circular_structuring_element,
@@ -31,7 +31,7 @@ from synapse.render_core.procedural import (
 )
 
 # Re-export pyramid primitives used by composite/blend and refine/fusion.
-from synapse.render_core.pyramid import (  # noqa: F401
+from synapse.render_core.pyramid import (
     build_gaussian_pyramid,
     build_laplacian_pyramid,
     downsample2x,

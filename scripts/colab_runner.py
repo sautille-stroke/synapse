@@ -94,7 +94,7 @@ def extract_colab_bundle(bundle_path: Path, extract_dir: Path) -> Path:
 
     extract_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(bundle_path, "r:gz") as tar:
-        tar.extractall(path=extract_dir)
+        tar.extractall(path=extract_dir, filter="data")
     return extract_dir
 
 
@@ -249,7 +249,7 @@ def _verify_e1_real_gpu(
             raise BackendUnavailableError(
                 f"Wan 2.1 Diffusers model weights '{model_id}' not found locally.",
                 agent_fix_hint="Install huggingface_hub and download Wan 2.1 model weights.",
-            )
+            ) from None
 
     adapter = WanAdapter()
     f0 = seq_track_b.frames[0]
@@ -313,8 +313,8 @@ def _verify_e4_real_gpu(
         adapter_sha256=sha256,
         target_modules=["spatial_attn.to_q"],
     )
-    manager = MultiLoRAManager([manifest])
-    assert manager.is_bundle_loaded("scene_style_cuda")
+    manager = MultiLoRAManager([(manifest, 1.0)])
+    assert any(m.name == "scene_style_cuda" for m, _ in manager._bundles)
 
     return {
         "status": "PASS",
@@ -385,7 +385,7 @@ def run_colab_suite(
         }
 
     # --- Register SIGTERM handler for Colab preemption checkpoint resume ---
-    def _sigterm_handler(signum: int, frame: Any) -> None:  # noqa: ANN401
+    def _sigterm_handler(signum: int, frame: Any) -> None:
         print(f"\n[SIGTERM] Received signal {signum}. Persisting checkpoint state...")
         _persist_state(state_path, state)
         print(f"[SIGTERM] State saved to {state_path}. Exiting gracefully.")

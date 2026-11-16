@@ -339,7 +339,7 @@ class MitsubaInverseOptimizer:
                     "pip install 'mitsuba>=3.5.0' 'drjit>=0.4.5' or "
                     "use AnalyticUVInverseOptimizer for CPU-only mode."
                 ),
-            )
+            ) from None
 
     def optimize(self, **kwargs: Any) -> InverseOptimResult:
         """Run Mitsuba-based differentiable inverse rendering.

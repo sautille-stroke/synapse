@@ -134,7 +134,8 @@ class TestFvdVideoBridge:
                 self.fc = torch.nn.Linear(512, 10)
 
             def forward(self, x: torch.Tensor) -> torch.Tensor:
-                return self.fc(self.pool(self.conv(x)).flatten(1))
+                out: torch.Tensor = self.fc(self.pool(self.conv(x)).flatten(1))
+                return out
 
         model = Tiny3DCNN()
         extractor = _build_r3d18_extractor(model=model)
