@@ -11,6 +11,7 @@
 
 #include "synapse/geometry/mesh_checks.h"
 
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -34,7 +35,7 @@ std::span<const Vec3> verticesFromNumpy(const DoubleArray& arr) {
   static_assert(sizeof(Vec3) == 3 * sizeof(double),
                 "Vec3 must be tightly packed (no padding).");
 
-  auto buf = arr.request();
+  const auto buf = arr.request();
   if (buf.ndim != 2 || buf.shape[1] != 3) {
     throw std::invalid_argument(
         "vertices array must have shape (N, 3), got ndim=" +
@@ -43,6 +44,9 @@ std::span<const Vec3> verticesFromNumpy(const DoubleArray& arr) {
   if (buf.shape[0] == 0) {
     return {};
   }
+  if (buf.shape[0] < 0) {
+    throw std::invalid_argument("vertices array has negative shape.");
+  }
 
   const auto* ptr = reinterpret_cast<const Vec3*>(buf.ptr);
   return {ptr, static_cast<size_t>(buf.shape[0])};
@@ -50,45 +54,56 @@ std::span<const Vec3> verticesFromNumpy(const DoubleArray& arr) {
 
 struct ParsedFaces {
   std::span<const int64_t> span;
-  int verts_per_face;
+  int vertsPerFace{3};
 };
 
 /// Accept either a 2-D (F, K) integer array or a 1-D flat index buffer.
-ParsedFaces facesFromNumpy(const Int64Array& arr, int default_vpf) {
-  auto buf = arr.request();
+ParsedFaces facesFromNumpy(const Int64Array& arr, int defaultVpf) {
+  const auto buf = arr.request();
   if (buf.ndim == 2) {
-    const int inferred_vpf = static_cast<int>(buf.shape[1]);
-    if (inferred_vpf < 3) {
+    if (buf.shape[1] < 3 || buf.shape[1] > std::numeric_limits<int>::max()) {
       throw std::invalid_argument(
-          "2-D faces array must have shape (F, K) with K >= 3, got K=" +
-          std::to_string(inferred_vpf) + ".");
+          "2-D faces array must have shape (F, K) with 3 <= K <= INT_MAX, got K=" +
+          std::to_string(buf.shape[1]) + ".");
     }
-    const size_t total =
-        static_cast<size_t>(buf.shape[0]) * static_cast<size_t>(buf.shape[1]);
+    const int inferredVpf = static_cast<int>(buf.shape[1]);
+    if (buf.shape[0] < 0) {
+      throw std::invalid_argument("faces array has negative shape[0].");
+    }
+    const auto rows = static_cast<size_t>(buf.shape[0]);
+    const auto cols = static_cast<size_t>(buf.shape[1]);
+    if (rows > 0 && cols > std::numeric_limits<size_t>::max() / rows) {
+      throw std::overflow_error("faces array dimensions overflow size_t.");
+    }
+    const size_t total = rows * cols;
     if (total == 0) {
-      return {{}, inferred_vpf};
+      return {{}, inferredVpf};
     }
     const auto* ptr = static_cast<const int64_t*>(buf.ptr);
-    return {{ptr, total}, inferred_vpf};
+    return {{ptr, total}, inferredVpf};
   }
 
   if (buf.ndim == 1) {
-    if (default_vpf < 3) {
+    if (defaultVpf < 3) {
       throw std::invalid_argument(
           "verts_per_face must be >= 3 for 1-D faces buffer, got " +
-          std::to_string(default_vpf) + ".");
+          std::to_string(defaultVpf) + ".");
     }
     if (buf.shape[0] == 0) {
-      return {{}, default_vpf};
+      return {{}, defaultVpf};
     }
-    if (buf.shape[0] % default_vpf != 0) {
+    if (buf.shape[0] < 0) {
+      throw std::invalid_argument("faces array has negative size.");
+    }
+    const auto length = static_cast<size_t>(buf.shape[0]);
+    if (length % static_cast<size_t>(defaultVpf) != 0) {
       throw std::invalid_argument(
           "1-D faces buffer length (" + std::to_string(buf.shape[0]) +
           ") must be divisible by verts_per_face (" +
-          std::to_string(default_vpf) + ").");
+          std::to_string(defaultVpf) + ").");
     }
     const auto* ptr = static_cast<const int64_t*>(buf.ptr);
-    return {{ptr, static_cast<size_t>(buf.shape[0])}, default_vpf};
+    return {{ptr, length}, defaultVpf};
   }
 
   throw std::invalid_argument(
@@ -102,40 +117,43 @@ ParsedFaces facesFromNumpy(const Int64Array& arr, int default_vpf) {
 
 bool pyCheckManifold(const DoubleArray& vertices,
                      const Int64Array& faces,
-                     int verts_per_face) {
-  auto verts = verticesFromNumpy(vertices);
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+                     int vertsPerFace) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   py::gil_scoped_release release;
-  return checkManifold(verts, parsed.span, parsed.verts_per_face);
+  return checkManifold(verts, parsed.span, parsed.vertsPerFace);
 }
 
 bool pyCheckWatertight(const DoubleArray& vertices,
                        const Int64Array& faces,
-                       int verts_per_face) {
-  auto verts = verticesFromNumpy(vertices);
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+                       int vertsPerFace) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   py::gil_scoped_release release;
-  return checkWatertight(verts, parsed.span, parsed.verts_per_face);
+  return checkWatertight(verts, parsed.span, parsed.vertsPerFace);
 }
 
 py::array_t<int64_t> pyCheckDegenerateFaces(
     const DoubleArray& vertices,
     const Int64Array& faces,
-    int verts_per_face,
-    double min_area,
-    double max_aspect_ratio) {
-  auto verts = verticesFromNumpy(vertices);
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+    int vertsPerFace,
+    double minArea,
+    double maxAspectRatio) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   std::vector<int64_t> vec;
   {
     py::gil_scoped_release release;
-    vec = checkDegenerateFaces(verts, parsed.span, parsed.verts_per_face,
-                               min_area, max_aspect_ratio);
+    vec = checkDegenerateFaces(verts, parsed.span, parsed.vertsPerFace,
+                               minArea, maxAspectRatio);
+  }
+  if (vec.size() > static_cast<size_t>(std::numeric_limits<py::ssize_t>::max())) {
+    throw std::overflow_error("Too many degenerate faces to fit in pybind11 array.");
   }
   py::array_t<int64_t> out(static_cast<py::ssize_t>(vec.size()));
   if (!vec.empty()) {
-    auto out_buf = out.request();
-    auto* dst = static_cast<int64_t*>(out_buf.ptr);
+    auto outBuf = out.request();
+    auto* dst = static_cast<int64_t*>(outBuf.ptr);
     std::copy(vec.begin(), vec.end(), dst);
   }
   return out;
@@ -144,26 +162,29 @@ py::array_t<int64_t> pyCheckDegenerateFaces(
 std::vector<std::pair<int64_t, int64_t>> pyCheckSelfIntersections(
     const DoubleArray& vertices,
     const Int64Array& faces,
-    int verts_per_face) {
-  auto verts = verticesFromNumpy(vertices);
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+    int vertsPerFace) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   py::gil_scoped_release release;
-  return checkSelfIntersections(verts, parsed.span, parsed.verts_per_face);
+  return checkSelfIntersections(verts, parsed.span, parsed.vertsPerFace);
 }
 
 py::list pyFindConnectedComponents(
     const Int64Array& faces,
-    int verts_per_face,
-    int64_t num_vertices) {
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+    int vertsPerFace,
+    int64_t numVertices) {
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   std::vector<std::vector<int64_t>> comps;
   {
     py::gil_scoped_release release;
-    comps = findConnectedComponents(parsed.span, parsed.verts_per_face,
-                                    num_vertices);
+    comps = findConnectedComponents(parsed.span, parsed.vertsPerFace,
+                                    numVertices);
   }
   py::list out;
   for (const auto& comp : comps) {
+    if (comp.size() > static_cast<size_t>(std::numeric_limits<py::ssize_t>::max())) {
+      throw std::overflow_error("Connected component size overflows py::ssize_t.");
+    }
     py::array_t<int64_t> arr(static_cast<py::ssize_t>(comp.size()));
     if (!comp.empty()) {
       auto buf = arr.request();
@@ -177,24 +198,24 @@ py::list pyFindConnectedComponents(
 py::dict pyValidateMeshGeometry(
     const DoubleArray& vertices,
     const Int64Array& faces,
-    int verts_per_face,
-    bool require_watertight,
-    double min_area,
-    double max_aspect_ratio,
-    double min_face_ratio) {
-  auto verts = verticesFromNumpy(vertices);
-  auto parsed = facesFromNumpy(faces, verts_per_face);
+    int vertsPerFace,
+    bool requireWatertight,
+    double minArea,
+    double maxAspectRatio,
+    double minFaceRatio) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
   GeometricValidationResult r;
   {
     py::gil_scoped_release release;
-    r = validateMeshGeometry(verts, parsed.span, parsed.verts_per_face,
-                             require_watertight, min_area, max_aspect_ratio,
-                             min_face_ratio);
+    r = validateMeshGeometry(verts, parsed.span, parsed.vertsPerFace,
+                             requireWatertight, minArea, maxAspectRatio,
+                             minFaceRatio);
   }
 
-  py::list si_pairs;
+  py::list siPairs;
   for (const auto& [a, b] : r.self_intersecting_pairs) {
-    si_pairs.append(py::make_tuple(a, b));
+    siPairs.append(py::make_tuple(a, b));
   }
 
   py::dict d;
@@ -203,7 +224,7 @@ py::dict pyValidateMeshGeometry(
   d["num_vertices"] = r.num_vertices;
   d["num_faces"] = r.num_faces;
   d["degenerate_face_indices"] = r.degenerate_face_indices;
-  d["self_intersecting_pairs"] = si_pairs;
+  d["self_intersecting_pairs"] = siPairs;
   d["num_connected_components"] = r.num_connected_components;
   d["floating_island_face_indices"] = r.floating_island_face_indices;
   d["passed"] = r.passed;
