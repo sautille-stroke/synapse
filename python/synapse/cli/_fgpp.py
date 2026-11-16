@@ -210,7 +210,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
 
         vis_dir = fgpp_dir / "visualizations"
         vis_dir.mkdir(parents=True, exist_ok=True)
-        seq = import_fgpp(fgpp_dir)
+        seq = import_fgpp(fgpp_dir, lazy=False)
         if not isinstance(seq, FGPPSequence):
             raise ContractValidationError("Expected FGPPSequence")
         exported_count = 0
