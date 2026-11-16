@@ -26,6 +26,8 @@ from synapse.composite.mask import generate_surgical_mask
 from synapse.refine.types import RefinementResult
 from synapse.render_core.morphology import (
     binary_erosion as _binary_erosion,
+)
+from synapse.render_core.morphology import (
     circular_structuring_element as _circular_structuring_element,
 )
 from synapse.style.aces_color import (
