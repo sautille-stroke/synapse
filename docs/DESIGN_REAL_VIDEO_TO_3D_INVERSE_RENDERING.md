@@ -1,7 +1,7 @@
 # Synapse 真实视频逆向 3D 动态数字孪生与联合反演设计规范 (Real-World Video-to-3D Dynamic Digital Twin & Joint Inverse Rendering Specification)
 
 - **文档状态**: `Approved Design Spec (v1.1)`
-- **关联 RFC**: [RFC 0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)
+- **关联 RFC**: [SYN-RFC-0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)
 - **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M9: PR-30 ~ PR-32`)
 - **修订日期**: 2026-11-13
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)

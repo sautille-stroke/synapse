@@ -1,9 +1,9 @@
-# RFC 0062 详细设计规范：3D 引导生成、可微逆向渲染与局部修补双向闭环
+# SYN-RFC-0062 详细设计规范：3D 引导生成、可微逆向渲染与局部修补双向闭环
 
 - **文档状态**: `Approved Technical Spec (v1.0)`
-- **关联 RFC**: [RFC 0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范](RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
+- **关联 RFC**: [SYN-RFC-0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
 - **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
-- **依赖上层规约**: [RFC 0060](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [RFC 0061](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
+- **依赖上层规约**: [SYN-RFC-0060](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [SYN-RFC-0061](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
 - **修订日期**: 2026-11-13
 
 ---

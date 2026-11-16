@@ -131,7 +131,7 @@
 
 #### [RV-13 | P0] RFC 0060 Layer-A 补齐、消除 `fulgur` 可微误写与 `ReconPipeline` 空盒陷阱
 - **问题定位**：`RFC-0060` 指向不存在的跨仓断链；`DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md` 误称 `fulgur` C++20 提供可微光栅化且使用虚构命名 `synapse.inversion` / `synapse invert video`；`ReconPipeline.run()` 在 `initial_mesh=None` 时直接返回硬编码 8 顶点盒，导致往返测试存在“恒等 `1.0x` 伪 PASS”隐患。
-- **对齐决议**：补齐仓内 [RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)；明确可微求导归属 `Mitsuba 3` / CPU 解析 Jacobian（`fulgur` 仅做前向校验）；CLI 统一为 `synapse recon invert-video --json`（`"status": "ok"`）；在 `M9 PR-30` 落地 `recon/multiview.py` 彻底替换 8 顶点空盒回退，并在 `PR-31` 用 $\ge 3.0\times$ 破坏性差分测试锁死。
+- **对齐决议**：补齐仓内 [SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)；明确可微求导归属 `Mitsuba 3` / CPU 解析 Jacobian（`fulgur` 仅做前向校验）；CLI 统一为 `synapse recon invert-video --json`（`"status": "ok"`）；在 `M9 PR-30` 落地 `recon/multiview.py` 彻底替换 8 顶点空盒回退，并在 `PR-31` 用 $\ge 3.0\times$ 破坏性差分测试锁死。
 
 #### [RV-14 | P0] RFC 0061 算子复用纠偏、线性 ACEScg 主链与 PR 编号消歧
 - **问题定位**：`RFC 0061`（`PR-REFINE-01..06` + `hitl_meltdown.py`）与 `DESIGN_LOCAL_REFINEMENT`（`PR-22..24`，与 `M6` 撞车）两套 PR 方案分裂；设计稿使用 `uint8` `crop_rgb`、调用不存在的函数 `laplacian_blend` / `match_border_ring_lab` / `surgical_sequence_composite`；现有 `blend.py` 中 `composite_surgical_sequence` 忽略 `motion_vectors` 参数。

@@ -2,7 +2,7 @@
 
 - **审计基线**: `b98c6e5` (`PR #51` / `main` @ `2026-11-14`)
 - **前序审计基线**: [AUDIT-POST-REFACTOR-2026-11.md](AUDIT-POST-REFACTOR-2026-11.md) (`87e88b1`，Horizon 4 发起源头)
-- **被审核心对象**: [RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（`PR #48` / `717d40a`）、`PR #49`（`b7e5b96`）、`PR #50`（`9ce5037`）、`PR #51`（`b98c6e5`）及 Horizon 4（`M13–M16`）合入后的全量代码库
+- **被审核心对象**: [SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（`PR #48` / `717d40a`）、`PR #49`（`b7e5b96`）、`PR #50`（`9ce5037`）、`PR #51`（`b98c6e5`）及 Horizon 4（`M13–M16`）合入后的全量代码库
 - **整改落地方案**: [PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md](../plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)（Horizon 5: `PR-58 ~ PR-73`）
 - **审计模型标识**: `[gemini4]`
 
@@ -54,7 +54,7 @@
    | **`RFC 0062`** | `0062-lightweight-asset-distribution-and-dual-track-fallback.md`（L-Asset 资产分发） | `RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md`（可微逆向闭环） | 仓库规范与设计文档语义碰撞 |
    | **`RFC 0063`** | `0063-geometry-physics-and-runtime-foundational-toolkits-architecture.md`（基础几何物理工具链 CoACD/xatlas/Manifold/ozz） | `RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md`（测试、正确性与行业基准） | `#48` 新增文档继续加剧同号碰撞 |
 
-2. **`GOVERNANCE.md` 规范违例（[RFC-0063](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)）**：
+2. **`GOVERNANCE.md` 规范违例（[SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)）**：
    - 元数据状态为非法值 `Proposed (v1.0)`，缺失创建日期、作者/审核人、`Alternatives Considered`、`4-Repo Readiness Matrix` 与 `Landing Matrix`（仅在第 6 节给出了过时/错位的 Horizon 4 Mermaid 图）。
    - 第 6 节将 **10 个 GSO 黄金资产与 TRELLIS/Hunyuan3D 雷达图**归入已收口的 `PR-54 / PR-57`（`M15–M16`），将 `pytest <= 20s` 归于 `PR-48`、Quad 与 `.bazelignore` 归于 `PR-50`——不仅与 [PLAN-M13-M16](../plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) 职责编号错位，且该 10 个 GSO 资产、真实 HF 下载器与 `<= 30s` 测试分层迄今均未完整落地。
 
@@ -79,7 +79,7 @@
    - [bench_runner.py:191](../../python/synapse/pipeline/bench_runner.py#L191) 将 `scenario.asset.id` 直接传入 `load_mesh()`，导致全部 6 个 `humanoid_53` 相关场景加载失败（而测试用例通过仅因吞错或单测隔离）；更严重的是，[bench_runner.py:486-501](../../python/synapse/pipeline/bench_runner.py#L486-L501) 在计算几何/法线指标时用**生成帧亮度代理深度**与 **`gen_f * 2 - 1` 代理世界法线**直接同真实 GT 比较，不具备真实几何测量意义。
 
 2. **Track 2（物理条件可控视频，对标 Wan 2.1 / CogVideoX / HunyuanVideo）**：
-   - **文档阈值错位（SSOT 漂移）**：[RFC-0063:123](../../docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md#L123) 声称 Track-B 门禁为 `FVD <= 150.0, E_warp <= 0.015, Foot-sliding <= 0.3 cm`——该组数字实际是 [profiles.py:89,91,100](../../python/synapse/metrics/profiles.py#L89-L100) 中的 **`TRACK_A_ASSET`**；真实 `TRACK_B_VIDEO`（[profiles.py:70,72,81](../../python/synapse/metrics/profiles.py#L70-L81)）为 `temporal_warp_error = 0.020, fvd = 300.0, foot_sliding_cm = 0.5`。
+   - **文档阈值错位（SSOT 漂移）**：[SYN-RFC-0063:123](../../docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md#L123) 声称 Track-B 门禁为 `FVD <= 150.0, E_warp <= 0.015, Foot-sliding <= 0.3 cm`——该组数字实际是 [profiles.py:89,91,100](../../python/synapse/metrics/profiles.py#L89-L100) 中的 **`TRACK_A_ASSET`**；真实 `TRACK_B_VIDEO`（[profiles.py:70,72,81](../../python/synapse/metrics/profiles.py#L70-L81)）为 `temporal_warp_error = 0.020, fvd = 300.0, foot_sliding_cm = 0.5`。
    - **$E_{\text{warp}}$ 数学定义冲突**：RFC-0063 将 $E_{\text{warp}}$ 定义为光流遮挡掩码 **L1** 误差，而 [temporal.py:53-99](../../python/synapse/metrics/temporal.py#L53-L99) `_fallback_temporal_warp_error` 计算的是像素 **RMSE**（L2 开方），且 `_warn_fallback`（43–45 行）为空操作。
    - **VBench 与 FVD 覆盖度严重不足**：`fvd_feature_distance`（[temporal.py:165](../../python/synapse/metrics/temporal.py#L165)）仅计算预先传入矩阵的高斯 Fréchet 距离，缺乏真实 I3D/VideoMAE 特征提取器；[prepare_benchmark_assets.py:46-70](../../scripts/prepare_benchmark_assets.py#L46-L70) 中的 `CANONICAL_VBENCH_PROMPTS` 仅覆盖 5 个维度共 10 条 Prompt，远低于 RFC-0063 宣称的 VBench 全 16 维评测协议。
    - **`#50` Human3.6M 注册与下载器断裂**：[benchmarks.json:133-146](../../workenv/google-colab/benchmarks.json#L133-L146) 新增 `ryushinn/Human3.6M`（`source_type: huggingface`），但 `prepare_benchmark_assets.py` 完全无 HuggingFace 拉取代码，也未声明许可门禁与离线校验契约。
@@ -213,6 +213,13 @@
 ---
 
 ## 5. 缺陷修复闭环状态（Horizon 5 收官，2026-11-15）
+
+> [!NOTE]
+> **历史审计归档说明（Historical Archive Notice）**：
+> 本节所列的 18 项审计发现已于 Horizon 5（Waves 16–19, PR-58 ~ PR-73）与 Horizon 6（Waves 20–25, PR-74 ~ PR-92）全量闭环解决。后续全库架构演进与最终收敛状态请参阅：
+> - [AUDIT-POST-HORIZON5-2026-11.md](AUDIT-POST-HORIZON5-2026-11.md)
+> - [AUDIT-POST-HORIZON6-2026-11.md](AUDIT-POST-HORIZON6-2026-11.md)
+> - [PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md](../plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)
 
 全量 18 项审计缺陷已在 Horizon 5（Waves 16–19，PR-58 ~ PR-73）中全部闭环落地并通过 `ubuntu24` 严苛测试验证：
 

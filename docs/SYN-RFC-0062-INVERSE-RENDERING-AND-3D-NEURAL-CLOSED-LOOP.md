@@ -1,4 +1,4 @@
-# RFC 0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范
+# SYN-RFC-0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范
 # (3D-Guided Generation, Differentiable Inverse Rendering & Local Patching Closed-Loop Specification)
 
 > **Namespace Alias**: `SYN-RFC-0062` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0062`.
@@ -10,8 +10,8 @@
 - **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
 - **关联生态规约**:
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`)
-  - **RFC 0060**: 真实视频逆向 3D 动态数字孪生与联合反演
-  - **RFC 0061**: 局部解剖智能修正、多模型协同融合与手术刀逆向缝合
+  - **SYN-RFC-0060**: 真实视频逆向 3D 动态数字孪生与联合反演
+  - **SYN-RFC-0061**: 局部解剖智能修正、多模型协同融合与手术刀逆向缝合
   - **FGPP v1.0**: 15 标量通道 OpenEXR 线格式 (`CameraLinearDepth.Z`, `WorldNormal.XYZ`, `Cryptomatte.ID`)
 
 ---

@@ -1,4 +1,4 @@
-# RFC 0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范
+# SYN-RFC-0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范
 
 > **Namespace Alias**: `SYN-RFC-0060` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0060`.
 
@@ -7,7 +7,7 @@
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联设计文档 (Layer B)**: [DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
 - **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M9: PR-30 ~ PR-32`)
-- **关联下游闭环**: [RFC 0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环规范](RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
+- **关联下游闭环**: [SYN-RFC-0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环规范](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
 - **跨仓 SSOT 契约**: `@aether//fgpp` (`fgpp.v1.0`), `@aether//style`, RFC 0039 (`JobBundle`), RFC 0044 (白模粗糙度底线)
 
 ---
@@ -78,7 +78,7 @@
 |---|---|---|---|
 | **多视角几何精度** | Chamfer Distance (`CD`) | $\le 0.008$ | 破坏性差分测试：错位/噪声组劣化比 $\ge 3.0\times$ |
 | **重渲染外观保真** | 线性 PSNR / 显示 sRGB SSIM | $\text{PSNR} \ge 26.0\text{ dB}$, $\text{SSIM} \ge 0.88$ | `synapse recon roundtrip --json` |
-| **时序重投影一致性** | `temporal_warp_error` (`[0,1]`) | $\le 0.020$ | 双轨往返测试套件 (`tests/test_recon_roundtrip.py`) |
+| **时序重投影一致性** | `temporal_warp_error` (`[0,1]`) | $\le 0.020$ | 双轨往返测试套件 (`tests/test_roundtrip_reconstruction.py`) |
 | **白模防呆守护** | `validate_whitebox_coarseness_floor` | 顶点 $\ge 1500$ 且含四肢关节 | 违规输入返回退出码 `10` (`CONTRACT_ERROR`) |
 | **CLI 与 JSON 契约** | `synapse recon invert-video --json` | `"status": "ok"`, `"exit_code": 0` | `tests/test_cli.py` + `tests/test_recon_*.py` |
 

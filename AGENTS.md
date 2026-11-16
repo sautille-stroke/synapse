@@ -45,6 +45,7 @@ ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts
 # Google Colab GPU 节点：必须遵循 Google Colab 与 Google Drive SSOT V2.0 铁律（零污染 MyDrive 根目录，计算存储分离）
 # 完整环境规范见 workenv/google-colab/README.md 及 architecture/google-colab-and-drive-standards.md
 bash workenv/google-colab/setup_colab.sh
+# 运行全量 E1–E4 实验（含 Wan 空间控制、ACEScg 风格、97f 因果滑窗调度与切镜重锚定、Multi-LoRA）
 python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4/checkpoints --exp all
 
 # 本地极轻量单点冒烟（仅限纯 CPU 毫秒级单测）
@@ -98,14 +99,14 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **3D 建模智能质检与精修数据飞轮设计规范**：[docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md)
 - **3D 生成模型质量提升方法论、评估体系全景矩阵与训练数据工程规范**：[docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md)
 - **3D 模型评估体系完整交付清单与 Review 指南（归档）**：[docs/archive/REVIEW_3D_EVAL_DELIVERY.md](docs/archive/REVIEW_3D_EVAL_DELIVERY.md)
-- **真实视频逆向 3D 动态数字孪生与联合反演规范 (RFC 0060)**：[RFC 0060 规范](docs/RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [详细设计](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
+- **真实视频逆向 3D 动态数字孪生与联合反演规范 (SYN-RFC-0060)**：[SYN-RFC-0060 规范](docs/SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [详细设计](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
 - **算法、训练与数据流水线攻坚执行计划 (`v2.0`)**：[docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md](docs/PLAN-ALGO-TRAINING-DATA-PIPELINE.md)
 - **PR #17 / PR #18 联合评审与整改落地报告（归档）**：[docs/archive/PLAN-REVIEW-PR17-PR18.md](docs/archive/PLAN-REVIEW-PR17-PR18.md)
 - **递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范**：[docs/DESIGN_RSI_FLYWHEEL.md](docs/DESIGN_RSI_FLYWHEEL.md)
-- **局部解剖智能修正与多模型融合设计规范 (RFC 0061)**：[RFC 0061 规范](docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
+- **局部解剖智能修正与多模型融合设计规范 (SYN-RFC-0061)**：[SYN-RFC-0061 规范](docs/SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
 - **ForgeKit 解剖局部精修工具链设计规范**：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
-- **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (RFC 0062)**：[RFC 0062 规范](docs/RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
-- **质量保障、测试验证机制与行业横向评测基准规范 (RFC 0063)**：[RFC 0063 规范](docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [落地计划 (PLAN-M17-M20)](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)
+- **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (SYN-RFC-0062)**：[SYN-RFC-0062 规范](docs/SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
+- **质量保障、测试验证机制与行业横向评测基准规范 (SYN-RFC-0063)**：[SYN-RFC-0063 规范](docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [落地计划 (PLAN-M17-M20)](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
