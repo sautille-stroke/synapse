@@ -292,3 +292,95 @@ class TestCoverageSmokeTest:
         out = apply_surgical_mask(bg, fg, alpha)
         assert out.shape == (h, w, 3)
         assert out.dtype == np.uint8
+
+
+# =========================================================================
+# TestPR96CompositeHardening
+# =========================================================================
+
+
+class TestPR96CompositeHardening:
+    """Rigorous verification tests for PR-96 detector, EDT, and coordinate fixes."""
+
+    def test_exact_euclidean_distance_transform(self) -> None:
+        """EDT produces exact Euclidean distances with accuracy < 1e-6."""
+        from synapse.render_core.morphology import exact_euclidean_distance_transform
+
+        mask = np.zeros((32, 32), dtype=bool)
+        mask[10, 10] = True
+
+        edt = exact_euclidean_distance_transform(mask)
+        assert edt[10, 10] == 0.0
+        assert abs(edt[10, 11] - 1.0) < 1e-6
+        assert abs(edt[11, 10] - 1.0) < 1e-6
+        assert abs(edt[13, 14] - 5.0) < 1e-5  # dx=4, dy=3 -> sqrt(16+9) = 5.0
+
+    def test_ground_violation_tight_bbox(self) -> None:
+        """Ground violation must return tight non-zero bounding box matching violating entity pixels."""
+        from synapse.composite.detector import _detect_ground_violation
+
+        w, h, t_count = 64, 64, 3
+        cam = _make_camera(w, h)
+        # Identity camera-to-world matrix looking down -Z, +Y is up
+        cam.world_matrix = np.eye(4, dtype=np.float32)
+
+        frames: list[FGPPFrame] = []
+        for i in range(t_count):
+            # Depth = 2.0 everywhere
+            depth = np.full((h, w), 2.0, dtype=np.float32)
+            cid = np.zeros((h, w), dtype=np.uint32)
+            # Entity 1 is located in bottom region of image (py > cy -> y_cam < 0 -> world_y < 0)
+            # Box: y in [45, 55], x in [20, 35]
+            cid[45:55, 20:35] = 1
+
+            frame = FGPPFrame(
+                camera=cam,
+                depth=depth,
+                frame_index=i,
+                cryptomatte_id=cid,
+            )
+            frames.append(frame)
+
+        # Ground plane at Y = -0.1
+        defects = _detect_ground_violation(frames, ground_y=-0.1)
+        assert len(defects) == 1
+        d = defects[0]
+        assert d.defect_type == "ground_violation"
+        assert d.entity_id == 1
+        # Bbox should tightly enclose [20, 35] in X and [45, 55] in Y
+        x1, y1, x2, y2 = d.bbox_xyxy
+        assert x1 == 20
+        assert y1 == 45
+        assert x2 == 35
+        assert y2 == 55
+        assert d.bbox_xyxy != (0, 0, 0, 0)
+        assert d.severity_score > 0.0
+
+    def test_simple_warp_backward(self) -> None:
+        """_simple_warp must perform backward warping dst(x,y) = src(x - mv_x, y - mv_y)."""
+        from synapse.composite.detector import _simple_warp
+
+        h, w = 32, 32
+        frame = np.zeros((h, w), dtype=np.float32)
+        # Place a bright pixel at (x=10, y=10)
+        frame[10, 10] = 1.0
+
+        # Motion vector: dx = 3, dy = 4 (pixel moves to x=13, y=14)
+        mv = np.zeros((h, w, 2), dtype=np.float32)
+        mv[..., 0] = 3.0
+        mv[..., 1] = 4.0
+
+        warped = _simple_warp(frame, mv)
+        # In destination frame, the bright pixel should appear at (x=13, y=14)
+        assert warped[14, 13] == 1.0
+        assert warped[10, 10] == 0.0
+
+    def test_block_mean_remainder_blocks(self) -> None:
+        """_block_mean handles non-16-divisible dimensions correctly without dropping edges."""
+        from synapse.composite.detector import _block_mean
+
+        # Image of size 35x35 with block size 16 -> (3, 3) blocks
+        img = np.ones((35, 35), dtype=np.float32)
+        bmean = _block_mean(img, 16)
+        assert bmean.shape == (3, 3)
+        np.testing.assert_allclose(bmean, 1.0, atol=1e-6)

@@ -20,9 +20,8 @@ import numpy as np
 
 from synapse.render_core.morphology import (
     binary_dilation as _binary_dilation,
-)
-from synapse.render_core.morphology import (
     circular_structuring_element as _circular_structuring_element,
+    exact_euclidean_distance_transform,
 )
 
 # ---------------------------------------------------------------------------
@@ -62,37 +61,6 @@ def _directional_structuring_element(
             se[y, x] = True
 
     return se
-
-
-def _distance_transform(mask: np.ndarray) -> np.ndarray:
-    """Euclidean distance from each pixel to the nearest True pixel.
-
-    Uses ``scipy.ndimage.distance_transform_edt`` when available.
-    Falls back to a chamfer-style 2-pass approximation.
-    """
-    try:
-        from scipy.ndimage import distance_transform_edt
-        return np.asarray(distance_transform_edt(~mask).astype(np.float32))
-    except ImportError:
-        pass
-
-    # Chamfer 2-pass approximation.
-    h, w = mask.shape
-    dist = np.full((h, w), dtype=np.float32, fill_value=float(h + w))
-    dist[mask] = 0.0
-    for y in range(h):
-        for x in range(w):
-            if y > 0:
-                dist[y, x] = min(dist[y, x], dist[y - 1, x] + 1.0)
-            if x > 0:
-                dist[y, x] = min(dist[y, x], dist[y, x - 1] + 1.0)
-    for y in range(h - 1, -1, -1):
-        for x in range(w - 1, -1, -1):
-            if y < h - 1:
-                dist[y, x] = min(dist[y, x], dist[y + 1, x] + 1.0)
-            if x < w - 1:
-                dist[y, x] = min(dist[y, x], dist[y, x + 1] + 1.0)
-    return dist
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +138,7 @@ def generate_surgical_mask(
     if feather_width <= 0 or not np.any(combined):
         return np.asarray(combined.astype(np.float32))
 
-    dist = _distance_transform(combined)
+    dist = exact_euclidean_distance_transform(combined)
     alpha = np.ones_like(dist)
 
     # Feather zone: outside the hard mask but within feather_width.

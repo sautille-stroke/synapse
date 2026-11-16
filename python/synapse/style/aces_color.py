@@ -20,6 +20,7 @@ __all__ = [
     "linear_srgb_to_acescg",
     "acescg_to_linear_srgb",
     "soft_knee_inverse_tonemap",
+    "soft_knee_forward_tonemap",
     "rgb_to_cielab",
     "ciede2000_delta_e",
 ]
@@ -79,8 +80,9 @@ _SRGB_A: float = 0.055
 
 def _fallback_srgb_to_linear(srgb: np.ndarray) -> np.ndarray:
     s = np.asarray(srgb, dtype=np.float64)
-    low = s / _SRGB_LINEAR_SLOPE
-    high = ((s + _SRGB_A) / (1.0 + _SRGB_A)) ** _SRGB_GAMMA
+    s_clipped = np.clip(s, 0.0, None)
+    low = s_clipped / _SRGB_LINEAR_SLOPE
+    high = np.power(np.clip((s_clipped + _SRGB_A) / (1.0 + _SRGB_A), 0.0, None), _SRGB_GAMMA)
     return np.where(s <= _SRGB_THRESHOLD, low, high)
 
 
@@ -95,11 +97,17 @@ def _fallback_linear_to_srgb(linear: np.ndarray) -> np.ndarray:
 
 # --- Linear sRGB ↔ ACEScg (Bradford D65→D60 AP1) ------------------
 
-_M_SRGB_TO_ACESCG: np.ndarray = np.array([
+# Unnormalized Rec.709 D65 to ACEScg D60 matrix
+_M_SRGB_TO_ACESCG_RAW: np.ndarray = np.array([
     [0.6131324, 0.3395380, 0.0474166],
     [0.0701243, 0.9163940, 0.0134853],
     [0.0206155, 0.1095698, 0.8697794],
 ], dtype=np.float64)
+
+# Row-normalize to enforce exact D65 white point preservation: M @ [1, 1, 1] == [1, 1, 1]
+_M_SRGB_TO_ACESCG: np.ndarray = (
+    _M_SRGB_TO_ACESCG_RAW / _M_SRGB_TO_ACESCG_RAW.sum(axis=1, keepdims=True)
+)
 
 _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
 
@@ -114,7 +122,7 @@ def _fallback_acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
     return np.asarray(arr @ _M_ACESCG_TO_SRGB.T)
 
 
-# --- Soft-knee inverse tonemapping ---------------------------------
+# --- Soft-knee inverse and forward tonemapping ---------------------
 
 _SOFT_KNEE_THRESHOLD: float = 0.8
 _SOFT_KNEE_ACCEL: float = 1.0
@@ -139,6 +147,25 @@ def _fallback_soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
     return result
 
 
+def _fallback_soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
+    """Forward soft-knee tonemap mapping HDR linear values back to [0, 1].
+
+    Exact algebraic inverse of ``_fallback_soft_knee_inverse_tonemap``.
+    Below ``t_knee`` (0.8): identity ``f(y) = y``.
+    Above ``t_knee``: solves quadratic equation ``a * u^2 + u - (y - t) = 0``
+    where ``u = x - t``:
+    ``x = t + (sqrt(1 + 4*a*(y - t)) - 1) / (2*a)``.
+    """
+    y = np.asarray(hdr_linear, dtype=np.float64)
+    y = np.where(np.isfinite(y), y, 0.0)
+    y_clipped = np.clip(y, 0.0, None)
+    excess = np.clip(y_clipped - _SOFT_KNEE_THRESHOLD, 0.0, None)
+    disc = np.clip(1.0 + 4.0 * _SOFT_KNEE_ACCEL * excess, 0.0, None)
+    u = (np.sqrt(disc) - 1.0) / (2.0 * _SOFT_KNEE_ACCEL)
+    high = _SOFT_KNEE_THRESHOLD + u
+    return np.where(y_clipped <= _SOFT_KNEE_THRESHOLD, y_clipped, high)
+
+
 # --- CIE Lab and CIEDE2000 -----------------------------------------
 
 _M_SRGB_TO_XYZ: np.ndarray = np.array([
@@ -158,10 +185,11 @@ _LAB_DELTA_CU: float = _LAB_DELTA ** 3
 
 def _lab_f(t: np.ndarray) -> np.ndarray:
     """CIE Lab forward nonlinearity."""
+    t_clipped = np.clip(t, 0.0, None)
     return np.where(
-        t > _LAB_DELTA_CU,
-        np.cbrt(t),
-        t / (3.0 * _LAB_DELTA_SQ) + 4.0 / 29.0,
+        t_clipped > _LAB_DELTA_CU,
+        np.cbrt(t_clipped),
+        t_clipped / (3.0 * _LAB_DELTA_SQ) + 4.0 / 29.0,
     )
 
 
@@ -362,6 +390,22 @@ def soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
     # soft_knee_inverse_tonemap has no direct upstream equivalent — always
     # use the local implementation.  No deprecation warning needed.
     return _fallback_soft_knee_inverse_tonemap(ldr_linear)
+
+
+def soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
+    """Apply soft-knee forward tonemapping — exact inverse of soft_knee_inverse_tonemap.
+
+    - When L <= 0.8: output = L (identity)
+    - When L > 0.8: solves a*u^2 + u - (L-0.8) = 0 for u = x - 0.8
+    - C1 continuous at L = 0.8, strictly monotonic, no NaN/Inf.
+
+    Args:
+        hdr_linear: Input linear HDR values. Any shape.
+
+    Returns:
+        Forward-tonemapped array, same shape, compressed into display range.
+    """
+    return _fallback_soft_knee_forward_tonemap(hdr_linear)
 
 
 def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
