@@ -30,7 +30,7 @@ flowchart LR
         Detect --> Run["colab_runner.py --exp all"]
         Run --> E1["E1: 7通道空间控制消融"]
         Run --> E2["E2: ACEScg风格与16px手术刀合成"]
-        Verify --> E3["E3: 97帧滑窗 (ubuntu24 only)"]
+        Run --> E3["E3: 97帧因果滑窗调度与切镜重锚定"]
         Run --> E4["E4: WebDataset分片与Multi-LoRA"]
     end
 
@@ -128,6 +128,8 @@ python scripts/colab_runner.py \
   --job-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/exp01-wan-lora \
   --exp all
 ```
+
+> **说明**：`--exp all` 依次全量执行 E1（Wan 7 通道条件控制消融）、E2（ACEScg 风格锁与 16px 手术刀合成消融）、E3（97 帧长时序因果滑窗调度与切镜重锚定）以及 E4（FeatureStore WebDataset 分片与 Multi-LoRA 正交合并），并在每个阶段完成后向 Google Drive 实时保存 Checkpoint。
 
 ---
 

@@ -1,4 +1,4 @@
-# RFC 0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划
+# SYN-RFC-0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划
 # (Local Anatomical Refinement, Multi-Model Fusion & Industrial Scalpel Stitching Specification & Plan)
 
 > **Namespace Alias**: `SYN-RFC-0061` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0061`.
@@ -12,10 +12,9 @@
 - **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M10: PR-33 ~ PR-37`)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
-  - **RFC 0044**: 15 分钟 HITL 工程熔断机制与白模粒度守护（复用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker`）
-  - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`) 与人机协同 (`HITL`) 跨仓编排规约
+  - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`)、白模粒度守护与 15 分钟 HITL 工程熔断机制（复用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker`）
   - **RFC 0058**: OpenUSD Hydra、MaterialX / OpenPBR 1.0 与 ACEScg 跨平台架构
-  - **RFC 0060**: 真实视频逆向 3D 动态数字孪生与联合反演设计规范
+  - **SYN-RFC-0060**: 真实视频逆向 3D 动态数字孪生与联合反演设计规范
   - **FGPP v1.0**: 15 标量通道 OpenEXR 线格式 (`34 B/px`，含 `CameraLinearDepth.Z`, `WorldNormal.XYZ`, `Cryptomatte.ID`)
 - **目标受众**: 神经渲染算法工程师、角色与绑定技术总监 (TD)、视觉特效 (VFX) 合成专家、无状态 Worker 编排 Agent
 
@@ -101,7 +100,7 @@ flowchart TD
 | 层级 | 子系统模块 | 核心职责 | 关键契约与输出 |
 |---|---|---|---|
 | **Layer 1** | 时空 ROI 追踪与 Tile Bypass (`synapse.refine.roi_tracker`, `tiled_executor.py`) | 实体定位、卡尔曼平滑 BBox 与背景直通 | 仅对缺陷时空 ROI 提取 $512 \times 512$ 标准切片，记录仿射矩阵 $\mathbf{M}$ 与 $\mathbf{M}^{-1}$；背景直通（Bypass）不消耗 GPU |
-| **Layer 2** | 解剖几何硬先验投影体系 (`synapse.refine.hand`, `synapse.refine.face`, `hair_groom.py`, `body_garment.py`) | 3D 骨骼/深度/法线先验注入与身份画廊 | 手部 FGPP 3D 深度/法线直通（或 MANO 3D Mesh）；面部 4 机位正交锚定画廊；毛发头皮生长场与发流导引线；人体与衣物分层解耦与 SDF 零穿模（$\delta \ge 2.0\,\text{mm}$） |
+| **Layer 2** | 解剖几何硬先验投影体系 (`synapse.refine.hand`, `synapse.refine.face`；注：`hair_groom` 与 `body_garment` 规划于 Non-Goal / Future Scope) | 3D 骨骼/深度/法线先验注入与身份画廊 | 手部 FGPP 3D 深度/法线直通（或 MANO 3D Mesh）；面部 4 机位正交锚定画廊；未来扩展：毛发导引线与衣物分层解耦 SDF |
 | **Layer 3** | 多模型协同融合矩阵核 (`synapse.refine.fusion`) | 异构专修模型输出频域与空域融合 | 频域分解（拉普拉斯金字塔）、串行级联、采样轨迹解耦、空间置信度加权以及泊松梯度域融合，输出高质量 $512 \times 512$ 融合图块 |
 | **Layer 4** | 物理级手术刀逆向缝合器 (`synapse.refine.stitcher`, `gates.py`) | 逆向仿射变换、色彩传递与时序阻尼 | $\mathbf{M}^{-1}$ 逆仿射、16px 运动自适应余弦羽化掩膜、边界环 CIE LAB 色彩空间传递（$\Delta E_{00} \le 2.0$）、ACEScg 浮点光学增量叠加与光流/EMA 时序高频抖动阻尼 |
 
@@ -162,7 +161,7 @@ Level 3: 3D 骨架重定与资产回滚 (DCC Rigging) ── Blender/Maya 微调
 | **时序跳变度** | `temporal_warp_error` (`[0,1]` 归一化光流 RMSE) | Hero $\le 0.015$；Wide $\le 0.020$ | 增大时序 EMA 衰减系数 $\alpha$，启用光流引导 Warp |
 | **单镜头算力熔断** | 全流程累计推理/人工耗时 | $\le 900.0\text{ s}$ (`evaluate_hitl_circuit_breaker`) | 触发 `CircuitBreakerError` (退出码 `40`) 保存 Checkpoint |
 
-- **非目标 (Non-Goals)**：不在全局视频扩散阶段常驻加载所有专修大模型；不在 `synapse` 侧实现 Electron UI 或常驻 HTTP 预览服务（UI 归属 `@dervgen/forgekit-anatomical-refine`，经 RFC 0039 `JobBundle` 通信）。
+- **非目标 (Non-Goals)**：不在全局视频扩散阶段常驻加载所有专修大模型；不在 `synapse` 侧实现 Electron UI 或常驻 HTTP 预览服务（UI 归属 `@dervgen/forgekit-anatomical-refine`，经 RFC 0039 `JobBundle` 通信）；毛发导引重绘 (`hair_groom`) 与衣物穿模约束 (`body_garment`) 明确归入后续 Future Scope，本阶段核心聚焦于手部 (`HAND`) 与脸部 (`FACE`)。
 - **备选方案权衡**：选用独立 512×512 Tile 切片 + `M⁻¹` 手术刀缝合（而非全画幅 Latent Inpainting），原因在于全画幅受限于 `Wan 2.1` 全局分辨率与高显存占用，难以保留毛孔与指节微观高频纹理；且独立切片便于无损旁路（Bypass）未退化帧。
 
 ### 5.2 Hard Negative 坏样例与数据飞轮闭环 (RSI Integration)

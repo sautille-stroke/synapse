@@ -3,7 +3,7 @@
 - **计划版本**: `Completed Horizon-5 Landing Blueprint (v1.1) - 100% Merged & Verified`
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 5 / Waves 16–19，**M17–M20** 共 4 大里程碑、**16 个原子 PR**，已全量收官）
 - **问题源头审计**: [docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](../audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)（基线 `b98c6e5`，全量 `5×P0 + 8×P1 + 5×P2` 缺陷已 100% 修复闭环）
-- **关联规范**: [docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（状态已更新为 `Implemented`）
+- **关联规范**: [docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（状态已更新为 `Implemented`）
 - **修订日期**: `2026-11-15`
 - **操作模型标识**: `[gemini3.8]`
 
@@ -11,7 +11,7 @@
 
 ## 1. 阶段总览、依赖拓扑与并行波次
 
-Horizon 5 承接 Horizon 4 的未闭环欠账（尤其是完全未实施的 `PR-55`、`#47` 破坏的原生编译链路、`#48/#50` 的 Colab/L-Asset 数据集基建缺陷），并系统性兑现 [RFC-0063](../RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) 的 5 层测试金字塔与 4 轨道行业横向评测规范。
+Horizon 5 承接 Horizon 4 的未闭环欠账（尤其是完全未实施的 `PR-55`、`#47` 破坏的原生编译链路、`#48/#50` 的 Colab/L-Asset 数据集基建缺陷），并系统性兑现 [SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) 的 5 层测试金字塔与 4 轨道行业横向评测规范。
 
 ```mermaid
 flowchart LR
@@ -75,7 +75,7 @@ flowchart LR
 - **涉及文件**：
   - `docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md`
   - `docs/RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md`
-  - `docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md`
+  - `docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md`
   - `docs/AUDIT_AND_ARCHITECTURE.md`（追加本地 RFC 与 `all-overview/rfcs/` 对照注册表）
 - **核心变更**：
   1. 在 `RFC-0061`、`RFC-0062`、`RFC-0063` 顶部显式标注仓内命名空间 alias（如 `SYN-RFC-0061 / 0062 / 0063`）与生态权威 `all-overview/rfcs/0061..0063` 的语义区分说明（或按生态治理决议重编号并保留向后跳转说明），消除 Agent/开发者检索混淆。
@@ -396,7 +396,7 @@ flowchart LR
   - `.agents/skills/synapse-fgpp-and-datasets/SKILL.md`
   - `.agents/skills/synapse-adapters-and-experiments/SKILL.md`
   - `docs/IMPLEMENTATION_PLAN.md`, `docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md`
-  - `docs/RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md`（状态更新为 `Implemented`）
+  - `docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md`（状态更新为 `Implemented`）
 - **核心变更**：
   1. 修正 `.agents/skills/synapse-overview/SKILL.md:68` 中虚构异常名 `QualityGateCircuitBreakerError` 为 `CircuitBreakerError` / `QualityGateError`，并同步 `csrc/geometry` 已委托 `@aether//geo`、新增 L-Asset `assets/assets_manifest.json`、快测试 `<= 30s` 与 `warn_return_any = true` 等最新基线。
   2. 执行 Horizon-5 收官全绿验收后，更新总计划与子计划中 `PR-58 ~ PR-73` 及相关 H4 修正项为最终真实 `✅ 已合入`。

@@ -2,7 +2,7 @@
 # (Anatomical Refinement Tooling Specification: Unreal Engine & Blender Benchmarks in ForgeKit)
 
 - **文档状态**: `Approved Design Specification (v1.0)`
-- **关联 RFC**: [RFC 0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划](RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
+- **关联 RFC**: [SYN-RFC-0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
 - **关联仓库**: `forgekit`（DCC 3D UI/UX 组件库）、`synapse`（Layer 2 算法 SDK 与无状态执行核）、`fulgur`（Track B 物理渲染视口）、`grand-studio` / `scene-forge` / `asset-forge`（上层桌面工坊）
 - **对标基准**: Unreal Engine 5.4+ (Control Rig, MetaHuman Animator, MRQ) & Blender 4.2+ (Pose Library, Sculpt Pose Brush, Cryptomatte Compositor)
 - **目标受众**: 3D 交互前端工程师、技术美术 (TA/TD)、角色与绑定专家、自动化流水线 Agent

@@ -75,7 +75,7 @@ for sample in iter_feature_shards(shard_paths):
 3. **三级质检分流与 15 分钟熔断**：
    - `L0`（全自动放行）$\to$ `L1`（算法自动自愈：法线重算、流形修复、反照率去高光裁剪）$\to$ `L2`（导出 `.inspection.tar.zst` 交由人工精修，单资产/单镜头超时 **15 分钟** 立即触发退出码 `40` 工程熔断降级）。
 4. **RSI 闭环演进 (`synapse.rsi`)**：
-   - 结合物理渲染一致性奖励（几何 Chamfer、材质能量守恒、骨骼骨长零漂移）与 `ReplayBuffer` 20% 历史黄金锚点混采，防止多轮自演进出现色彩过饱和或高频伪影坍缩。
+   - 结合物理渲染一致性奖励（几何 Chamfer、材质能量守恒、骨骼骨长零漂移）与 `PreferenceDatasetBuilder`（强制混采 $\ge 20\%$ 历史黄金锚点对，杜绝灾难性遗忘）、`CurriculumManager` 自适应难度调度以及 `evaluate_monotonic_promotion` 单调晋级门禁。
 
 ---
 

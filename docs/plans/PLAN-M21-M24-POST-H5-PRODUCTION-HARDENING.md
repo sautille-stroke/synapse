@@ -436,7 +436,7 @@ flowchart LR
   - `.github/workflows/ci.yml`（新增）
   - `.gitignore`, `pyproject.toml`（扩充 `[tool.ruff.lint] select` 至 `E4, E7, E9, F, I, UP, B, SIM, RUF`）
   - `schemas/inspection.v1.0.schema.json` -> `schemas/inspection.v2.0.schema.json`（保留 v1 别名兼容）
-  - `docs/RFC-0060*.md` ~ `docs/RFC-0063*.md`, `docs/plans/*`, `docs/IMPLEMENTATION_PLAN.md`, `AGENTS.md`, `README.md`, `.agents/skills/*/SKILL.md`
+  - `docs/SYN-RFC-0060*.md` ~ `docs/SYN-RFC-0063*.md`, `docs/plans/*`, `docs/IMPLEMENTATION_PLAN.md`, `AGENTS.md`, `README.md`, `.agents/skills/*/SKILL.md`
 - **核心工程变更**：
   1. 新增 `.github/workflows/ci.yml`：定义 `python-fast`（`ruff check`、`mypy`、`wire_guard --check`、`import_dag_guard --check`、`SYNAPSE_CI_STRICT_DEPS=1 pytest -m 'not slow'`）、`native-bazel`（`csrc/geometry` & `tools/data-inspector/native` `bazel test //... --config=opt`）与 `electron-inspector`（`node test-bundle-loading.js`）多作业自动门禁，锁死 Horizon 1–6 全仓质量基线。
   2. 消除 `SYN-RFC-0061..0063` canonical 指针冲突：与生态 `all-overview/rfcs/` 注册表协同，将本地 `SYN-RFC-0061..0063` 明确映射至无冲突生态编号（或明确标为仓内专用 Design-RFC 并停止指向无关 `all-overview/rfcs/0061..0063`），并补齐 `rfc-design-governance` 要求的作者、日期、备选方案与跨仓就绪矩阵元数据。

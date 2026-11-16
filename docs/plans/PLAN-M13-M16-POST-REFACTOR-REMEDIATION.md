@@ -295,7 +295,7 @@ flowchart LR
   - `[MODIFY]` [tools/wire_guard.py](../../tools/wire_guard.py)
     - 新增对 OpenEXR 15 通道逐通道 **`PixelType`**（`HALF` vs `FLOAT` vs `UINT32` 逐字段精确解析 C++ 头文件枚举）的强校验；
     - 新增对 `@aether//style` `StyleProfile v2.0.0` 核心字段与 Pydantic 模型一致性校验，以及上述 4 个跨语言 JSON Schema 与 Python 数据模型/TS 解析方的对齐校验（含 `synapse.refine` `forgekit` 会话协议）。
-  - `[MODIFY]` [docs/RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](../RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [docs/RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](../RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [docs/RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](../RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)（与 `all-overview/rfcs/` 对齐：按 `rfc-design-governance` 规范将仓内 RFC 转为指向生态 SSOT 的瘦身决策摘要 `<= 500` 行，具体模块实现细节全部收敛至对应 `DESIGN_*.md`）。
+  - `[MODIFY]` [docs/SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](../SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [docs/SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](../SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [docs/SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](../SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)（与 `all-overview/rfcs/` 对齐：按 `rfc-design-governance` 规范将仓内 RFC 转为指向生态 SSOT 的瘦身决策摘要 `<= 500` 行，具体模块实现细节全部收敛至对应 `DESIGN_*.md`）。
   - `[NEW]` `tests/test_wire_schemas.py`
 - **`ubuntu24` 验收命令与门禁断言**:
   ```bash
