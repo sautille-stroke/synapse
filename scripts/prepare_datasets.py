@@ -22,7 +22,6 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -69,6 +68,15 @@ def _export_fulgur_course102(
         f"--fgpp-frames={num_frames}",
     ]
     subprocess.run(cmd, cwd=str(fulgur_repo), check=True)
+
+    meta_path = out_dir / "metadata.json"
+    if meta_path.is_file():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["fps"] = 24.0
+        for f in meta.get("frames", []):
+            if "frame_index" in f:
+                f["timestamp_sec"] = f["frame_index"] / 24.0
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 def _build_long_horizon_97f_from_base(
@@ -131,6 +139,7 @@ def _build_long_horizon_97f_from_base(
     meta_97["scene_id"] = "fulgur_course102_97f"
     meta_97["total_frames"] = 97
     meta_97["num_frames"] = 97
+    meta_97["fps"] = 24.0
     meta_97["frames"] = frames_meta
     (out_97f_dir / "metadata.json").write_text(
         json.dumps(meta_97, indent=2), encoding="utf-8"
@@ -144,42 +153,39 @@ def _export_caelum_track_a_17f(
     width: int = 832,
     height: int = 480,
 ) -> None:
-    """Export 17-frame Track-A FGPP + Beauty GT using caelum.camera.fgpp_exporter."""
-    if str(caelum_repo) not in sys.path:
-        sys.path.insert(0, str(caelum_repo))
-
-    from caelum.camera.aov import AOVBuffer, AOVType, cryptomatte_name_hash
-    from caelum.camera.camera import PinholeCamera
-    from caelum.camera.fgpp_exporter import FgppFrameInput, export_fgpp_sequence
+    """Export 17-frame Track-A FGPP + Beauty GT using self-contained FGPP generator."""
+    import Imath
+    import OpenEXR
+    from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
+    from synapse.render_core.rasterizer import entity_hash
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
     nx_grid = (xx - width * 0.5) / (width * 0.5)
     ny_grid = (height * 0.5 - yy) / (height * 0.5)
 
-    hero_hash = cryptomatte_name_hash("hero_character")
-    prop_hash = cryptomatte_name_hash("chrome_orb")
-    bg_hash = cryptomatte_name_hash("studio_stage")
+    hero_hash = entity_hash("hero_character")
+    prop_hash = entity_hash("chrome_orb")
+    bg_hash = entity_hash("studio_stage")
 
-    inputs: list[FgppFrameInput] = []
+    frames: list[FGPPFrame] = []
+    beauty_list: list[np.ndarray] = []
+
+    fov_deg = 50.0
+    theta_half = math.radians(fov_deg) * 0.5
+    fy = (height * 0.5) / max(math.tan(theta_half), 1e-8)
+    fx = fy
+    cx = width * 0.5
+    cy = height * 0.5
+    aspect = float(width) / float(height)
+    sensor_height_mm = 20.25
+    sensor_width_mm = sensor_height_mm * aspect
+    focal_length_mm = (sensor_height_mm * 0.5) / max(math.tan(theta_half), 1e-8)
+
     for idx in range(num_frames):
-        aov = AOVBuffer(
-            width,
-            height,
-            aov_types=[
-                AOVType.BEAUTY,
-                AOVType.ALBEDO,
-                AOVType.NORMAL,
-                AOVType.DEPTH,
-                AOVType.DIFFUSE_DIRECT,
-                AOVType.SPECULAR_DIRECT,
-                AOVType.CRYPTOMATTE_OBJECT,
-                AOVType.MOTION_VECTOR,
-            ],
-        )
-
         # Animated hero sphere + secondary orb on studio floor
         cx1 = -0.25 + 0.015 * idx
         cy1 = 0.05 * math.sin(0.3 * idx)
@@ -229,66 +235,108 @@ def _export_caelum_track_a_17f(
         ).astype(np.float32)
         indirect_gi = albedo * 0.22
         beauty = diff_dir + spec_dir + indirect_gi
+        beauty_list.append(beauty)
 
         # Cryptomatte ID
-        crypto = np.zeros((height, width, 2), dtype=np.float32)
-        crypto[..., 0] = bg_hash
-        crypto[..., 1] = 1.0
-        crypto[mask_hero, 0] = hero_hash
-        crypto[mask_orb, 0] = prop_hash
+        crypto_id = np.full((height, width), bg_hash, dtype=np.uint32)
+        crypto_id[mask_hero] = hero_hash
+        crypto_id[mask_orb] = prop_hash
 
         # Motion Vector
         mv = np.zeros((height, width, 2), dtype=np.float32)
         mv[mask_hero, 0] = 0.015 * width * 0.5
         mv[mask_orb, 0] = -0.010 * width * 0.5
 
-        # Populate AOVBuffer directly via internal arrays for fast 832x480 generation
-        for aov_t, arr in (
-            (AOVType.DEPTH, depth),
-            (AOVType.ALBEDO, albedo),
-            (AOVType.NORMAL, normals),
-            (AOVType.DIFFUSE_DIRECT, diff_dir),
-            (AOVType.SPECULAR_DIRECT, spec_dir),
-            (AOVType.BEAUTY, beauty),
-            (AOVType.CRYPTOMATTE_OBJECT, crypto),
-            (AOVType.MOTION_VECTOR, mv),
-        ):
-            aov._buffers[aov_t][:] = arr
-            aov._sample_counts[aov_t].fill(1.0)
-
+        # Roughness / Metallic
         rough = np.full((height, width), 0.6, dtype=np.float32)
         rough[mask_hero] = 0.35
         rough[mask_orb] = 0.08
         metal = np.zeros((height, width), dtype=np.float32)
         metal[mask_orb] = 0.92
+        rough_metal = np.stack([rough, metal], axis=-1)
 
-        cam = PinholeCamera.from_look_at(
-            eye=(0.05 * idx, 1.8, 6.5),
-            target=(0.0, 0.2, 0.0),
-            up=(0.0, 1.0, 0.0),
+        # Camera extrinsics (LookAt)
+        eye = np.array([0.05 * idx, 1.8, 6.5], dtype=np.float64)
+        target = np.array([0.0, 0.2, 0.0], dtype=np.float64)
+        up_vec = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        fwd = target - eye
+        fwd = fwd / np.linalg.norm(fwd)
+        r_vec = np.cross(fwd, up_vec)
+        r_vec = r_vec / np.linalg.norm(r_vec)
+        u_vec = np.cross(r_vec, fwd)
+
+        R = np.stack([r_vec, u_vec, -fwd], axis=0)
+        t = -R @ eye
+        view_mat = np.eye(4, dtype=np.float64)
+        view_mat[:3, :3] = R
+        view_mat[:3, 3] = t
+        world_mat = np.linalg.inv(view_mat)
+
+        cam = CameraParams(
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
             width=width,
             height=height,
-            fov_degrees=50.0,
+            fov_degrees=fov_deg,
+            focal_length_mm=focal_length_mm,
+            sensor_width_mm=sensor_width_mm,
+            sensor_height_mm=sensor_height_mm,
+            view_matrix=view_mat,
+            world_matrix=world_mat,
+            z_near=0.1,
+            z_far=1000.0,
         )
-        inputs.append(
-            FgppFrameInput(
-                aov_buffer=aov,
+
+        frames.append(
+            FGPPFrame(
                 camera=cam,
+                depth=depth,
+                direct_radiance=(diff_dir + spec_dir).astype(np.float16),
+                world_normal=normals.astype(np.float16),
+                motion_vector=mv.astype(np.float16),
+                base_color=albedo.astype(np.float16),
+                roughness_metallic=rough_metal.astype(np.float16),
+                cryptomatte_id=crypto_id,
                 frame_index=idx,
-                roughness=rough,
-                metallic=metal,
             )
         )
 
-    export_fgpp_sequence(
-        inputs,
-        out_dir,
-        fps=24.0,
+    seq = FGPPSequence(
+        frames=frames,
         scene_id="caelum_cornell_spheres_17f",
-        spp=256,
-        max_bounces=8,
-        export_beauty_gt=True,
+        fps=24.0,
     )
+    export_fgpp(seq, out_dir)
+
+    # Write beauty GT EXR frames
+    for idx, beauty_rgb in enumerate(beauty_list):
+        beauty_path = out_dir / f"beauty_{idx:06d}.exr"
+        header = OpenEXR.Header(width, height)
+        header["compression"] = Imath.Compression(Imath.Compression.ZIP_COMPRESSION)
+        half_ch = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
+        header["channels"] = {"B": half_ch, "G": half_ch, "R": half_ch}
+        out_file = OpenEXR.OutputFile(str(beauty_path), header)
+        out_file.writePixels({
+            "R": beauty_rgb[..., 0].astype(np.float16).tobytes(),
+            "G": beauty_rgb[..., 1].astype(np.float16).tobytes(),
+            "B": beauty_rgb[..., 2].astype(np.float16).tobytes(),
+        })
+        out_file.close()
+
+    # Enrich metadata.json with Track-A specific fields
+    meta_path = out_dir / "metadata.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["generator"] = "caelum-core"
+        meta["render_track"] = "offline_pathtraced"
+        meta["spp"] = 256
+        meta["max_bounces"] = 8
+        for f_dict in meta.get("frames", []):
+            f_idx = f_dict.get("frame_index", 0)
+            f_dict["beauty_gt_file"] = f"beauty_{f_idx:06d}.exr"
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 def _summarize_sequence(seq_dir: Path) -> dict[str, Any]:

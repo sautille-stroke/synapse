@@ -244,10 +244,15 @@ def test_stage_from_remote_huggingface_returns_nonempty(tmp_path: Path) -> None:
     }
 
     def mock_hf_hub_download(
-        repo_id: str, filename: str, repo_type: str, token: Any = None, local_dir: str = "",
+        repo_id: str,
+        filename: str,
+        repo_type: str = "dataset",
+        token: Any = None,
+        local_dir: str = "",
+        **kwargs: Any,
     ) -> str:
         """Simulate downloading a file from HuggingFace Hub."""
-        dl_path = Path(local_dir) / Path(filename).name
+        dl_path = Path(local_dir) / filename
         dl_path.parent.mkdir(parents=True, exist_ok=True)
         dl_path.write_bytes(test_content)
         return str(dl_path)
@@ -303,9 +308,14 @@ def test_stage_from_remote_huggingface_rejects_sha256_mismatch(tmp_path: Path) -
     }
 
     def mock_hf_hub_download(
-        repo_id: str, filename: str, repo_type: str, token: Any = None, local_dir: str = "",
+        repo_id: str,
+        filename: str,
+        repo_type: str = "dataset",
+        token: Any = None,
+        local_dir: str = "",
+        **kwargs: Any,
     ) -> str:
-        dl_path = Path(local_dir) / Path(filename).name
+        dl_path = Path(local_dir) / filename
         dl_path.parent.mkdir(parents=True, exist_ok=True)
         dl_path.write_bytes(test_content)
         return str(dl_path)

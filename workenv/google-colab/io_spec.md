@@ -48,10 +48,9 @@
 #### 输出 (Outputs)
 - `payload`: `ConditionPayload`
   - `control_tensor`: 形状为 **`[7, T, H, W]`** 的 `float32` 张量：
-    - `ch 0`: 对数归一化线性深度 $d_{\log} \in [0.0, 1.0]$
-    - `ch 1..3`: 世界空间单位法线 $(n_x, n_y, n_z) \in [-1.0, 1.0]$（源自 FGPP `WorldNormal.XYZ`）
-    - `ch 4..5`: 归一化帧间运动向量 $(v_x, v_y) \in [-1.0, 1.0]$
-    - `ch 6`: 重投影遮挡掩码 $M_{\text{occ}} \in [0.0, 1.0]$
+    - `ch 0`: 对数归一化线性深度 $d_{\log} \in [0.0, 1.0]$（源自 `CameraLinearDepth.Z`）
+    - `ch 1..3`: 相机空间单位法线 $(n_x, n_y, n_z) \in [-1.0, 1.0]$（由 `WorldNormal.XYZ` 经当前帧 `view_matrix[:3, :3]` 旋转得到，背景无几何区为 `[0, 0, 1]`）
+    - `ch 4..6`: ACEScg 软拐点逆色调映射直接光照 $L_{\text{dir}} \in [0.0, 1.0]$（源自 `DirectRadiance.RGB` 经 `soft_knee_inverse_tonemap` 归一化）
   - `camera_embedding`: Plücker 光线几何嵌入张量 `[6, T, H, W]`（**设计规划字段，当前 `PreparedConditionPayload` 未实现**）
   - `text_prompt`: 结构化提示词（可选）
 - **消融子档输出**：
@@ -85,7 +84,7 @@
 
 ### 4. E3 阶段：97 帧长时序因果滑窗与切镜重锚定 (`synapse.adapters.scheduler`)
 
-> **注意**：E3 当前仅在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 执行无卡验证。`colab_runner.py --exp all` 不包含 E3，Colab GPU 版将在后续迭代中支持。
+> **说明**：E3 支持在 `ubuntu24`（通过 `scripts/run_cpu_verification.py`）以及 Google Colab（通过 `scripts/colab_runner.py --exp all` 或 `--exp e3`）上执行 97 帧滑窗调度与切镜重锚定验证。
 
 #### 输入 (Inputs)
 - 97 帧长时序序列：`course_102_pbr_97f`（$T=97$ 或扩展至 $T=161$）

@@ -7,29 +7,29 @@
       "scene_id": "fulgur_export",
       "relative_path": "course_102_pbr_17f",
       "num_frames": 17,
-      "fps": 59.99999687075631,
+      "fps": 24.0,
       "resolution": [
         832,
         480
       ],
       "unique_cryptomatte_ids_frame0": 37,
       "has_beauty_gt": false,
-      "metadata_sha256": "e051726eb8f93465996727294c6d6a931e53341c0db58dcb1e1d6475a8e905a2",
-      "frame_000000_sha256": "667cddd412113c9e6f7f1cc41efd930d93917f6bd819d84f4c629052f4bebf93"
+      "metadata_sha256": "e5dfd3059441500c2f9508f58266da683918f705544b661d7b6098e1c0ee0a1f",
+      "frame_000000_sha256": "ab3a2e50e6d187df66f141f716d2a397fffafdb08fafcd9cfee94e5abd7fcf99"
     },
     "track_b_course_102_pbr_97f": {
       "scene_id": "fulgur_course102_97f",
       "relative_path": "course_102_pbr_97f",
       "num_frames": 97,
-      "fps": 59.99999687075631,
+      "fps": 24.0,
       "resolution": [
         832,
         480
       ],
       "unique_cryptomatte_ids_frame0": 37,
       "has_beauty_gt": false,
-      "metadata_sha256": "b2098efc36a0d2f398d868b9671939e77c13271939fc1e7991803209a1495d0e",
-      "frame_000000_sha256": "667cddd412113c9e6f7f1cc41efd930d93917f6bd819d84f4c629052f4bebf93"
+      "metadata_sha256": "a9324d82d2c4160b4517927fbff73918f6634b000db7f42e9522b5d736aa44cb",
+      "frame_000000_sha256": "ab3a2e50e6d187df66f141f716d2a397fffafdb08fafcd9cfee94e5abd7fcf99"
     },
     "track_a_cornell_spheres_17f": {
       "scene_id": "caelum_cornell_spheres_17f",
@@ -42,8 +42,8 @@
       ],
       "unique_cryptomatte_ids_frame0": 3,
       "has_beauty_gt": true,
-      "metadata_sha256": "25bbad66c6e413857d27e3181f5582c2b4854b6c679853d6c0c994cc3bb3be0f",
-      "frame_000000_sha256": "de0835a9bd2fe03d1d4133a93fcecc52980d080e56b4039b412e6e8debf145d7"
+      "metadata_sha256": "fc91db343a5e2e6ed49accc2a77f774a2df53f2ab09493632218d397b827d503",
+      "frame_000000_sha256": "a06948149efa344cdb4d6d934c63ba3d83e919fc37a7cbb5623f60830796cf4e"
     }
   }
 }

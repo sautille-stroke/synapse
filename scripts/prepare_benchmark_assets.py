@@ -40,6 +40,11 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "python"))
+
+from synapse.errors import AssetNotFoundError
+
 DEFAULT_BENCHMARK_DIR = REPO_ROOT / "data" / "benchmarks"
 DEFAULT_LOCAL_OPEN_DATA = Path(
     os.environ.get(
@@ -406,7 +411,8 @@ def stage_from_remote_huggingface(
                 filename=hf_filename,
                 repo_type="dataset",
                 token=hf_token,
-                local_dir=str(install_dir),
+                local_dir=str(target_root),
+                local_dir_use_symlinks=False,
             )
             downloaded_path = Path(downloaded_path)
         except Exception as e:
@@ -417,15 +423,21 @@ def stage_from_remote_huggingface(
         # Per-file SHA-256 verification
         if vital_name and vital_sha256:
             check_path = install_dir / vital_name
-            if check_path.is_file():
-                actual_sha = _sha256_file(check_path)
-                if actual_sha != vital_sha256:
-                    raise ValueError(
-                        f"SHA-256 mismatch for {pkg_name}/{vital_name}: "
-                        f"expected {vital_sha256}, got {actual_sha}. "
-                        f"The downloaded file may be corrupted or tampered with. "
-                        f"agent_fix_hint: Delete {check_path} and re-run with --force."
-                    )
+            if not check_path.is_file():
+                check_path = target_root / hf_filename
+            if not check_path.is_file():
+                raise AssetNotFoundError(
+                    f"Vital file '{vital_name}' for package '{pkg_name}' not found at {check_path} after download",
+                    agent_fix_hint="Verify the HuggingFace repository structure and ensure the asset file exists.",
+                )
+            actual_sha = _sha256_file(check_path)
+            if actual_sha != vital_sha256:
+                raise ValueError(
+                    f"SHA-256 mismatch for {pkg_name}/{vital_name}: "
+                    f"expected {vital_sha256}, got {actual_sha}. "
+                    f"The downloaded file may be corrupted or tampered with. "
+                    f"agent_fix_hint: Delete {check_path} and re-run with --force."
+                )
 
         # Collect all staged files
         if downloaded_path.is_file():
@@ -563,10 +575,23 @@ def main() -> int:
         all_records.extend(local_records)
 
     # 3. Stage from remote HuggingFace / mirror fallback
-    remote_records = stage_from_remote_huggingface(
-        target_dir, tier_canonical, args.force, verbose=verbose
-    )
-    all_records.extend(remote_records)
+    try:
+        remote_records = stage_from_remote_huggingface(
+            target_dir, tier_canonical, args.force, verbose=verbose
+        )
+        all_records.extend(remote_records)
+    except (AssetNotFoundError, ValueError) as exc:
+        err_msg = str(exc)
+        if args.json:
+            print(json.dumps({
+                "status": "error",
+                "exit_code": 20,
+                "error": err_msg,
+                "agent_fix_hint": getattr(exc, "agent_fix_hint", "Verify asset integrity and redownload."),
+            }))
+        else:
+            print(f"❌ Error: {err_msg}", file=sys.stderr)
+        return 20
 
     # 4. Fail-closed check: if only VBench prompts staged and no 3D meshes staged
     has_3d_meshes = any(r["category"] in ("3d_reconstruction", "3d_reconstruction_pbr") for r in all_records)

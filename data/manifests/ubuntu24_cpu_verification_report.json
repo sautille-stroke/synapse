@@ -1,6 +1,6 @@
 {
   "environment": "ubuntu24_cpu_headless",
-  "elapsed_sec": 146.383,
+  "elapsed_sec": 129.559,
   "all_passed": true,
   "experiments": {
     "E1_fgpp_conditioning_ablation": {
@@ -21,7 +21,7 @@
         "E1-A_rgb_only": 0.0,
         "E1-B_rgb_depth": 2273.202392578125,
         "E1-C_rgb_depth_normal": 3457.888916015625,
-        "E1-D_full_7ch": 3459.798583984375
+        "E1-D_full_7ch": 3459.804931640625
       },
       "depth_channel_range": [
         0.5542954802513123,
@@ -33,7 +33,7 @@
       "style_profile_version": "style_profile.v2.0.0",
       "mask_foreground_ratio": 0.1281475360576923,
       "mean_abs_diff_before": 0.025629578158259392,
-      "mean_abs_diff_after": 0.005519339349120855
+      "mean_abs_diff_after": 0.004380364902317524
     },
     "E3_causal_sliding_window_and_shot_cut": {
       "status": "PASS",
@@ -46,8 +46,11 @@
         16
       ],
       "detected_shot_cut_frames": [
+        0,
+        48,
         64,
-        65
+        65,
+        96
       ]
     },
     "E4_feature_store_and_cryptomatte_lora": {
