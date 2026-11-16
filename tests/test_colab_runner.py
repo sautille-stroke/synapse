@@ -65,7 +65,6 @@ def _make_dummy_frame(idx: int, width: int = 64, height: int = 64) -> FGPPFrame:
     )
     return FGPPFrame(
         frame_index=idx,
-        timestamp_sec=idx / 24.0,
         camera=cam,
         depth=np.full((height, width), 5.0, dtype=np.float32),
         world_normal=np.full((height, width, 3), 0.577, dtype=np.float32),
