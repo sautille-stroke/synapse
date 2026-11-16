@@ -231,8 +231,7 @@ def _verify_e1_real_gpu(
     checkpoint_dir: Path,
 ) -> dict[str, Any]:
     """Verify E1 with real CUDA WanAdapter and diffusers pipeline."""
-    from synapse.adapters.wan import WanAdapter
-    from synapse.video.types import VideoGenerationConfig
+    from synapse.adapters import VideoGenerationConfig, WanAdapter
 
     model_id = os.environ.get("WAN_MODEL_PATH") or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
     weights_path = Path(model_id)
