@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 import synapse.recon  # noqa: F401 — registers SynapseReconBackend with bridge
 from synapse.bridge.foundary_client import (
     FoundaryRequest,
