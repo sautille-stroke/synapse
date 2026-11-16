@@ -233,6 +233,9 @@ def load_scenario(scenario_id: str) -> Scenario:
         s = Scenario.load(p)
         if s.id == scenario_id:
             return s
+        norm_id = s.id.replace("_rigid_", "_").replace("_dynamic_", "_").replace("_style_", "_")
+        if norm_id == scenario_id:
+            return s
     raise FileNotFoundError(
         f"Scenario '{scenario_id}' not found in {scenarios_dir}"
     )

@@ -1164,7 +1164,15 @@ class TestNeuralVideoGenerateTrueEXR:
             job_id="rsi-1",
             stage="rsi_dual_verify",
             outputs={"verdict": str(verdict_file)},
-            params={"sample_id": "s1", "prm_score": 0.95},
+            params={
+                "sample_id": "s1",
+                "prm_score": 0.95,
+                "physics_metrics": {
+                    "silhouette_iou": 0.95,
+                    "depth_rmse_m": 0.05,
+                    "normal_angular_error_deg": 5.0,
+                },
+            },
         )
         res_rsi = handle_rsi_dual_verify(m_rsi)
         assert "verdict" in res_rsi["output_paths"]
