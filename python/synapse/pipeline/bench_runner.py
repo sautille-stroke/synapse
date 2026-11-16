@@ -300,7 +300,7 @@ class BenchPipelineRunner:
             seed=seed,
             width=width,
             height=height,
-            num_frames=num_frames,
+            num_frames=actual_num_frames,
             fps=scenario.camera_params.get("fps", 24.0),
             guidance_scale=float(scenario.conditions.get("guidance_scale", 7.5)),
             num_inference_steps=int(scenario.conditions.get("num_inference_steps", 50)),
