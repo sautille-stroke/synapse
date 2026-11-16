@@ -474,10 +474,10 @@ class TestJobBundleWorker:
 
         weights = tmp_path / "adapter_model.safetensors"
         tensors = {
-            "lora_unet_down_blocks_0_attentions_0_proj.lora_A.weight": np.zeros(
+            "model.diffusion_model.cross_attn.to_k.lora_A.weight": np.zeros(
                 (4, 8), dtype=np.float32
             ),
-            "lora_unet_down_blocks_0_attentions_0_proj.lora_B.weight": np.zeros(
+            "model.diffusion_model.cross_attn.to_k.lora_B.weight": np.zeros(
                 (8, 4), dtype=np.float32
             ),
         }
