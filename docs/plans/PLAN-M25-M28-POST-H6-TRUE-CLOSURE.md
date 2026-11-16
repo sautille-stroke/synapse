@@ -1,10 +1,10 @@
 # M25–M28 Post-Horizon-6 真实闭环与全仓治理可执行计划 (Actionable Horizon-7 Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.4`**）
-> - **触发审计基线**: [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md)（基于 `HEAD = 46b3bdafe9f5c081ba53168beec2676b506d919d`, PR `#90`）
+> - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.5`**）
+> - **触发审计基线**: [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md)（已整合主线 `52c3431` PR `#92` 与 `179a8d1` 增量）
 > - **规划模型**: `[opus4.6]`
-> - **当前状态**: 📋 **已规划 (Ready for Multi-Agent Worktree Execution)**
-> - **目标周期**: 4 个里程碑（`M25` – `M28`）、4 个并发 Execution Waves（`Wave 24` – `Wave 27`）、**18 个原子 PR**（`PR-92` – `PR-109`）
+> - **当前状态**: 🚀 **正在按 Wave 推进落地 (Executing Wave 24)**
+> - **目标周期**: 4 个里程碑（`M25` – `M28`）、4 个并发 Execution Waves（`Wave 24` – `Wave 27`）、**18 个原子 PR**（`PR-94` – `PR-110`）
 
 > [!IMPORTANT]
 > **执行铁律（与 `AGENTS.md` / [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 对齐）**：
@@ -19,7 +19,7 @@
 
 Horizon 6（`PR-74 ~ PR-91`）在代码量上完成了大重构后的第一轮修补（合入于 `#71 ~ #89`），但 [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md) 在 `ubuntu24` 全量实测与逐文件审计后发现：**`PR-91`（GitHub Actions CI 迁移、docs 封板与全域严格校验）实际上从未合入**，且全仓仍遗留 **12 项 P0 阻断、16 项 P1 严重、10 项 P2 中等、4 项 P3 规范债务**（含 `tests/conftest.py` 假绿钩子、`.ci/workflows/ci.yml` 死位置与 3 Job 全断、2 套并行未收口架构、4 项 `slow` 失败、327 条被屏蔽的 Ruff 告警、`ViewerServer` 常驻 HTTP 服务违背 Zero-Python 铁律、`data-inspector` Seqlock 竞态与 macOS SHM 失效、以及 `synapse-overview` 等文档/RFC 漂移）。
 
-Horizon 7（`M25–M28`, `PR-92 ~ PR-109`）的目标是将 `synapse` 从 **60/100（看似收口、实则多处 Fail-Open）** 推进到 **10 项门禁全部在 `ubuntu24` 与 GitHub Actions 上实跑全绿的 100% 真闭环状态**。
+Horizon 7（`M25–M28`, `PR-94 ~ PR-110`）的目标是将 `synapse` 从 **60/100（看似收口、实则多处 Fail-Open）** 推进到 **10 项门禁全部在 `ubuntu24` 与 GitHub Actions 上实跑全绿的 100% 真闭环状态**。
 
 ```mermaid
 flowchart LR
@@ -29,91 +29,91 @@ flowchart LR
     classDef m28 fill:#14532d,stroke:#22c55e,color:#f0fdf4
 
     subgraph W24 ["Wave 24 · M25: 门禁恢复、Tier-0 契约、光学光栅与 CLI/Composite 闭环"]
-        PR92["PR-92: CI/conftest真严格/Ruff解禁"]:::m25
-        PR93["PR-93: FGPP Fail-Closed/DAG/Wire"]:::m25
-        PR94["PR-94: 齐次近面裁剪/光栅数学/Telemetry"]:::m25
-        PR95["PR-95: Composite/ACEScg/EDT/Style"]:::m25
-        PR96["PR-96: 去ViewerDaemon/CLI全闭环"]:::m25
+        PR93["PR-93: CI/conftest真严格/Ruff解禁"]:::m25
+        PR94["PR-94: FGPP Fail-Closed/DAG/Wire"]:::m25
+        PR95["PR-95: 齐次近面裁剪/光栅数学/Telemetry"]:::m25
+        PR96["PR-96: Composite/ACEScg/EDT/Style"]:::m25
+        PR97["PR-97: 去ViewerDaemon/CLI全闭环"]:::m25
     end
 
     subgraph W25 ["Wave 25 · M26: 推理适配器、训练、逆向重演、精修融合与指标真值"]
-        PR97["PR-97: Wan/LoRA/Foundary统一传输"]:::m26
-        PR98["PR-98: Packager/Losses/Trainer/FeatureStore"]:::m26
-        PR99["PR-99: MC/Delight/Tracking/闭环烘焙"]:::m26
-        PR100["PR-100: Stitcher/HandFace诚实度/Fusion"]:::m26
-        PR101["PR-101: R3D18/Warp/Watertight/Metrics"]:::m26
+        PR98["PR-98: Wan/LoRA/Foundary统一传输"]:::m26
+        PR99["PR-99: Packager/Losses/Trainer/FeatureStore"]:::m26
+        PR100["PR-100: MC/Delight/Tracking/闭环烘焙"]:::m26
+        PR101["PR-101: Stitcher/HandFace诚实度/Fusion"]:::m26
+        PR102["PR-102: R3D18/Warp/Watertight/Metrics"]:::m26
     end
 
     subgraph W26 ["Wave 26 · M27: 原生 C++/Inspector/SHM、评测基线与 Colab"]
-        PR102["PR-102: build_native/Bazel去重Expand/GTest"]:::m27
-        PR103["PR-103: Inspector C++安全/GLB-EXR/Seqlock"]:::m27
-        PR104["PR-104: Electron零拷贝/Seqlock/macOS SHM"]:::m27
-        PR105["PR-105: Bench/3D Eval/RSI/去陈旧scenarios"]:::m27
-        PR106["PR-106: Colab SSOT V2.0/HF下载/Assets SHA256"]:::m27
+        PR103["PR-103: build_native/Bazel去重Expand/GTest"]:::m27
+        PR104["PR-104: Inspector C++安全/GLB-EXR/Seqlock"]:::m27
+        PR105["PR-105: Electron零拷贝/Seqlock/macOS SHM"]:::m27
+        PR106["PR-106: Bench/3D Eval/RSI/去陈旧scenarios"]:::m27
+        PR107["PR-107: Colab SSOT V2.0/HF下载/Assets SHA256"]:::m27
     end
 
     subgraph W27 ["Wave 27 · M28: 测试真重构、RFC 去冲突与十门禁最终封板"]
-        PR107["PR-107: Test重写/去Mock-clean_recon/快慢分离"]:::m28
-        PR108["PR-108: SYN-RFC重命名/Skills与文档SSOT对齐"]:::m28
-        PR109["PR-109: 10门禁实测全绿 & H7最终封板"]:::m28
+        PR108["PR-108: Test重写/去Mock-clean_recon/快慢分离"]:::m28
+        PR109["PR-109: SYN-RFC重命名/Skills与文档SSOT对齐"]:::m28
+        PR110["PR-110: 10门禁实测全绿 & H7最终封板"]:::m28
     end
 
-    PR92 --> PR93
     PR93 --> PR94
-    PR93 --> PR95
     PR94 --> PR95
-    PR93 --> PR96
+    PR94 --> PR96
     PR95 --> PR96
-
-    PR93 --> PR97
     PR94 --> PR97
     PR96 --> PR97
+
+    PR94 --> PR98
+    PR95 --> PR98
     PR97 --> PR98
-    PR94 --> PR99
-    PR95 --> PR99
+    PR98 --> PR99
     PR95 --> PR100
-    PR99 --> PR100
-    PR95 --> PR101
-    PR99 --> PR101
+    PR96 --> PR100
+    PR96 --> PR101
+    PR100 --> PR101
+    PR96 --> PR102
+    PR100 --> PR102
 
-    PR92 --> PR102
     PR93 --> PR103
-    PR103 --> PR104
-    PR96 --> PR105
-    PR99 --> PR105
-    PR101 --> PR105
+    PR94 --> PR104
+    PR104 --> PR105
     PR97 --> PR106
+    PR100 --> PR106
     PR102 --> PR106
-    PR105 --> PR106
-
     PR98 --> PR107
-    PR100 --> PR107
-    PR101 --> PR107
-    PR105 --> PR107
-    PR96 --> PR108
+    PR103 --> PR107
+    PR106 --> PR107
+
+    PR99 --> PR108
+    PR101 --> PR108
+    PR102 --> PR108
     PR106 --> PR108
-    PR102 --> PR109
-    PR104 --> PR109
-    PR106 --> PR109
+    PR97 --> PR109
     PR107 --> PR109
-    PR108 --> PR109
+    PR103 --> PR110
+    PR105 --> PR110
+    PR107 --> PR110
+    PR108 --> PR110
+    PR109 --> PR110
 ```
 
 ### Wave 调度与并发矩阵
 
 | Wave | 里程碑 | 并发 PR 组 | 核心战果 | 入口前置条件 |
 |---|---|---|---|---|
-| **Wave 24** | **M25** | `PR-92` → `PR-93` → (`PR-94` ∥ `PR-95`) → `PR-96` | 真 CI 上线、pytest/Ruff 防作弊、`fgpp` Fail-Closed、DAG 全范围零环、齐次裁剪、ACEScg/Composite 修复、去 `ViewerServer` Daemon、CLI/Bundle 闭环 | 无（本蓝图合入后即可开工） |
-| **Wave 25** | **M26** | `PR-97` → `PR-98` ∥ (`PR-99` → `PR-100` → `PR-101`) | `Wan`/`LoRA`/单一 `Foundary` HTTP 客户端、`Packager`/`Trainer`/`FeatureStore` 门禁、Marching Cubes/Delight/Loop、`Stitcher`/`Fusion`、R3D18/Watertight/Metrics | `PR-93 ~ PR-96` 合入 |
-| **Wave 26** | **M27** | (`PR-102` ∥ `PR-105`) ∥ (`PR-103` → `PR-104`) ∥ `PR-106` | `build_native` 与 Bazel 去 Double-Expansion + GTest、Inspector C++/Electron Seqlock & macOS SHM、Bench/3D Eval/RSI 真值、Colab & Assets 闭环 | `PR-92, PR-97, PR-99, PR-101` 合入 |
-| **Wave 27** | **M28** | (`PR-107` ∥ `PR-108`) → `PR-109` | 消除 `clean_recon` 伪测试与慢测超时、RFC 重命名去冲突 & Skills 对齐、10 项 DoD 门禁在 `ubuntu24` 与 GitHub Actions 全绿封板 | `PR-98, PR-100, PR-102, PR-104, PR-105, PR-106` 合入 |
+| **Wave 24** | **M25** | `PR-93` → `PR-94` → `PR-95` → `PR-96` → `PR-97` | 真 CI 上线、pytest/Ruff 防作弊、`fgpp` Fail-Closed、DAG 全范围零环、齐次裁剪、ACEScg/Composite 修复、去 `ViewerServer` Daemon、CLI/Bundle 闭环 | 无（本蓝图合入后即可开工） |
+| **Wave 25** | **M26** | `PR-98` → `PR-99` ∥ (`PR-100` → `PR-101` → `PR-102`) | `Wan`/`LoRA`/单一 `Foundary` HTTP 客户端、`Packager`/`Trainer`/`FeatureStore` 门禁、Marching Cubes/Delight/Loop、`Stitcher`/`Fusion`、R3D18/Watertight/Metrics | `PR-94 ~ PR-97` 合入 |
+| **Wave 26** | **M27** | (`PR-103` ∥ `PR-106`) ∥ (`PR-104` → `PR-105`) ∥ `PR-107` | `build_native` 与 Bazel 去 Double-Expansion + GTest、Inspector C++/Electron Seqlock & macOS SHM、Bench/3D Eval/RSI 真值、Colab & Assets 闭环 | `PR-93, PR-98, PR-100, PR-102` 合入 |
+| **Wave 27** | **M28** | (`PR-108` ∥ `PR-109`) → `PR-110` | 消除 `clean_recon` 伪测试与慢测超时、RFC 重命名去冲突 & Skills 对齐、10 项 DoD 门禁在 `ubuntu24` 与 GitHub Actions 全绿封板 | `PR-99, PR-101, PR-103, PR-105, PR-106, PR-107` 合入 |
 
 ---
 
 ## 2. M25: 门禁恢复、Tier-0 契约、光栅数学与 CLI/Composite 闭环 (Wave 24)
 
-<a id="pr-92"></a>
-#### PR-92: GitHub Actions 真激活、`conftest.py` 严格钩子重写、Ruff 全量解禁与环境清理 (`M25 / Wave 24`)
+<a id="pr-93"></a>
+#### PR-93: GitHub Actions 真激活、`conftest.py` 严格钩子重写、Ruff 全量解禁与环境清理 (`M25 / Wave 24`)
 
 - **对应审计项**: `H7-P0-01` · `H7-P1-01` · `H7-P2-01` · `H7-P3-01`
 - **依赖**: 无（Horizon 7 首発门禁修复）
@@ -127,9 +127,9 @@ flowchart LR
   2. **重写 `tests/conftest.py:37-55` 假严格钩子并替换死缓存 Fixture**：
      - 删除无用的 `pytest_collection_modifyitems._enforce_strict_deps` 装饰器函数；
      - 改写为 `@pytest.hookimpl(hookwrapper=True)` 实现 `pytest_runtest_makereport(item, call)`：当 `SYNAPSE_CI_STRICT_DEPS=1` 且 `rep.skipped` 时，在 `rep.when in ("setup", "call")` 双阶段（覆盖 `@pytest.mark.skipif`、内部 `pytest.skip(...)` 与 `pytest.importorskip(...)`）将 `rep.outcome = "failed"`、`rep.longrepr` 写入明确原因 `"SYNAPSE_CI_STRICT_DEPS=1 forbids skipped tests"`。
-     - 删除引用已弃用 `generators.rasterizer` 的 `cached_rasterizer_render` / `cached_rasterizer_scene`（`lines 62-106`），重构为基于 `synapse.render_core.rasterizer.SoftwareRasterizer` 的 `session` 级渲染缓存 Fixture（实测渲染单次仅 ~500ms），为 `PR-107` 消除 `test_bench_*` 超时奠基。
+     - 删除引用已弃用 `generators.rasterizer` 的 `cached_rasterizer_render` / `cached_rasterizer_scene`（`lines 62-106`），重构为基于 `synapse.render_core.rasterizer.SoftwareRasterizer` 的 `session` 级渲染缓存 Fixture（实测渲染单次仅 ~500ms），为 `PR-108` 消除 `test_bench_*` 超时奠基。
   3. **解禁 `pyproject.toml` 被压制的 Ruff 规则与清理根目录脏目录**：
-     - 从 `pyproject.toml:98-103` 的 `ignore` 中移除 `B017`, `B023`, `B008`, `SIM115`, `B904`, `RUF012`, `RUF100`；同步修正本 PR 范围（`tests/conftest.py`、`pyproject.toml`、`scripts/` 中的 `SIM115`/`RUF100` 等，其余按各领域 PR 清零或在 `PR-107` 终结，使 CI `ruff check` 无新增豁免）。
+     - 从 `pyproject.toml:98-103` 的 `ignore` 中移除 `B017`, `B023`, `B008`, `SIM115`, `B904`, `RUF012`, `RUF100`；同步修正本 PR 范围（`tests/conftest.py`、`pyproject.toml`、`scripts/` 中的 `SIM115`/`RUF100` 等，其余按各领域 PR 清零或在 `PR-108` 终结，使 CI `ruff check` 无新增豁免）。
      - 移除 `pyproject.toml:78` `addopts` 中写死的 `--basetemp=./.pytest_tmp`，防止每次跑单测在仓库根目录生成 `.pytest_tmp/` 污染工作区。
      - 修复 `.gitignore`：补齐 macOS 动态库 `*.dylib`，并清理第 7–66 行区间重复的 `data/datasets/`、`node_modules/` 等冗余条目。
 - **`ubuntu24` 实测验收命令**:
@@ -146,11 +146,11 @@ flowchart LR
 
 ---
 
-<a id="pr-93"></a>
-#### PR-93: FGPP Fail-Closed 契约收口、全范围 DAG 锁死与 `wire_guard` 硬门禁 (`M25 / Wave 24`)
+<a id="pr-94"></a>
+#### PR-94: FGPP Fail-Closed 契约收口、全范围 DAG 锁死与 `wire_guard` 硬门禁 (`M25 / Wave 24`)
 
 - **对应审计项**: `H7-P0-02` · `H7-P1-02` · `H7-P1-03` · `H7-P3-03`
-- **依赖**: `PR-92`
+- **依赖**: `PR-93`
 - **预估体量**: ~340 LOC（`fgpp/` + `tools/` + `schemas/` + `tests/`）
 - **详细改动清单**:
   1. **`synapse/fgpp/io.py` Fail-Closed 修复**：
@@ -186,11 +186,11 @@ flowchart LR
 
 ---
 
-<a id="pr-94"></a>
-#### PR-94: 齐次近面透视裁剪、像素中心对齐、`render_core` 数学库与 Telemetry 修复 (`M25 / Wave 24`)
+<a id="pr-95"></a>
+#### PR-95: 齐次近面透视裁剪、像素中心对齐、`render_core` 数学库与 Telemetry 修复 (`M25 / Wave 24`)
 
 - **对应审计项**: `H7-P0-03` · `H7-P1-04` · `H7-P2-02`
-- **依赖**: `PR-93`
+- **依赖**: `PR-94`
 - **预估体量**: ~380 LOC（`render_core/` + `errors.py` + `telemetry.py` + `tests/`）
 - **详细改动清单**:
   1. **修复 `synapse/render_core/rasterizer.py` 齐次裁剪失真与投影耦合**：
@@ -218,11 +218,11 @@ flowchart LR
 
 ---
 
-<a id="pr-95"></a>
-#### PR-95: Composite 坐标与 ACEScg 闭环、EDT 算法去重与 Style IRLS 求解器实现 (`M25 / Wave 24`)
+<a id="pr-96"></a>
+#### PR-96: Composite 坐标与 ACEScg 闭环、EDT 算法去重与 Style IRLS 求解器实现 (`M25 / Wave 24`)
 
 - **对应审计项**: `H7-P0-04` · `H7-P1-05` · `H7-P2-03` · `H7-P3-02`
-- **依赖**: `PR-93`, `PR-94`
+- **依赖**: `PR-94`, `PR-95`
 - **预估体量**: ~420 LOC（`composite/` + `style/` + `render_core/morphology.py` + `tests/`）
 - **详细改动清单**:
   1. **修复 `synapse/composite/detector.py` 物理几何公式与坐标契约**：
@@ -249,11 +249,11 @@ flowchart LR
 
 ---
 
-<a id="pr-96"></a>
-#### PR-96: 移除核心常驻 `ViewerServer`、CLI/JSON 解析硬收口与 `JobBundleWorker` 真闭环 (`M25 / Wave 24`)
+<a id="pr-97"></a>
+#### PR-97: 移除核心常驻 `ViewerServer`、CLI/JSON 解析硬收口与 `JobBundleWorker` 真闭环 (`M25 / Wave 24`)
 
 - **对应审计项**: `H7-P0-05` · `H7-P2-04`
-- **依赖**: `PR-93`, `PR-95`
+- **依赖**: `PR-94`, `PR-96`
 - **预估体量**: ~380 LOC（`viewer/` + `cli/` + `pipeline/` + `tests/`）
 - **详细改动清单**:
   1. **清理核心包常驻 `ViewerServer` 并加固静态 HTML 查看器安全边界（遵守 Zero-Python 服务端铁律）**：
@@ -285,11 +285,11 @@ flowchart LR
 
 ## 3. M26: 推理适配器、训练、逆向重演、精修融合与指标真值化 (Wave 25)
 
-<a id="pr-97"></a>
-#### PR-97: `WanAdapter` / `LoRA` 注意力掩码、单一 `Foundary` 客户端与 `SynapseReconBackend` 真收敛 (`M26 / Wave 25`)
+<a id="pr-98"></a>
+#### PR-98: `WanAdapter` / `LoRA` 注意力掩码、单一 `Foundary` 客户端与 `SynapseReconBackend` 真收敛 (`M26 / Wave 25`)
 
 - **对应审计项**: `H7-P0-06` · `H7-P1-06` · `H7-P2-05`
-- **依赖**: `PR-93`, `PR-94`, `PR-96`
+- **依赖**: `PR-94`, `PR-95`, `PR-97`
 - **预估体量**: ~450 LOC（`adapters/` + `bridge/` + `models/` + `generators/` + `tests/`）
 - **详细改动清单**:
   1. **修复 `synapse/adapters/lora/manager.py`、`patcher.py` 与 `manifest.py`**：
@@ -320,11 +320,11 @@ flowchart LR
 
 ---
 
-<a id="pr-98"></a>
-#### PR-98: Training LoRA 打包 Fail-Closed、4 项物理 Loss 接线与 `FeatureStore` 旋转校验真恢复 (`M26 / Wave 25`)
+<a id="pr-99"></a>
+#### PR-99: Training LoRA 打包 Fail-Closed、4 项物理 Loss 接线与 `FeatureStore` 旋转校验真恢复 (`M26 / Wave 25`)
 
 - **对应审计项**: `H7-P0-07` · `H7-P1-07`
-- **依赖**: `PR-97`
+- **依赖**: `PR-98`
 - **预估体量**: ~320 LOC（`training/` + `tests/`）
 - **详细改动清单**:
   1. **`synapse/training/packager.py` 彻底移除 Fail-Open**：
@@ -357,11 +357,11 @@ flowchart LR
 
 ---
 
-<a id="pr-99"></a>
-#### PR-99: `recon` / `recon/loop` Marching Cubes 真值化、Delight Z-Buffer、Tracking 与 UV 烘焙闭环 (`M26 / Wave 25`)
+<a id="pr-100"></a>
+#### PR-100: `recon` / `recon/loop` Marching Cubes 真值化、Delight Z-Buffer、Tracking 与 UV 烘焙闭环 (`M26 / Wave 25`)
 
 - **对应审计项**: `H7-P0-08` · `H7-P1-08`
-- **依赖**: `PR-94`, `PR-95`
+- **依赖**: `PR-95`, `PR-96`
 - **预估体量**: ~460 LOC（`recon/` + `recon/loop/` + `tests/`）
 - **详细改动清单**:
   1. **`recon/loop/texture_extractor.py` & `closed_loop_runner.py` 法线切空间烘焙接入**：
@@ -390,11 +390,11 @@ flowchart LR
 
 ---
 
-<a id="pr-100"></a>
-#### PR-100: `refine` ACEScg 手术刀合成、神经/启发式诚实边界、多模型融合与 ROI 追踪 (`M26 / Wave 25`)
+<a id="pr-101"></a>
+#### PR-101: `refine` ACEScg 手术刀合成、神经/启发式诚实边界、多模型融合与 ROI 追踪 (`M26 / Wave 25`)
 
 - **对应审计项**: `H7-P0-09` · `H7-P1-09`
-- **依赖**: `PR-95`, `PR-99`
+- **依赖**: `PR-96`, `PR-100`
 - **预估体量**: ~360 LOC（`refine/` + `tests/`）
 - **详细改动清单**:
   1. **修复 `synapse/refine/stitcher.py`**：
@@ -423,11 +423,11 @@ flowchart LR
 
 ---
 
-<a id="pr-101"></a>
-#### PR-101: R3D18/FVD 特征提取、光流误差、`lpips` 掩码、`roundtrip` 物理真值与 `metrics` 收口 (`M26 / Wave 25`)
+<a id="pr-102"></a>
+#### PR-102: R3D18/FVD 特征提取、光流误差、`lpips` 掩码、`roundtrip` 物理真值与 `metrics` 收口 (`M26 / Wave 25`)
 
 - **对应审计项**: `H7-P0-10` · `H7-P1-10`
-- **依赖**: `PR-95`, `PR-99`
+- **依赖**: `PR-96`, `PR-100`
 - **预估体量**: ~330 LOC（`metrics/` + `tests/`）
 - **详细改动清单**:
   1. **修复 `synapse/metrics/temporal.py`（补齐真实无 Mock `T=16` R3D18 验证，终结仅支持 `T==3` 崩溃与 `uint8` 缩放失真）**：
@@ -453,11 +453,11 @@ flowchart LR
 
 ## 4. M27: 原生 C++/Inspector/SHM、评测基线与 Colab 资产闭环 (Wave 26)
 
-<a id="pr-102"></a>
-#### PR-102: `build_native.py` 跨平台链接、Bazel 去双重扩展、`@aether//geo` SSOT 对齐与 GTest 迁移 (`M27 / Wave 26`)
+<a id="pr-103"></a>
+#### PR-103: `build_native.py` 跨平台链接、Bazel 去双重扩展、`@aether//geo` SSOT 对齐与 GTest 迁移 (`M27 / Wave 26`)
 
 - **对应审计项**: `H7-P1-11` · `H7-P2-06` · `H7-P3-03`
-- **依赖**: `PR-92`
+- **依赖**: `PR-93`
 - **预估体量**: ~260 LOC（`scripts/build_native.py` + `csrc/geometry/`）
 - **详细改动清单**:
   1. **加固 `scripts/build_native.py`**：
@@ -484,11 +484,11 @@ flowchart LR
 
 ---
 
-<a id="pr-103"></a>
-#### PR-103: `data-inspector` C++ `-fno-exceptions` 安全 JSON、GLB/EXR 真实加载与 Seqlock 原子修复 (`M27 / Wave 26`)
+<a id="pr-104"></a>
+#### PR-104: `data-inspector` C++ `-fno-exceptions` 安全 JSON、GLB/EXR 真实加载与 Seqlock 原子修复 (`M27 / Wave 26`)
 
 - **对应审计项**: `H7-P0-11` · `H7-P1-12` · `H7-P3-04`
-- **依赖**: `PR-93`
+- **依赖**: `PR-94`
 - **预估体量**: ~420 LOC（`tools/data-inspector/native/`）
 - **详细改动清单**:
   1. **消除 `tools/data-inspector/native/inspector_app.cc` 在 `-fno-exceptions` 下的 UB Crash 路径**：
@@ -514,11 +514,11 @@ flowchart LR
 
 ---
 
-<a id="pr-104"></a>
-#### PR-104: Electron `data-inspector` 零撕裂 Seqlock、macOS SHM 支持、消除 14MB IPC 拷贝与安全锁死 (`M27 / Wave 26`)
+<a id="pr-105"></a>
+#### PR-105: Electron `data-inspector` 零撕裂 Seqlock、macOS SHM 支持、消除 14MB IPC 拷贝与安全锁死 (`M27 / Wave 26`)
 
 - **对应审计项**: `H7-P0-12` · `H7-P1-13`
-- **依赖**: `PR-103`
+- **依赖**: `PR-104`
 - **预估体量**: ~320 LOC（`tools/data-inspector/electron/` + `renderer/` + `package-lock.json`）
 - **详细改动清单**:
   1. **修复 `tools/data-inspector/electron/shm-reader.js` Seqlock 竞态与非 Linux 宿主 SHM 不可用**：
@@ -543,11 +543,11 @@ flowchart LR
 
 ---
 
-<a id="pr-105"></a>
-#### PR-105: `Bench` 全指标真计算、T2/T3 动态场景、3D Eval 契约对齐、清理陈旧场景与 RSI 闭环 (`M27 / Wave 26`)
+<a id="pr-106"></a>
+#### PR-106: `Bench` 全指标真计算、T2/T3 动态场景、3D Eval 契约对齐、清理陈旧场景与 RSI 闭环 (`M27 / Wave 26`)
 
 - **对应审计项**: `H7-P1-14` · `H7-P3-01`
-- **依赖**: `PR-96`, `PR-99`, `PR-101`
+- **依赖**: `PR-97`, `PR-100`, `PR-102`
 - **预估体量**: ~380 LOC（`pipeline/` + `bench/` + `inspect/` + `rsi/` + `cli/` + `scripts/`）
 - **详细改动清单**:
   1. **升级 `synapse/pipeline/bench_runner.py` 指标完备性与 T2/T3 真动态性**：
@@ -575,11 +575,11 @@ flowchart LR
 
 ---
 
-<a id="pr-106"></a>
-#### PR-106: Colab SSOT V2.0、`colab_runner` 真 GPU 推理分支、HF Asset 拉取与 `assets_manifest.json` 校验闭环 (`M27 / Wave 26`)
+<a id="pr-107"></a>
+#### PR-107: Colab SSOT V2.0、`colab_runner` 真 GPU 推理分支、HF Asset 拉取与 `assets_manifest.json` 校验闭环 (`M27 / Wave 26`)
 
 - **对应审计项**: `H7-P1-15`
-- **依赖**: `PR-97`, `PR-102`, `PR-105`
+- **依赖**: `PR-98`, `PR-103`, `PR-106`
 - **预估体量**: ~310 LOC（`scripts/` + `workenv/google-colab/` + `assets/`）
 - **详细改动清单**:
   1. **对齐 Wan 7 通道条件构建唯一 SSOT**：
@@ -595,7 +595,7 @@ flowchart LR
   ```bash
   /root/venv-synapse/bin/python scripts/prepare_datasets.py --output-dir /tmp/h7_datasets
   /root/venv-synapse/bin/python scripts/run_cpu_verification.py --output-dir /tmp/h7_cpu_verify
-  /root/venv-synapse/bin/pytest tests/test_benchmark_assets.py tests/test_colab_runner.py -v  # PR-106 须补齐 test_colab_runner.py 单测
+  /root/venv-synapse/bin/pytest tests/test_benchmark_assets.py tests/test_colab_runner.py -v  # PR-107 须补齐 test_colab_runner.py 单测
   ```
 - **三问验收标准**:
   - **存在问**: `workenv/google-colab/setup_colab.sh` 仅写入 `/content/` 计算盘；`assets/assets_manifest.json` SHA-256 全真匹配。
@@ -606,18 +606,18 @@ flowchart LR
 
 ## 5. M28: 测试真重构、RFC 去冲突与十门禁最终封板 (Wave 27)
 
-<a id="pr-107"></a>
-#### PR-107: 消除 `clean_recon` 伪测试、修正误标 `@pytest.mark.slow` 与实现全仓测试真全绿 & 性能达标 (`M28 / Wave 27`)
+<a id="pr-108"></a>
+#### PR-108: 消除 `clean_recon` 伪测试、修正误标 `@pytest.mark.slow` 与实现全仓测试真全绿 & 性能达标 (`M28 / Wave 27`)
 
 - **对应审计项**: `H7-P1-16` · `H7-P2-07`
-- **依赖**: `PR-98`, `PR-100`, `PR-101`, `PR-105`
+- **依赖**: `PR-99`, `PR-101`, `PR-102`, `PR-106`
 - **预估体量**: ~350 LOC（`tests/`）
 - **详细改动清单**:
   1. **彻底重写 `tests/test_roundtrip_reconstruction.py` 的伪差分 `clean_recon`**：
      - 将“直接对真值几何体按给定顶点位移扰动 0.001mm 并断言重建成功”的作弊 `clean_recon` 替换为端到端真实执行 `MultiViewInitializer` / `ReconPipeline.run()`（从软光栅化多视角导出图像 + EXR/掩码输入反推重构 3D 网格），验证在至少 `3.0x` 以上差异幅度下对正确 vs 劣质方案的真实区分度门禁。
   2. **修正错标 `@pytest.mark.slow` 并优化真慢测耗时（消除 `ubuntu24` 串行卡死）**：
      - 移除轻量纯毫秒级单元测试（如 `tests/test_architecture_dag.py`、`TestTorchBridge`，单跑耗时 `< 200ms`）身上误贴的 `@pytest.mark.slow`。
-     - 在 `tests/test_bench_full_suite.py` 与 `tests/test_bench_runner.py` 全量接入 `PR-92` 在 `conftest.py` 建立的 `session` 级 `SoftwareRasterizer` 渲染缓存 Fixture，消除上百次重复高分辨率场景软光栅重算；将 `slow` 套件单进程压缩至 **`<= 90s`**（并行 `-n auto` **`<= 60s`**），`fast` 套件单进程 **`<= 25s`**。
+     - 在 `tests/test_bench_full_suite.py` 与 `tests/test_bench_runner.py` 全量接入 `PR-93` 在 `conftest.py` 建立的 `session` 级 `SoftwareRasterizer` 渲染缓存 Fixture，消除上百次重复高分辨率场景软光栅重算；将 `slow` 套件单进程压缩至 **`<= 90s`**（并行 `-n auto` **`<= 60s`**），`fast` 套件单进程 **`<= 25s`**。
   3. **清零 `tests/` 全部残余断言反模式与 Ruff 告警**：
      - 修复 `tests/test_dataset_and_viewer.py:229-233` 同义反复自证（移除对已删除 `ViewerServer` `allow_reuse_address` 的废测试，覆盖新静态导出及脚本安全性）。
      - 消除测试中剩余的所有盲目 `pytest.raises(Exception)`（改为精确异常类型 `ContractValidationError`/`AssetNotFoundError`/`ValueError` 等），清零 `ruff check python/ tests/ scripts/ tools/` 全仓 327 条告警（达 **0 error**）。
@@ -634,11 +634,11 @@ flowchart LR
 
 ---
 
-<a id="pr-108"></a>
-#### PR-108: `SYN-RFC-0060..0063` 重命名去跨仓编号碰撞、RFC 事实修正与 Skills SSOT 对齐 (`M28 / Wave 27`)
+<a id="pr-109"></a>
+#### PR-109: `SYN-RFC-0060..0063` 重命名去跨仓编号碰撞、RFC 事实修正与 Skills SSOT 对齐 (`M28 / Wave 27`)
 
 - **对应审计项**: `H7-P2-08` · `H7-P2-09`
-- **依赖**: `PR-96`, `PR-106`
+- **依赖**: `PR-97`, `PR-107`
 - **预估体量**: ~240 LOC（`docs/` + `.agents/skills/` + `AGENTS.md`）
 - **详细改动清单**:
   1. **消解 `docs/RFC-0060..0063` 与根仓 `all-overview/rfcs/0061..0063` 的跨仓编号冲突**：
@@ -668,19 +668,19 @@ flowchart LR
 
 ---
 
-<a id="pr-109"></a>
-#### PR-109: Horizon-7 全量 10 项门禁实跑全绿、CI 校验确认与最终封板 (`M28 / Wave 27`)
+<a id="pr-110"></a>
+#### PR-110: Horizon-7 全量 10 项门禁实跑全绿、CI 校验确认与最终封板 (`M28 / Wave 27`)
 
 - **对应审计项**: `H7-P2-10`
-- **依赖**: `PR-102`, `PR-104`, `PR-106`, `PR-107`, `PR-108`
+- **依赖**: `PR-103`, `PR-105`, `PR-107`, `PR-108`, `PR-109`
 - **预估体量**: ~120 LOC（文档闭环 + 状态印证）
 - **详细改动清单**:
   1. 在云端主力机 `ubuntu24` 一次性串联实跑 §6 规定的 **全部 10 项全局验收门禁**，录制完整运行日期、Git SHA、耗时与通过计数（0 failed, 0 skipped, 0 errors）。
   2. 提交前实查 GitHub Actions `.github/workflows/ci.yml` 针对前序测试/原生 PR 运行的三项 Job（`python-fast`, `native-bazel`, `electron-inspector`）均为绿色 `success`。
   3. 收口更新四份核心治理文档为实测后真实状态（绝不允许提前虚报）：
      - 将本计划 [`PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) 更新为 `✅ 100% 已合入并封板 (18/18 PRs)`；
-     - 同步收口 [`PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md`](PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) 尾注说明剩余债务已由 H7 (`PR-92..PR-109`) 全量清零；
-     - 更新 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 至 `✅ M1–M28 (110 PRs) 全线收口`，将各 Horizon 7 条目填入实际 PR 编号与验证 SHA；
+     - 同步收口 [`PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md`](PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) 尾注说明剩余债务已由 H7 (`PR-93..PR-110`) 全量清零；
+     - 更新 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 至 `✅ M1–M28 (111 PRs) 全线收口`，将各 Horizon 7 条目填入实际 PR 编号与验证 SHA；
      - 同步刷新 [`README.md`](../../README.md) 顶部实测测试数字与模块状态徽章。
 - **`ubuntu24` 实测验收命令**: 参见下节 §6 全部 10 项门禁命令清单。
 - **三问验收标准**:
@@ -693,7 +693,7 @@ flowchart LR
 ## 6. Horizon 7 全量验收定义与 10 项硬门禁 (Definition of Done)
 
 > [!CAUTION]
-> **严格禁止虚标封板**：当且仅当以下 **10 项门禁命令** 在云端主力机 `ubuntu24` 一次性实跑全绿，**且** GitHub Actions `.github/workflows/ci.yml` 远端真实触发全绿时，Horizon 7 (`M25–M28`, `PR-92 ~ PR-109`) 与整体项目总纲方可由 `PR-109` 正式更新为 `✅ 100% 已合入并封板`：
+> **严格禁止虚标封板**：当且仅当以下 **10 项门禁命令** 在云端主力机 `ubuntu24` 一次性实跑全绿，**且** GitHub Actions `.github/workflows/ci.yml` 远端真实触发全绿时，Horizon 7 (`M25–M28`, `PR-93 ~ PR-110`) 与整体项目总纲方可由 `PR-110` 正式更新为 `✅ 100% 已合入并封板`：
 
 | 门禁 | 目标验证面 | 实测通过命令（`ubuntu24`） | 严格达标门槛 |
 |---|---|---|---|
