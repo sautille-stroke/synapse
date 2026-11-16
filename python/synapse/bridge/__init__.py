@@ -63,4 +63,5 @@ __all__ = [
     "evaluate_hitl_circuit_breaker",
     "get_recon_backend",
     "get_vg_backend",
+    "register_recon_backend",
 ]
