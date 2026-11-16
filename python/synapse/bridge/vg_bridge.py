@@ -25,12 +25,12 @@ from synapse.render_core.backend import MockVgBackend, VgBackend
 # Tier-0 Registry: Tier 2 (synapse.recon) registers its concrete implementation
 # to prevent upward architectural imports from Tier 0 to Tier 2.
 _RECON_BACKEND_CLS: type[VgBackend] | None = None
-_RECON_BACKEND_FACTORY: Callable[[], VgBackend] | None = None
+_RECON_BACKEND_FACTORY: Callable[..., VgBackend] | None = None
 
 
 def register_recon_backend(
     cls: type[VgBackend],
-    factory: Callable[[], VgBackend] | None = None,
+    factory: Callable[..., VgBackend] | None = None,
 ) -> None:
     """Register the production 3D reconstruction backend from Tier 2."""
     global _RECON_BACKEND_CLS, _RECON_BACKEND_FACTORY
@@ -38,10 +38,15 @@ def register_recon_backend(
     _RECON_BACKEND_FACTORY = factory or cls
 
 
-def get_recon_backend() -> VgBackend:
+def get_recon_backend(mock: bool = False) -> VgBackend:
     """Obtain the registered reconstruction backend instance."""
+    if mock:
+        return MockVgBackend()
     if _RECON_BACKEND_FACTORY is not None:
-        return _RECON_BACKEND_FACTORY()
+        try:
+            return _RECON_BACKEND_FACTORY(mock=mock)
+        except TypeError:
+            return _RECON_BACKEND_FACTORY()
     return MockVgBackend()
 
 
