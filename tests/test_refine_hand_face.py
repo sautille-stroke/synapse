@@ -426,3 +426,34 @@ class TestHandRefinerHDRPreservation:
             f"HDR values were clipped: max={hdr_region.max():.4f}, "
             f"expected > 1.0"
         )
+
+
+def test_face_gaze_iris_centroid_left_right() -> None:
+    """Gaze estimator on left-shifted iris outputs negative angle, right-shifted outputs positive."""
+    crop_left = np.full((64, 64, 3), 0.8, dtype=np.float32)
+    crop_left[20:28, 12:20, :] = 0.1
+    angle_left = FaceRefiner.estimate_gaze_horizontal_angle_deg(crop_left)
+
+    crop_right = np.full((64, 64, 3), 0.8, dtype=np.float32)
+    crop_right[20:28, 44:52, :] = 0.1
+    angle_right = FaceRefiner.estimate_gaze_horizontal_angle_deg(crop_right)
+
+    assert angle_left < 0.0, f"Expected negative gaze angle for left iris, got {angle_left:.2f}°"
+    assert angle_right > 0.0, f"Expected positive gaze angle for right iris, got {angle_right:.2f}°"
+
+
+def test_hand_face_neural_strict_raises_50() -> None:
+    """neural backend with strict=True and no weights must raise NotImplementedStageError(50)."""
+    from synapse.errors import NotImplementedStageError
+
+    roi_hand = _make_roi(32, 32, region=AnatomicalRegion.HAND)
+    hand_refiner = HandRefiner(backend="neural", strict=True)
+    with pytest.raises(NotImplementedStageError) as exc_info:
+        hand_refiner.refine(roi_hand)
+    assert int(exc_info.value.exit_code) == 50
+
+    roi_face = _make_roi(32, 32, region=AnatomicalRegion.FACE)
+    face_refiner = FaceRefiner(backend="neural", strict=True)
+    with pytest.raises(NotImplementedStageError) as exc_info2:
+        face_refiner.refine(roi_face)
+    assert int(exc_info2.value.exit_code) == 50

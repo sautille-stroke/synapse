@@ -212,10 +212,14 @@ class FaceRefiner:
         gallery: CanonicalAnchorGallery | None = None,
         gaze_threshold_deg: float = _GAZE_DEVIATION_THRESHOLD_DEG,
         *,
+        backend: str = "heuristic",
+        model_weights: Any | None = None,
         strict: bool = False,
     ) -> None:
         self._gallery = gallery
         self._gaze_threshold_deg = gaze_threshold_deg
+        self._backend = backend
+        self._model_weights = model_weights
         self._strict = strict
 
     def refine(
@@ -247,6 +251,22 @@ class FaceRefiner:
             available (neither per-call nor instance-level), or the
             gallery is empty.
         """
+        if self._backend == "neural":
+            if self._model_weights is None:
+                if self._strict:
+                    from synapse.errors import NotImplementedStageError
+
+                    raise NotImplementedStageError(
+                        "Neural face refinement backend requested, but real neural "
+                        "weights/model are not configured or available.",
+                        agent_fix_hint="Configure valid neural model weights or set backend='heuristic'.",
+                    )
+                logger.warning(
+                    "Neural face backend requested but no weights available; falling back to heuristic."
+                )
+            elif callable(self._model_weights):
+                return self._model_weights(roi)
+
         active_gallery = gallery or self._gallery
 
         if self._strict:
@@ -376,39 +396,64 @@ class FaceRefiner:
 
     @staticmethod
     def _estimate_gaze_vector(face_crop: np.ndarray) -> np.ndarray:
-        """Estimate a simplified gaze direction from a face crop.
+        """Estimate a gaze direction vector from a face crop using iris centroid.
 
-        Uses the gradient field of the upper-third (eye region) to
-        derive a dominant orientation vector.  This is a lightweight
-        proxy — production systems would use a dedicated gaze estimator.
-
-        Parameters
-        ----------
-        face_crop:
-            ``(H, W, 3)`` float32 face crop.
-
-        Returns
-        -------
-        np.ndarray
-            L2-normalised 3D gaze direction vector.
+        Computes dark-pixel centroid (iris/pupil) relative to the eye region
+        geometric bounding center.
         """
         h, w = face_crop.shape[:2]
-
-        # Focus on the eye region: upper 1/3 to 2/3 of the face
-        y_start = max(h // 4, 0)
-        y_end = max(h * 2 // 3, y_start + 1)
-        eye_region = np.mean(face_crop[y_start:y_end, :, :], axis=-1)
-
-        # Horizontal and vertical gradients
-        if eye_region.shape[1] < 2 or eye_region.shape[0] < 2:
+        if h < 2 or w < 2:
             return np.array([0.0, 0.0, 1.0], dtype=np.float64)
 
-        grad_x = np.diff(eye_region, axis=1).mean()
-        grad_y = np.diff(eye_region, axis=0).mean()
+        # Eye region: upper 20% to 60% of the face crop
+        y_start = max(h // 5, 0)
+        y_end = max(h * 3 // 5, y_start + 1)
+        eye_crop = face_crop[y_start:y_end, :, :]
+        eh, ew = eye_crop.shape[:2]
+        if eh < 2 or ew < 2:
+            return np.array([0.0, 0.0, 1.0], dtype=np.float64)
 
-        # Build a 3D gaze vector: (horizontal, vertical, forward)
-        gaze = np.array([grad_x, grad_y, 1.0], dtype=np.float64)
+        lum = np.mean(eye_crop, axis=-1).astype(np.float64)
+        lum_max = float(np.max(lum))
+        lum_min = float(np.min(lum))
+
+        if lum_max - lum_min < 1e-4:
+            return np.array([0.0, 0.0, 1.0], dtype=np.float64)
+
+        # Invert luminance so darker pixels (iris) have higher weight
+        darkness = (lum_max - lum) / (lum_max - lum_min + 1e-6)
+        w_iris = np.power(darkness, 2.0)
+
+        total_w = float(np.sum(w_iris))
+        if total_w < 1e-8:
+            return np.array([0.0, 0.0, 1.0], dtype=np.float64)
+
+        yy, xx = np.mgrid[:eh, :ew]
+        iris_x = float(np.sum(xx * w_iris) / total_w)
+        iris_y = float(np.sum(yy * w_iris) / total_w)
+
+        cx_box = (ew - 1.0) / 2.0
+        cy_box = (eh - 1.0) / 2.0
+
+        # Normalized offsets in [-1, 1]
+        dx = (iris_x - cx_box) / max(cx_box, 1.0)
+        dy = (iris_y - cy_box) / max(cy_box, 1.0)
+
+        # Scale offset to angular deviation: dx > 0 is rightward gaze, dx < 0 is leftward gaze
+        gaze = np.array([dx * 0.5, dy * 0.5, 1.0], dtype=np.float64)
         norm = np.linalg.norm(gaze)
         if norm > 1e-9:
             gaze /= norm
         return gaze
+
+    @staticmethod
+    def estimate_gaze_horizontal_angle_deg(face_crop: np.ndarray) -> float:
+        """Estimate horizontal gaze deviation angle in degrees from iris centroid.
+
+        Returns:
+            Negative degrees for gaze turned to the left (iris left of center),
+            positive degrees for gaze turned to the right (iris right of center),
+            zero for looking straight ahead.
+        """
+        gaze = FaceRefiner._estimate_gaze_vector(face_crop)
+        return math.degrees(math.atan2(gaze[0], gaze[2]))

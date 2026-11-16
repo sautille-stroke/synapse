@@ -86,14 +86,54 @@ class TiledBypassExecutor:
         bypass_count = 0
 
         for roi in rois:
-            score = (
-                quality_fn(roi.crop_acescg)
-                if quality_fn is not None
-                else roi.confidence
-            )
+            crop = roi.crop_acescg
+            h, w = crop.shape[:2]
+            ts = self._tile_size
+
+            if quality_fn is not None:
+                if h > ts or w > ts:
+                    tile_scores = []
+                    for y0 in range(0, h, ts):
+                        for x0 in range(0, w, ts):
+                            y1 = min(y0 + ts, h)
+                            x1 = min(x0 + ts, w)
+                            tile_scores.append(quality_fn(crop[y0:y1, x0:x1]))
+                    score = min(tile_scores) if tile_scores else 1.0
+                else:
+                    score = quality_fn(crop)
+            else:
+                score = roi.confidence
+
             if score > self._health_threshold:
                 bypass_count += 1
             else:
                 defective.append(roi)
 
         return defective, bypass_count
+
+    def tile_and_execute(
+        self,
+        crop: np.ndarray,
+        process_tile_fn: Callable[[np.ndarray], np.ndarray],
+    ) -> np.ndarray:
+        """Process a large crop by tiling into tile_size chunks, executing process_tile_fn, and stitching."""
+        h, w = crop.shape[:2]
+        ts = self._tile_size
+        if h <= ts and w <= ts:
+            return process_tile_fn(crop)
+
+        out = np.zeros_like(crop)
+        weight = np.zeros((h, w, 1), dtype=np.float32)
+
+        stride = max(ts // 2, 1)
+        for y0 in range(0, max(h - ts + 1, 1), stride):
+            for x0 in range(0, max(w - ts + 1, 1), stride):
+                y1 = min(y0 + ts, h)
+                x1 = min(x0 + ts, w)
+                tile = crop[y0:y1, x0:x1]
+                processed = process_tile_fn(tile)
+                out[y0:y1, x0:x1] += processed
+                weight[y0:y1, x0:x1] += 1.0
+
+        weight = np.maximum(weight, 1.0)
+        return out / weight
