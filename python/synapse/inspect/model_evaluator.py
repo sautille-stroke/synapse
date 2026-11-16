@@ -21,7 +21,6 @@ from synapse.errors import (
     AssetNotFoundError,
     ContractValidationError,
 )
-from synapse.render_core.mesh import MeshData, load_obj
 from synapse.inspect.eval_report import (
     EvalReportData,
     ModelEvalResult,
@@ -45,6 +44,7 @@ from synapse.metrics.roundtrip import (
     compute_chamfer_distance_mm,
     sample_mesh_surface,
 )
+from synapse.render_core.mesh import MeshData, load_obj
 
 
 def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
