@@ -690,6 +690,7 @@ def test_stitcher_roi_hdr_3_5_preservation() -> None:
 def test_pipeline_all_bypass_preserves_bit_exact() -> None:
     """All-bypass frame must produce bit-exact output identical to input (PSNR = inf)."""
     from synapse.refine.pipeline import LocalRefinementPipeline
+    from synapse.refine.types import AnatomicalRegion, RefinementROI
 
     h, w = 64, 64
     rng = np.random.default_rng(99)

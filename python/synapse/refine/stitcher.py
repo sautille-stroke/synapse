@@ -216,6 +216,17 @@ class ScalpelStitcher:
                     + (1.0 - alpha_3ch) * bg_frame
                 ).astype(np.float32)
 
+                # In the interior core of the refined ROI (eroded away from the border ring),
+                # preserve the exact refined patch values (including HDR > 1.0)
+                from synapse.render_core.morphology import (
+                    binary_erosion as _binary_erosion,
+                    circular_structuring_element as _circular_structuring_element,
+                )
+                se_core = _circular_structuring_element(ring)
+                core_mask = _binary_erosion(fg_mask_bool, se_core)
+                if np.any(core_mask):
+                    result[t][core_mask] = fg_full[core_mask]
+
                 # -------------------------------------------------------
                 # Measure border quality with real CIE ΔE₀₀.
                 # -------------------------------------------------------
