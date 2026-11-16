@@ -417,12 +417,12 @@ def decompose_intrinsic(
     relit = albedo_map.astype(np.float64) * shading_map
     specular_map = np.maximum(0.0, rad - relit).astype(np.float32)
 
-    # Compute delta_e_residual: re-light and compare to original (CIE76)
+    # Compute delta_e_residual: re-light and compare to original (CIEDE2000)
     relit_clamped = np.clip(relit, 0.0, 1.0)
     rad_clamped = np.clip(rad, 0.0, 1.0)
-    lab_relit = _rgb_to_lab(relit_clamped)
-    lab_orig = _rgb_to_lab(rad_clamped)
-    delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
+    lab_relit = _rgb_to_lab(relit_clamped, is_linear=not is_uint8)
+    lab_orig = _rgb_to_lab(rad_clamped, is_linear=not is_uint8)
+    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_orig)))
 
     return DelightResult(
         albedo=albedo_map,
@@ -433,16 +433,23 @@ def decompose_intrinsic(
     )
 
 
-def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
-    """Convert sRGB [0,1] to CIELAB (pure numpy, no external deps).
+def _rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
+    """Convert RGB [0,1] to CIELAB (pure numpy, no external deps).
 
-    Uses D65 illuminant.  Accepts (..., 3) input.
+    Uses D65 illuminant. Accepts (..., 3) input.
+
+    Args:
+        rgb: Color array, values in [0, 1].
+        is_linear: If True, input is already linear (skips sRGB expansion).
 
     Returns:
         Array of shape (..., 3) with (L*, a*, b*).
     """
-    # sRGB → linear
-    lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    if is_linear:
+        lin = np.asarray(rgb, dtype=np.float64)
+    else:
+        # sRGB → linear
+        lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
 
     # linear sRGB → XYZ (D65)
     r, g, b = lin[..., 0], lin[..., 1], lin[..., 2]
@@ -553,8 +560,9 @@ def _project_mesh_to_view(
     camera: CameraExtrinsics,
     h: int,
     w: int,
+    faces: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Project mesh vertices into a camera view, returning a normal map and weight map.
+    """Project mesh into a camera view with Z-buffer occlusion testing.
 
     Args:
         vertices: Mesh vertices, shape (V, 3).
@@ -562,6 +570,8 @@ def _project_mesh_to_view(
         camera: Camera extrinsics with .transform (4x4 world-to-cam or cam-to-world).
         h: Image height.
         w: Image width.
+        faces: Optional mesh face indices (F, 3). If provided, samples face centers
+            and edge midpoints for dense coverage with Z-buffering.
 
     Returns:
         normal_map: Projected normal map, shape (H, W, 3).
@@ -571,51 +581,66 @@ def _project_mesh_to_view(
     verts = np.asarray(vertices, dtype=np.float64)
     nrms = np.asarray(normals, dtype=np.float64)
 
+    # Collect points: vertices + face centers + edge midpoints for dense rasterization
+    all_verts = [verts]
+    all_nrms = [nrms]
+
+    if faces is not None and len(faces) > 0:
+        f_arr = np.asarray(faces, dtype=np.int64)
+        if f_arr.ndim == 2 and f_arr.shape[1] >= 3:
+            f_tris = f_arr[:, :3]
+            face_cents = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) / 3.0
+            face_nrms = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) / 3.0
+            all_verts.append(face_cents)
+            all_nrms.append(face_nrms)
+
+            mid_01 = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]]) * 0.5
+            mid_12 = (verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) * 0.5
+            mid_20 = (verts[f_tris[:, 2]] + verts[f_tris[:, 0]]) * 0.5
+            n_mid_01 = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]]) * 0.5
+            n_mid_12 = (nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) * 0.5
+            n_mid_20 = (nrms[f_tris[:, 2]] + nrms[f_tris[:, 0]]) * 0.5
+            all_verts.extend([mid_01, mid_12, mid_20])
+            all_nrms.extend([n_mid_01, n_mid_12, n_mid_20])
+
+    v_pts = np.vstack(all_verts)
+    v_nrms = np.vstack(all_nrms)
+
     # Transform to camera space
     T = np.asarray(camera.transform, dtype=np.float64)
     R = T[:3, :3]
     t = T[:3, 3]
-
-    # Determine if transform is world-to-camera or camera-to-world:
-    # camera.position should be consistent with t.
     cam_pos = np.asarray(camera.position, dtype=np.float64)
 
-    # Use camera.position for view direction computation
-    # Transform vertices to camera space: p_cam = R @ p_world + t
-    verts_cam = (R @ verts.T).T + t
+    pts_cam = (R @ v_pts.T).T + t
 
-    # Simple pinhole projection (assume fx=fy=max(h,w), cx=w/2, cy=h/2)
+    # Simple pinhole projection
     fx = fy = float(max(h, w))
     cx, cy = w / 2.0, h / 2.0
 
-    # Only consider vertices in front of camera (z > 0)
-    z = verts_cam[:, 2]
+    z = pts_cam[:, 2]
     in_front = z > 0.01
 
-    # Project to pixel coordinates
-    px = (fx * verts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
-    py = (fy * verts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
+    px = (fx * pts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
+    py = (fy * pts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
 
-    # Compute view direction for cos_theta_v weighting
-    view_dirs = verts - cam_pos[np.newaxis, :]
+    view_dirs = v_pts - cam_pos[np.newaxis, :]
     view_dist = np.linalg.norm(view_dirs, axis=-1, keepdims=True)
-    view_dist[view_dist < 1e-8] = 1.0
+    view_dist = np.maximum(view_dist, 1e-8)
     view_dirs = view_dirs / view_dist
 
-    # cos(theta_v) = dot(normal, -view_dir)
-    cos_theta = np.sum(nrms * (-view_dirs), axis=-1)
+    cos_theta = np.sum(v_nrms * (-view_dirs), axis=-1)
     cos_theta = np.clip(cos_theta, 0.0, 1.0)
 
-    # Rasterize (scatter) into maps
+    # Transform normals to camera space
+    nrms_cam = (R @ v_nrms.T).T
+
     normal_map = np.zeros((h, w, 3), dtype=np.float64)
     weight_map = np.zeros((h, w, 1), dtype=np.float64)
     depth_buf = np.full((h, w), np.inf, dtype=np.float64)
 
     valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
     indices = np.where(valid)[0]
-
-    # Transform normals to camera space for the normal map
-    nrms_cam = (R @ nrms.T).T
 
     for idx in indices:
         xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
@@ -625,9 +650,8 @@ def _project_mesh_to_view(
             weight_map[yi, xi, 0] = cos_theta[idx]
 
     valid_mask = weight_map[..., 0] > 0.0
-    # Re-normalize projected normals
     nrm_lens = np.linalg.norm(normal_map, axis=-1, keepdims=True)
-    nrm_lens[nrm_lens < 1e-12] = 1.0
+    nrm_lens = np.maximum(nrm_lens, 1e-12)
     normal_map = normal_map / nrm_lens
 
     return normal_map, weight_map, valid_mask
@@ -690,7 +714,7 @@ def delight_multiview_albedo(
 
         # Project mesh normals into this view
         proj_normal, proj_weight, proj_valid = _project_mesh_to_view(
-            mesh_verts, mesh_nrms, cam, h, w,
+            mesh_verts, mesh_nrms, cam, h, w, faces=getattr(mesh, "faces", None),
         )
 
         # Use projected normals where available, fall back to pseudo-normals

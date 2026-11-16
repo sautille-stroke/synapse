@@ -33,6 +33,7 @@ from synapse.recon.kinematics import (
     solve_two_bone_ik,
     solve_zero_slip_ik,
 )
+from synapse.recon.multiview import MultiViewInitializer
 from synapse.recon.pipeline import ReconPipeline
 from synapse.recon.tracking import (
     solve_camera_trajectory,

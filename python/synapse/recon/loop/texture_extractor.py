@@ -166,13 +166,11 @@ def bake_uv_normal_map(
 
 
 def _world_to_tangent_space(normals: np.ndarray) -> np.ndarray:
-    """Convert world-space normals to tangent-space via Gram–Schmidt.
+    """Convert world-space normals to tangent-space.
 
-    Constructs a per-texel orthonormal frame where the Z axis aligns with
-    the world-space normal, then expresses the normal in that local frame
-    (which always yields ``[0, 0, 1]`` for the normal component, but we
-    keep the full construction for correctness with slightly perturbed
-    per-texel normals after averaging).
+    Constructs a macro geometric reference frame from low-frequency surface
+    normals (via spatial filtering), and projects the sampled normals
+    into this local (T_geom, B_geom, N_geom) frame.
 
     Args:
         normals: ``(H, W, 3)`` float64 unit normals.
@@ -183,35 +181,41 @@ def _world_to_tangent_space(normals: np.ndarray) -> np.ndarray:
     h, w, _ = normals.shape
     n = normals  # (H, W, 3)
 
-    # Choose a reference "up" vector that is not parallel to the normal.
-    # Use [0, 1, 0] unless the normal is nearly vertical, then use [1, 0, 0].
+    # Base macro geometric normal N_base via spatial smoothing
+    pad = 4
+    n_padded = np.pad(n, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+    kernel_size = 2 * pad + 1
+    n_base = np.zeros_like(n)
+    for dy in range(-pad, pad + 1):
+        for dx in range(-pad, pad + 1):
+            n_base += n_padded[pad + dy : pad + dy + h, pad + dx : pad + dx + w]
+    n_base /= float(kernel_size * kernel_size)
+    n_base_len = np.linalg.norm(n_base, axis=-1, keepdims=True)
+    n_base = n_base / np.maximum(n_base_len, 1e-8)
+
+    # Tangent and Bitangent from geometric base normal
     up = np.broadcast_to(
-        np.array([0.0, 1.0, 0.0], dtype=np.float64), (h, w, 3),
+        np.array([0.0, 1.0, 0.0], dtype=np.float64), (h, w, 3)
     ).copy()
-    nearly_up = np.abs(n[..., 1]) > 0.99
+    nearly_up = np.abs(n_base[..., 1]) > 0.99
     up[nearly_up] = np.array([1.0, 0.0, 0.0], dtype=np.float64)
 
-    # Tangent = normalise(up × n)
-    tangent = np.cross(up, n)
+    tangent = np.cross(up, n_base)
     t_norm = np.linalg.norm(tangent, axis=-1, keepdims=True)
-    t_norm = np.maximum(t_norm, 1e-8)
-    tangent /= t_norm
+    tangent /= np.maximum(t_norm, 1e-8)
 
-    # Bitangent = n × tangent
-    bitangent = np.cross(n, tangent)
+    bitangent = np.cross(n_base, tangent)
+    b_norm = np.linalg.norm(bitangent, axis=-1, keepdims=True)
+    bitangent /= np.maximum(b_norm, 1e-8)
 
-    # Express the world normal in the TBN frame:
-    # ts_x = dot(normal, tangent), ts_y = dot(normal, bitangent),
-    # ts_z = dot(normal, normal) ≈ 1
+    # Express the world normal in the geometric TBN frame
     ts_x = np.sum(n * tangent, axis=-1)
     ts_y = np.sum(n * bitangent, axis=-1)
-    ts_z = np.sum(n * n, axis=-1)
+    ts_z = np.sum(n * n_base, axis=-1)
 
     result = np.stack([ts_x, ts_y, ts_z], axis=-1)
-    # Normalise for safety
     r_norm = np.linalg.norm(result, axis=-1, keepdims=True)
-    r_norm = np.maximum(r_norm, 1e-8)
-    result /= r_norm
+    result /= np.maximum(r_norm, 1e-8)
 
     return result
 

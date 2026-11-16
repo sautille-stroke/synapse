@@ -152,9 +152,18 @@ class ReconPipeline:
             kinematics = None
 
         # 5. Intrinsic Albedo De-lighting
-        keyframe_idx = num_frames // 2
-        lit_keyframe = frames[keyframe_idx]
-        delight_result = decompose_intrinsic(lit_keyframe)
+        if camera_traj is not None and len(camera_traj.extrinsics) == num_frames:
+            from synapse.recon.delight import delight_multiview_albedo
+
+            delight_result = delight_multiview_albedo(
+                frames=frames,
+                cameras=camera_traj.extrinsics,
+                mesh=final_mesh,
+            )
+        else:
+            keyframe_idx = num_frames // 2
+            lit_keyframe = frames[keyframe_idx]
+            delight_result = decompose_intrinsic(lit_keyframe)
 
         # 6. Build consolidated result
         telemetry: dict[str, Any] = {

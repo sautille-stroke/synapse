@@ -377,6 +377,23 @@ def quad_remesh(
         else:
             quad = [opp1, w, opp2, u]
 
+        # Convexity and orientation check
+        qp = v[quad]
+        n_ref = face_normals[f1]
+        c0 = np.cross(qp[1] - qp[0], qp[2] - qp[1])
+        c1 = np.cross(qp[2] - qp[1], qp[3] - qp[2])
+        c2 = np.cross(qp[3] - qp[2], qp[0] - qp[3])
+        c3 = np.cross(qp[0] - qp[3], qp[1] - qp[0])
+        dots = [
+            float(np.dot(c0, n_ref)),
+            float(np.dot(c1, n_ref)),
+            float(np.dot(c2, n_ref)),
+            float(np.dot(c3, n_ref)),
+        ]
+        if min(dots) <= 1e-6:
+            # Non-convex or butterfly self-intersecting quad — do not pair
+            continue
+
         quad_faces.append(quad)
         paired_faces.add(f1)
         paired_faces.add(f2)
@@ -394,25 +411,28 @@ def quad_remesh(
         # Mixed tri/quad mesh: convert remaining triangles into quads via
         # Catmull-Clark midpoint subdivision — each triangle [a, b, c] is
         # split into 3 quads by inserting edge midpoints and a face centroid.
-        # This avoids degenerate [a, b, c, c] duplicate-vertex quads.
+        # Shared edge midpoints avoid cracks and T-junctions between adjacent faces.
         extra_verts: list[np.ndarray] = []
         subdivided_quads: list[list[int]] = []
         vert_offset = len(v)
+        edge_midpoint_map: dict[tuple[int, int], int] = {}
+
+        def _get_midpoint(idx_a: int, idx_b: int) -> int:
+            edge_key = (min(idx_a, idx_b), max(idx_a, idx_b))
+            if edge_key not in edge_midpoint_map:
+                mid_pos = (v[idx_a] + v[idx_b]) * 0.5
+                mid_idx = vert_offset + len(extra_verts)
+                extra_verts.append(mid_pos)
+                edge_midpoint_map[edge_key] = mid_idx
+            return edge_midpoint_map[edge_key]
 
         for tri in unpaired_triangles:
             a, b, c = tri[0], tri[1], tri[2]
-            # Compute edge midpoints and face centroid
-            mid_ab = (v[a] + v[b]) * 0.5
-            mid_bc = (v[b] + v[c]) * 0.5
-            mid_ca = (v[c] + v[a]) * 0.5
-            centroid = (v[a] + v[b] + v[c]) / 3.0
+            idx_mid_ab = _get_midpoint(a, b)
+            idx_mid_bc = _get_midpoint(b, c)
+            idx_mid_ca = _get_midpoint(c, a)
 
-            idx_mid_ab = vert_offset + len(extra_verts)
-            extra_verts.append(mid_ab)
-            idx_mid_bc = vert_offset + len(extra_verts)
-            extra_verts.append(mid_bc)
-            idx_mid_ca = vert_offset + len(extra_verts)
-            extra_verts.append(mid_ca)
+            centroid = (v[a] + v[b] + v[c]) / 3.0
             idx_centroid = vert_offset + len(extra_verts)
             extra_verts.append(centroid)
 
@@ -937,6 +957,6 @@ def validate_recon_mesh_manifold(
                 v, f, verts_per_face=verts_per_face, require_watertight=False
             )
             return bool(res["is_manifold"])
-        except (ImportError, AttributeError, KeyError, TypeError):
+        except (ImportError, ModuleNotFoundError):
             pass
     return bool(check_manifold(vertices, faces))

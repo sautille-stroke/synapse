@@ -141,6 +141,7 @@ class AnalyticUVInverseOptimizer:
         for v in range(n_views):
             l_dir = light_dirs[v].astype(np.float64)
             n_map = normals[v].astype(np.float64)
+            fg_mask = np.linalg.norm(n_map, axis=-1) > 1e-4
 
             # N·L clamped shading
             ndotl = np.sum(n_map * l_dir[np.newaxis, np.newaxis, :], axis=-1)
@@ -156,16 +157,12 @@ class AnalyticUVInverseOptimizer:
             solved = frame_f / ndotl[..., np.newaxis]
             solved = np.clip(solved, 0.0, 2.0)
 
-            # Weight by N·L (higher confidence when well-lit)
-            # Vectorized accumulation via flat UV indices + np.add.at
+            # Weight by N·L (higher confidence when well-lit, 0 for background)
             flat_uv_idx = ty.ravel() * res + tx.ravel()  # (h*w,)
-            w_vals = ndotl.ravel()  # (h*w,)
+            w_vals = np.where(fg_mask, ndotl, 0.0).ravel()  # (h*w,)
             solved_flat = solved.reshape(-1, 3)  # (h*w, 3)
 
             # Accumulate weighted color per texel.
-            # NOTE: .ravel() on a C-contiguous array returns a view, which
-            # is required for np.add.at to modify the original. We use
-            # reshape(-1) equivalently.
             accum_color_flat = accum_color.reshape(-1, 3)
             accum_weight_flat = accum_weight.reshape(-1)
             for c in range(3):
@@ -207,6 +204,8 @@ class AnalyticUVInverseOptimizer:
             for v in range(n_views):
                 l_dir = light_dirs[v].astype(np.float64)
                 n_map = normals[v].astype(np.float64)
+                fg_mask = np.linalg.norm(n_map, axis=-1) > 1e-4
+
                 ndotl_v = np.clip(
                     np.sum(n_map * l_dir[np.newaxis, np.newaxis, :], axis=-1),
                     0.01,
@@ -222,10 +221,13 @@ class AnalyticUVInverseOptimizer:
                 )
 
                 # d(loss)/d(albedo_texel) = 2 * residual * NdotL
+                # Mask out background pixels before scatter
                 weighted_residual = (
                     photo_residual[v] * ndotl_v[..., np.newaxis]
                 )  # (H, W, 3)
+                weighted_residual[~fg_mask] = 0.0
                 ndotl_sq = ndotl_v ** 2  # for Gauss-Newton diagonal
+                ndotl_sq[~fg_mask] = 0.0
 
                 flat_uv_idx = ty.ravel() * res + tx.ravel()
                 photo_grad_flat = photo_grad.reshape(-1, 3)
