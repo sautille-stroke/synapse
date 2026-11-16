@@ -288,7 +288,7 @@ def _build_direct_fallback(
                 return False
 
         python_lib = _find_windows_python_lib()
-        lib_args = [f"/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
+        lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
 
         cmd = [
             compiler,
