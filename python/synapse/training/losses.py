@@ -66,8 +66,9 @@ class EdgePreservingLoss:
     """Sobel-gradient edge alignment loss (differentiable).
 
     Computes 2D Sobel gradient magnitude on both inputs and returns
-    the mean absolute difference.  Fully differentiable through
-    ``torch`` convolutions.
+    the mean absolute difference. Fully differentiable through
+    ``torch`` convolutions. Supports 2D [H, W], 3D [C, H, W], 4D [B, C, H, W],
+    and 5D [B, C, T, H, W] tensors.
     """
 
     def __call__(
@@ -78,9 +79,9 @@ class EdgePreservingLoss:
         """Compute edge-preserving loss.
 
         Args:
-            z_pred: Predicted denoised latent ``[H, W]`` or
-                ``[C, H, W]`` (torch.Tensor).
-            depth_latent: Depth latent, same spatial shape.
+            z_pred: Predicted denoised latent ``[H, W]``, ``[C, H, W]``,
+                ``[B, C, H, W]``, or ``[B, C, T, H, W]`` (torch.Tensor).
+            depth_latent: Depth latent, same spatial/temporal shape.
 
         Returns:
             Scalar torch.Tensor loss (retains grad).
@@ -91,47 +92,71 @@ class EdgePreservingLoss:
         z = torch.as_tensor(z_pred, dtype=torch.float32)
         d = torch.as_tensor(depth_latent, dtype=torch.float32)
 
-        # If 3D, average across channel dimension
-        if z.ndim == 3:
-            z = z.mean(dim=0)
-        if d.ndim == 3:
-            d = d.mean(dim=0)
+        if z.ndim == 2:
+            z_batch = z.unsqueeze(0).unsqueeze(0)
+            d_batch = d.unsqueeze(0).unsqueeze(0)
+        elif z.ndim == 3:
+            z_batch = z.mean(dim=0, keepdim=True).unsqueeze(0)
+            d_batch = d.mean(dim=0, keepdim=True).unsqueeze(0)
+        elif z.ndim == 4:
+            z_batch = z.mean(dim=1, keepdim=True)
+            d_batch = d.mean(dim=1, keepdim=True)
+        elif z.ndim == 5:
+            b, c, t, h, w = z.shape
+            z_flat = z.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            d_flat = d.permute(0, 2, 1, 3, 4).reshape(b * t, -1, h, w)
+            z_batch = z_flat.mean(dim=1, keepdim=True)
+            d_batch = d_flat.mean(dim=1, keepdim=True)
+        else:
+            raise ValueError(f"Unsupported tensor ndim {z.ndim} for EdgePreservingLoss")
 
-        grad_z = self._sobel_magnitude(z, F)
-        grad_d = self._sobel_magnitude(d, F)
+        grad_z = self._sobel_magnitude_batch(z_batch, F)
+        grad_d = self._sobel_magnitude_batch(d_batch, F)
         return torch.mean(torch.abs(grad_z - grad_d))
 
     @staticmethod
-    def _sobel_magnitude(
-        img: Any,
+    def _sobel_magnitude_batch(
+        x: Any,
         F: Any,  # noqa: N803
     ) -> Any:
-        """Compute Sobel gradient magnitude via differentiable conv2d."""
+        """Compute Sobel gradient magnitude on [N, 1, H, W] via conv2d."""
         import torch
 
-        img = torch.as_tensor(img, dtype=torch.float32)
-        h, w = img.shape
+        h, w = x.shape[-2], x.shape[-1]
         if h <= 2 or w <= 2:
-            return torch.zeros_like(img)
+            return torch.zeros_like(x)
 
-        # Reshape to [1, 1, H, W] for conv2d
-        x = img.unsqueeze(0).unsqueeze(0)
-
-        # Sobel kernels
         sobel_x = torch.tensor(
             [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
             dtype=torch.float32,
-            device=img.device,
+            device=x.device,
         ).unsqueeze(0).unsqueeze(0)
         sobel_y = torch.tensor(
             [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
             dtype=torch.float32,
-            device=img.device,
+            device=x.device,
         ).unsqueeze(0).unsqueeze(0)
 
         gx = F.conv2d(x, sobel_x, padding=1)
         gy = F.conv2d(x, sobel_y, padding=1)
-        mag = torch.sqrt(gx * gx + gy * gy)
+        mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        return mag
+
+    @classmethod
+    def _sobel_magnitude(
+        cls,
+        img: Any,
+        F: Any,  # noqa: N803
+    ) -> Any:
+        """Backward-compatible helper for 2D inputs."""
+        import torch
+
+        img_t = torch.as_tensor(img, dtype=torch.float32)
+        if img_t.ndim == 2:
+            img_t = img_t.unsqueeze(0).unsqueeze(0)
+        elif img_t.ndim == 3:
+            img_t = img_t.unsqueeze(0)
+        mag = cls._sobel_magnitude_batch(img_t, F)
         return mag.squeeze(0).squeeze(0)
 
 
@@ -183,7 +208,7 @@ class NormalReconstructionLoss:
             fg = torch.as_tensor(mask, dtype=torch.float32) > 0
             if fg.any():
                 return torch.mean(loss_map[fg])
-            return torch.tensor(0.0, dtype=torch.float32)
+            return (n_p * 0.0).sum()
 
         return torch.mean(loss_map)
 
@@ -233,16 +258,25 @@ class DiffusionDPOLoss:
         tw = torch.as_tensor(target_w)
         tl = torch.as_tensor(target_l)
 
-        err_theta_w = torch.mean((v_tw - tw) ** 2)
-        err_theta_l = torch.mean((v_tl - tl) ** 2)
-        err_ref_w = torch.mean((v_rw - tw) ** 2)
-        err_ref_l = torch.mean((v_rl - tl) ** 2)
+        # Per-sample reduction over non-batch dimensions
+        if v_tw.ndim > 1:
+            dims = tuple(range(1, v_tw.ndim))
+            err_theta_w = torch.mean((v_tw - tw) ** 2, dim=dims)
+            err_theta_l = torch.mean((v_tl - tl) ** 2, dim=dims)
+            err_ref_w = torch.mean((v_rw - tw) ** 2, dim=dims)
+            err_ref_l = torch.mean((v_rl - tl) ** 2, dim=dims)
+        else:
+            err_theta_w = torch.mean((v_tw - tw) ** 2)
+            err_theta_l = torch.mean((v_tl - tl) ** 2)
+            err_ref_w = torch.mean((v_rw - tw) ** 2)
+            err_ref_l = torch.mean((v_rl - tl) ** 2)
 
         diff_w = err_theta_w - err_ref_w
         diff_l = err_theta_l - err_ref_l
         logit = -self.beta * (diff_w - diff_l)
 
-        return torch.nn.functional.softplus(-logit)
+        losses = torch.nn.functional.softplus(-logit)
+        return torch.mean(losses)
 
 
 # ===================================================================
@@ -459,4 +493,4 @@ def _sobel_magnitude(img: np.ndarray) -> np.ndarray:
             + img[2:, 2:]
         )
 
-    return np.sqrt(gx * gx + gy * gy)  # type: ignore[no-any-return]
+    return np.sqrt(gx * gx + gy * gy + 1e-8)  # type: ignore[no-any-return]

@@ -10,9 +10,11 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
-from synapse.errors import ContractValidationError
+from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LinearProjectionEncoder,
@@ -516,3 +518,61 @@ class TestFeatureStoreQualityGates:
         )
 
         assert builder.rejected_count == 1
+
+    def test_sample_id_path_traversal_rejected(self) -> None:
+        """PR-99: sample_id with path traversal or invalid characters is rejected."""
+        from synapse.errors import ContractValidationError
+
+        builder = FeatureStoreBuilder(
+            LinearProjectionEncoder(),
+            LinearProjectionTextEncoder(),
+        )
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+
+        with pytest.raises(ContractValidationError, match="path traversal"):
+            builder.add_sample(
+                sample_id="../traversal",
+                video_frames=frames,
+                caption="bad sample",
+            )
+
+        with pytest.raises(ContractValidationError, match="path traversal"):
+            builder.add_sample(
+                sample_id="sub/dir/id",
+                video_frames=frames,
+                caption="bad sample",
+            )
+
+    def test_sample_id_dotted_name_roundtrip(self, tmp_path: object) -> None:
+        """PR-99: sample_id with dots like 'wan2.1_shot01' roundtrips without truncation."""
+        tmp = tmp_path
+        builder = FeatureStoreBuilder(
+            LinearProjectionEncoder(),
+            LinearProjectionTextEncoder(),
+        )
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        builder.add_sample(
+            sample_id="wan2.1_shot01",
+            video_frames=frames,
+            caption="dotted id test",
+        )
+        shards = builder.build_shards(tmp / "shards")  # type: ignore[operator]
+        samples = list(iter_feature_shards(shards))
+        assert len(samples) == 1
+        assert samples[0]["sample_id"] == "wan2.1_shot01"
+
+    def test_missing_shard_raises_asset_not_found(self, tmp_path: object) -> None:
+        """PR-99: iter_feature_shards raises AssetNotFoundError for missing shards."""
+        with pytest.raises(AssetNotFoundError):
+            list(iter_feature_shards([Path("/nonexistent_shard_path_404.tar")]))
+
+    def test_zero_samples_build_shards_returns_empty(self, tmp_path: object) -> None:
+        """PR-99: build_shards with zero samples returns empty list without creating files."""
+        tmp = tmp_path
+        builder = FeatureStoreBuilder(
+            LinearProjectionEncoder(),
+            LinearProjectionTextEncoder(),
+        )
+        shards = builder.build_shards(tmp / "empty_shards")  # type: ignore[operator]
+        assert shards == []
+        assert list((tmp / "empty_shards").glob("*.tar")) == []

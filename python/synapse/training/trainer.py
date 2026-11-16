@@ -53,6 +53,8 @@ class LoRATrainConfig(BaseModel):
     loss_mode: Literal["sft", "dpo"] = "sft"
     dpo_beta: float = Field(default=500.0, gt=0.0)
     max_trainable_ratio: float | None = Field(default=None, gt=0.0, le=1.0)
+    edge_loss_weight: float = Field(default=0.0, ge=0.0)
+    normal_loss_weight: float = Field(default=0.0, ge=0.0)
 
     @field_validator("rank")
     @classmethod
@@ -101,13 +103,13 @@ def _get_lora_linear_class() -> type:
             in_f = orig.in_features
             out_f = orig.out_features
             dev = orig.weight.device
-            dt = orig.weight.dtype
 
+            # LoRA adapter parameters are kept strictly in float32 to prevent fp16/bf16 underflow
             self.lora_A = torch.nn.Parameter(
-                torch.randn(rank, in_f, device=dev, dtype=dt) * 0.01,
+                torch.randn(rank, in_f, device=dev, dtype=torch.float32) * 0.01,
             )
             self.lora_B = torch.nn.Parameter(
-                torch.zeros(out_f, rank, device=dev, dtype=dt),
+                torch.zeros(out_f, rank, device=dev, dtype=torch.float32),
             )
 
             # Freeze original layer weights
@@ -119,10 +121,11 @@ def _get_lora_linear_class() -> type:
             base = self.orig(x)
             if not self.lora_enabled:
                 return base
+            x_f32 = x.to(dtype=torch.float32)
             lora_out = (
-                x @ self.lora_A.T @ self.lora_B.T
+                x_f32 @ self.lora_A.T @ self.lora_B.T
             ) * (self.alpha / self.rank)
-            return base + lora_out
+            return base + lora_out.to(dtype=base.dtype)
 
     _lora_linear_cls = LoRALinear
     return _lora_linear_cls
@@ -161,11 +164,30 @@ class StatelessLoRATrainer:
     """
 
     def __init__(self, config: LoRATrainConfig) -> None:
+        from synapse.errors import ContractValidationError
+        from synapse.training.losses import (
+            DiffusionDPOLoss,
+            EdgePreservingLoss,
+            FlowMatchingLoss,
+            NormalReconstructionLoss,
+        )
+
+        valid_categories = ("style", "identity", "control", "whitebox", "motion")
+        if config.category not in valid_categories:
+            raise ContractValidationError(
+                f"Invalid LoRA category '{config.category}'. Allowed categories: {valid_categories}",
+                agent_fix_hint=f"Choose one of: {list(valid_categories)}",
+            )
+
         self._config = config
         self._optimizer: Any = None
         self._step_count: int = 0
         self._micro_step: int = 0
         self._target_patterns: list[str] = []
+        self._flow_matching_loss = FlowMatchingLoss()
+        self._edge_preserving_loss = EdgePreservingLoss()
+        self._normal_reconstruction_loss = NormalReconstructionLoss()
+        self._dpo_loss = DiffusionDPOLoss(beta=config.dpo_beta)
 
     @property
     def config(self) -> LoRATrainConfig:
@@ -331,6 +353,22 @@ class StatelessLoRATrainer:
             )
         return torch.optim.AdamW(param_groups)
 
+    def flush_gradients(self, module: Any) -> None:
+        """Flush and step any remaining accumulated gradients."""
+        accum = max(1, self._config.grad_accum_steps)
+        if self._micro_step % accum != 0:
+            if self._optimizer is not None:
+                trainable_params = [
+                    p for p in module.parameters() if p.requires_grad
+                ]
+                if trainable_params:
+                    import torch
+
+                    torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                    self._optimizer.step()
+                self._optimizer.zero_grad()
+            self._micro_step = 0
+
     def train_step(
         self,
         module: Any,
@@ -368,12 +406,25 @@ class StatelessLoRATrainer:
         if self._micro_step % accum == 0:
             self._optimizer.zero_grad()
 
-        if self._config.loss_mode == "sft":
-            raw_loss = self._sft_step(module, batch)
-        else:
-            raw_loss = self._dpo_step(
-                module, batch, beta=self._config.dpo_beta,
-            )
+        # Mixed precision context
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        autocast_enabled = (
+            self._config.mixed_precision in ("fp16", "bf16")
+            and device_type == "cuda"
+        )
+        amp_dtype = (
+            torch.float16 if self._config.mixed_precision == "fp16" else torch.bfloat16
+        )
+
+        with torch.autocast(
+            device_type=device_type, dtype=amp_dtype, enabled=autocast_enabled
+        ):
+            if self._config.loss_mode == "sft":
+                raw_loss = self._sft_step(module, batch)
+            else:
+                raw_loss = self._dpo_step(
+                    module, batch, beta=self._config.dpo_beta,
+                )
 
         scaled_loss = raw_loss / float(accum)
         scaled_loss.backward()
@@ -450,25 +501,86 @@ class StatelessLoRATrainer:
         return t
 
     @classmethod
-    def _sft_step(
+    def _call_module(
         cls,
+        module: Any,
+        x: Any,
+        batch: dict[str, Any],
+        is_ref: bool = False,
+    ) -> Any:
+        """Call module with signature-based argument routing."""
+        import inspect
+
+        target = getattr(module, "forward", module)
+        try:
+            sig = inspect.signature(target)
+            kwargs = {}
+            for param_name in sig.parameters:
+                if param_name in ("t", "timestep", "timesteps") and "t" in batch:
+                    kwargs[param_name] = batch["t"]
+                elif (
+                    param_name in ("prompt", "caption", "text_embeddings")
+                    and "prompt" in batch
+                ):
+                    kwargs[param_name] = batch["prompt"]
+                elif (
+                    param_name in ("fgpp_cond", "cond", "conditions")
+                    and "fgpp_cond" in batch
+                ):
+                    kwargs[param_name] = batch["fgpp_cond"]
+                elif (
+                    param_name in ("fgpp_cond", "cond", "conditions")
+                    and "conditions" in batch
+                ):
+                    kwargs[param_name] = batch["conditions"]
+            return module(x, **kwargs)
+        except (ValueError, TypeError):
+            return module(x)
+
+    def _sft_step(
+        self,
         module: Any,
         batch: dict[str, Any],
     ) -> Any:
-        """Compute flow-matching SFT loss."""
-        import torch
-
+        """Compute flow-matching SFT loss with optional edge and normal losses."""
         x_1 = batch["latent"]
         x_0 = batch["noise"]
-        t = cls._sample_timesteps(x_1, batch)
+        t = self._sample_timesteps(x_1, batch)
         x_t = (1.0 - t) * x_0 + t * x_1
-        v_target = x_1 - x_0
-        v_pred = module(x_t)
-        return torch.mean((v_pred - v_target) ** 2)
+        v_pred = self._call_module(module, x_t, batch)
+        loss = self._flow_matching_loss(v_pred, x_1, x_0)
 
-    @classmethod
+        # Wire optional EdgePreservingLoss
+        if self._config.edge_loss_weight > 0.0:
+            depth_key = (
+                "depth_latent"
+                if "depth_latent" in batch
+                else ("depth" if "depth" in batch else None)
+            )
+            if depth_key is not None:
+                z_pred = x_t + v_pred * (1.0 - t)
+                loss = loss + self._config.edge_loss_weight * self._edge_preserving_loss(
+                    z_pred, batch[depth_key]
+                )
+
+        # Wire optional NormalReconstructionLoss
+        if self._config.normal_loss_weight > 0.0:
+            norm_key = (
+                "normal_gt"
+                if "normal_gt" in batch
+                else ("normal" if "normal" in batch else None)
+            )
+            if norm_key is not None:
+                mask = batch.get("mask")
+                n_pred = batch.get("normal_pred", v_pred)
+                loss = loss + self._config.normal_loss_weight * self._normal_reconstruction_loss(
+                    n_pred, batch[norm_key], mask=mask
+                )
+
+        return loss
+
     def _dpo_step(
-        cls,
+        self,
         module: Any,
         batch: dict[str, Any],
         beta: float = 500.0,
@@ -476,41 +588,34 @@ class StatelessLoRATrainer:
         """Compute reference-anchored Diffusion-DPO loss.
 
         Evaluates the frozen reference backbone by temporarily disabling
-        all ``LoRALinear`` adapters under ``torch.no_grad()``, ensuring:
-        1. At step 0 (when ``lora_B == 0``), ``v_theta == v_ref`` and
-           the loss equals ``ln(2)`` exactly.
-        2. The policy is regularized against drifting far from the
-           reference model on both chosen and rejected trajectories.
+        all ``LoRALinear`` adapters under ``torch.no_grad()`` and eval mode,
+        ensuring BatchNorm/Dropout do not drift during reference pass.
         """
         import torch
 
         chosen = batch["chosen"]
         rejected = batch["rejected"]
         x_0 = batch["noise"]
-        t = cls._sample_timesteps(chosen, batch)
+        t = self._sample_timesteps(chosen, batch)
         x_t_w = (1.0 - t) * x_0 + t * chosen
         x_t_l = (1.0 - t) * x_0 + t * rejected
 
         target_w = chosen - x_0
         target_l = rejected - x_0
 
-        v_theta_w = module(x_t_w)
-        v_theta_l = module(x_t_l)
+        v_theta_w = self._call_module(module, x_t_w, batch)
+        v_theta_l = self._call_module(module, x_t_l, batch)
 
-        with torch.no_grad(), _disable_lora_adapters(module):
-            v_ref_w = module(x_t_w)
-            v_ref_l = module(x_t_l)
+        was_training = module.training
+        module.eval()
+        try:
+            with torch.no_grad(), _disable_lora_adapters(module):
+                v_ref_w = self._call_module(module, x_t_w, batch, is_ref=True)
+                v_ref_l = self._call_module(module, x_t_l, batch, is_ref=True)
+        finally:
+            if was_training:
+                module.train()
 
-        # Per-sample MSE across non-batch dimensions
-        dims = tuple(range(1, chosen.ndim)) if chosen.ndim > 1 else ()
-        err_theta_w = torch.mean((v_theta_w - target_w) ** 2, dim=dims)
-        err_theta_l = torch.mean((v_theta_l - target_l) ** 2, dim=dims)
-        err_ref_w = torch.mean((v_ref_w - target_w) ** 2, dim=dims)
-        err_ref_l = torch.mean((v_ref_l - target_l) ** 2, dim=dims)
-
-        diff_w = err_theta_w - err_ref_w
-        diff_l = err_theta_l - err_ref_l
-        logit = -beta * (diff_w - diff_l)
-
-        loss = torch.mean(torch.nn.functional.softplus(-logit))
-        return loss
+        return self._dpo_loss(
+            v_theta_w, v_theta_l, v_ref_w, v_ref_l, target_w, target_l
+        )
