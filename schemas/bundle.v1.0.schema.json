@@ -50,8 +50,8 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?!\\.\\./|/)(?!.*\\.\\./)",
-          "description": "Relative POSIX-style path within the bundle directory. Must not contain '..' traversal or be absolute."
+          "pattern": "^(?!\\.\\./|/)(?!.*\\.\\./)[^\\\\]+$",
+          "description": "Relative POSIX-style path within the bundle directory. Must not contain '..' traversal, be absolute, or contain Windows backslashes."
         },
         "media_type": {
           "type": "string",

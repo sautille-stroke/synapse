@@ -77,8 +77,10 @@
         "rotation": {
           "type": "array",
           "items": { "type": "number" },
-          "minItems": 4,
-          "maxItems": 9,
+          "oneOf": [
+            { "minItems": 4, "maxItems": 4 },
+            { "minItems": 9, "maxItems": 9 }
+          ],
           "description": "Rotation as 9-element column-major 3x3 matrix or 4-element quaternion [x, y, z, w]."
         },
         "fov_deg": {

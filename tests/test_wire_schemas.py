@@ -54,6 +54,12 @@ class TestWireGuardCheck:
         errors = wire_guard._check_internal()
         assert errors == [], f"Internal check errors: {errors}"
 
+    def test_require_aether_fails_on_missing_header(self, tmp_path: Path) -> None:
+        """wire_guard --require-aether with missing header returns 1."""
+        nonexistent = tmp_path / "nonexistent.h"
+        rc = wire_guard.main(["--check", "--require-aether", "--aether-header", str(nonexistent)])
+        assert rc == 1
+
 
 # ---------------------------------------------------------------------------
 # TASK 5.2: PixelType validation catches wrong types

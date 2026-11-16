@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from synapse.errors import ContractValidationError
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
@@ -412,8 +413,90 @@ class TestMetadataRoundtrip:
         out_dir.mkdir()
         (out_dir / "metadata.json").write_text(json.dumps(bad_meta))
 
-        with pytest.raises(ValueError, match="determinant"):
+        with pytest.raises(ContractValidationError, match="determinant"):
             FGPPSequence.load_metadata(out_dir)
+
+    def test_invalid_schema_version_raises(self, tmp_path: Any) -> None:
+        """Loading a metadata.json with invalid schema_version must raise ContractValidationError."""
+        bad_meta = {
+            "schema_version": "fgpp.v0.9",
+            "scene_id": "bad_ver",
+            "fps": 24.0,
+            "total_frames": 1,
+            "resolution": [512, 512],
+            "frames": [],
+        }
+        out_dir = tmp_path / "bad_ver"
+        out_dir.mkdir()
+        (out_dir / "metadata.json").write_text(json.dumps(bad_meta))
+
+        with pytest.raises(ContractValidationError, match="schema_version"):
+            FGPPSequence.load_metadata(out_dir)
+
+    def test_flat_proj_matrix_intrinsics_reconstruction(self, tmp_path: Any) -> None:
+        """Verify CameraParams reconstruction from flat proj_matrix_col_major."""
+        w, h = 640, 480
+        fx, fy = 500.0, 500.0
+        cx, cy = 320.0, 240.0
+        near, far = 0.5, 200.0
+
+        p00 = 2.0 * fx / w
+        p11 = 2.0 * fy / h
+        p02 = (2.0 * cx - w) / w
+        p12 = (2.0 * cy - h) / h
+        p22 = -(far + near) / (far - near)
+        p23 = -2.0 * far * near / (far - near)
+
+        proj_row = np.array([
+            [p00, 0.0, p02, 0.0],
+            [0.0, p11, p12, 0.0],
+            [0.0, 0.0, p22, p23],
+            [0.0, 0.0, -1.0, 0.0],
+        ], dtype=np.float64)
+
+        proj_col = list(proj_row.T.flatten())
+        view_col = list(np.eye(4, dtype=np.float64).T.flatten())
+
+        meta = {
+            "schema_version": "fgpp.v1.0",
+            "scene_id": "flat_proj",
+            "fps": 24.0,
+            "total_frames": 1,
+            "resolution": [w, h],
+            "frames": [
+                {
+                    "frame_index": 0,
+                    "timestamp_sec": 0.0,
+                    "is_physical_anchor": True,
+                    "proj_matrix_col_major": proj_col,
+                    "view_matrix_col_major": view_col,
+                }
+            ],
+        }
+        out_dir = tmp_path / "flat_proj_test"
+        out_dir.mkdir()
+        (out_dir / "metadata.json").write_text(json.dumps(meta))
+
+        seq = FGPPSequence.load_metadata(out_dir)
+        cam = seq.frames[0].camera
+        assert cam.width == w
+        assert cam.height == h
+        assert cam.fx == pytest.approx(fx, abs=1e-3)
+        assert cam.fy == pytest.approx(fy, abs=1e-3)
+        assert cam.cx == pytest.approx(cx, abs=1e-3)
+        assert cam.cy == pytest.approx(cy, abs=1e-3)
+        assert cam.z_near == pytest.approx(near, abs=1e-3)
+        assert cam.z_far == pytest.approx(far, abs=1e-3)
+
+    def test_schema_edge_cases_align_aether(self) -> None:
+        """Verify is_physical_anchor_frame and depth conversion boundary edge cases."""
+        assert is_physical_anchor_frame(0, interval=0) is True
+        assert is_physical_anchor_frame(1, interval=0) is False
+        assert is_physical_anchor_frame(0, interval=-1) is True
+
+        # z_near <= 0 returns 0 safely
+        res = linear_to_log_normalized_depth(np.array([1.0, 2.0]), z_near_m=0.0, z_far_m=10.0)
+        np.testing.assert_allclose(res, 0.0)
 
 
 # =========================================================================

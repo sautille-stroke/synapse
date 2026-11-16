@@ -17,6 +17,7 @@ from synapse.render_core.conditions import (
     ConditionLevel,
     Conditions,
 )
+from synapse.render_core.mesh import MeshData, load_obj
 from synapse.render_core.morphology import (  # noqa: F401
     binary_dilation,
     binary_erosion,
@@ -50,6 +51,8 @@ __all__ = [
     "Conditions",
     "ProceduralMesh",
     "ProceduralMeshType",
+    "MeshData",
+    "load_obj",
     "SoftwareRasterizer",
     "entity_hash",
     "generate_cameras",

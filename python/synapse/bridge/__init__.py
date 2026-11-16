@@ -30,6 +30,7 @@ from synapse.bridge.vg_bridge import (
     VgBackend,
     enforce_distillation_geometry_gate,
     get_vg_backend,
+    register_recon_backend,
 )
 
 # SynapseReconBackend and get_recon_backend live in synapse.recon.backend
@@ -62,4 +63,5 @@ __all__ = [
     "evaluate_hitl_circuit_breaker",
     "get_recon_backend",
     "get_vg_backend",
+    "register_recon_backend",
 ]

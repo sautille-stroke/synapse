@@ -44,6 +44,7 @@ from synapse.metrics.roundtrip import (
     compute_chamfer_distance_mm,
     sample_mesh_surface,
 )
+from synapse.render_core.mesh import MeshData, load_obj
 
 
 def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
@@ -270,6 +271,38 @@ def _collect_model_files(directory: Path) -> list[Path]:
     )
 
 
+# Tier-0/2 Mesh loader registry avoiding upward Tier 3 imports
+_DEFAULT_MESH_LOADER: Callable[[str], Any] | None = None
+
+
+def register_default_mesh_loader(loader: Callable[[str], Any]) -> None:
+    """Register custom or procedural mesh loader from higher tiers (e.g. bench)."""
+    global _DEFAULT_MESH_LOADER
+    _DEFAULT_MESH_LOADER = loader
+
+
+def _default_load_mesh(p: str) -> Any:
+    """Load mesh without upward Tier 3 dependencies."""
+    if _DEFAULT_MESH_LOADER is not None:
+        return _DEFAULT_MESH_LOADER(p)
+    path = Path(p)
+    if path.suffix.lower() == ".obj" and path.exists():
+        mesh = load_obj(path)
+        return mesh.normalize()
+    try:
+        import trimesh
+        tm: Any = trimesh.load(p, force="mesh")
+        mesh = MeshData(
+            name=path.stem,
+            vertices=np.asarray(tm.vertices, dtype=np.float32),
+            faces=np.asarray(tm.faces, dtype=np.int32),
+            normals=np.asarray(tm.vertex_normals, dtype=np.float32),
+        )
+        return mesh.normalize()
+    except Exception as exc:
+        raise ValueError(f"Cannot load mesh '{p}': {exc}") from exc
+
+
 def evaluate_single_model(
     model_path: Path,
     profile_name: str,
@@ -285,12 +318,10 @@ def evaluate_single_model(
 
     Args:
         mesh_loader_fn: Optional callable ``(path_str) -> MeshData``.
-            If not provided, lazily imports ``synapse.bench.model_loader.load_mesh``.
+            If not provided, uses registered default or native OBJ loader.
     """
     if mesh_loader_fn is None:
-        from synapse.bench.model_loader import load_mesh  # tier-bypass utility
-        def mesh_loader_fn(p: str) -> Any:
-            return load_mesh(p, normalize=True)
+        mesh_loader_fn = _default_load_mesh
 
     from synapse.metrics.image_quality import ciede2000, lpips, psnr_db, ssim
     from synapse.metrics.roundtrip import (
@@ -484,10 +515,7 @@ def evaluate_3d_models_directory(
     if reference_dir is not None:
         ref_dir = Path(reference_dir)
         if ref_dir.exists() and ref_dir.is_dir():
-            from synapse.bench.model_loader import load_mesh  # tier-bypass utility
-
-            def _ref_loader_fn(p: str) -> Any:
-                return load_mesh(p, normalize=True)
+            _ref_loader_fn = _default_load_mesh
 
             for ref_path in _collect_model_files(ref_dir):
                 try:

@@ -104,8 +104,12 @@ def tensors_to_frame(
             continue
 
         t = tensors[field]
-        if t.device.type != "cpu":
+        if hasattr(t, "detach"):
+            t = t.detach()
+        if hasattr(t, "cpu"):
             t = t.cpu()
+        if hasattr(t, "contiguous"):
+            t = t.contiguous()
 
         if field == "cryptomatte_id":
             # int32 tensor → uint32 numpy

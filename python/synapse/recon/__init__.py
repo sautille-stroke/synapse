@@ -7,6 +7,10 @@ zero-slip foot kinematics IK, and intrinsic material de-lighting.
 
 from __future__ import annotations
 
+from synapse.recon.backend import (
+    SynapseReconBackend,
+    get_recon_backend,
+)
 from synapse.recon.delight import (
     decompose_intrinsic,
     delight,
@@ -54,6 +58,8 @@ __all__ = [
     "MultiViewInitializer",
     "ReconPipeline",
     "ReconResult",
+    "SynapseReconBackend",
+    "get_recon_backend",
     "check_degenerate_faces",
     "check_manifold",
     "check_self_intersections",

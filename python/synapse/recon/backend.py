@@ -96,3 +96,9 @@ def get_recon_backend(mock: bool = False) -> VgBackend:
     if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
         return MockVgBackend()
     return SynapseReconBackend()
+
+
+# Auto-register backend with Tier 0 bridge registry
+from synapse.bridge.vg_bridge import register_recon_backend  # noqa: E402
+
+register_recon_backend(SynapseReconBackend, get_recon_backend)
