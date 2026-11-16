@@ -240,24 +240,11 @@ def _cmd_rsi_gate_promote(
             scenarios=_parse_scenarios(cand_scenarios_raw),
         )
 
-    strict = bool(getattr(args, "strict", False))
     result = evaluate_monotonic_promotion(
         baseline=baseline,
         candidate=candidate,
-        raise_on_reject=strict,
+        raise_on_reject=True,
     )
-
-    if getattr(args, "strict", False) and not result.promoted:
-        raise QualityGateError(
-            f"Candidate model failed monotonic promotion gate: {result.failures}",
-            agent_fix_hint="Ensure candidate scores monotonically improve over baseline on overall, geom, and temporal axes.",
-            details={
-                "failures": result.failures,
-                "conditions": result.conditions,
-                "baseline": baseline.model_dump(),
-                "candidate": candidate.model_dump(),
-            },
-        )
 
     return {
         "promoted": result.promoted,

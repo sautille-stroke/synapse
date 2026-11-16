@@ -167,16 +167,13 @@ def evaluate_profile_gates(
     metrics: dict[str, float],
     profile_name: str,
     required_keys: set[str] | list[str] | tuple[str, ...] | None = None,
-    has_reference: bool = True,
 ) -> dict[str, bool]:
     """Evaluate gate thresholds from *profile_name* against *metrics* (fail-closed)."""
     canonical = normalize_eval_profile(profile_name)
     profile = GATE_PROFILES[canonical]
     results: dict[str, bool] = {}
 
-    base_required = {"is_manifold"}
-    if has_reference:
-        base_required.add("chamfer_mm")
+    base_required = {"is_manifold", "chamfer_mm"}
     if canonical != "TRACK_B_VIDEO":
         base_required.update({"is_watertight", "num_degenerate_faces", "self_intersecting_pairs"})
     if required_keys is not None:
@@ -461,9 +458,7 @@ def evaluate_single_model(
                         f"  Warning: failed to compute multi-view comparison for {effective_name}: {exc}"
                     )
 
-    gate_results = evaluate_profile_gates(
-        metrics, canonical_profile, has_reference=(reference_mesh is not None)
-    )
+    gate_results = evaluate_profile_gates(metrics, canonical_profile)
     overall_passed = bool(gate_results) and all(gate_results.values())
 
     return ModelEvalResult(
@@ -572,7 +567,7 @@ def evaluate_3d_models_directory(
             resolution=resolution,
             num_views=num_views,
             reference_mesh=ref_mesh,
-            model_name=rel_posix,
+            model_name=rel_stem,
             log_fn=log_fn,
             geometry_backend=geometry_backend,
         )

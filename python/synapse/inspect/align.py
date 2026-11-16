@@ -27,13 +27,12 @@ def generate_fibonacci_sphere_cameras(
     n_cameras: int = 48,
     radius_scale: float = 2.0,
     fov_deg: float = 50.0,
-    center: np.ndarray | None = None,
 ) -> list[CameraPose]:
     """Generate uniformly distributed cameras on a sphere.
 
     Uses the Fibonacci spiral (golden-angle) method to place *n_cameras*
     points on a unit sphere, scaled by *radius_scale*.  Every camera
-    looks at *center* (origin by default).
+    looks at the origin.
 
     Parameters
     ----------
@@ -43,8 +42,6 @@ def generate_fibonacci_sphere_cameras(
         Multiplier applied to the unit sphere radius.
     fov_deg:
         Vertical field of view in degrees for each camera.
-    center:
-        Optional center point to orbit and look at.
 
     Returns
     -------
@@ -53,11 +50,6 @@ def generate_fibonacci_sphere_cameras(
     """
     golden_ratio = (1.0 + math.sqrt(5.0)) / 2.0
     cameras: list[CameraPose] = []
-    center_pt = (
-        np.zeros(3, dtype=np.float64)
-        if center is None
-        else np.asarray(center, dtype=np.float64)
-    )
 
     for i in range(n_cameras):
         # Latitude: arccosine of linearly spaced z in [-1, 1]
@@ -65,16 +57,16 @@ def generate_fibonacci_sphere_cameras(
         # Longitude: golden-angle increment
         phi = 2.0 * math.pi * i / golden_ratio
 
-        x = radius_scale * math.sin(theta) * math.cos(phi) + center_pt[0]
-        y = radius_scale * math.cos(theta) + center_pt[1]
-        z = radius_scale * math.sin(theta) * math.sin(phi) + center_pt[2]
+        x = radius_scale * math.sin(theta) * math.cos(phi)
+        y = radius_scale * math.cos(theta)
+        z = radius_scale * math.sin(theta) * math.sin(phi)
 
         position = [x, y, z]
 
-        # Build look-at rotation (camera looks at center_pt, Y-up)
+        # Build look-at rotation (camera looks at origin, Y-up)
         rot = _look_at_rotation(
             np.array(position, dtype=np.float64),
-            center_pt,
+            np.array([0.0, 0.0, 0.0], dtype=np.float64),
             np.array([0.0, 1.0, 0.0], dtype=np.float64),
         )
         # Store as column-major 3x3 (9 floats)
@@ -83,6 +75,10 @@ def generate_fibonacci_sphere_cameras(
         cameras.append(CameraPose(
             position=position,
             rotation=rot_list,
+            fov_deg=fov_deg,
+        ))
+
+    return cameras
             fov_deg=fov_deg,
         ))
 
@@ -288,7 +284,6 @@ def align_reference_image_to_mesh(
         n_cameras=n_coarse,
         radius_scale=radius_scale,
         fov_deg=50.0,
-        center=centroid,
     )
 
     coarse_scores: list[tuple[float, int]] = []
@@ -309,22 +304,22 @@ def align_reference_image_to_mesh(
 
     for ci, cam in enumerate(candidates):
         cam_fov = cam.fov_deg
-        # Parameterise as spherical coords (theta, phi, radius) relative to centroid
-        pos = np.array(cam.position, dtype=np.float64) - centroid
+        # Parameterise as spherical coords (theta, phi, radius)
+        pos = np.array(cam.position, dtype=np.float64)
         r = float(np.linalg.norm(pos))
         theta = math.acos(np.clip(pos[1] / max(r, 1e-10), -1, 1))
         phi = math.atan2(pos[2], pos[0])
 
         def _neg_iou(params: np.ndarray, fov: float = cam_fov) -> float:
             th, ph, rad = params
-            x = rad * math.sin(th) * math.cos(ph) + centroid[0]
-            y = rad * math.cos(th) + centroid[1]
-            z = rad * math.sin(th) * math.sin(ph) + centroid[2]
+            x = rad * math.sin(th) * math.cos(ph)
+            y = rad * math.cos(th)
+            z = rad * math.sin(th) * math.sin(ph)
             trial_pose = CameraPose(
                 position=[x, y, z],
                 rotation=_look_at_rotation(
                     np.array([x, y, z], dtype=np.float64),
-                    centroid,
+                    np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 ).T.flatten().tolist(),
                 fov_deg=fov,
@@ -351,14 +346,14 @@ def align_reference_image_to_mesh(
         if refined_iou > best_iou:
             best_iou = refined_iou
             th, ph, rad = result.x
-            bx = rad * math.sin(th) * math.cos(ph) + centroid[0]
-            by = rad * math.cos(th) + centroid[1]
-            bz = rad * math.sin(th) * math.sin(ph) + centroid[2]
+            bx = rad * math.sin(th) * math.cos(ph)
+            by = rad * math.cos(th)
+            bz = rad * math.sin(th) * math.sin(ph)
             best_pose = CameraPose(
                 position=[bx, by, bz],
                 rotation=_look_at_rotation(
                     np.array([bx, by, bz], dtype=np.float64),
-                    centroid,
+                    np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 ).T.flatten().tolist(),
                 fov_deg=cam_fov,

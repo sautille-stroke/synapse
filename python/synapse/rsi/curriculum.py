@@ -13,6 +13,7 @@ and increases sampling probability for harder condition levels
 
 from __future__ import annotations
 
+import math
 import random
 from pathlib import Path
 

@@ -95,7 +95,9 @@ def _normalize_metric(name: str, value: float) -> float:
 
     if name == "chamfer_mm":
         return max(0.0, 1.0 - min(max(value, 0.0) / 10.0, 1.0))
-    if name in ("volume_breathing", "volume_breathing_pct"):
+    if name == "volume_breathing":
+        return max(0.0, 1.0 - min(abs(value) / 0.5, 1.0))
+    if name == "volume_breathing_pct":
         return max(0.0, 1.0 - min(abs(value) / 10.0, 1.0))
     if name in ("silhouette_iou", "f_score", "f_score_1mm", "f_score_5mm", "ssim"):
         return max(0.0, min(value, 1.0))
