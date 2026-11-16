@@ -343,6 +343,20 @@ def plan_macro_camera_for_roi(
     if z_c <= 0:
         z_c = 1.0  # fallback
 
+    if occlusion_depth_map is not None:
+        occ_h, occ_w = occlusion_depth_map.shape[:2]
+        occ_x = max(0, min(cx_px, occ_w - 1))
+        occ_y = max(0, min(cy_px, occ_h - 1))
+        occ_z = float(occlusion_depth_map[occ_y, occ_x])
+        if occ_z > 0.0 and occ_z < z_c - 0.05:
+            from synapse.errors import QualityGateError
+
+            raise QualityGateError(
+                f"No unoccluded view found for ROI at {roi.get('center_uv')}: "
+                f"occlusion depth {occ_z:.3f} < surface depth {z_c:.3f}",
+                agent_fix_hint="Choose an unoccluded viewpoint or clear obstructions between camera and ROI.",
+            )
+
     fx = camera_intrinsics["fx"]
     fy = camera_intrinsics["fy"]
     cx = camera_intrinsics["cx"]

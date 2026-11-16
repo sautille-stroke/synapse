@@ -133,6 +133,7 @@ def _assert_safe_relative_path(p: str) -> None:
 
     A path is rejected when it:
     - Contains ``..`` as a segment (directory traversal).
+    - Contains ``\\`` (backslashes — POSIX paths required).
     - Starts with ``/`` (absolute POSIX path).
     - Starts with a Windows drive letter (e.g. ``C:\\``).
     - Is empty.
@@ -141,6 +142,13 @@ def _assert_safe_relative_path(p: str) -> None:
         raise ContractValidationError(
             "Empty path in bundle source entry",
             agent_fix_hint="Provide a non-empty relative path.",
+        )
+
+    # Reject backslashes explicitly
+    if "\\" in p:
+        raise ContractValidationError(
+            f"Backslash '\\' rejected in bundle path: '{p}'",
+            agent_fix_hint="Use POSIX forward slashes '/' instead of backslashes.",
         )
 
     # Absolute POSIX
@@ -163,7 +171,7 @@ def _assert_safe_relative_path(p: str) -> None:
 
     # Traverse segments
     parts = PurePosixPath(p).parts
-    if ".." in parts:
+    if ".." in parts or any(part == ".." for part in p.split("/")):
         raise ContractValidationError(
             f"Path traversal ('..') rejected: '{p}'",
             agent_fix_hint=(
