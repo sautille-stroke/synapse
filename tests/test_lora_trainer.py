@@ -716,6 +716,97 @@ class TestStatelessLoRATrainer:
         assert v_tw.grad.norm().item() > 0
         assert v_tl.grad is not None
 
+    def test_differentiable_edge_preserving_loss_4d_and_5d(self) -> None:
+        """PR-99: EdgePreservingLoss supports 4D [B, C, H, W] and 5D [B, C, T, H, W]."""
+        import torch
+        from synapse.training.losses import EdgePreservingLoss
+
+        loss_fn = EdgePreservingLoss()
+
+        # 4D: [B=2, C=3, H=16, W=16]
+        z_4d = torch.randn(2, 3, 16, 16, requires_grad=True)
+        d_4d = torch.randn(2, 1, 16, 16)
+        loss_4d = loss_fn(z_4d, d_4d)
+        loss_4d.backward()
+        assert z_4d.grad is not None
+        assert torch.isfinite(z_4d.grad).all()
+
+        # 5D: [B=2, C=3, T=4, H=16, W=16]
+        z_5d = torch.randn(2, 3, 4, 16, 16, requires_grad=True)
+        d_5d = torch.randn(2, 1, 4, 16, 16)
+        loss_5d = loss_fn(z_5d, d_5d)
+        loss_5d.backward()
+        assert z_5d.grad is not None
+        assert torch.isfinite(z_5d.grad).all()
+
+    def test_edge_preserving_loss_gradient_finite_on_identical(self) -> None:
+        """PR-99: EdgePreservingLoss sqrt(+1e-8) ensures finite gradients on identical inputs."""
+        import torch
+        from synapse.training.losses import EdgePreservingLoss
+
+        loss_fn = EdgePreservingLoss()
+        z = (torch.ones(2, 1, 8, 8) * 0.5).requires_grad_(True)
+        d = torch.ones(2, 1, 8, 8) * 0.5
+        loss = loss_fn(z, d)
+        loss.backward()
+        assert z.grad is not None
+        assert torch.isfinite(z.grad).all()
+
+    def test_normal_reconstruction_loss_zero_mask_gradient(self) -> None:
+        """PR-99: NormalReconstructionLoss with empty foreground mask returns differentiable 0."""
+        import torch
+        from synapse.training.losses import NormalReconstructionLoss
+
+        loss_fn = NormalReconstructionLoss()
+        n_pred = torch.randn(8, 8, 3, requires_grad=True)
+        n_gt = torch.randn(8, 8, 3)
+        empty_mask = torch.zeros(8, 8)
+
+        loss = loss_fn(n_pred, n_gt, mask=empty_mask)
+        assert loss.item() == 0.0
+        loss.backward()
+        assert n_pred.grad is not None
+        assert torch.isfinite(n_pred.grad).all()
+
+    def test_diffusion_dpo_loss_batch_per_sample_reduction(self) -> None:
+        """PR-99: DiffusionDPOLoss reduces per-sample across batch."""
+        import torch
+        from synapse.training.losses import DiffusionDPOLoss
+
+        loss_fn = DiffusionDPOLoss(beta=10.0)
+        v_tw = torch.randn(4, 16, requires_grad=True)
+        v_tl = torch.randn(4, 16, requires_grad=True)
+        v_rw = torch.randn(4, 16)
+        v_rl = torch.randn(4, 16)
+        target_w = torch.randn(4, 16)
+        target_l = torch.randn(4, 16)
+
+        loss = loss_fn(v_tw, v_tl, v_rw, v_rl, target_w, target_l)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert v_tw.grad is not None
+        assert torch.isfinite(v_tw.grad).all()
+
+    def test_trainer_flush_gradients(self) -> None:
+        """PR-99: StatelessLoRATrainer.flush_gradients steps on leftover accumulation."""
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(
+            category="style",
+            grad_accum_steps=4,
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn.0"])
+
+        batch = {"latent": torch.randn(2, 64), "noise": torch.randn(2, 64)}
+        trainer.train_step(model, batch, 0)  # micro_step 1 of 4
+        assert trainer._micro_step == 1
+        trainer.flush_gradients(model)
+        assert trainer._micro_step == 0
+
 
 # -------------------------------------------------------------------
 # Stage registration test

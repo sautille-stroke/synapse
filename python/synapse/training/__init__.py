@@ -19,6 +19,10 @@ from synapse.training.feature_store import (
     iter_feature_shards,
 )
 from synapse.training.losses import (
+    DiffusionDPOLoss,
+    EdgePreservingLoss,
+    FlowMatchingLoss,
+    NormalReconstructionLoss,
     diffusion_dpo_loss,
     flow_matching_loss,
     latent_edge_alignment_loss,
@@ -42,6 +46,10 @@ __all__ = [
     "TextEncoderProtocol",
     "format_structured_caption",
     "iter_feature_shards",
+    "FlowMatchingLoss",
+    "EdgePreservingLoss",
+    "NormalReconstructionLoss",
+    "DiffusionDPOLoss",
     "flow_matching_loss",
     "latent_edge_alignment_loss",
     "normal_reconstruction_loss",

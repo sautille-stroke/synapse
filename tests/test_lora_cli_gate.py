@@ -33,9 +33,17 @@ def tmp_bundle_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fake_weights(tmp_path: Path) -> Path:
-    """Create a fake safetensors file."""
+    """Create a real safetensors file with valid LoRA weights."""
+    from safetensors.numpy import save_file
+
     p = tmp_path / "weights.safetensors"
-    p.write_bytes(b"\x00" * 128)
+    weights = {
+        "model.cross_attn.to_k.lora_A.weight": np.zeros((4, 16), dtype=np.float32),
+        "model.cross_attn.to_k.lora_B.weight": np.zeros((16, 4), dtype=np.float32),
+        "model.cross_attn.to_v.lora_A.weight": np.zeros((4, 16), dtype=np.float32),
+        "model.cross_attn.to_v.lora_B.weight": np.zeros((16, 4), dtype=np.float32),
+    }
+    save_file(weights, str(p))
     return p
 
 

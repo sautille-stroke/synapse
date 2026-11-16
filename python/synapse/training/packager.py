@@ -19,7 +19,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from synapse.errors import AssetNotFoundError, ContractValidationError, QualityGateError
+from synapse.adapters.lora.manifest import LoRAManifest
+from synapse.errors import (
+    AssetNotFoundError,
+    BackendUnavailableError,
+    ContractValidationError,
+    QualityGateError,
+)
 from synapse.metrics.profiles import (
     RSI_PROMOTION,
     GateProfileName,
@@ -165,10 +171,27 @@ def package_and_gate_lora_bundle(
         QualityGateError: If any hard gate threshold is violated or
             required metrics are missing/non-finite (exit code 40).
     """
+    _DEFAULT_TARGET_MODULES_BY_CATEGORY: dict[str, list[str]] = {
+        "style": ["cross_attn.to_k", "cross_attn.to_v"],
+        "identity": ["cross_attn.to_k", "cross_attn.to_v"],
+        "control": ["spatial_attn.to_q"],
+        "whitebox": ["spatial_attn.to_q"],
+        "motion": ["temporal_attn.to_q"],
+    }
+
     if thresholds is None:
         thresholds = LoRAGateThresholds()
     if target_modules is None:
-        target_modules = []
+        target_modules = _DEFAULT_TARGET_MODULES_BY_CATEGORY.get(
+            category, ["cross_attn.to_k", "cross_attn.to_v"]
+        )
+    elif len(target_modules) == 0:
+        raise ContractValidationError(
+            "target_modules must not be empty when packaging a LoRA bundle",
+            agent_fix_hint=(
+                "Provide at least one target module name (e.g. ['cross_attn.to_k', 'cross_attn.to_v'])."
+            ),
+        )
     if golden_scenarios is None:
         golden_scenarios = []
     if negative_scenarios is None:
@@ -222,6 +245,17 @@ def package_and_gate_lora_bundle(
             "dataset_sha256": training_dataset_sha256,
         },
     }
+
+    # Validate manifest schema and category whitelist
+    try:
+        LoRAManifest.model_validate(manifest_data)
+    except Exception as e:
+        raise ContractValidationError(
+            f"LoRA manifest validation failed: {e}",
+            agent_fix_hint=(
+                "Ensure category, rank, alpha, and target_modules match LoRAManifest schema."
+            ),
+        ) from e
 
     manifest_path = output_dir / "lora_manifest.json"
     manifest_path.write_text(
@@ -280,80 +314,38 @@ def _validate_safetensors_weights(
     weights_path: Path,
     target_modules: list[str],
 ) -> None:
-    """Validate ``.safetensors`` header, weight keys, and emptiness.
+    """Validate ``.safetensors`` header, weight keys, and non-emptiness fail-closed.
 
-    Checks (when the file is a valid safetensors container):
-    1. The file is parseable as safetensors format.
-    2. At least one weight tensor is present (no empty checkpoints).
-    3. Every weight key name references one of the ``target_modules``
-       patterns via substring match (no unauthorized weights persisted).
-
-    When ``target_modules`` is empty, the whitelist check is skipped.
-    If the file cannot be parsed as safetensors (e.g. raw binary blob
-    from tests), validation is skipped with a warning.
+    Checks:
+    1. The safetensors library is installed (BackendUnavailableError 30 if missing).
+    2. The file is parseable as safetensors format (ContractValidationError 10 on corruption).
+    3. At least one weight tensor is present (no empty checkpoints).
+    4. Every weight key name references one of the ``target_modules`` patterns.
 
     Args:
         weights_path: Path to the ``.safetensors`` file.
-        target_modules: Allowed module name patterns from
-            ``LoRAManifest.target_modules``.  Empty list skips the
-            whitelist check.
+        target_modules: Allowed module name patterns from ``LoRAManifest.target_modules``.
 
     Raises:
-        ContractValidationError: On empty weights or unauthorized key
-            names (only when file is a valid safetensors container).
+        BackendUnavailableError: If safetensors library is not installed (exit code 30).
+        ContractValidationError: If file is corrupted, empty, or contains unauthorized keys (exit code 10).
     """
-    import logging as _log
-
-    _logger = _log.getLogger(__name__)
-
-    keys: list[str] | None = None
-
     try:
         from safetensors import safe_open
+    except ImportError as e:
+        raise BackendUnavailableError(
+            "safetensors library is required to validate and package LoRA weights",
+            agent_fix_hint="Install safetensors via 'pip install safetensors'.",
+        ) from e
 
+    try:
         with safe_open(str(weights_path), framework="numpy") as f:
             keys = list(f.keys())
-    except ImportError:
-        # safetensors not installed — attempt raw header parse
-        import json as _json
-        import struct
-
-        try:
-            with open(weights_path, "rb") as fp:
-                raw = fp.read(8)
-                if len(raw) < 8:
-                    _logger.warning(
-                        "Safetensors header too small to parse: %s (skipping validation)",
-                        weights_path,
-                    )
-                    return
-                header_len = struct.unpack("<Q", raw)[0]
-                if header_len > 10 * 1024 * 1024:  # sanity guard: 10 MB header
-                    _logger.warning(
-                        "Safetensors header length implausibly large: %d (skipping validation)",
-                        header_len,
-                    )
-                    return
-                header_raw = fp.read(header_len)
-
-            header = _json.loads(header_raw)
-            keys = [k for k in header if k != "__metadata__"]
-        except Exception:
-            _logger.warning(
-                "Could not parse safetensors header from %s (skipping validation)",
-                weights_path,
-            )
-            return
-    except Exception:
-        # File is not a valid safetensors container — skip validation
-        _logger.warning(
-            "Could not open as safetensors: %s (skipping validation)",
-            weights_path,
-        )
-        return
-
-    if keys is None:
-        return
+    except Exception as e:
+        raise ContractValidationError(
+            f"Failed to parse safetensors weights file '{weights_path}': {e}",
+            agent_fix_hint="Ensure the weights file is a valid, uncorrupted safetensors container.",
+        ) from e
 
     if not keys:
         raise ContractValidationError(
@@ -369,8 +361,8 @@ def _validate_safetensors_weights(
                 unauthorized.append(key)
         if unauthorized:
             raise ContractValidationError(
-                f"Unauthorized weight keys not matching target_modules "
-                f"whitelist: {unauthorized[:5]}{'...' if len(unauthorized) > 5 else ''}",
+                f"Unauthorized weight keys not matching target_modules whitelist: "
+                f"{unauthorized[:5]}{'...' if len(unauthorized) > 5 else ''}",
                 agent_fix_hint=(
                     "Ensure all weight keys reference target_modules: "
                     f"{target_modules}. Remove or rename unauthorized keys."

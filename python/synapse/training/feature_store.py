@@ -14,6 +14,7 @@ import hashlib
 import io
 import json
 import logging
+import re
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -21,9 +22,11 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from synapse.errors import ContractValidationError
+from synapse.errors import AssetNotFoundError, ContractValidationError
 
 logger = logging.getLogger(__name__)
+
+_SAMPLE_ID_REGEX = re.compile(r"^[A-Za-z0-9_\-.]+$")
 
 # -------------------------------------------------------------------
 # Structured caption formatter
@@ -275,11 +278,21 @@ class FeatureStoreBuilder:
                 two layouts are distinguished by shape (see
                 ``_validate_ingestion_quality``).
             camera_matrices: Optional ``[T, 4, 4]`` camera-to-world
-                matrices.  When *fgpp_cond* is ``[T, H, W, 15]`` raw
-                FGPP and *camera_matrices* is ``None``, the rotation
-                determinant gate (Gate 5) is skipped.
+                matrices.
             source_sha256: Optional source sequence SHA-256.
         """
+        if (
+            not sample_id
+            or not _SAMPLE_ID_REGEX.match(sample_id)
+            or ".." in sample_id
+            or "/" in sample_id
+            or "\\" in sample_id
+        ):
+            raise ContractValidationError(
+                f"Invalid sample_id '{sample_id}': must be alphanumeric/dashes/underscores with no path traversal",
+                agent_fix_hint="Use a valid sample_id without slashes or '..'.",
+            )
+
         passed, reason = self._validate_ingestion_quality(
             {
                 "sample_id": sample_id,
@@ -307,18 +320,11 @@ class FeatureStoreBuilder:
 
     @staticmethod
     def _is_wan_control_layout(arr: np.ndarray) -> bool:
-        """Return *True* when *arr* looks like a ``[7, T, H, W]`` Wan control tensor.
-
-        Distinguishes the pre-built 7-channel Wan adapter tensor from raw
-        ``[T, H, W, 15]`` FGPP pixel tensors.  The key heuristic: when
-        ``ndim == 4`` and ``shape[0] == 7`` with ``shape[1:]`` all > 7
-        (temporal + spatial), it is the Wan layout.
-        """
+        """Return *True* when *arr* looks like a ``[7, T, H, W]`` Wan control tensor (C=7, T>=1)."""
         if arr.ndim != 4:
             return False
         c, t, h, w = arr.shape
-        # Wan control: [7, T, H, W] where T, H, W are all > 7
-        return bool(c == 7 and t > 7 and h > 7 and w > 7)
+        return bool(c == 7 and t >= 1 and h >= 1 and w >= 1 and arr.shape[-1] != 15)
 
     @staticmethod
     def _validate_ingestion_quality(
@@ -410,20 +416,41 @@ class FeatureStoreBuilder:
                         f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95"
                     )
 
-        # ── Gate 5 — Rotation determinant from camera_matrices ──────
-        # Uses the dedicated [T, 4, 4] camera matrices instead of
-        # attempting to interpret spatial-pixel columns of the fgpp/Wan
-        # tensor as rotation elements (which caused 100% rejection).
+        # ── Gate 5 — Rotation determinant and orthogonality ──────────
         if cam_mats is not None:
             cam = np.asarray(cam_mats)
             if cam.ndim == 3 and cam.shape[1] >= 3 and cam.shape[2] >= 3:
-                rot = cam[0, :3, :3]
+                for t in range(cam.shape[0]):
+                    rot = cam[t, :3, :3]
+                    det = float(np.linalg.det(rot))
+                    ortho_err = float(
+                        np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro")
+                    )
+                    if abs(det - 1.0) >= 1e-4 or ortho_err >= 1e-4:
+                        return False, (
+                            f"Gate 5 (rotation det): frame {t} |det(R)-1| = "
+                            f"{abs(det - 1.0):.2e} >= 1e-4, ortho_err = {ortho_err:.2e}"
+                        )
+            elif cam.ndim == 2 and cam.shape[0] >= 3 and cam.shape[1] >= 3:
+                rot = cam[:3, :3]
                 det = float(np.linalg.det(rot))
-                if abs(det - 1.0) >= 1e-5:
+                ortho_err = float(
+                    np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro")
+                )
+                if abs(det - 1.0) >= 1e-4 or ortho_err >= 1e-4:
                     return False, (
                         f"Gate 5 (rotation det): |det(R)-1| = "
-                        f"{abs(det - 1.0):.2e} >= 1e-5"
+                        f"{abs(det - 1.0):.2e} >= 1e-4, ortho_err = {ortho_err:.2e}"
                     )
+        elif is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 16:
+            # Embedded 3x3 rotation in fgpp[..., 7:16]
+            rot = fgpp[0, 0, 0, 7:16].reshape(3, 3)
+            det = float(np.linalg.det(rot))
+            if abs(det - 1.0) >= 1e-4:
+                return False, (
+                    f"Gate 5 (rotation det): |det(R)-1| = "
+                    f"{abs(det - 1.0):.2e} >= 1e-4"
+                )
 
         return True, ""
 
@@ -449,6 +476,9 @@ class FeatureStoreBuilder:
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self._samples:
+            return []
 
         shard_paths: list[Path] = []
         shard_idx = 0
@@ -570,11 +600,24 @@ def iter_feature_shards(
 
     Yields:
         One dict per sample across all shards.
+
+    Raises:
+        AssetNotFoundError: If any shard file does not exist.
     """
+    known_suffixes = (
+        ".latent.npy",
+        ".prompt.npy",
+        ".fgpp_cond.npy",
+        ".meta.json",
+    )
+
     for shard_path in shard_paths:
         shard_path = Path(shard_path)
         if not shard_path.is_file():
-            continue
+            raise AssetNotFoundError(
+                f"Shard file not found: {shard_path}",
+                agent_fix_hint=f"Ensure shard file exists at '{shard_path}' before iterating.",
+            )
 
         # Collect all entries grouped by sample_id prefix
         entries: dict[str, dict[str, bytes]] = {}
@@ -586,18 +629,23 @@ def iter_feature_shards(
                 f = tf.extractfile(member)
                 if f is None:
                     continue
-                data = f.read()
+                with f:
+                    data = f.read()
 
-                # Parse: {sample_id}.{suffix}
-                dot_idx = name.find(".")
-                if dot_idx < 0:
+                # Parse: {sample_id}.{suffix} matching known suffixes from the right
+                matched_sid: str | None = None
+                matched_suffix: str | None = None
+                for suf in known_suffixes:
+                    if name.endswith(suf):
+                        matched_sid = name[:-len(suf)]
+                        matched_suffix = suf[1:]  # e.g. "latent.npy"
+                        break
+                if matched_sid is None or matched_suffix is None:
                     continue
-                sid = name[:dot_idx]
-                suffix = name[dot_idx + 1:]
 
-                if sid not in entries:
-                    entries[sid] = {}
-                entries[sid][suffix] = data
+                if matched_sid not in entries:
+                    entries[matched_sid] = {}
+                entries[matched_sid][matched_suffix] = data
 
         # Yield complete samples
         for sid, parts in entries.items():
@@ -607,12 +655,12 @@ def iter_feature_shards(
             meta: dict[str, Any] = {}
 
             if "latent.npy" in parts:
-                latent = np.load(io.BytesIO(parts["latent.npy"]))
+                latent = np.load(io.BytesIO(parts["latent.npy"]), allow_pickle=False)
             if "prompt.npy" in parts:
-                prompt = np.load(io.BytesIO(parts["prompt.npy"]))
+                prompt = np.load(io.BytesIO(parts["prompt.npy"]), allow_pickle=False)
             if "fgpp_cond.npy" in parts:
                 fgpp_cond = np.load(
-                    io.BytesIO(parts["fgpp_cond.npy"]),
+                    io.BytesIO(parts["fgpp_cond.npy"]), allow_pickle=False,
                 )
             if "meta.json" in parts:
                 meta = json.loads(
