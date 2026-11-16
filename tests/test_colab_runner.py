@@ -26,8 +26,7 @@ import pytest
 
 from synapse.errors import BackendUnavailableError
 from synapse.fgpp import (
-    CameraPose,
-    CameraProjectionType,
+    CameraParams,
     FGPPFrame,
     FGPPSequence,
 )
@@ -51,15 +50,18 @@ from scripts.colab_runner import (
 
 def _make_dummy_frame(idx: int, width: int = 64, height: int = 64) -> FGPPFrame:
     """Construct a minimal valid FGPPFrame with 15-channel AOV equivalents."""
-    cam = CameraPose(
-        view_matrix=np.eye(4, dtype=np.float64),
-        world_matrix=np.eye(4, dtype=np.float64),
-        projection_type=CameraProjectionType.PERSPECTIVE,
+    cam = CameraParams(
+        fx=50.0,
+        fy=50.0,
+        cx=width / 2.0,
+        cy=height / 2.0,
+        width=width,
+        height=height,
         fov_degrees=50.0,
         z_near=0.1,
         z_far=100.0,
-        width=width,
-        height=height,
+        view_matrix=np.eye(4, dtype=np.float64),
+        world_matrix=np.eye(4, dtype=np.float64),
     )
     return FGPPFrame(
         frame_index=idx,
