@@ -79,7 +79,6 @@ def _make_dummy_sequence(num_frames: int = 17, scene_id: str = "test_scene") -> 
         scene_id=scene_id,
         frames=frames,
         fps=24.0,
-        extra={"schema_version": "fgpp.v1.0"},
     )
 
 
