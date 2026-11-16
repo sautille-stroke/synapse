@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from synapse.adapters.mock import MockVideoAdapter
 from synapse.bench.scenario import list_scenarios
@@ -13,17 +15,24 @@ pytestmark = pytest.mark.slow
 class TestBenchFullSuite:
     """Validate that every built-in scenario executes cleanly end-to-end."""
 
-    def test_all_scenarios_asset_resolution_and_execution(self) -> None:
+    def test_all_scenarios_asset_resolution_and_execution(
+        self, shared_rasterizer_cache: dict[str, Any],
+    ) -> None:
         """Every built-in scenario must run without error (0 asset resolution failures)."""
         scenarios = list_scenarios()
         assert len(scenarios) >= 16, f"Expected at least 16 scenarios, found {len(scenarios)}"
 
         adapter = MockVideoAdapter()
-        runner = BenchPipelineRunner(adapter, gate_profile="track_b_video")
+        runner = BenchPipelineRunner(
+            adapter,
+            gate_profile="track_b_video",
+            rasterizer_cache=shared_rasterizer_cache,
+        )
 
         reports = runner.run_all(
             seed=42,
             resolution=(32, 32),
+            num_frames=4,
         )
         assert len(reports) == len(scenarios)
 

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 from synapse.pipeline.bundle_worker import (
     _STAGE_HANDLERS,
     BundleManifest,
@@ -104,7 +105,7 @@ class TestBundleManifest:
 
     def test_schema_version_validation(self) -> None:
         """Unsupported schema_version must raise ValidationError."""
-        with pytest.raises(Exception, match="Unsupported schema_version"):
+        with pytest.raises(ValidationError, match="Unsupported schema_version"):
             BundleManifest(
                 schema_version="bad.version.0",
                 job_id="j1",
@@ -113,7 +114,7 @@ class TestBundleManifest:
 
     def test_missing_required_fields(self) -> None:
         """Omitting required fields must raise ValidationError."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             BundleManifest()  # type: ignore[call-arg]
 
     def test_default_hardware_budget(self) -> None:
