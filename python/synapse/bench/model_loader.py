@@ -7,7 +7,6 @@ inside functions only when needed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,6 @@ import numpy as np
 
 from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
 from synapse.render_core.mesh import MeshData, load_obj
-
 
 # ---------------------------------------------------------------------------
 # Procedural mesh bridge

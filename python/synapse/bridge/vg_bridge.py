@@ -13,7 +13,6 @@ Abstract interface :class:`VgBackend` and :class:`MockVgBackend` are hosted in
 from __future__ import annotations
 
 import os
-
 from collections.abc import Callable
 
 from synapse.errors import ContractValidationError

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from synapse.errors import AssetNotFoundError, ContractValidationError
+from synapse.errors import AssetNotFoundError
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.io import (
     resize_fgpp_frame,

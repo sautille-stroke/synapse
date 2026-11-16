@@ -10,7 +10,6 @@ This package may only import from: ``synapse.errors``, ``synapse.telemetry``,
 
 from synapse.render_core.backend import MockVgBackend, VgBackend
 from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
-from synapse.render_core.mesh import MeshData, load_obj
 from synapse.render_core.conditions import (
     CROSS_CONDITIONS,
     RENDERING_CONDITION_FACTORS,
@@ -18,6 +17,7 @@ from synapse.render_core.conditions import (
     ConditionLevel,
     Conditions,
 )
+from synapse.render_core.mesh import MeshData, load_obj
 from synapse.render_core.morphology import (  # noqa: F401
     binary_dilation,
     binary_erosion,

@@ -7,6 +7,10 @@ zero-slip foot kinematics IK, and intrinsic material de-lighting.
 
 from __future__ import annotations
 
+from synapse.recon.backend import (
+    SynapseReconBackend,
+    get_recon_backend,
+)
 from synapse.recon.delight import (
     decompose_intrinsic,
     delight,
@@ -28,10 +32,6 @@ from synapse.recon.geometry import (
 from synapse.recon.kinematics import (
     solve_two_bone_ik,
     solve_zero_slip_ik,
-)
-from synapse.recon.backend import (
-    SynapseReconBackend,
-    get_recon_backend,
 )
 from synapse.recon.pipeline import ReconPipeline
 from synapse.recon.tracking import (
