@@ -29,10 +29,7 @@ if str(REPO_ROOT / "python") not in sys.path:
 
 
 from synapse.errors import (
-    AssetNotFoundError,
     BackendUnavailableError,
-    ContractValidationError,
-    NotImplementedStageError,
     SynapseError,
 )
 from synapse.fgpp import FGPPSequence, import_fgpp
@@ -282,9 +279,11 @@ def _verify_e4_real_gpu(
 ) -> dict[str, Any]:
     """Verify E4 on CUDA GPU by training and packaging real LoRA safetensors."""
     import hashlib
+
     import torch
-    from synapse.adapters.lora.manifest import LoRAManifest
+
     from synapse.adapters.lora.manager import MultiLoRAManager
+    from synapse.adapters.lora.manifest import LoRAManifest
 
     f0 = seq_track_a.frames[0]
     assert f0.cryptomatte_id is not None

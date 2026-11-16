@@ -39,7 +39,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(REPO_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from scripts.colab_runner import (
+from scripts.colab_runner import (  # noqa: E402
     _persist_state,
     detect_gpu_profile,
     finalize_job_workspace,

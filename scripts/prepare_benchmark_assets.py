@@ -44,6 +44,7 @@ if str(REPO_ROOT / "python") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from synapse.errors import AssetNotFoundError
+
 DEFAULT_BENCHMARK_DIR = REPO_ROOT / "data" / "benchmarks"
 DEFAULT_LOCAL_OPEN_DATA = Path(
     os.environ.get(
