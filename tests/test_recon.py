@@ -8,9 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 from synapse.bridge.vg_bridge import (
-    SynapseReconBackend,
     VgBackend,
-    get_recon_backend,
     get_vg_backend,
 )
 from synapse.recon import (
@@ -18,6 +16,7 @@ from synapse.recon import (
     DelightResult,
     ReconPipeline,
     ReconResult,
+    SynapseReconBackend,
     check_manifold,
     check_watertight,
     compute_normals,
@@ -25,6 +24,7 @@ from synapse.recon import (
     delight,
     delight_multiview_albedo,
     evaluate_spherical_harmonics_basis,
+    get_recon_backend,
     quad_remesh,
     refine_pose_6dof,
     solve_camera_trajectory,

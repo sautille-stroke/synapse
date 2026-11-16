@@ -66,7 +66,11 @@ def __getattr__(name: str) -> object:
     if name == "SynapseReconBackend":
         if _RECON_BACKEND_CLS is not None:
             return _RECON_BACKEND_CLS
-        return MockVgBackend
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}. "
+            "SynapseReconBackend is registered by 'synapse.recon'. "
+            "Import 'synapse.recon' directly."
+        )
     if name == "get_recon_backend":
         return get_recon_backend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

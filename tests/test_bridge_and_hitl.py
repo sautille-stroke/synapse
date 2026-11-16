@@ -15,6 +15,7 @@ from synapse.bridge.hitl import (
     OperatorIdentity,
     evaluate_hitl_circuit_breaker,
 )
+import synapse.recon  # noqa: F401 — registers SynapseReconBackend with bridge
 from synapse.bridge.vg_bridge import (
     MockVgBackend,
     VgBackend,
