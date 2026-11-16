@@ -218,6 +218,7 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
             entity_name=scenario.asset.id,
             prev_camera=cameras[i - 1] if i > 0 else None,
         )
+        frame.frame_index = i
         frames.append(frame)
 
     seq = FGPPSequence(frames=frames, fps=fps, scene_id=scenario.id)

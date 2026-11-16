@@ -44,6 +44,17 @@ def handle_anatomical_refine(
 
     params = dict(manifest.params)
 
+    max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
+    elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
+    if elapsed_seconds > max_elapsed_seconds:
+        from synapse.errors import evaluate_hitl_circuit_breaker
+
+        evaluate_hitl_circuit_breaker(
+            elapsed_seconds,
+            domain="video_shot",
+            max_seconds=max_elapsed_seconds,
+        )
+
     # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
     if not video_path or not Path(video_path).is_file():
@@ -84,17 +95,6 @@ def handle_anatomical_refine(
 
     rois_raw = json.loads(Path(rois_path).read_text(encoding="utf-8"))
     _height, _width = frames.shape[1], frames.shape[2]
-
-    max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
-    elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
-    if elapsed_seconds > max_elapsed_seconds:
-        from synapse.errors import evaluate_hitl_circuit_breaker
-
-        evaluate_hitl_circuit_breaker(
-            elapsed_seconds,
-            domain="video_shot",
-            max_seconds=max_elapsed_seconds,
-        )
 
     rois_per_frame: list[list[RefinementROI]] = []
     for t, frame_rois_raw in enumerate(rois_raw):
