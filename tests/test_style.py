@@ -662,12 +662,13 @@ class TestPR96StyleHardening:
     def test_save_style_profile_yaml_raises_backend_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """save_style_profile_yaml must raise BackendUnavailableError(30) when pyyaml is missing."""
         import builtins
+
         from synapse.errors import BackendUnavailableError
         from synapse.style.profile_mapper import save_style_profile_yaml
 
         real_import = builtins.__import__
 
-        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
             if name == "yaml":
                 raise ImportError("No module named 'yaml'")
             return real_import(name, *args, **kwargs)

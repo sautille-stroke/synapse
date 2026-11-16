@@ -20,7 +20,11 @@ import numpy as np
 
 from synapse.render_core.morphology import (
     binary_dilation as _binary_dilation,
+)
+from synapse.render_core.morphology import (
     circular_structuring_element as _circular_structuring_element,
+)
+from synapse.render_core.morphology import (
     exact_euclidean_distance_transform,
 )
 
