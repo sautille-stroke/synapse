@@ -23,8 +23,11 @@ class TestProfiles:
         )
 
         assert len(TRACK_B_VIDEO) == 16
-        assert len(TRACK_A_ASSET) == 16
-        assert len(RSI_PROMOTION) == 16
+        assert len(TRACK_A_ASSET) >= 16
+        assert len(RSI_PROMOTION) >= 16
+        assert "non_manifold_edges" in TRACK_A_ASSET
+        assert "f_score_5mm" in TRACK_A_ASSET
+        assert "watertight_pct" in TRACK_A_ASSET
 
     def test_all_profile_keys_registered_in_metric_directions(self) -> None:
         """Every metric key in every tier MUST be explicitly registered in

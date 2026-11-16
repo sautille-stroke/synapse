@@ -129,9 +129,9 @@ class TestFvdVideoBridge:
         class Tiny3DCNN(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
-                self.conv = torch.nn.Conv3d(3, 8, kernel_size=3, padding=1)
+                self.conv = torch.nn.Conv3d(3, 512, kernel_size=3, padding=1)
                 self.pool = torch.nn.AdaptiveAvgPool3d((1, 1, 1))
-                self.fc = torch.nn.Linear(8, 512)
+                self.fc = torch.nn.Linear(512, 10)
 
             def forward(self, x: torch.Tensor) -> torch.Tensor:
                 return self.fc(self.pool(self.conv(x)).flatten(1))

@@ -195,6 +195,7 @@ def compute_chamfer_distance_mm(
     num_samples: int = 10000,
     reduction: Literal["mean", "sum"] = "mean",
     seed: int = 42,
+    seed_b: int | None = None,
 ) -> float:
     """Bilateral Chamfer distance in millimetres with area-weighted surface sampling.
 
@@ -211,13 +212,15 @@ def compute_chamfer_distance_mm(
         num_samples: Number of surface samples when sampling from faces (default: 10000).
         reduction: "mean" (default) or "sum".
         seed: RNG seed for reproducible surface sampling.
+        seed_b: Optional separate RNG seed for sampling mesh B. When omitted, defaults
+            to ``seed`` (or pass ``seed + 1`` for multi-seed variance testing).
 
     Returns:
         Symmetric Chamfer distance in millimetres.
     """
-    seed_b = seed if mesh_or_points_a is mesh_or_points_b else seed + 1
+    eff_seed_b = seed if seed_b is None else seed_b
     pts_a = _extract_or_sample_points(mesh_or_points_a, faces_a, num_samples, seed)
-    pts_b = _extract_or_sample_points(mesh_or_points_b, faces_b, num_samples, seed_b)
+    pts_b = _extract_or_sample_points(mesh_or_points_b, faces_b, num_samples, eff_seed_b)
     return chamfer_mm(pts_a, pts_b, reduction=reduction)
 
 

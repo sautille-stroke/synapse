@@ -103,10 +103,13 @@ def _fallback_temporal_warp_error(
         y0 = np.floor(src_y).astype(np.int32)
         y1 = np.minimum(y0 + 1, h - 1)
 
-        wa = ((x1 - src_x) * (y1 - src_y))[..., np.newaxis]
-        wb = ((x1 - src_x) * (src_y - y0))[..., np.newaxis]
-        wc = ((src_x - x0) * (y1 - src_y))[..., np.newaxis]
-        wd = ((src_x - x0) * (src_y - y0))[..., np.newaxis]
+        fx = (src_x - x0)[..., np.newaxis]
+        fy = (src_y - y0)[..., np.newaxis]
+
+        wa = (1.0 - fx) * (1.0 - fy)
+        wb = (1.0 - fx) * fy
+        wc = fx * (1.0 - fy)
+        wd = fx * fy
 
         warped = (
             wa * frames_f[t][y0, x0]
