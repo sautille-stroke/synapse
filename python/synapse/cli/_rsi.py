@@ -262,11 +262,14 @@ def _cmd_rsi_gate_promote(
 
 def register_rsi_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``rsi`` subcommand tree."""
+    parents = [json_parent] if json_parent is not None else []
     rsi_parser = subparsers.add_parser(
         "rsi",
         help="Recursive self-improvement commands",
+        parents=parents,
     )
     rsi_sub = rsi_parser.add_subparsers(
         dest="rsi_command",
@@ -275,6 +278,7 @@ def register_rsi_subparser(
     rsi_sample = rsi_sub.add_parser(
         "sample-curriculum",
         help="Sample curriculum scenarios for RSI",
+        parents=parents,
     )
     rsi_sample.add_argument(
         "--seed", type=int, default=42,
@@ -288,6 +292,7 @@ def register_rsi_subparser(
     rsi_verify = rsi_sub.add_parser(
         "verify",
         help="Run dual verification on a sample",
+        parents=parents,
     )
     rsi_verify.add_argument(
         "--sample-id", default="unknown",
@@ -305,6 +310,7 @@ def register_rsi_subparser(
     rsi_build = rsi_sub.add_parser(
         "build-pairs",
         help="Build preference pairs for RSI training",
+        parents=parents,
     )
     rsi_build.add_argument(
         "--golden-file", default=None,
@@ -318,6 +324,7 @@ def register_rsi_subparser(
     rsi_gate = rsi_sub.add_parser(
         "gate-promote",
         help="Evaluate monotonic promotion gate",
+        parents=parents,
     )
     rsi_gate.add_argument(
         "--baseline-overall", type=float, default=None,
@@ -408,4 +415,4 @@ def dispatch_rsi(
             print()
             return int(err.exit_code)
         rsi_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

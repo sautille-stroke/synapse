@@ -41,8 +41,33 @@ __all__ = [
     "QualityGateError",
     "SynapseError",
     "TraceContext",
+    "SynapseArgumentParser",
+    "get_json_parent_parser",
     "_run_with_json_mode",
 ]
+
+
+class SynapseArgumentParser(argparse.ArgumentParser):
+    """Custom ArgumentParser that converts argument parse errors to ContractValidationError(10)."""
+
+    def error(self, message: str) -> None:
+        raise ContractValidationError(
+            f"Invalid CLI argument: {message}",
+            agent_fix_hint="Check CLI arguments with --help.",
+            details={"argument_error": message},
+        )
+
+
+def get_json_parent_parser() -> argparse.ArgumentParser:
+    """Return a parent parser defining the common --json flag."""
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON to stdout (no log noise)",
+    )
+    return parent
 
 
 def _run_with_json_mode(

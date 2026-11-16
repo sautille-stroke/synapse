@@ -152,16 +152,19 @@ def _cmd_lora_merge(
 
 def register_lora_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``lora`` subcommand tree."""
+    parents = [json_parent] if json_parent is not None else []
     lora_parser = subparsers.add_parser(
-        "lora", help="LoRA fine-tuning pipeline operations",
+        "lora", help="LoRA fine-tuning pipeline operations", parents=parents,
     )
     lora_sub = lora_parser.add_subparsers(dest="lora_command")
 
     lora_prep = lora_sub.add_parser(
         "prepare-data",
         help="Prepare training data for LoRA fine-tuning",
+        parents=parents,
     )
     lora_prep.add_argument(
         "--input", default=".",
@@ -175,6 +178,7 @@ def register_lora_subparser(
     lora_train = lora_sub.add_parser(
         "train",
         help="Run LoRA training from config",
+        parents=parents,
     )
     lora_train.add_argument(
         "--config", default="{}",
@@ -184,6 +188,7 @@ def register_lora_subparser(
     lora_eval = lora_sub.add_parser(
         "eval",
         help="Evaluate a LoRA bundle against quality gates",
+        parents=parents,
     )
     lora_eval.add_argument(
         "--bundle", required=True,
@@ -193,6 +198,7 @@ def register_lora_subparser(
     lora_merge = lora_sub.add_parser(
         "merge",
         help="Merge LoRA weights into base model",
+        parents=parents,
     )
     lora_merge.add_argument(
         "--bundle", required=True,
@@ -249,4 +255,4 @@ def dispatch_lora(
             print()
             return int(err.exit_code)
         lora_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

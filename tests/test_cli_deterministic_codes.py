@@ -373,3 +373,84 @@ class TestGenerateCliJsonEnvelopes:
         assert payload["status"] == "ok"
         assert payload["exit_code"] == 0
         assert payload["frames_count"] == 2
+
+
+class TestCliJsonHardening:
+    """Test JSON contract hardening: trailing --json, bare subcommands, export-fgpp and export-vis."""
+
+    def test_synapse_bare_json_returns_0(self) -> None:
+        """Bare 'synapse --json' should return 0 with status ok."""
+        code, out, _ = _capture_synapse(["--json"])
+        assert code == 0
+        payload = json.loads(out)
+        assert payload["status"] == "ok"
+        assert payload["exit_code"] == 0
+
+    def test_synapse_fgpp_bare_json_returns_10(self) -> None:
+        """'synapse fgpp --json' missing subcommand should return exit 10 and JSON error."""
+        code, out, _ = _capture_synapse(["fgpp", "--json"])
+        assert code == 10
+        payload = json.loads(out)
+        assert payload["status"] == "error"
+        assert payload["exit_code"] == 10
+        assert "fgpp" in payload["message"].lower()
+
+    def test_trailing_json_flag_on_worker_run(self, tmp_path: Path) -> None:
+        """'synapse worker run --bundle ... --json' with trailing --json parses correctly."""
+        bundle_file = tmp_path / "bundle_manifest.json"
+        bundle_file.write_text(
+            json.dumps({
+                "schema_version": "synapse.job_bundle.v1.0",
+                "job_id": "test_j1",
+                "stage": "fgpp_validate",
+                "inputs": {"fgpp_dir": str(tmp_path)},
+            }),
+            encoding="utf-8",
+        )
+        code, out, _ = _capture_synapse([
+            "worker", "run", "--bundle", str(bundle_file), "--json",
+        ])
+        payload = json.loads(out)
+        assert payload["exit_code"] in (0, 20)
+
+    def test_bench_export_fgpp_generates_exr(self, tmp_path: Path) -> None:
+        """'synapse bench export-fgpp' should write valid 15-channel EXR files."""
+        out_dir = tmp_path / "bench_export"
+        code, out, _ = _capture_synapse([
+            "bench", "export-fgpp",
+            "--scenario", "t1_cube_orbit",
+            "--output-dir", str(out_dir),
+            "--frames", "2",
+            "--json",
+        ])
+        assert code == 0
+        payload = json.loads(out)
+        assert payload["status"] == "ok"
+        assert payload["num_frames"] == 2
+        assert (out_dir / "metadata.json").is_file()
+        assert (out_dir / "frame_000000.exr").is_file()
+        assert (out_dir / "frame_000001.exr").is_file()
+
+    def test_fgpp_inspect_export_vis(self, tmp_path: Path) -> None:
+        """'synapse fgpp inspect --export-vis' should render visualization images."""
+        out_dir = tmp_path / "bench_export_vis"
+        code1, _, _ = _capture_synapse([
+            "bench", "export-fgpp",
+            "--scenario", "t1_cube_orbit",
+            "--output-dir", str(out_dir),
+            "--frames", "2",
+            "--json",
+        ])
+        assert code1 == 0
+
+        code2, out2, _ = _capture_synapse([
+            "fgpp", "inspect", str(out_dir), "--export-vis", "--json",
+        ])
+        assert code2 == 0
+        payload2 = json.loads(out2)
+        assert payload2["status"] == "ok"
+        assert payload2["visualizations_exported"] == 2
+        vis_dir = out_dir / "visualizations"
+        assert (vis_dir / "depth_frame_000000.png").is_file()
+        assert (vis_dir / "normal_frame_000000.png").is_file()
+        assert (vis_dir / "mask_frame_000000.png").is_file()

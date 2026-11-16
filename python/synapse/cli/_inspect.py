@@ -217,12 +217,14 @@ def _cmd_inspect_export_rl_data(args: argparse.Namespace) -> dict[str, Any]:
 
 def register_inspect_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``inspect`` subcommand tree."""
-    p = subparsers.add_parser("inspect", help="3D asset inspection and refinement")
+    parents = [json_parent] if json_parent is not None else []
+    p = subparsers.add_parser("inspect", help="3D asset inspection and refinement", parents=parents)
     sub = p.add_subparsers(dest="inspect_command")
 
-    m = sub.add_parser("mesh", help="Run Tier 0 geometric topology gate on a mesh file")
+    m = sub.add_parser("mesh", help="Run Tier 0 geometric topology gate on a mesh file", parents=parents)
     m.add_argument("mesh_path", help="Path to mesh file (.obj, .glb, .ply)")
     m.add_argument("--report", default=None, help="Output JSON report file path")
     m.add_argument("--backend", default="native", choices=["native", "python"],
@@ -230,17 +232,18 @@ def register_inspect_subparser(
     m.add_argument("--require-watertight", action="store_true",
                     help="Require mesh to be watertight (closed)")
 
-    a = sub.add_parser("align", help="Align reference image to mesh")
+    a = sub.add_parser("align", help="Align reference image to mesh", parents=parents)
     a.add_argument("--mesh", default="", help="Path to mesh file")
     a.add_argument("--image", default="", help="Path to reference image")
 
-    ev = sub.add_parser("eval", help="Evaluate asset using Visual Jev critic")
+    ev = sub.add_parser("eval", help="Evaluate asset using Visual Jev critic", parents=parents)
     ev.add_argument("--asset-id", default="unknown", help="Asset identifier")
     ev.add_argument("--asset-name", default="Unknown", help="Human-readable asset name")
     ev.add_argument("--mock", action="store_true", help="Enable MockJevTransport for testing")
 
     evl = sub.add_parser("evaluate",
-                          help="Batch-evaluate 3D models and generate HTML/JSON reports")
+                          help="Batch-evaluate 3D models and generate HTML/JSON reports",
+                          parents=parents)
     evl.add_argument("--input-dir", required=True,
                       help="Directory containing .obj/.glb/.ply model files")
     evl.add_argument("--output-dir", required=True,
@@ -257,10 +260,10 @@ def register_inspect_subparser(
     evl.add_argument("--backend", default="native", choices=["native", "python"],
                       help="Geometry gate backend (default: native)")
 
-    r = sub.add_parser("refine", help="Run targeted refinement from InspectionReport")
+    r = sub.add_parser("refine", help="Run targeted refinement from InspectionReport", parents=parents)
     r.add_argument("--report", default=None, help="Path to InspectionReport JSON file")
 
-    rl = sub.add_parser("export-rl-data", help="Export RL flywheel training data (DPO/PRM)")
+    rl = sub.add_parser("export-rl-data", help="Export RL flywheel training data (DPO/PRM)", parents=parents)
     rl.add_argument("--log-dir", required=True, help="Path to intent group log directory")
     rl.add_argument("--output", required=True, help="Output JSONL file path")
     rl.add_argument("--format", default="dpo", choices=["dpo", "prm"],
@@ -311,4 +314,4 @@ def dispatch_inspect(
         print()
         return int(err.exit_code)
     inspect_parser.print_help()
-    return 0
+    return int(ExitCode.CONTRACT_ERROR)

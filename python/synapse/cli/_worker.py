@@ -16,15 +16,17 @@ from synapse.cli.common import (
 
 def register_worker_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``worker`` subcommand tree."""
+    parents = [json_parent] if json_parent is not None else []
     worker_parser = subparsers.add_parser(
-        "worker", help="Job bundle worker operations",
+        "worker", help="Job bundle worker operations", parents=parents,
     )
     worker_sub = worker_parser.add_subparsers(dest="worker_command")
 
     worker_run = worker_sub.add_parser(
-        "run", help="Execute a job bundle",
+        "run", help="Execute a job bundle", parents=parents,
     )
     worker_run.add_argument(
         "--bundle", required=True,
@@ -65,4 +67,4 @@ def dispatch_worker(
             print()
             return int(err.exit_code)
         worker_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

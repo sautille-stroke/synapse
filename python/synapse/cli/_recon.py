@@ -200,11 +200,14 @@ def _cmd_recon_closed_loop(
 
 def register_recon_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+    json_parent: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Register the ``recon`` subcommand tree."""
+    parents = [json_parent] if json_parent is not None else []
     recon_parser = subparsers.add_parser(
         "recon",
         help="3D reconstruction and inverse rendering commands",
+        parents=parents,
     )
     recon_sub = recon_parser.add_subparsers(
         dest="recon_command",
@@ -213,6 +216,7 @@ def register_recon_subparser(
     recon_invert = recon_sub.add_parser(
         "invert-video",
         help="Inverse video-to-3D reconstruction (RFC 0060)",
+        parents=parents,
     )
     recon_invert.add_argument(
         "--video", default=None,
@@ -234,6 +238,7 @@ def register_recon_subparser(
     recon_closed_loop = recon_sub.add_parser(
         "closed-loop",
         help="Run 5-step inverse rendering closed loop (RFC 0062)",
+        parents=parents,
     )
     recon_closed_loop.add_argument(
         "--video", default=None,
@@ -298,4 +303,4 @@ def dispatch_recon(
             print()
             return int(err.exit_code)
         recon_parser.print_help()
-        return 0
+        return int(ExitCode.CONTRACT_ERROR)

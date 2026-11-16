@@ -6,13 +6,13 @@ builds the argparse tree, and dispatches.
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import sys
 
 from synapse.cli._bench import (
     dispatch_bench,
+    register_bench_subparser,
     register_bench_subparsers,
 )
 from synapse.cli._fgpp import dispatch_fgpp, register_fgpp_subparser
@@ -36,7 +36,12 @@ from synapse.cli._worker import (
     dispatch_worker,
     register_worker_subparser,
 )
-from synapse.cli.common import TraceContext
+from synapse.cli.common import (
+    SynapseArgumentParser,
+    TraceContext,
+    get_json_parent_parser,
+)
+from synapse.errors import ContractValidationError
 
 
 def main_synapse(args: list[str] | None = None) -> int:
@@ -46,37 +51,48 @@ def main_synapse(args: list[str] | None = None) -> int:
 
         synapse fgpp validate <dir>
         synapse fgpp inspect <dir>
+        synapse bench list|export-fgpp|run|evaluate
         synapse generate [--model ...] [--trajectory ...] ...
         synapse view [dataset] [--port ...] [--no-browser]
         synapse worker run --bundle <path> [--json]
         synapse lora prepare-data|train|eval|merge [--json]
         synapse inspect mesh|align|eval|refine|export-rl-data [--json]
     """
-    parser = argparse.ArgumentParser(
+    json_parent = get_json_parent_parser()
+    parser = SynapseArgumentParser(
         prog="synapse",
         description="Synapse -- 3D CG Rendering & Neural Video Interop CLI",
+        parents=[json_parent],
     )
-    parser.add_argument(
-        "--json", action="store_true", default=False,
-        help="Emit machine-readable JSON to stdout (no log noise)",
-    )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
-    # Register all domain subparsers
-    fgpp_parser = register_fgpp_subparser(subparsers)
-    register_generate_subparser(subparsers)
-    worker_parser = register_worker_subparser(subparsers)
-    lora_parser = register_lora_subparser(subparsers)
-    inspect_parser = register_inspect_subparser(subparsers)
-    recon_parser = register_recon_subparser(subparsers)
-    refine_parser = register_refine_subparser(subparsers)
-    rsi_parser = register_rsi_subparser(subparsers)
+    # Register all domain subparsers with json_parent
+    fgpp_parser = register_fgpp_subparser(subparsers, json_parent=json_parent)
+    bench_parser = register_bench_subparser(subparsers, json_parent=json_parent)
+    register_generate_subparser(subparsers, json_parent=json_parent)
+    worker_parser = register_worker_subparser(subparsers, json_parent=json_parent)
+    lora_parser = register_lora_subparser(subparsers, json_parent=json_parent)
+    inspect_parser = register_inspect_subparser(subparsers, json_parent=json_parent)
+    recon_parser = register_recon_subparser(subparsers, json_parent=json_parent)
+    refine_parser = register_refine_subparser(subparsers, json_parent=json_parent)
+    rsi_parser = register_rsi_subparser(subparsers, json_parent=json_parent)
 
-    parsed = parser.parse_args(args)
+    raw_args = list(args) if args is not None else list(sys.argv[1:])
+    is_json_in_raw = "--json" in raw_args
+
+    try:
+        parsed = parser.parse_args(args)
+    except ContractValidationError as exc:
+        trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
+        if is_json_in_raw:
+            json.dump(exc.to_json_dict(trace_ctx.trace_id), sys.stdout, default=str)
+            print()
+            return int(exc.exit_code)
+        print(f"Error [{exc.exit_code}]: {exc}", file=sys.stderr)
+        return int(exc.exit_code)
+
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
-
-    # Propagate --json to the namespace for sub-handlers
-    json_mode: bool = parsed.json
+    json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
     if parsed.command is None:
         if json_mode:
@@ -97,6 +113,8 @@ def main_synapse(args: list[str] | None = None) -> int:
 
     if parsed.command == "fgpp":
         return dispatch_fgpp(parsed, json_mode, trace_ctx, fgpp_parser)
+    elif parsed.command == "bench":
+        return dispatch_bench(parsed, json_mode, trace_ctx, bench_parser)
     elif parsed.command == "generate":
         return dispatch_generate(parsed, json_mode, trace_ctx)
     elif parsed.command == "view":
@@ -134,22 +152,32 @@ def main_bench(args: list[str] | None = None) -> int:
         synapse-bench list [--tier T1|T2|T3|T4|T5]
         synapse-bench export-fgpp --scenario <id> [--output <dir>]
     """
-    parser = argparse.ArgumentParser(
+    json_parent = get_json_parent_parser()
+    parser = SynapseArgumentParser(
         prog="synapse-bench",
         description="Synapse-Bench -- evaluation dataset & benchmark CLI",
+        parents=[json_parent],
     )
-    parser.add_argument(
-        "--json", action="store_true", default=False,
-        help="Emit machine-readable JSON to stdout (no log noise)",
-    )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
-    register_bench_subparsers(subparsers)
+    register_bench_subparsers(subparsers, json_parent=json_parent)
 
-    parsed = parser.parse_args(args)
+    raw_args = list(args) if args is not None else list(sys.argv[1:])
+    is_json_in_raw = "--json" in raw_args
+
+    try:
+        parsed = parser.parse_args(args)
+    except ContractValidationError as exc:
+        trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
+        if is_json_in_raw:
+            json.dump(exc.to_json_dict(trace_ctx.trace_id), sys.stdout, default=str)
+            print()
+            return int(exc.exit_code)
+        print(f"Error [{exc.exit_code}]: {exc}", file=sys.stderr)
+        return int(exc.exit_code)
+
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
-
-    json_mode: bool = parsed.json
+    json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
     if parsed.command is None:
         if json_mode:
