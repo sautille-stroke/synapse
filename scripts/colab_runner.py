@@ -281,7 +281,6 @@ def _verify_e4_real_gpu(
     import hashlib
 
     import torch
-
     from synapse.adapters.lora.manager import MultiLoRAManager
     from synapse.adapters.lora.manifest import LoRAManifest
 

@@ -23,7 +23,6 @@ from unittest import mock
 
 import numpy as np
 import pytest
-
 from synapse.errors import BackendUnavailableError
 from synapse.fgpp import (
     CameraParams,
