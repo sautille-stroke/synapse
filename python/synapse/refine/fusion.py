@@ -23,10 +23,8 @@ import numpy as np
 from synapse.refine.types import FusionMethod
 from synapse.render_core.pyramid import (
     build_laplacian_pyramid,
-    downsample2x,
     reconstruct_laplacian_pyramid,
     separable_gaussian,
-    upsample2x,
 )
 
 # ---------------------------------------------------------------------------

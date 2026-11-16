@@ -12,7 +12,7 @@ All image data is processed in **linear ACEScg** colour space.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
