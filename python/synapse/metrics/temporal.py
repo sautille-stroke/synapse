@@ -401,6 +401,7 @@ def _build_r3d18_extractor(
         returns ``[N, 512]`` numpy feature vectors.
     """
     import os
+
     from synapse.errors import BackendUnavailableError
 
     try:

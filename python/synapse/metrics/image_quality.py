@@ -18,6 +18,7 @@ All functions accept single images ``[H, W]`` / ``[H, W, C]`` or frame batches
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 import numpy as np
 
