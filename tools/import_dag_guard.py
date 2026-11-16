@@ -355,33 +355,41 @@ def _tarjan_scc(
 
 
 def check_tier_violations(
-    toplevel_edges: set[tuple[str, str]],
-) -> list[tuple[str, str, int, int]]:
-    """Check for upward tier violations (tier[src] < tier[dst]).
+    edges: set[tuple[str, str]],
+) -> tuple[list[tuple[str, str, int, int]], list[str]]:
+    """Check for upward tier violations across all import edges (including local scopes).
 
-    Only **module-level** imports are checked for tier violations.
-    Lazy function-level imports are exempt (they are soft runtime deps).
+    Every import edge in Synapse must satisfy tier[src] >= tier[dst] with zero
+    exemptions or upward bypasses.
 
-    Returns list of (src_pkg, dst_pkg, src_tier, dst_tier) violations.
-    Edges involving ``__init__`` (the top-level aggregator) or private
-    packages (``_*``) are exempt.
+    Returns:
+        (tier_violations, unregistered_package_errors)
     """
     violations: list[tuple[str, str, int, int]] = []
-    for src, dst in sorted(toplevel_edges):
+    unregistered: list[str] = []
+
+    for src, dst in sorted(edges):
         # Skip the top-level __init__ aggregator
         if src == "__init__" or dst == "__init__":
             continue
         # Skip private C extensions
         if src.startswith(_PRIVATE_PREFIX) or dst.startswith(_PRIVATE_PREFIX):
             continue
+
         src_tier = TIER_MAP.get(src)
         dst_tier = TIER_MAP.get(dst)
-        if src_tier is None or dst_tier is None:
-            # Unknown packages are not enforced
+
+        if src_tier is None:
+            unregistered.append(f"Source package {src!r} is not registered in TIER_MAP")
             continue
+        if dst_tier is None:
+            unregistered.append(f"Target package {dst!r} is not registered in TIER_MAP")
+            continue
+
         if src_tier < dst_tier:
             violations.append((src, dst, src_tier, dst_tier))
-    return violations
+
+    return violations, sorted(set(unregistered))
 
 
 # ---------------------------------------------------------------------------
@@ -392,18 +400,18 @@ def check_tier_violations(
 def validate(
     root: Path,
 ) -> tuple[list[list[str]], list[tuple[str, str, int, int]], set[tuple[str, str]], list[str]]:
-    """Validate the import DAG.
+    """Validate the import DAG across all scopes.
 
     Returns
     -------
     cycles:
         List of SCCs with more than 1 member (circular dependencies).
     tier_violations:
-        Module-level edges that violate the 5-tier unidirectional rule.
+        Edges (from any scope) that violate the 5-tier unidirectional rule.
     all_edges:
         Complete edge set for diagnostics (all scopes).
     errors:
-        Fatal errors (SyntaxError, non-constant dynamic imports).
+        Fatal errors (SyntaxError, non-constant dynamic imports, unregistered packages).
     """
     all_edges, toplevel_edges, pkg_files, errors = scan_import_dag(root)
     all_pkgs = set()
@@ -413,7 +421,8 @@ def validate(
 
     sccs = _tarjan_scc(all_pkgs, all_edges)
     cycles = [scc for scc in sccs if len(scc) > 1]
-    tier_violations = check_tier_violations(toplevel_edges)
+    tier_violations, unreg = check_tier_violations(all_edges)
+    errors = errors + unreg
 
     return cycles, tier_violations, all_edges, errors
 

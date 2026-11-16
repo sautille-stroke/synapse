@@ -50,7 +50,7 @@ FGPP_CHANNEL_SPECS: Final[list[tuple[str, PixelType, str]]] = [
 
 # Derived constants
 FGPP_NUM_CHANNELS: Final[int] = 15
-FGPP_BYTES_PER_PIXEL: Final[int] = 34  # 10×HALF(2B) + 1×FLOAT(4B) + 1×UINT32(4B)
+FGPP_BYTES_PER_PIXEL: Final[int] = 34  # 13×HALF(26B) + 1×FLOAT(4B) + 1×UINT32(4B) = 34B
 FGPP_SCHEMA_VERSION: Final[str] = "fgpp.v1.0"
 
 # Whitebox proxy guard — RFC 0044 §4.4
@@ -132,9 +132,9 @@ def linear_to_log_normalized_depth(
     np.ndarray
         Normalised depth in ``[0, 1]``.
     """
-    eps = 1e-7
-    z_near_m = max(z_near_m, eps)
-    z_far_m = max(z_far_m, z_near_m + eps)
+    if z_near_m <= 0.0 or z_far_m <= z_near_m:
+        z_arr = np.asarray(z_m, dtype=np.float64)
+        return np.zeros_like(z_arr)
 
     z = np.asarray(z_m, dtype=np.float64)
     # Clamp NaN/Inf to z_far before the log
@@ -229,4 +229,6 @@ def is_physical_anchor_frame(
     interval:
         Anchor spacing.  Defaults to 48.
     """
+    if interval <= 0:
+        return frame_idx == 0
     return frame_idx % interval == 0

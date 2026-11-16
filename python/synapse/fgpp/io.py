@@ -16,6 +16,11 @@ from pathlib import Path
 
 import numpy as np
 
+from synapse.errors import (
+    AssetNotFoundError,
+    BackendUnavailableError,
+    ContractValidationError,
+)
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.schema import (
     FGPP_CHANNEL_SPECS,
@@ -101,8 +106,15 @@ def export_fgpp(
     Path
         The *output_dir* path.
     """
-    import Imath
-    import OpenEXR
+    try:
+        import Imath
+        import OpenEXR
+    except ImportError as e:
+        raise BackendUnavailableError(
+            f"OpenEXR / Imath backend unavailable: {e}",
+            agent_fix_hint="Install OpenEXR via pip install 'synapse[image]'.",
+        ) from e
+
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -153,8 +165,10 @@ def export_fgpp(
         header["channels"] = chan_types
         exr_path = out / f"frame_{frame.frame_index:06d}.exr"
         exr_file = OpenEXR.OutputFile(str(exr_path), header)
-        exr_file.writePixels(chan_data)
-        exr_file.close()
+        try:
+            exr_file.writePixels(chan_data)
+        finally:
+            exr_file.close()
 
     # Write metadata.json
     seq.save_metadata(out)
@@ -171,66 +185,101 @@ def _read_exr_frame(
     camera: CameraParams,
     frame_index: int,
     channels: set[str] | None = None,
+    allow_missing_optional: bool = False,
 ) -> FGPPFrame:
     """Read a single EXR file into an ``FGPPFrame``."""
-    import Imath
-    import OpenEXR
-    exr = OpenEXR.InputFile(str(exr_path))
-    dw = exr.header()["dataWindow"]
-    w = dw.max.x - dw.min.x + 1
-    h = dw.max.y - dw.min.y + 1
+    if not exr_path.exists():
+        raise AssetNotFoundError(
+            f"EXR file does not exist: {exr_path}",
+            agent_fix_hint="Ensure the EXR sequence files have been generated at the specified path.",
+        )
 
-    available = set(exr.header()["channels"].keys())
-    field_arrays: dict[str, np.ndarray] = {}
+    try:
+        import Imath
+        import OpenEXR
+    except ImportError as e:
+        raise BackendUnavailableError(
+            f"OpenEXR / Imath backend unavailable: {e}",
+            agent_fix_hint="Install OpenEXR via pip install 'synapse[image]'.",
+        ) from e
 
-    for group, ch_names in _COMPONENT_ORDER.items():
-        # Skip groups not requested
-        if channels is not None and group not in channels:
-            continue
+    try:
+        exr = OpenEXR.InputFile(str(exr_path))
+    except Exception as e:
+        raise ContractValidationError(
+            f"Corrupted or invalid EXR file {exr_path}: {e}",
+            agent_fix_hint="Regenerate or verify the EXR file integrity.",
+        ) from e
 
-        # Check all channels in this group are available
-        if not all(cn in available for cn in ch_names):
-            continue
+    try:
+        dw = exr.header()["dataWindow"]
+        w = dw.max.x - dw.min.x + 1
+        h = dw.max.y - dw.min.y + 1
 
-        components: list[np.ndarray] = []
-        for ch_name in ch_names:
-            _, _, pt = _CHANNEL_MAP[ch_name]
-            raw_bytes = exr.channel(ch_name)
+        available = set(exr.header()["channels"].keys())
 
-            arr: np.ndarray
-            if pt == PixelType.UINT32:
-                header_channels = exr.header().get("channels", {})
-                ch_info = header_channels.get(ch_name)
-                is_legacy_float = (
-                    ch_info is not None
-                    and hasattr(ch_info, "type")
-                    and ch_info.type == Imath.PixelType(Imath.PixelType.FLOAT)
-                )
-                if is_legacy_float:
-                    warnings.warn(
-                        f"EXR channel '{ch_name}' is stored as legacy FLOAT; decoding via bit reinterpret view. "
-                        "Please migrate to native UINT32 OpenEXR format.",
-                        UserWarning,
-                        stacklevel=2,
+        # If channels specified, validate requested groups are present
+        if channels is not None and not allow_missing_optional:
+            for group in channels:
+                ch_names = _COMPONENT_ORDER.get(group)
+                if ch_names is not None:
+                    missing = [cn for cn in ch_names if cn not in available]
+                    if missing:
+                        raise ContractValidationError(
+                            f"Missing required channel(s) in EXR {exr_path}: {missing}",
+                            agent_fix_hint=f"Ensure the EXR file contains all requested channels: {channels}",
+                        )
+
+        field_arrays: dict[str, np.ndarray] = {}
+
+        for group, ch_names in _COMPONENT_ORDER.items():
+            # Skip groups not requested
+            if channels is not None and group not in channels:
+                continue
+
+            # Check all channels in this group are available
+            if not all(cn in available for cn in ch_names):
+                continue
+
+            components: list[np.ndarray] = []
+            for ch_name in ch_names:
+                _, _, pt = _CHANNEL_MAP[ch_name]
+                raw_bytes = exr.channel(ch_name)
+
+                arr: np.ndarray
+                if pt == PixelType.UINT32:
+                    header_channels = exr.header().get("channels", {})
+                    ch_info = header_channels.get(ch_name)
+                    is_legacy_float = (
+                        ch_info is not None
+                        and hasattr(ch_info, "type")
+                        and ch_info.type == Imath.PixelType(Imath.PixelType.FLOAT)
                     )
-                    arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
-                else:
-                    arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w)
-                components.append(arr)
-            elif pt == PixelType.FLOAT:
-                arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)
-                components.append(arr)
-            elif pt == PixelType.HALF:
-                arr = np.frombuffer(raw_bytes, dtype=np.float16).reshape(h, w)
-                components.append(arr)
+                    if is_legacy_float:
+                        warnings.warn(
+                            f"EXR channel '{ch_name}' is stored as legacy FLOAT; decoding via bit reinterpret view. "
+                            "Please migrate to native UINT32 OpenEXR format.",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                        arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
+                    else:
+                        arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w)
+                    components.append(arr)
+                elif pt == PixelType.FLOAT:
+                    arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)
+                    components.append(arr)
+                elif pt == PixelType.HALF:
+                    arr = np.frombuffer(raw_bytes, dtype=np.float16).reshape(h, w)
+                    components.append(arr)
 
-        field_name = _GROUP_TO_FIELD[group]
-        if len(components) == 1:
-            field_arrays[field_name] = components[0].copy()
-        else:
-            field_arrays[field_name] = np.stack(components, axis=-1).copy()
-
-    exr.close()
+            field_name = _GROUP_TO_FIELD[group]
+            if len(components) == 1:
+                field_arrays[field_name] = components[0].copy()
+            else:
+                field_arrays[field_name] = np.stack(components, axis=-1).copy()
+    finally:
+        exr.close()
 
     return FGPPFrame(
         camera=camera,
@@ -249,15 +298,24 @@ def _iter_fgpp_frames(
     input_dir: Path,
     meta_seq: FGPPSequence,
     channel_set: set[str] | None,
+    allow_missing_optional: bool = False,
 ) -> Iterator[FGPPFrame]:
     """Yield frames one at a time (lazy loading)."""
     for meta_frame in meta_seq.frames:
         idx = meta_frame.frame_index
         exr_path = input_dir / f"frame_{idx:06d}.exr"
-        if exr_path.exists():
-            yield _read_exr_frame(
-                exr_path, meta_frame.camera, idx, channel_set
+        if not exr_path.exists():
+            raise AssetNotFoundError(
+                f"EXR file for frame {idx} does not exist: {exr_path}",
+                agent_fix_hint="Ensure all frame EXR files exist in the sequence directory.",
             )
+        yield _read_exr_frame(
+            exr_path,
+            meta_frame.camera,
+            idx,
+            channel_set,
+            allow_missing_optional=allow_missing_optional,
+        )
 
 
 def import_fgpp(
@@ -265,6 +323,7 @@ def import_fgpp(
     *,
     lazy: bool = True,
     channels: Sequence[str] | None = None,
+    allow_missing_optional: bool = False,
 ) -> FGPPSequence | Iterator[FGPPFrame]:
     """Import an FGPP sequence from a directory of OpenEXR files.
 
@@ -279,6 +338,8 @@ def import_fgpp(
     channels:
         Optional subset of logical groups to load (e.g.
         ``["depth", "world_normal"]``).  ``None`` loads all.
+    allow_missing_optional:
+        If ``True``, missing requested channels do not raise ContractValidationError.
 
     Returns
     -------
@@ -286,20 +347,38 @@ def import_fgpp(
         Either a fully loaded sequence or a lazy frame iterator.
     """
     inp = Path(input_dir)
+    if not inp.exists():
+        raise AssetNotFoundError(
+            f"FGPP input directory does not exist: {inp}",
+            agent_fix_hint="Ensure the specified sequence directory exists on disk.",
+        )
+
     meta_seq = FGPPSequence.load_metadata(inp)
     channel_set = set(channels) if channels is not None else None
 
     if lazy:
-        return _iter_fgpp_frames(inp, meta_seq, channel_set)
+        return _iter_fgpp_frames(
+            inp, meta_seq, channel_set, allow_missing_optional=allow_missing_optional
+        )
 
     frames: list[FGPPFrame] = []
     for meta_frame in meta_seq.frames:
         idx = meta_frame.frame_index
         exr_path = inp / f"frame_{idx:06d}.exr"
-        if exr_path.exists():
-            frames.append(
-                _read_exr_frame(exr_path, meta_frame.camera, idx, channel_set)
+        if not exr_path.exists():
+            raise AssetNotFoundError(
+                f"EXR file for frame {idx} does not exist: {exr_path}",
+                agent_fix_hint="Ensure all frame EXR files exist in the sequence directory.",
             )
+        frames.append(
+            _read_exr_frame(
+                exr_path,
+                meta_frame.camera,
+                idx,
+                channel_set,
+                allow_missing_optional=allow_missing_optional,
+            )
+        )
 
     return FGPPSequence(
         frames=frames, fps=meta_seq.fps, scene_id=meta_seq.scene_id
@@ -334,13 +413,15 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
     normal = None
     if frame.world_normal is not None:
         normal = frame.world_normal.astype(np.float32).copy()
+        # NaN / Inf -> 0.0 before norm calculation to avoid silent bypass
+        normal = np.where(np.isfinite(normal), normal, 0.0)
         norms = np.linalg.norm(normal, axis=-1, keepdims=True)
         zero_mask = norms.squeeze(-1) < 1e-8
         # Avoid division by zero
         safe_norms = np.where(norms > 1e-8, norms, 1.0)
         normal = normal / safe_norms
         normal[zero_mask] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-        normal = normal.astype(np.float16)
+        normal = normal.astype(frame.world_normal.dtype)
 
     mv = None
     if frame.motion_vector is not None:
@@ -351,14 +432,20 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
     dr = None
     if frame.direct_radiance is not None:
         dr = frame.direct_radiance.copy()
+        dr_bad = ~np.isfinite(dr.astype(np.float32))
+        dr = np.where(dr_bad, np.float16(0.0), dr)
 
     bc = None
     if frame.base_color is not None:
         bc = frame.base_color.copy()
+        bc_bad = ~np.isfinite(bc.astype(np.float32))
+        bc = np.where(bc_bad, np.float16(0.0), bc)
 
     rm = None
     if frame.roughness_metallic is not None:
         rm = frame.roughness_metallic.copy()
+        rm_bad = ~np.isfinite(rm.astype(np.float32))
+        rm = np.where(rm_bad, np.float16(0.5), rm)
 
     return FGPPFrame(
         camera=copy.deepcopy(frame.camera),
@@ -445,14 +532,6 @@ def resize_fgpp_frame(
             return out.view(np.uint32)
         return cv2.resize(arr, (tw, th), interpolation=cv2.INTER_NEAREST)
 
-    depth = _resize_nearest(frame.depth)
-    dr = _resize_float(frame.direct_radiance) if frame.direct_radiance is not None else None
-    wn = _resize_float(frame.world_normal) if frame.world_normal is not None else None
-    mv = _resize_float(frame.motion_vector) if frame.motion_vector is not None else None
-    bc = _resize_float(frame.base_color) if frame.base_color is not None else None
-    rm = _resize_float(frame.roughness_metallic) if frame.roughness_metallic is not None else None
-    crypto = _resize_nearest(frame.cryptomatte_id) if frame.cryptomatte_id is not None else None
-
     # Scale camera intrinsics proportionally
     sx = tw / ow
     sy = th / oh
@@ -463,6 +542,32 @@ def resize_fgpp_frame(
     cam.fy *= sy
     cam.width = tw
     cam.height = th
+
+    depth = _resize_nearest(frame.depth)
+    dr = _resize_float(frame.direct_radiance) if frame.direct_radiance is not None else None
+
+    # Re-normalize world_normal to maintain unit length invariance after spatial interpolation
+    wn = None
+    if frame.world_normal is not None:
+        wn_resized = _resize_float(frame.world_normal).astype(np.float32)
+        norms = np.linalg.norm(wn_resized, axis=-1, keepdims=True)
+        valid = norms.squeeze(-1) > 1e-6
+        safe_norms = np.where(norms > 1e-6, norms, 1.0)
+        wn_norm = wn_resized / safe_norms
+        wn_norm[~valid] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        wn = wn_norm.astype(frame.world_normal.dtype)
+
+    # Scale motion vector displacements by resolution change ratio
+    mv = None
+    if frame.motion_vector is not None:
+        mv_resized = _resize_float(frame.motion_vector)
+        mv = mv_resized.copy()
+        mv[..., 0] *= sx
+        mv[..., 1] *= sy
+
+    bc = _resize_float(frame.base_color) if frame.base_color is not None else None
+    rm = _resize_float(frame.roughness_metallic) if frame.roughness_metallic is not None else None
+    crypto = _resize_nearest(frame.cryptomatte_id) if frame.cryptomatte_id is not None else None
 
     return FGPPFrame(
         camera=cam,

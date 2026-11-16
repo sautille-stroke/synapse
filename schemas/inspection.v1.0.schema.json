@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://synapse.dervgen.dev/schemas/inspection.v1.0.schema.json",
-  "title": "Synapse InspectionReport v2.0",
-  "description": "3D asset quality inspection report schema. Mirrors python/synapse/inspect/schemas.py::InspectionReport.",
+  "title": "Synapse InspectionReport v1.0",
+  "description": "3D asset quality inspection report schema. Mirrors python/synapse/inspect/schemas.py::InspectionReportV1.",
   "type": "object",
   "required": ["asset_id", "asset_name", "inspection_timestamp", "overall_quality_score"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "2.0.0",
-      "default": "2.0.0",
+      "const": "1.0.0",
+      "default": "1.0.0",
       "description": "Report schema version string."
     },
     "asset_id": {
@@ -77,8 +77,10 @@
         "rotation": {
           "type": "array",
           "items": { "type": "number" },
-          "minItems": 4,
-          "maxItems": 9,
+          "oneOf": [
+            { "minItems": 4, "maxItems": 4 },
+            { "minItems": 9, "maxItems": 9 }
+          ],
           "description": "Rotation as 9-element column-major 3x3 matrix or 4-element quaternion [x, y, z, w]."
         },
         "fov_deg": {

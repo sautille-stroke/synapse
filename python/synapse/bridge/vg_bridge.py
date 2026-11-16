@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import os
 
+from collections.abc import Callable
+
 from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     MIN_CHARACTER_WHITEBOX_VERTICES,
@@ -21,29 +23,48 @@ from synapse.fgpp.schema import (
 )
 from synapse.render_core.backend import MockVgBackend, VgBackend
 
-# NOTE: ``SynapseReconBackend`` and ``get_recon_backend`` live in
-# ``synapse.recon.backend`` (Tier 2).  bridge is Tier 0 and must NOT
-# import Tier 2 at module scope.  They are lazy-imported inside
-# ``get_vg_backend()`` and re-exported via ``__getattr__`` below.
+# Tier-0 Registry: Tier 2 (synapse.recon) registers its concrete implementation
+# to prevent upward architectural imports from Tier 0 to Tier 2.
+_RECON_BACKEND_CLS: type[VgBackend] | None = None
+_RECON_BACKEND_FACTORY: Callable[[], VgBackend] | None = None
+
+
+def register_recon_backend(
+    cls: type[VgBackend],
+    factory: Callable[[], VgBackend] | None = None,
+) -> None:
+    """Register the production 3D reconstruction backend from Tier 2."""
+    global _RECON_BACKEND_CLS, _RECON_BACKEND_FACTORY
+    _RECON_BACKEND_CLS = cls
+    _RECON_BACKEND_FACTORY = factory or cls
+
+
+def get_recon_backend() -> VgBackend:
+    """Obtain the registered reconstruction backend instance."""
+    if _RECON_BACKEND_FACTORY is not None:
+        return _RECON_BACKEND_FACTORY()
+    return MockVgBackend()
+
 
 __all__ = [
     "MockVgBackend",
     "SynapseReconBackend",  # noqa: F822 — lazy via __getattr__
     "VgBackend",
     "enforce_distillation_geometry_gate",
-    "get_recon_backend",  # noqa: F822 — lazy via __getattr__
+    "get_recon_backend",
     "get_vg_backend",
+    "register_recon_backend",
 ]
 
 
 def __getattr__(name: str) -> object:
-    """Lazy re-export of Tier-2 symbols to keep bridge at Tier 0."""
-    if name in ("SynapseReconBackend", "get_recon_backend"):
-        from synapse.recon.backend import SynapseReconBackend, get_recon_backend
-
-        globals()["SynapseReconBackend"] = SynapseReconBackend
-        globals()["get_recon_backend"] = get_recon_backend
-        return globals()[name]
+    """Resolve registered Tier-2 backend symbols dynamically."""
+    if name == "SynapseReconBackend":
+        if _RECON_BACKEND_CLS is not None:
+            return _RECON_BACKEND_CLS
+        return MockVgBackend
+    if name == "get_recon_backend":
+        return get_recon_backend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -66,9 +87,10 @@ def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBack
     if mock or os.environ.get("SYNAPSE_VG_MOCK", "") == "1":
         return MockVgBackend()
 
-    from synapse.recon.backend import SynapseReconBackend
+    if _RECON_BACKEND_FACTORY is not None:
+        return _RECON_BACKEND_FACTORY()
 
-    return SynapseReconBackend()
+    return MockVgBackend()
 
 
 # -----------------------------------------------------------------------

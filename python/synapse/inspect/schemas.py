@@ -91,6 +91,22 @@ class DefectAnnotation3D(BaseModel):
     ] = "accept"
 
 
+class InspectionReportV1(BaseModel):
+    """InspectionReport v1.0 — legacy quality inspection output schema."""
+
+    schema_version: str = "1.0.0"
+    asset_id: str
+    asset_name: str
+    inspection_timestamp: str
+    overall_quality_score: float = Field(..., ge=0.0, le=1.0)
+    defects: list[DefectAnnotation3D] = Field(default_factory=list)
+    requires_hitl: bool = False
+    camera_poses_evaluated: list[CameraPose] = Field(
+        default_factory=list,
+    )
+    metrics_summary: dict[str, float] = Field(default_factory=dict)
+
+
 class InspectionReport(BaseModel):
     """InspectionReport v2.0 — top-level quality inspection output.
 

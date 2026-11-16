@@ -10,6 +10,7 @@ This package may only import from: ``synapse.errors``, ``synapse.telemetry``,
 
 from synapse.render_core.backend import MockVgBackend, VgBackend
 from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+from synapse.render_core.mesh import MeshData, load_obj
 from synapse.render_core.conditions import (
     CROSS_CONDITIONS,
     RENDERING_CONDITION_FACTORS,
@@ -50,6 +51,8 @@ __all__ = [
     "Conditions",
     "ProceduralMesh",
     "ProceduralMeshType",
+    "MeshData",
+    "load_obj",
     "SoftwareRasterizer",
     "entity_hash",
     "generate_cameras",

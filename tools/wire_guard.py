@@ -275,7 +275,7 @@ _SCHEMA_FILES: dict[str, dict[str, str]] = {
     },
     "inspection.v1.0.schema.json": {
         "expected_version_field": "schema_version",
-        "expected_version_value": "2.0.0",
+        "expected_version_value": "1.0.0",
     },
     "inspection.v2.0.schema.json": {
         "expected_version_field": "schema_version",
@@ -306,7 +306,7 @@ _SCHEMA_PYTHON_ALIGNMENT: dict[str, tuple[str, str, list[str]]] = {
     ),
     "inspection.v1.0.schema.json": (
         "synapse.inspect.schemas",
-        "InspectionReport",
+        "InspectionReportV1",
         ["asset_id", "asset_name", "inspection_timestamp",
          "overall_quality_score"],
     ),
@@ -432,6 +432,36 @@ def _check_json_schemas() -> list[str]:
                 errors.append(
                     f"Schema '{filename}': cannot import {mod_path}.{cls_name}: {e}"
                 )
+
+        # Deep constraint validation
+        def _validate_sub_constraints(obj_schema: dict[str, Any], path_prefix: str) -> None:
+            for prop_name, prop_spec in obj_schema.get("properties", {}).items():
+                curr_path = f"{path_prefix}.{prop_name}" if path_prefix else prop_name
+                if not isinstance(prop_spec, dict):
+                    continue
+                min_val = prop_spec.get("minimum")
+                max_val = prop_spec.get("maximum")
+                if min_val is not None and max_val is not None and min_val > max_val:
+                    errors.append(f"Schema '{filename}' {curr_path}: minimum ({min_val}) > maximum ({max_val})")
+                min_i = prop_spec.get("minItems")
+                max_i = prop_spec.get("maxItems")
+                if min_i is not None and max_i is not None and min_i > max_i:
+                    errors.append(f"Schema '{filename}' {curr_path}: minItems ({min_i}) > maxItems ({max_i})")
+                pat = prop_spec.get("pattern")
+                if pat is not None:
+                    try:
+                        re.compile(pat)
+                    except re.error as err:
+                        errors.append(f"Schema '{filename}' {curr_path}: invalid regex pattern '{pat}': {err}")
+                one_of = prop_spec.get("oneOf")
+                if one_of is not None and (not isinstance(one_of, list) or len(one_of) < 2):
+                    errors.append(f"Schema '{filename}' {curr_path}: 'oneOf' must be a list with at least 2 branches")
+
+            for def_name, def_spec in obj_schema.get("$defs", {}).items():
+                if isinstance(def_spec, dict):
+                    _validate_sub_constraints(def_spec, f"$defs.{def_name}")
+
+        _validate_sub_constraints(schema, "")
 
     return errors
 
@@ -626,6 +656,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit 1 on mismatch (CI mode)",
     )
+    parser.add_argument(
+        "--require-aether",
+        action="store_true",
+        help="Fail-closed: exit 1 if aether fgpp_types.h is not found",
+    )
     args = parser.parse_args(argv)
 
     all_errors: list[str] = []
@@ -681,12 +716,22 @@ def main(argv: list[str] | None = None) -> int:
     header_path = args.aether_header
     if header_path is None:
         for probe in _DEFAULT_HEADER_PROBES:
-            if probe.exists():
-                header_path = probe
-                break
+            try:
+                if probe.is_file():
+                    header_path = probe
+                    break
+            except OSError:
+                continue
 
     print()
-    if header_path is not None and header_path.exists():
+    header_is_file = False
+    if header_path is not None:
+        try:
+            header_is_file = header_path.is_file()
+        except OSError:
+            header_is_file = False
+
+    if header_is_file and header_path is not None:
         print(f"=== Cross-language check against {header_path} ===")
         parsed = _parse_header(header_path)
         print(f"  Parsed PixelType values ({len(parsed.get('pixel_type_values', {}))} items): {parsed.get('pixel_type_values')}")
@@ -699,11 +744,19 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("  OK: Python schema matches C++ header")
     else:
-        print(
+        msg = (
             "WARNING: C++ header not found. "
             "Skipping cross-language comparison.\n"
             "  Hint: pass --aether-header <path> or check out aether beside synapse."
         )
+        if args.require_aether:
+            all_errors.append(
+                f"Fail-Closed: C++ header not found and --require-aether is set. "
+                f"Searched: {[str(p) for p in _DEFAULT_HEADER_PROBES]}"
+            )
+            print(f"FAIL: {msg}")
+        else:
+            print(msg)
 
     print()
     if all_errors:

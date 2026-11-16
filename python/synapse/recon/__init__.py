@@ -29,6 +29,10 @@ from synapse.recon.kinematics import (
     solve_two_bone_ik,
     solve_zero_slip_ik,
 )
+from synapse.recon.backend import (
+    SynapseReconBackend,
+    get_recon_backend,
+)
 from synapse.recon.pipeline import ReconPipeline
 from synapse.recon.tracking import (
     solve_camera_trajectory,
@@ -54,6 +58,8 @@ __all__ = [
     "MultiViewInitializer",
     "ReconPipeline",
     "ReconResult",
+    "SynapseReconBackend",
+    "get_recon_backend",
     "check_degenerate_faces",
     "check_manifold",
     "check_self_intersections",

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.io import (
     resize_fgpp_frame,
@@ -173,6 +174,19 @@ class TestResize:
         assert abs(out.camera.cx - frame.camera.cx * 0.5) < 1e-6
         assert abs(out.camera.cy - frame.camera.cy * 0.5) < 1e-6
 
+    def test_resize_scales_motion_vector_and_normalizes_normals(self) -> None:
+        frame = _make_frame(64, 64)
+        assert frame.motion_vector is not None
+        frame.motion_vector[:] = np.float16([10.0, 20.0])
+        out = resize_fgpp_frame(frame, (32, 128))  # h: 64->32 (0.5x), w: 64->128 (2.0x)
+        assert out.motion_vector is not None
+        np.testing.assert_allclose(out.motion_vector[0, 0, 0], 20.0, atol=0.2)
+        np.testing.assert_allclose(out.motion_vector[0, 0, 1], 10.0, atol=0.2)
+        assert out.world_normal is not None
+        wn32 = out.world_normal.astype(np.float32)
+        norms = np.linalg.norm(wn32, axis=-1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-3)
+
 
 # ===================================================================
 # TestExportImport (requires OpenEXR)
@@ -326,6 +340,24 @@ class TestExportImport:
             assert f.depth is not None
             assert f.world_normal is None
             assert f.base_color is None
+
+    def test_missing_input_directory_raises_asset_not_found(self) -> None:
+        from synapse.fgpp.io import import_fgpp
+
+        with pytest.raises(AssetNotFoundError) as exc_info:
+            import_fgpp("/path/does/not/exist")
+        assert exc_info.value.exit_code == 20
+
+    def test_missing_exr_frame_raises_asset_not_found(self, tmp_path: Path) -> None:
+        pytest.importorskip("OpenEXR")
+        from synapse.fgpp.io import export_fgpp, import_fgpp
+
+        seq = _make_sequence(2, 16, 16)
+        export_fgpp(seq, tmp_path)
+        (tmp_path / "frame_000001.exr").unlink()
+        with pytest.raises(AssetNotFoundError) as exc_info:
+            import_fgpp(tmp_path, lazy=False)
+        assert exc_info.value.exit_code == 20
 
 
 # ===================================================================

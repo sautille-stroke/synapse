@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
     FGPP_SCHEMA_VERSION,
@@ -271,43 +272,125 @@ class FGPPSequence:
 
         Converts ``_col_major`` 16-element arrays back to row-major
         NumPy 4×4 matrices (``reshape((4,4)).T``).  Validates that the
-        rotation sub-matrix has ``|det(R) - 1| < 1e-5``.
+        rotation sub-matrix has ``|det(R) - 1| < 1e-4``, orthogonality error
+        ``||R^T R - I||_F <= 1e-4``, and homogeneous last row ``[0, 0, 0, 1]``.
         """
         input_dir = Path(input_dir)
         meta_path = input_dir / "metadata.json"
+        if not meta_path.exists():
+            raise ContractValidationError(
+                f"Missing metadata.json at {meta_path}",
+                agent_fix_hint="Ensure metadata.json exists in the sequence directory.",
+            )
+
         raw = json.loads(meta_path.read_text(encoding="utf-8"))
+
+        schema_version = raw.get("schema_version")
+        if schema_version != FGPP_SCHEMA_VERSION:
+            raise ContractValidationError(
+                f"Unsupported FGPP schema_version: {schema_version!r}. Expected {FGPP_SCHEMA_VERSION!r}.",
+                agent_fix_hint=f"Ensure metadata.json specifies schema_version='{FGPP_SCHEMA_VERSION}'.",
+            )
 
         fps = raw.get("fps", 24.0)
         scene_id = raw.get("scene_id", "")
+        res = raw.get("resolution", [0, 0])
 
         frames: list[FGPPFrame] = []
         for fr in raw.get("frames", []):
+            width = fr.get("width", res[0] if len(res) > 0 else 0)
+            height = fr.get("height", res[1] if len(res) > 1 else 0)
+
             # Reconstruct camera
             if "camera" in fr:
                 cam = CameraParams.from_dict(fr["camera"])
             else:
+                # Flat camera reconstruction
+                fx, fy = 0.0, 0.0
+                cx = float(width) / 2.0 if width > 0 else 0.0
+                cy = float(height) / 2.0 if height > 0 else 0.0
+                z_near, z_far = 0.1, 1000.0
+                fov_deg = float(fr.get("fov_y_deg", fr.get("fov_degrees", 60.0)))
+
+                if "proj_matrix_col_major" in fr and len(fr["proj_matrix_col_major"]) == 16:
+                    col_proj = np.array(fr["proj_matrix_col_major"], dtype=np.float64)
+                    proj_row = col_proj.reshape((4, 4)).T
+                    p00, p11 = proj_row[0, 0], proj_row[1, 1]
+                    p02, p12 = proj_row[0, 2], proj_row[1, 2]
+                    p22, p23 = proj_row[2, 2], proj_row[2, 3]
+
+                    if abs(p00) > 1e-6 and width > 0:
+                        fx = abs(p00) * float(width) / 2.0
+                    if abs(p11) > 1e-6 and height > 0:
+                        fy = abs(p11) * float(height) / 2.0
+                        fov_deg = math.degrees(2.0 * math.atan(float(height) / (2.0 * fy)))
+
+                    if width > 0:
+                        cx = (p02 + 1.0) * float(width) / 2.0
+                    if height > 0:
+                        cy = (p12 + 1.0) * float(height) / 2.0
+
+                    # Near and far reconstruction
+                    denom_near = p22 - 1.0
+                    denom_far = p22 + 1.0
+                    if abs(denom_near) > 1e-8 and abs(denom_far) > 1e-8 and abs(p23) > 1e-8:
+                        recovered_near = p23 / denom_near
+                        recovered_far = p23 / denom_far
+                        if 0 < recovered_near < recovered_far:
+                            z_near = float(recovered_near)
+                            z_far = float(recovered_far)
+
+                if fx <= 0.0 and fov_deg > 0.0 and height > 0:
+                    fy = float(height) / (2.0 * math.tan(math.radians(fov_deg) / 2.0))
+                    fx = fy
+
                 cam = CameraParams(
-                    fx=0, fy=0, cx=0, cy=0,
-                    width=raw.get("resolution", [0, 0])[0],
-                    height=raw.get("resolution", [0, 0])[1],
+                    fx=fx,
+                    fy=fy,
+                    cx=cx,
+                    cy=cy,
+                    width=int(width),
+                    height=int(height),
+                    fov_degrees=fov_deg,
+                    z_near=z_near,
+                    z_far=z_far,
                 )
 
             # Recover row-major view matrix from column-major storage
             if "view_matrix_col_major" in fr:
                 col_flat = np.array(fr["view_matrix_col_major"], dtype=np.float64)
+                if col_flat.shape != (16,):
+                    raise ContractValidationError(
+                        f"Frame {fr.get('frame_index', '?')}: view_matrix_col_major must contain 16 elements, got {col_flat.shape}.",
+                        agent_fix_hint="Ensure view_matrix_col_major is a 16-element array.",
+                    )
                 view_row = col_flat.reshape((4, 4)).T
+
+                # Validate bottom row [0, 0, 0, 1]
+                if not np.allclose(view_row[3], [0.0, 0.0, 0.0, 1.0], atol=1e-4):
+                    raise ContractValidationError(
+                        f"Frame {fr.get('frame_index', '?')}: bottom row of view_matrix {view_row[3]} deviates from [0, 0, 0, 1].",
+                        agent_fix_hint="Ensure view_matrix has homogeneous last row [0, 0, 0, 1].",
+                    )
+
+                # Validate rotation determinant and orthogonality
+                R = view_row[:3, :3]
+                det = float(np.linalg.det(R))
+                if abs(det - 1.0) > 1e-4:
+                    raise ContractValidationError(
+                        f"Frame {fr.get('frame_index', '?')}: rotation determinant {det:.6f} deviates from 1.0 by more than 1e-4.",
+                        agent_fix_hint="Ensure camera rotation is a proper orthogonal matrix with det(R) = +1.0.",
+                    )
+
+                ortho_err = float(np.linalg.norm(R.T @ R - np.eye(3)))
+                if ortho_err > 1e-4:
+                    raise ContractValidationError(
+                        f"Frame {fr.get('frame_index', '?')}: rotation matrix orthogonality error ||R^T R - I||_F = {ortho_err:.6e} > 1e-4.",
+                        agent_fix_hint="Ensure camera rotation matrix R satisfies R^T R = I.",
+                    )
+
                 cam.view_matrix = view_row
                 cam.world_matrix = np.linalg.inv(view_row)
-
-                # Validate rotation determinant
-                R = view_row[:3, :3]
-                det = np.linalg.det(R)
-                if abs(det - 1.0) > 1e-5:
-                    raise ValueError(
-                        f"Frame {fr.get('frame_index', '?')}: rotation "
-                        f"determinant {det:.6f} deviates from 1.0 by "
-                        f"more than 1e-5 — likely corrupted camera data."
-                    )
 
             frame = FGPPFrame(
                 camera=cam,
