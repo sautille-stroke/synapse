@@ -18,9 +18,9 @@ from synapse.fgpp.frame import CameraParams
 from synapse.render_core.conditions import RenderingConditionTuple
 from synapse.render_core.morphology import binary_dilation, binary_erosion
 from synapse.render_core.procedural import generate_humanoid_proxy
-from synapse.render_core.pyramid import downsample2x, separable_gaussian, upsample2x
+from synapse.render_core.pyramid import separable_gaussian, upsample2x
 from synapse.render_core.rasterizer import SoftwareRasterizer, entity_hash
-from synapse.telemetry import FallbackLevel, MemoryForecaster, TraceContext
+from synapse.telemetry import MemoryForecaster, TraceContext
 
 # ---------------------------------------------------------------------------
 # Helpers
