@@ -79,10 +79,6 @@ def generate_fibonacci_sphere_cameras(
         ))
 
     return cameras
-            fov_deg=fov_deg,
-        ))
-
-    return cameras
 
 
 # ------------------------------------------------------------------
