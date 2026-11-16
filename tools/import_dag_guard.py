@@ -151,22 +151,22 @@ class _ImportVisitor(ast.NodeVisitor):
                 self.toplevel_edges.add(edge)
 
     # Track function/method/class scope depth
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._scope_depth += 1
         self.generic_visit(node)
         self._scope_depth -= 1
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._scope_depth += 1
         self.generic_visit(node)
         self._scope_depth -= 1
 
-    def visit_Import(self, node: ast.Import) -> None:  # noqa: N802
+    def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self._record(alias.name)
         self.generic_visit(node)
 
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         # Resolve relative imports (node.level > 0) to absolute paths
         if node.level > 0:
             resolved = _resolve_relative_import(
@@ -186,7 +186,7 @@ class _ImportVisitor(ast.NodeVisitor):
                 self._record(node.module)
         self.generic_visit(node)
 
-    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+    def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         module_name: str | None = None
         is_dynamic_non_constant = False

@@ -125,11 +125,11 @@ def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     )
 
 
-def _generate_sphere(  # type: ignore[no-untyped-def]
+def _generate_sphere(
     radius: float = 1.0,
     segments: int = 32,
     rings: int = 16,
-    **kwargs,
+    **kwargs: Any,
 ) -> ProceduralMesh:
     """UV sphere centered at origin."""
     vertices = []
@@ -176,11 +176,11 @@ def _generate_sphere(  # type: ignore[no-untyped-def]
     )
 
 
-def _generate_cylinder(  # type: ignore[no-untyped-def]
+def _generate_cylinder(
     radius: float = 0.5,
     height: float = 2.0,
     segments: int = 32,
-    **kwargs,
+    **kwargs: Any,
 ) -> ProceduralMesh:
     """Cylinder centered at origin, axis along Y."""
     vertices = []
@@ -251,12 +251,12 @@ def _generate_cylinder(  # type: ignore[no-untyped-def]
     )
 
 
-def _generate_torus(  # type: ignore[no-untyped-def]
+def _generate_torus(
     major_radius: float = 1.0,
     minor_radius: float = 0.3,
     major_segments: int = 32,
     minor_segments: int = 16,
-    **kwargs,
+    **kwargs: Any,
 ) -> ProceduralMesh:
     """Torus centered at origin, lying in XZ plane."""
     vertices = []
@@ -304,10 +304,10 @@ def _generate_torus(  # type: ignore[no-untyped-def]
     )
 
 
-def _generate_plane(  # type: ignore[no-untyped-def]
+def _generate_plane(
     size: float = 2.0,
     subdivisions: int = 1,
-    **kwargs,
+    **kwargs: Any,
 ) -> ProceduralMesh:
     """Flat XZ plane centered at origin (Y=0)."""
     n = subdivisions + 1

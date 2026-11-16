@@ -59,7 +59,7 @@ def binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     result = np.zeros((H, W), dtype=bool)
     se_refl = se[::-1, ::-1]
     ys, xs = np.nonzero(se_refl)
-    for sy, sx in zip(ys, xs):
+    for sy, sx in zip(ys, xs, strict=False):
         result |= padded[sy : sy + H, sx : sx + W]
     return result
 
@@ -91,7 +91,7 @@ def binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     padded = np.pad(mask.astype(bool), ((ph, ph), (pw, pw)), mode="constant", constant_values=True)
     result = np.ones((H, W), dtype=bool)
     ys, xs = np.nonzero(se)
-    for sy, sx in zip(ys, xs):
+    for sy, sx in zip(ys, xs, strict=False):
         result &= padded[sy : sy + H, sx : sx + W]
     return result
 

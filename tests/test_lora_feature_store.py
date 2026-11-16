@@ -566,13 +566,12 @@ class TestFeatureStoreQualityGates:
         with pytest.raises(AssetNotFoundError):
             list(iter_feature_shards([Path("/nonexistent_shard_path_404.tar")]))
 
-    def test_zero_samples_build_shards_returns_empty(self, tmp_path: object) -> None:
+    def test_zero_samples_build_shards_returns_empty(self, tmp_path: Path) -> None:
         """PR-99: build_shards with zero samples returns empty list without creating files."""
-        tmp = tmp_path
         builder = FeatureStoreBuilder(
             LinearProjectionEncoder(),
             LinearProjectionTextEncoder(),
         )
-        shards = builder.build_shards(tmp / "empty_shards")  # type: ignore[operator]
+        shards = builder.build_shards(tmp_path / "empty_shards")
         assert shards == []
-        assert list((tmp / "empty_shards").glob("*.tar")) == []
+        assert list((tmp_path / "empty_shards").glob("*.tar")) == []

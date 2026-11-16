@@ -429,7 +429,7 @@ class MultiViewInitializer:
 
         A = np.zeros((3, 3), dtype=np.float64)
         b = np.zeros(3, dtype=np.float64)
-        for C, d in zip(positions, dirs):
+        for C, d in zip(positions, dirs, strict=False):
             d_norm = np.linalg.norm(d)
             if d_norm > 1e-8:
                 d = d / d_norm

@@ -177,7 +177,7 @@ class TestResize:
     def test_resize_scales_motion_vector_and_normalizes_normals(self) -> None:
         frame = _make_frame(64, 64)
         assert frame.motion_vector is not None
-        frame.motion_vector[:] = np.float16([10.0, 20.0])
+        frame.motion_vector[:] = np.array([10.0, 20.0], dtype=np.float16)
         out = resize_fgpp_frame(frame, (32, 128))  # h: 64->32 (0.5x), w: 64->128 (2.0x)
         assert out.motion_vector is not None
         np.testing.assert_allclose(out.motion_vector[0, 0, 0], 20.0, atol=0.2)

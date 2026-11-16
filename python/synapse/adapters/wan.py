@@ -232,7 +232,7 @@ class FoundaryHttpTransport(WanBackendTransport):
             except urllib.error.HTTPError as exc:
                 if exc.code in (200, 204, 405):
                     return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
         return False
 

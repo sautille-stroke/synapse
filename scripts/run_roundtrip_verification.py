@@ -139,7 +139,7 @@ def _render_depth_for_view(
     u = (fx * rel[valid, 0] / (z_proj[valid] + 1e-8) + cx).astype(int)
     v_arr = (fy * rel[valid, 1] / (z_proj[valid] + 1e-8) + cy).astype(int)
     z_vals = z[valid]
-    for ui, vi, zi in zip(u, v_arr, z_vals):
+    for ui, vi, zi in zip(u, v_arr, z_vals, strict=False):
         if 0 <= ui < w and 0 <= vi < h:
             depth[vi, ui] = min(depth[vi, ui], zi)
     return depth

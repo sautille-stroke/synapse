@@ -388,7 +388,7 @@ def main() -> int:
     if not dir_b_17f.exists() and bundle_tar.is_file():
         print(f"Extracting {bundle_tar} -> {args.dataset_root} ...")
         with tarfile.open(bundle_tar, "r:gz") as tar:
-            tar.extractall(path=args.dataset_root)
+            tar.extractall(path=args.dataset_root, filter="data")
 
     print("Loading Golden FGPP sequences from", args.dataset_root)
     seq_b_17f = import_fgpp(dir_b_17f, lazy=False)

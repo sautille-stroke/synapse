@@ -194,7 +194,7 @@ def _svg_bar_chart(
             f'{html.escape(title)}</text>'
         )
 
-    for i, (label, val) in enumerate(zip(labels, values)):
+    for i, (label, val) in enumerate(zip(labels, values, strict=False)):
         y = margin_top + i * (bar_height + bar_gap)
         bw = max(1, int(bar_area_w * val / max_val))
         # Label
