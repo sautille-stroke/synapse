@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 
 def _repo_root() -> Path:
     """Resolve the repository root (parent of ``tests/``)."""
