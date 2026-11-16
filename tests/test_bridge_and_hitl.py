@@ -230,7 +230,8 @@ class TestFoundaryClient:
     def test_http_transport_raises(self) -> None:
         """HttpFoundaryTransport raises BackendUnavailableError."""
         transport = HttpFoundaryTransport(
-            base_url="http://localhost:9999"
+            base_url="http://localhost:9999",
+            timeout_seconds=0.5,
         )
         req = FoundaryRequest(service="sam2", job_id="j-002")
         with pytest.raises(BackendUnavailableError) as exc_info:

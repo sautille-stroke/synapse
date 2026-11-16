@@ -10,14 +10,21 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from synapse.errors import ContractValidationError
+from synapse.metrics.fgpp_fidelity import normal_angular_error_deg
+from synapse.metrics.image_quality import ciede2000
 from synapse.metrics.roundtrip import (
+    _is_mesh_watertight,
     chamfer_mm,
     f_score_1mm,
     f_score_5mm,
+    foot_sliding_cm,
     watertight_pct,
 )
 from synapse.metrics.temporal import (
+    _build_r3d18_extractor,
     compute_fvd_from_videos,
+    fvd_feature_distance,
     temporal_warp_error,
 )
 
@@ -108,6 +115,41 @@ class TestFvdVideoBridge:
         with pytest.raises(ValueError, match="at least 2 video samples"):
             compute_fvd_from_videos(dummy_videos, dummy_videos, feature_extractor=mock_extractor)
 
+    def test_fvd_insufficient_samples_raises_contract_error(self) -> None:
+        f1 = np.ones((1, 8))
+        f2 = np.ones((1, 8))
+        with pytest.raises(ContractValidationError) as exc_info:
+            fvd_feature_distance(f1, f2)
+        assert exc_info.value.exit_code == 10
+
+    def test_r3d18_unmocked_t16_feature_extraction(self) -> None:
+        """Verify unmocked PyTorch 3D feature extraction handles T=16 and uint8 normalization."""
+        import torch
+
+        class Tiny3DCNN(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = torch.nn.Conv3d(3, 512, kernel_size=3, padding=1)
+                self.pool = torch.nn.AdaptiveAvgPool3d((1, 1, 1))
+                self.fc = torch.nn.Linear(512, 10)
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return self.fc(self.pool(self.conv(x)).flatten(1))
+
+        model = Tiny3DCNN()
+        extractor = _build_r3d18_extractor(model=model)
+
+        # Non-mocked T=16 video batch with shape [2, 16, 64, 64, 3] uint8
+        rng = np.random.default_rng(42)
+        vids = rng.integers(0, 256, (2, 16, 64, 64, 3), dtype=np.uint8)
+        feats = extractor(vids)
+        assert feats.shape == (2, 512)
+        assert np.all(np.isfinite(feats))
+
+        # frechet distance with self should be zero
+        dist = fvd_feature_distance(feats, feats)
+        assert dist == pytest.approx(0.0, abs=1e-3)
+
 
 class TestRoundtripMetrics3D:
     """Tests for 3D geometric metrics (f_score_5mm, watertight_pct, chamfer_mm reduction)."""
@@ -173,3 +215,43 @@ class TestRoundtripMetrics3D:
 
         # Empty collection -> 0.0%
         assert watertight_pct([]) == 0.0
+
+    def test_watertight_rejects_pinch_vertex(self) -> None:
+        """Two tetrahedra sharing a single pinch vertex must fail watertight check."""
+        pinch_faces = np.array([
+            [0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2],
+            [0, 4, 5], [0, 5, 6], [0, 6, 4], [4, 6, 5],
+        ])
+        assert _is_mesh_watertight(pinch_faces) is False
+
+
+class TestExtendedMetrics:
+    """Tests for CIEDE2000 linear input_space, Y-up foot sliding, and normal error."""
+
+    def test_ciede2000_linear_input_space(self) -> None:
+        img_a = np.full((16, 16, 3), 0.5, dtype=np.float32)
+        img_b = np.full((16, 16, 3), 0.6, dtype=np.float32)
+        de_srgb = ciede2000(img_a, img_b, input_space="srgb")
+        de_lin = ciede2000(img_a, img_b, input_space="linear")
+        assert de_srgb > 0.0
+        assert de_lin > 0.0
+        assert de_srgb != pytest.approx(de_lin)
+
+    def test_foot_sliding_cm_y_up_ground_xz(self) -> None:
+        # Moving only in Y (vertical) should NOT register as ground sliding
+        pos_y = np.zeros((5, 1, 3), dtype=np.float64)
+        pos_y[:, 0, 1] = np.linspace(0.0, 0.1, 5)  # Y displacement
+        contact = np.ones((5, 1), dtype=bool)
+        assert foot_sliding_cm(pos_y, contact) == pytest.approx(0.0, abs=1e-6)
+
+        # Moving in Z (horizontal ground) DOES register as ground sliding
+        pos_z = np.zeros((5, 1, 3), dtype=np.float64)
+        pos_z[:, 0, 2] = np.linspace(0.0, 0.1, 5)  # Z displacement: 10 cm total, 2.5 cm/frame
+        assert foot_sliding_cm(pos_z, contact) == pytest.approx(2.5, abs=1e-3)
+
+    def test_normal_angular_error_unnormalized_vectors(self) -> None:
+        # Vector length 5.0 pointing along +Z, Vector length 10.0 pointing along +Z
+        n1 = np.array([[[0.0, 0.0, 5.0]]], dtype=np.float64)
+        n2 = np.array([[[0.0, 0.0, 10.0]]], dtype=np.float64)
+        err = normal_angular_error_deg(n1, n2)
+        assert err == pytest.approx(0.0, abs=1e-5)

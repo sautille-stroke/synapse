@@ -18,6 +18,7 @@ All functions accept single images ``[H, W]`` / ``[H, W, C]`` or frame batches
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 import numpy as np
 
@@ -208,14 +209,18 @@ def ciede2000(
     pred: np.ndarray,
     gt: np.ndarray,
     mask: np.ndarray | None = None,
+    input_space: Literal["srgb", "linear"] = "srgb",
 ) -> float:
-    """Compute mean perceptual CIEDE2000 colour difference over sRGB frames.
+    """Compute mean perceptual CIEDE2000 colour difference over sRGB or linear frames.
 
     Args:
-        pred: sRGB image ``[H, W, 3]`` or sequence ``[T, H, W, 3]`` in
+        pred: Image ``[H, W, 3]`` or sequence ``[T, H, W, 3]`` in
             ``[0, 1]`` float or ``[0, 255]`` uint8.
-        gt: Ground-truth sRGB image/sequence of identical shape.
+        gt: Ground-truth image/sequence of identical shape.
         mask: Optional boolean mask ``[H, W]`` or ``[T, H, W]``.
+        input_space: Colour space of the input images (``"srgb"`` or ``"linear"``).
+            If ``"srgb"`` (default), values are first converted to linear RGB before
+            conversion to CIELAB, preventing double gamma compression.
 
     Returns:
         Mean CIEDE2000 colour difference (``0.0`` for identical images).
@@ -237,8 +242,19 @@ def ciede2000(
     p_clamped = np.clip(p, 0.0, 1.0)
     g_clamped = np.clip(g, 0.0, 1.0)
 
-    lab_p = rgb_to_cielab(srgb_to_linear(p_clamped))
-    lab_g = rgb_to_cielab(srgb_to_linear(g_clamped))
+    if input_space == "srgb":
+        lin_p = srgb_to_linear(p_clamped)
+        lin_g = srgb_to_linear(g_clamped)
+    elif input_space == "linear":
+        lin_p = p_clamped
+        lin_g = g_clamped
+    else:
+        raise ValueError(
+            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
+        )
+
+    lab_p = rgb_to_cielab(lin_p)
+    lab_g = rgb_to_cielab(lin_g)
     de = ciede2000_delta_e(lab_p, lab_g)
 
     if mask is not None:
@@ -267,6 +283,22 @@ def _downsample_2x(img4: np.ndarray) -> np.ndarray:
             + cropped[:, 0::2, 1::2, :]
             + cropped[:, 1::2, 1::2, :]
         )
+    )
+
+
+def _downsample_mask_2x(mask4: np.ndarray) -> np.ndarray:
+    """2x spatial pooling for boolean masks."""
+    _, h, w, _ = mask4.shape
+    h2 = (h // 2) * 2
+    w2 = (w // 2) * 2
+    if h2 < 2 or w2 < 2:
+        return mask4
+    cropped = mask4[:, :h2, :w2, :]
+    return np.asarray(
+        cropped[:, 0::2, 0::2, :]
+        | cropped[:, 1::2, 0::2, :]
+        | cropped[:, 0::2, 1::2, :]
+        | cropped[:, 1::2, 1::2, :]
     )
 
 
@@ -306,23 +338,21 @@ def lpips(
     else:
         raise ValueError(f"lpips expects 3D or 4D RGB array, got shape {p.shape}.")
 
-    if mask is not None:
+    _has_mask = mask is not None
+    cur_mask: np.ndarray | None = None
+    if _has_mask:
         m = np.asarray(mask, dtype=bool)
         m4 = (
             np.broadcast_to(m[np.newaxis, :, :, np.newaxis], p4.shape)
             if m.ndim == 2
             else _expand_mask(m, p4.shape)
         )
-        # Normalize by valid mask pixel count, not total pixel count,
-        # to avoid diluting the distance with background zeros.
         valid_count = int(np.count_nonzero(m4))
         if valid_count == 0:
             return 0.0
         p4 = np.where(m4, p4, 0.0)
         g4 = np.where(m4, g4, 0.0)
-
-    # Track whether we have a spatial mask for normalization
-    _has_mask = mask is not None
+        cur_mask = m4
 
     # Convert to perceptual opponent channels (Y, C1, C2)
     def _to_opponent(rgb: np.ndarray) -> np.ndarray:
@@ -345,9 +375,12 @@ def lpips(
     for w in scale_weights:
         _, h_s, w_s, _ = cur_p.shape
         abs_diff = np.abs(cur_p - cur_g)
-        if _has_mask:
-            # Sum over all elements, normalize by valid_count
-            l1_val = float(np.sum(abs_diff)) / valid_count
+        if _has_mask and cur_mask is not None:
+            lvl_valid = int(np.count_nonzero(cur_mask))
+            if lvl_valid > 0:
+                l1_val = float(np.sum(abs_diff[cur_mask])) / lvl_valid
+            else:
+                l1_val = 0.0
         else:
             l1_val = float(np.mean(abs_diff))
 
@@ -363,10 +396,22 @@ def lpips(
             norm_yp = gy_p / (np.linalg.norm(gy_p, axis=-1, keepdims=True) + 1e-6)
             norm_yg = gy_g / (np.linalg.norm(gy_g, axis=-1, keepdims=True) + 1e-6)
 
-            grad_dist = 0.25 * (
-                float(np.mean((norm_xp - norm_xg) ** 2))
-                + float(np.mean((norm_yp - norm_yg) ** 2))
-            )
+            diff_x_sq = (norm_xp - norm_xg) ** 2
+            diff_y_sq = (norm_yp - norm_yg) ** 2
+
+            if _has_mask and cur_mask is not None:
+                mask_x = cur_mask[:, :, 1:, :] & cur_mask[:, :, :-1, :]
+                mask_y = cur_mask[:, 1:, :, :] & cur_mask[:, :-1, :, :]
+                vx = int(np.count_nonzero(mask_x))
+                vy = int(np.count_nonzero(mask_y))
+                gx_err = float(np.sum(diff_x_sq[mask_x])) / vx if vx > 0 else 0.0
+                gy_err = float(np.sum(diff_y_sq[mask_y])) / vy if vy > 0 else 0.0
+                grad_dist = 0.25 * (gx_err + gy_err)
+            else:
+                grad_dist = 0.25 * (
+                    float(np.mean(diff_x_sq))
+                    + float(np.mean(diff_y_sq))
+                )
             scale_score = 0.4 * l1_val + 0.6 * grad_dist
         else:
             scale_score = l1_val
@@ -378,6 +423,8 @@ def lpips(
             break
         cur_p = _downsample_2x(cur_p)
         cur_g = _downsample_2x(cur_g)
+        if _has_mask and cur_mask is not None:
+            cur_mask = _downsample_mask_2x(cur_mask)
 
     score = total_dist / max(weight_sum, 1e-12)
     return float(np.clip(score, 0.0, 1.0))

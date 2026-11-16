@@ -47,7 +47,7 @@ def depth_rmse_m(
     if p.size == 0:
         return 0.0
 
-    return float(np.sqrt(np.mean((p - g) ** 2)))
+    return float(np.sqrt(np.maximum(np.mean((p - g) ** 2), 0.0)))
 
 
 def scale_invariant_depth_error(
@@ -87,7 +87,8 @@ def scale_invariant_depth_error(
 
     d = np.log(p) - np.log(g)
     n = d.size
-    side = np.sqrt(np.mean(d ** 2) - (np.sum(d) ** 2) / (n * n))
+    variance = np.mean(d ** 2) - (np.sum(d) ** 2) / (n * n)
+    side = np.sqrt(np.maximum(variance, 0.0))
     return float(side)
 
 
@@ -119,6 +120,12 @@ def normal_angular_error_deg(
     if p.shape[0] == 0:
         return 0.0
 
+    # Unit-normalize world normals before comparison
+    norm_p = np.linalg.norm(p, axis=-1, keepdims=True)
+    norm_g = np.linalg.norm(g, axis=-1, keepdims=True)
+    p = p / np.maximum(norm_p, 1e-12)
+    g = g / np.maximum(norm_g, 1e-12)
+
     dot = np.sum(p * g, axis=-1)
     dot = np.clip(dot, -1.0, 1.0)
     angles = np.degrees(np.arccos(dot))
@@ -144,7 +151,7 @@ def flow_endpoint_error_px(
     g = np.asarray(gt_flow, dtype=np.float64)
 
     diff = p - g
-    epe = np.sqrt(np.sum(diff ** 2, axis=-1))  # [H, W]
+    epe = np.sqrt(np.maximum(np.sum(diff ** 2, axis=-1), 0.0))  # [H, W]
 
     if valid_mask is not None:
         m = np.asarray(valid_mask, dtype=bool)

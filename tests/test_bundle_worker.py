@@ -468,9 +468,20 @@ class TestJobBundleWorker:
         self, tmp_path: Path,
     ) -> None:
         """lora_package with skip_bench=False and no bench_metrics → exit 40."""
-        # Create a minimal fake weights file so we get past path validation
+        # Create a valid safetensors weights file so we get past path/format validation
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import save_file
+
         weights = tmp_path / "adapter_model.safetensors"
-        weights.write_bytes(b"\x00" * 16)
+        tensors = {
+            "model.diffusion_model.cross_attn.to_k.lora_A.weight": np.zeros(
+                (4, 8), dtype=np.float32
+            ),
+            "model.diffusion_model.cross_attn.to_k.lora_B.weight": np.zeros(
+                (8, 4), dtype=np.float32
+            ),
+        }
+        save_file(tensors, str(weights))
 
         manifest = BundleManifest(
             job_id="test-package-nogate",
