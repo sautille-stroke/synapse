@@ -1,5 +1,5 @@
-# Synapse CI — Horizon 6 Quality Baseline
-# Covers H6-P1-09: Automated gate for lint, types, tests, DAG, wire guard.
+# Synapse CI — Horizon 7 Quality Baseline
+# Covers H7-P0-01: Automated gate for lint, types, tests, DAG, wire guard.
 name: CI
 
 on:
@@ -57,6 +57,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout aether (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sautille-stroke/aether
+          path: ../aether
+        continue-on-error: true
+
       - name: Install Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
         with:
@@ -88,7 +95,7 @@ jobs:
 
       - name: Install Electron dependencies
         working-directory: tools/data-inspector
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts || npm install --ignore-scripts --no-package-lock
 
       - name: Bundle loading test
         run: |

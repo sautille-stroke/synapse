@@ -6,6 +6,7 @@ __pycache__/
 # C extensions & Bazel symlinks & locks
 *.so
 *.pyd
+*.dylib
 **/bazel-*
 **/MODULE.bazel.lock
 
