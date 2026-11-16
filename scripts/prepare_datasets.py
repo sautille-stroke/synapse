@@ -156,7 +156,6 @@ def _export_caelum_track_a_17f(
     """Export 17-frame Track-A FGPP + Beauty GT using self-contained FGPP generator."""
     import Imath
     import OpenEXR
-
     from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
     from synapse.render_core.rasterizer import entity_hash
 
