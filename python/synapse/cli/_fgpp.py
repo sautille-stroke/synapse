@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from typing import cast
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -197,6 +199,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
                 agent_fix_hint="Install OpenCV, OpenEXR, and Pillow via pip install 'synapse[image]'.",
             ) from exc
 
+        from synapse.fgpp.frame import FGPPSequence
         from synapse.fgpp.io import import_fgpp
         from synapse.generators.visualizer import (
             colorize_depth,
@@ -208,6 +211,8 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
         vis_dir = fgpp_dir / "visualizations"
         vis_dir.mkdir(parents=True, exist_ok=True)
         seq = import_fgpp(fgpp_dir)
+        if not isinstance(seq, FGPPSequence):
+            raise ContractValidationError("Expected FGPPSequence")
         exported_count = 0
         for frame in seq.frames:
             stem = f"frame_{frame.frame_index:06d}"
@@ -217,7 +222,11 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
                 mask_2d = np.ones(frame.depth.shape, dtype=np.uint8)
 
             depth_vis = colorize_depth(frame.depth.astype(np.float32), mask_2d)
-            normal_vis = colorize_normal(frame.world_normal.astype(np.float32), mask_2d)
+            if frame.world_normal is not None:
+                normal_arr = frame.world_normal.astype(np.float32)
+            else:
+                normal_arr = np.zeros((*frame.depth.shape, 3), dtype=np.float32)
+            normal_vis = colorize_normal(normal_arr, mask_2d)
             mask_vis = colorize_mask(mask_2d)
 
             Image.fromarray(depth_vis).save(vis_dir / f"depth_{stem}.png")
@@ -266,7 +275,7 @@ def register_fgpp_subparser(
         "--export-vis", action="store_true", default=False,
         help="Export visualisation images",
     )
-    return fgpp_parser
+    return cast(argparse.ArgumentParser, fgpp_parser)
 
 
 def dispatch_fgpp(
