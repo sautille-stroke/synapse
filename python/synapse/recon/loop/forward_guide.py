@@ -99,6 +99,7 @@ class ForwardGuide:
 
         # Determine spatial dimensions from conditioning channels.
         h, w = self._spatial_dims(conditioning)
+        actual_preroll = cfg.n_preroll
 
         # --- Synthesise frames (mock / adapter) ------------------------------
         if adapter is not None:
@@ -111,7 +112,6 @@ class ForwardGuide:
             )
 
         # --- κ re-anchoring --------------------------------------------------
-        actual_preroll = cfg.n_preroll
         if actual_preroll > 0 and actual_preroll < total_locked:
             if actual_preroll >= frames.shape[0]:
                 raise IndexError(
