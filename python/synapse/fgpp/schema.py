@@ -170,11 +170,14 @@ def log_normalized_to_linear_depth(
     np.ndarray
         Linear depth in metres.
     """
-    eps = 1e-7
-    z_near_m = max(z_near_m, eps)
-    z_far_m = max(z_far_m, z_near_m + eps)
+    if z_near_m <= 0.0 or z_far_m <= z_near_m:
+        z_arr = np.asarray(z_norm, dtype=np.float64)
+        return np.zeros_like(z_arr)
 
     z_n = np.asarray(z_norm, dtype=np.float64)
+    # Clean non-finite values and clamp to valid range
+    z_n = np.where(np.isfinite(z_n), z_n, 0.0)
+    z_n = np.clip(z_n, 0.0, 1.0)
     log_ratio = np.log(z_far_m / z_near_m)
     return np.asarray(z_near_m * np.exp(z_n * log_ratio))
 

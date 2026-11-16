@@ -218,6 +218,16 @@ def _read_exr_frame(
 
         available = set(exr.header()["channels"].keys())
 
+        # Reject unknown channel group names
+        if channels is not None:
+            known_groups = set(_COMPONENT_ORDER.keys())
+            unknown = set(channels) - known_groups
+            if unknown:
+                raise ContractValidationError(
+                    f"Unknown FGPP channel groups: {sorted(unknown)}. Valid groups: {sorted(known_groups)}",
+                    agent_fix_hint=f"Use only valid channel group names: {sorted(known_groups)}",
+                )
+
         # If channels specified, validate requested groups are present
         if channels is not None and not allow_missing_optional:
             for group in channels:
@@ -280,6 +290,14 @@ def _read_exr_frame(
                 field_arrays[field_name] = np.stack(components, axis=-1).copy()
     finally:
         exr.close()
+
+    # Depth is mandatory when explicitly requested or when loading all channels
+    depth_required = channels is None or "depth" in channels
+    if depth_required and "depth" not in field_arrays:
+        raise ContractValidationError(
+            f"EXR {exr_path} missing required depth channel 'CameraLinearDepth.Z'.",
+            agent_fix_hint="Ensure the EXR file contains the CameraLinearDepth.Z channel.",
+        )
 
     return FGPPFrame(
         camera=camera,
@@ -404,6 +422,8 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
     depth = frame.depth.copy()
     bad_depth = ~np.isfinite(depth) | (depth <= 0.0)
     depth[bad_depth] = z_far
+    # Physical range: clamp to (0, z_far]
+    depth = np.clip(depth, np.finfo(np.float32).tiny, z_far)
 
     crypto = None
     if frame.cryptomatte_id is not None:
@@ -434,18 +454,28 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
         dr = frame.direct_radiance.copy()
         dr_bad = ~np.isfinite(dr.astype(np.float32))
         dr = np.where(dr_bad, np.float16(0.0), dr)
+        # Physical range: non-negative, capped at HALF max to prevent Inf
+        dr = np.clip(dr, np.float16(0.0), np.float16(65504.0))
 
     bc = None
     if frame.base_color is not None:
         bc = frame.base_color.copy()
         bc_bad = ~np.isfinite(bc.astype(np.float32))
         bc = np.where(bc_bad, np.float16(0.0), bc)
+        # Physical range: albedo in [0, 1]
+        bc = np.clip(bc, np.float16(0.0), np.float16(1.0))
 
     rm = None
     if frame.roughness_metallic is not None:
         rm = frame.roughness_metallic.copy()
         rm_bad = ~np.isfinite(rm.astype(np.float32))
         rm = np.where(rm_bad, np.float16(0.5), rm)
+        # Physical range: roughness [0.04, 1.0] for channel 0, metallic [0, 1] for channel 1
+        if rm.ndim == 3 and rm.shape[-1] >= 2:
+            rm[..., 0] = np.clip(rm[..., 0], np.float16(0.04), np.float16(1.0))
+            rm[..., 1] = np.clip(rm[..., 1], np.float16(0.0), np.float16(1.0))
+        else:
+            rm = np.clip(rm, np.float16(0.0), np.float16(1.0))
 
     return FGPPFrame(
         camera=copy.deepcopy(frame.camera),

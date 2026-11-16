@@ -46,6 +46,7 @@
       "properties": {
         "free_vram_gb": {
           "type": "number",
+          "minimum": 0,
           "default": 24.0,
           "description": "Available GPU VRAM in GiB."
         },
@@ -60,6 +61,7 @@
     },
     "traceparent": {
       "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
       "default": null,
       "description": "Optional W3C traceparent header value."
     },

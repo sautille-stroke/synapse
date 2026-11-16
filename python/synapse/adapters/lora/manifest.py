@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Category -> allowed target-module patterns
@@ -69,6 +69,8 @@ class LoRAManifest(BaseModel):
         training_metadata: Optional free-form training metadata.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     SCHEMA_VERSION: ClassVar[str] = "synapse.lora.v1.0"
 
     schema_version: str = "synapse.lora.v1.0"
@@ -82,6 +84,30 @@ class LoRAManifest(BaseModel):
     training_metadata: dict[str, Any] | None = None
 
     # -- validators ----------------------------------------------------------
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name_non_empty(cls, v: str) -> str:
+        """Ensure name is non-empty."""
+        if not v.strip():
+            raise ValueError("name must be a non-empty string.")
+        return v
+
+    @field_validator("rank")
+    @classmethod
+    def _validate_rank_positive(cls, v: int) -> int:
+        """Ensure rank >= 1."""
+        if v < 1:
+            raise ValueError(f"rank must be >= 1; got {v}.")
+        return v
+
+    @field_validator("target_modules")
+    @classmethod
+    def _validate_target_modules_non_empty(cls, v: list[str]) -> list[str]:
+        """Ensure target_modules is not empty."""
+        if not v:
+            raise ValueError("target_modules must contain at least one entry.")
+        return v
 
     @field_validator("adapter_path")
     @classmethod

@@ -50,7 +50,7 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?!\\.\\./|/)(?!.*\\.\\./)[^\\\\]+$",
+          "pattern": "^(?!/|[A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$",
           "description": "Relative POSIX-style path within the bundle directory. Must not contain '..' traversal, be absolute, or contain Windows backslashes."
         },
         "media_type": {

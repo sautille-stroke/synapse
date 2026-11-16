@@ -33,8 +33,8 @@
     },
     "adapter_path": {
       "type": "string",
-      "pattern": "\\.safetensors$",
-      "description": "Path to .safetensors file. Pickle-based formats (.bin, .pt) are rejected for security."
+      "pattern": "^(?!/|[A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]*\\.safetensors$",
+      "description": "Relative path to .safetensors file. Must be relative POSIX path without traversal. Pickle-based formats (.bin, .pt) are rejected for security."
     },
     "adapter_sha256": {
       "type": "string",
