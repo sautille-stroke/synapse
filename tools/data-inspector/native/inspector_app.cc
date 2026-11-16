@@ -10,13 +10,47 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <mutex>
+#include <span>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace synapse::inspector {
+
+namespace {
+
+std::string_view jsonStringOr(const aether::json::JsonValue& val, std::string_view key,
+                              std::string_view fallback = "") noexcept {
+  if (!val.isObject() || !val.hasKey(key)) return fallback;
+  const auto child = val[key];
+  if (!child.isString()) return fallback;
+  return child.getStringOr(fallback);
+}
+
+double jsonNumberOr(const aether::json::JsonValue& val, std::string_view key,
+                    double fallback = 0.0) noexcept {
+  if (!val.isObject() || !val.hasKey(key)) return fallback;
+  const auto child = val[key];
+  if (!child.isNumber()) return fallback;
+  return child.getRealOr(fallback);
+}
+
+bool jsonBoolOr(const aether::json::JsonValue& val, std::string_view key,
+                bool fallback = false) noexcept {
+  if (!val.isObject() || !val.hasKey(key)) return fallback;
+  const auto child = val[key];
+  if (!child.isBool()) return fallback;
+  return child.getBoolOr(fallback);
+}
+
+}  // namespace
 
 struct StdinQueueState {
   std::mutex mtx;
@@ -36,8 +70,6 @@ InspectorApp::~InspectorApp() {
   if (m_stdinState) {
     m_stdinState->stop.store(true, std::memory_order_release);
   }
-  // The reader thread uses pollStdinBytes with a short timeout, so it will
-  // notice the stop flag promptly and exit. No permanent deadlock on join().
   if (m_stdinThread.joinable()) {
     m_stdinThread.join();
   }
@@ -85,6 +117,7 @@ void InspectorApp::initDefaultMesh() {
     m_mesh.faceNormals.push_back(ny);
     m_mesh.faceNormals.push_back(nz);
   }
+  m_hasCustomMesh = false;
 }
 
 bool InspectorApp::loadObjMesh(std::string_view objPath) {
@@ -102,9 +135,11 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
       std::istringstream iss(line.substr(2));
       float x = 0.0f, y = 0.0f, z = 0.0f;
       if (iss >> x >> y >> z) {
-        loadedVerts.push_back(x);
-        loadedVerts.push_back(y);
-        loadedVerts.push_back(z);
+        if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
+          loadedVerts.push_back(x);
+          loadedVerts.push_back(y);
+          loadedVerts.push_back(z);
+        }
       }
     } else if (line[0] == 'f' && line[1] == ' ') {
       std::istringstream iss(line.substr(2));
@@ -213,44 +248,321 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
   return true;
 }
 
+bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
+  const std::string pathStr(glbPath);
+  std::ifstream ifs(pathStr, std::ios::binary | std::ios::ate);
+  if (!ifs.is_open()) return false;
+
+  const std::streamsize fileSize = ifs.tellg();
+  if (fileSize < 12) return false;
+
+  ifs.seekg(0, std::ios::beg);
+  std::vector<uint8_t> buffer(static_cast<size_t>(fileSize));
+  if (!ifs.read(reinterpret_cast<char*>(buffer.data()), fileSize)) {
+    return false;
+  }
+
+  const uint8_t* ptr = buffer.data();
+  uint32_t magic = 0, version = 0, length = 0;
+  std::memcpy(&magic, ptr, 4);
+  std::memcpy(&version, ptr + 4, 4);
+  std::memcpy(&length, ptr + 8, 4);
+
+  // glTF binary format magic: 0x46546C67 ("glTF")
+  if (magic != 0x46546C67u || version != 2u || length > static_cast<uint32_t>(fileSize)) {
+    return false;
+  }
+
+  std::string_view jsonChunk;
+  std::span<const uint8_t> binChunk;
+
+  size_t pos = 12;
+  while (pos + 8 <= buffer.size()) {
+    uint32_t chunkLength = 0;
+    uint32_t chunkType = 0;
+    std::memcpy(&chunkLength, ptr + pos, 4);
+    std::memcpy(&chunkType, ptr + pos + 4, 4);
+    pos += 8;
+
+    if (pos + chunkLength > buffer.size()) break;
+
+    if (chunkType == 0x4E4F534Au && jsonChunk.empty()) {  // "JSON"
+      jsonChunk = std::string_view(reinterpret_cast<const char*>(ptr + pos), chunkLength);
+    } else if (chunkType == 0x004E4942u && binChunk.empty()) {  // "BIN\0"
+      binChunk = std::span<const uint8_t>(ptr + pos, chunkLength);
+    }
+
+    pos += (chunkLength + 3u) & ~3u;
+  }
+
+  if (jsonChunk.empty()) return false;
+
+  auto docRes = aether::json::JsonDocument::parse(jsonChunk);
+  if (docRes.isError()) return false;
+  const auto& root = docRes.value().root();
+  if (!root.isObject()) return false;
+
+  const auto accessors = root["accessors"];
+  const auto bufferViews = root["bufferViews"];
+  const auto meshes = root["meshes"];
+
+  if (!accessors.isArray() || !bufferViews.isArray() || !meshes.isArray() || meshes.size() == 0) {
+    return false;
+  }
+
+  std::vector<float> loadedVerts;
+  std::vector<uint32_t> loadedFaces;
+
+  for (size_t m = 0; m < meshes.size(); ++m) {
+    const auto mesh = meshes[m];
+    if (!mesh.isObject()) continue;
+    const auto prims = mesh["primitives"];
+    if (!prims.isArray()) continue;
+
+    for (size_t p = 0; p < prims.size(); ++p) {
+      const auto prim = prims[p];
+      if (!prim.isObject()) continue;
+      const auto attrs = prim["attributes"];
+      if (!attrs.isObject() || !attrs.hasKey("POSITION")) continue;
+
+      const uint32_t posAccIdx = static_cast<uint32_t>(attrs["POSITION"].getIntOr(-1));
+      if (posAccIdx >= accessors.size()) continue;
+
+      const auto posAcc = accessors[posAccIdx];
+      if (!posAcc.isObject()) continue;
+
+      const uint32_t posCount = static_cast<uint32_t>(posAcc["count"].getIntOr(0));
+      const uint32_t posCompType = static_cast<uint32_t>(posAcc["componentType"].getIntOr(0));
+      const uint32_t posViewIdx = static_cast<uint32_t>(posAcc["bufferView"].getIntOr(-1));
+      const uint32_t posAccOffset = static_cast<uint32_t>(posAcc["byteOffset"].getIntOr(0));
+
+      // POSITION must be FLOAT (5126)
+      if (posCompType != 5126u || posCount == 0 || posViewIdx >= bufferViews.size()) continue;
+
+      const auto posView = bufferViews[posViewIdx];
+      if (!posView.isObject()) continue;
+
+      const size_t posViewOffset = static_cast<size_t>(posView["byteOffset"].getIntOr(0));
+      const size_t posByteOffset = posViewOffset + posAccOffset;
+      const size_t posByteLength = static_cast<size_t>(posCount) * 3u * sizeof(float);
+
+      if (binChunk.empty() || posByteOffset + posByteLength > binChunk.size()) continue;
+
+      const uint32_t baseVertex = static_cast<uint32_t>(loadedVerts.size() / 3);
+      const float* vertData = reinterpret_cast<const float*>(binChunk.data() + posByteOffset);
+
+      bool vertsOk = true;
+      for (size_t i = 0; i < posCount * 3; ++i) {
+        if (!std::isfinite(vertData[i])) {
+          vertsOk = false;
+          break;
+        }
+      }
+      if (!vertsOk) continue;
+
+      loadedVerts.insert(loadedVerts.end(), vertData, vertData + posCount * 3);
+
+      // Load indices if present
+      if (prim.hasKey("indices")) {
+        const uint32_t idxAccIdx = static_cast<uint32_t>(prim["indices"].getIntOr(-1));
+        if (idxAccIdx < accessors.size()) {
+          const auto idxAcc = accessors[idxAccIdx];
+          const uint32_t idxCount = static_cast<uint32_t>(idxAcc["count"].getIntOr(0));
+          const uint32_t idxCompType = static_cast<uint32_t>(idxAcc["componentType"].getIntOr(0));
+          const uint32_t idxViewIdx = static_cast<uint32_t>(idxAcc["bufferView"].getIntOr(-1));
+          const uint32_t idxAccOffset = static_cast<uint32_t>(idxAcc["byteOffset"].getIntOr(0));
+
+          if (idxViewIdx < bufferViews.size()) {
+            const auto idxView = bufferViews[idxViewIdx];
+            const size_t idxViewOffset = static_cast<size_t>(idxView["byteOffset"].getIntOr(0));
+            const size_t idxByteOffset = idxViewOffset + idxAccOffset;
+
+            if (idxCompType == 5121u && idxByteOffset + idxCount <= binChunk.size()) {
+              // UNSIGNED_BYTE
+              const uint8_t* idxData = binChunk.data() + idxByteOffset;
+              for (size_t i = 0; i + 2 < idxCount; i += 3) {
+                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
+                  loadedFaces.push_back(baseVertex + idxData[i]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 1]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 2]);
+                }
+              }
+            } else if (idxCompType == 5123u && idxByteOffset + idxCount * 2 <= binChunk.size()) {
+              // UNSIGNED_SHORT
+              const uint16_t* idxData = reinterpret_cast<const uint16_t*>(binChunk.data() + idxByteOffset);
+              for (size_t i = 0; i + 2 < idxCount; i += 3) {
+                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
+                  loadedFaces.push_back(baseVertex + idxData[i]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 1]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 2]);
+                }
+              }
+            } else if (idxCompType == 5125u && idxByteOffset + idxCount * 4 <= binChunk.size()) {
+              // UNSIGNED_INT
+              const uint32_t* idxData = reinterpret_cast<const uint32_t*>(binChunk.data() + idxByteOffset);
+              for (size_t i = 0; i + 2 < idxCount; i += 3) {
+                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
+                  loadedFaces.push_back(baseVertex + idxData[i]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 1]);
+                  loadedFaces.push_back(baseVertex + idxData[i + 2]);
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // No indices -> sequential triangles
+        for (uint32_t i = 0; i + 2 < posCount; i += 3) {
+          loadedFaces.push_back(baseVertex + i);
+          loadedFaces.push_back(baseVertex + i + 1);
+          loadedFaces.push_back(baseVertex + i + 2);
+        }
+      }
+    }
+  }
+
+  if (loadedVerts.empty() || loadedFaces.empty()) return false;
+
+  // Center and normalize loaded mesh
+  float minB[3] = {1e9f, 1e9f, 1e9f};
+  float maxB[3] = {-1e9f, -1e9f, -1e9f};
+  for (size_t i = 0; i < loadedVerts.size(); i += 3) {
+    for (int c = 0; c < 3; ++c) {
+      minB[c] = std::min(minB[c], loadedVerts[i + c]);
+      maxB[c] = std::max(maxB[c], loadedVerts[i + c]);
+    }
+  }
+  const float center[3] = {
+      (minB[0] + maxB[0]) * 0.5f,
+      (minB[1] + maxB[1]) * 0.5f,
+      (minB[2] + maxB[2]) * 0.5f,
+  };
+  const float maxDim = std::max({maxB[0] - minB[0], maxB[1] - minB[1], maxB[2] - minB[2]});
+  const float scale = maxDim > 1e-6f ? (2.0f / maxDim) : 1.0f;
+
+  for (size_t i = 0; i < loadedVerts.size(); i += 3) {
+    loadedVerts[i + 0] = (loadedVerts[i + 0] - center[0]) * scale;
+    loadedVerts[i + 1] = (loadedVerts[i + 1] - center[1]) * scale;
+    loadedVerts[i + 2] = (loadedVerts[i + 2] - center[2]) * scale;
+  }
+
+  m_mesh.vertices = std::move(loadedVerts);
+  m_mesh.faces = std::move(loadedFaces);
+  m_mesh.faceNormals.clear();
+
+  const auto vertexCount = m_mesh.vertices.size();
+  for (size_t f = 0; f < m_mesh.faces.size(); f += 3) {
+    const uint32_t i0 = m_mesh.faces[f + 0];
+    const uint32_t i1 = m_mesh.faces[f + 1];
+    const uint32_t i2 = m_mesh.faces[f + 2];
+    if (i0 * 3 + 2 >= vertexCount ||
+        i1 * 3 + 2 >= vertexCount ||
+        i2 * 3 + 2 >= vertexCount) {
+      m_mesh.faceNormals.push_back(0.0f);
+      m_mesh.faceNormals.push_back(1.0f);
+      m_mesh.faceNormals.push_back(0.0f);
+      continue;
+    }
+    const float v0x = m_mesh.vertices[i0 * 3 + 0];
+    const float v0y = m_mesh.vertices[i0 * 3 + 1];
+    const float v0z = m_mesh.vertices[i0 * 3 + 2];
+    const float e1x = m_mesh.vertices[i1 * 3 + 0] - v0x;
+    const float e1y = m_mesh.vertices[i1 * 3 + 1] - v0y;
+    const float e1z = m_mesh.vertices[i1 * 3 + 2] - v0z;
+    const float e2x = m_mesh.vertices[i2 * 3 + 0] - v0x;
+    const float e2y = m_mesh.vertices[i2 * 3 + 1] - v0y;
+    const float e2z = m_mesh.vertices[i2 * 3 + 2] - v0z;
+    float nx = e1y * e2z - e1z * e2y;
+    float ny = e1z * e2x - e1x * e2z;
+    float nz = e1x * e2y - e1y * e2x;
+    const float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-6f) {
+      nx /= len;
+      ny /= len;
+      nz /= len;
+    }
+    m_mesh.faceNormals.push_back(nx);
+    m_mesh.faceNormals.push_back(ny);
+    m_mesh.faceNormals.push_back(nz);
+  }
+
+  m_hasCustomMesh = true;
+  return true;
+}
+
 bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
   if (bundlePath.empty()) return false;
-  std::string manifestPath(bundlePath);
-  if (!manifestPath.empty() && manifestPath.back() != '/' &&
-      manifestPath.back() != '\\') {
-    manifestPath += '/';
-  }
-  manifestPath += "bundle.json";
 
-  auto textRes = aether::fs::readAllText(manifestPath);
+  // 1. Reset to baseline mesh on reload or failure
+  initDefaultMesh();
+
+  std::error_code ec;
+  std::filesystem::path bundleRoot = std::filesystem::weakly_canonical(bundlePath, ec);
+  if (ec || !std::filesystem::exists(bundleRoot) || !std::filesystem::is_directory(bundleRoot)) {
+    return false;
+  }
+
+  std::filesystem::path manifestPath = bundleRoot / "bundle.json";
+  auto textRes = aether::fs::readAllText(manifestPath.string());
   if (textRes.isError()) {
-    std::cerr << "[inspector] Bundle manifest not found: " << manifestPath << "\n";
+    std::cerr << "[inspector] Bundle manifest not found: " << manifestPath.string() << "\n";
     return false;
   }
 
   auto docRes = aether::json::JsonDocument::parse(textRes.value());
   if (docRes.isError()) {
-    std::cerr << "[inspector] Malformed bundle manifest: " << manifestPath << "\n";
+    std::cerr << "[inspector] Malformed bundle manifest: " << manifestPath.string() << "\n";
     return false;
   }
 
-  m_config.bundlePath = std::string(bundlePath);
+  m_config.bundlePath = bundleRoot.string();
   const auto& j = docRes.value().root();
+  if (!j.isObject()) return false;
 
-  // Look for any .obj mesh referenced in sources
+  auto tryLoadFile = [&](std::string_view rawRelPath) {
+    if (rawRelPath.empty()) return;
+    std::filesystem::path candidatePath(rawRelPath);
+    if (candidatePath.is_absolute()) {
+      std::cerr << "[inspector] Absolute path rejected in bundle manifest: " << rawRelPath << "\n";
+      return;
+    }
+
+    std::filesystem::path resolved = std::filesystem::weakly_canonical(bundleRoot / candidatePath, ec);
+    if (ec) return;
+
+    // Path traversal check: must resolve inside bundleRoot
+    auto rel = std::filesystem::relative(resolved, bundleRoot, ec);
+    if (ec || rel.empty() || rel.string().starts_with("..") || rel.is_absolute()) {
+      std::cerr << "[inspector] Path traversal rejected: " << rawRelPath << "\n";
+      return;
+    }
+
+    const std::string ext = resolved.extension().string();
+    if (ext == ".glb") {
+      if (loadGlbMesh(resolved.string())) {
+        std::cerr << "[inspector] Loaded GLB mesh: " << resolved.string() << "\n";
+      }
+    } else if (ext == ".obj") {
+      if (loadObjMesh(resolved.string())) {
+        std::cerr << "[inspector] Loaded OBJ mesh: " << resolved.string() << "\n";
+      }
+    }
+  };
+
   if (j.hasKey("sources") && j["sources"].isObject()) {
     j["sources"].forEachMember([&](std::string_view, aether::json::JsonValue val) {
-      std::string relPath;
       if (val.isString()) {
-        relPath = std::string(val.getStringOr(""));
-      } else if (val.isObject() && val.hasKey("path")) {
-        relPath = std::string(val["path"].getStringOr(""));
-      }
-      if (relPath.size() > 4 && relPath.substr(relPath.size() - 4) == ".obj") {
-        std::string fullObjPath = std::string(bundlePath) + "/" + relPath;
-        if (loadObjMesh(fullObjPath)) {
-          std::cerr << "[inspector] Loaded mesh: " << fullObjPath << "\n";
-        }
+        tryLoadFile(val.getStringOr(""));
+      } else if (val.isObject() && val.hasKey("path") && val["path"].isString()) {
+        tryLoadFile(val["path"].getStringOr(""));
+      } else if (val.isArray()) {
+        val.forEachElement([&](size_t, aether::json::JsonValue elem) {
+          if (elem.isString()) {
+            tryLoadFile(elem.getStringOr(""));
+          } else if (elem.isObject() && elem.hasKey("path") && elem["path"].isString()) {
+            tryLoadFile(elem["path"].getStringOr(""));
+          }
+        });
       }
     });
   }
@@ -282,10 +594,19 @@ bool InspectorApp::init() {
   std::cerr << "[inspector] Headless: "
             << (m_config.headless ? "true" : "false") << "\n";
 
+  // Prevent double thread spawn on repeated init()
+  if (m_stdinThread.joinable()) {
+    if (m_stdinState) {
+      m_stdinState->stop.store(true, std::memory_order_release);
+    }
+    m_stdinThread.join();
+    m_stdinState = std::make_shared<StdinQueueState>();
+  }
+
   auto state = m_stdinState;
   m_stdinThread = std::thread([state]() {
-    // Line accumulation buffer for pollStdinBytes
     std::string lineBuf;
+    constexpr size_t kMaxLineSize = 64 * 1024;  // 64 KiB max line length
     constexpr size_t kChunkSize = 4096;
     char chunk[kChunkSize];
 
@@ -293,9 +614,8 @@ bool InspectorApp::init() {
       auto result = aether::pal::pollStdinBytes(chunk, kChunkSize);
 
       if (result.pipeClosed) {
-        // Flush any trailing partial line
         if (!lineBuf.empty()) {
-          if (!lineBuf.empty() && lineBuf.back() == '\r') {
+          if (lineBuf.back() == '\r') {
             lineBuf.pop_back();
           }
           if (!lineBuf.empty()) {
@@ -308,12 +628,16 @@ bool InspectorApp::init() {
       }
 
       if (result.bytesRead == 0) {
-        // No data available — sleep briefly to avoid busy-spin
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       }
 
-      // Append received bytes and split on newlines
+      if (lineBuf.size() + result.bytesRead > kMaxLineSize) {
+        // Discard oversized line to protect against OOM
+        lineBuf.clear();
+        continue;
+      }
+
       lineBuf.append(chunk, result.bytesRead);
       size_t pos = 0;
       while (true) {
@@ -431,8 +755,11 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
 
   if (!m_entityVisible) return;
 
-  // Allocate z-buffer for real depth occlusion
-  std::vector<float> zBuffer(pixelCount, std::numeric_limits<float>::max());
+  // Reuse persistent Z-buffer to eliminate heap reallocation per frame at 60 Hz
+  if (m_zBuffer.size() != pixelCount) {
+    m_zBuffer.resize(pixelCount);
+  }
+  std::fill(m_zBuffer.begin(), m_zBuffer.end(), std::numeric_limits<float>::max());
 
   // View matrix transformation parameters
   const float cy = std::cos(m_orbitYaw);
@@ -446,6 +773,8 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
 
   // Transform 3D points to screen space
   auto projectPoint = [&](float x, float y, float z, float& outSx, float& outSy, float& outCamZ) -> bool {
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return false;
+
     // Rotate Y (yaw)
     const float x1 = cy * x + sy * z;
     const float y1 = y;
@@ -460,11 +789,13 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     const float zc = z2 + m_orbitDistance;
 
     outCamZ = zc;
-    if (zc <= 0.2f) return false;
+    if (zc <= 0.2f || !std::isfinite(zc)) return false;
 
     outSx = cx + (xc / zc) * fovScale;
     outSy = cy_screen - (yc / zc) * fovScale;
-    return (outSx >= 0.0f && outSx < static_cast<float>(w) && outSy >= 0.0f && outSy < static_cast<float>(h));
+    return std::isfinite(outSx) && std::isfinite(outSy) &&
+           outSx >= 0.0f && outSx < static_cast<float>(w) &&
+           outSy >= 0.0f && outSy < static_cast<float>(h);
   };
 
   // Bresenham's 2D line drawer
@@ -522,7 +853,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     if (i0 * 3 + 2 >= vertexCount ||
         i1 * 3 + 2 >= vertexCount ||
         i2 * 3 + 2 >= vertexCount) {
-      continue;  // Drop out-of-bounds face
+      continue;
     }
 
     float sx0, sy0, sz0;
@@ -576,7 +907,6 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
         break;
       }
       case DebugViewMode::kCryptomatte: {
-        // Distinct entity colors based on face index
         const uint32_t entityId = static_cast<uint32_t>((f * 37u) % 256u);
         cr = static_cast<uint8_t>((entityId * 73u) & 0xFFu);
         cg = static_cast<uint8_t>((entityId * 151u) & 0xFFu);
@@ -586,6 +916,23 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       case DebugViewMode::kUv: {
         cr = static_cast<uint8_t>((f * 20u) % 255u);
         cg = static_cast<uint8_t>((255u - (f * 20u) % 255u));
+        cb = 128u;
+        break;
+      }
+      case DebugViewMode::kAlbedo: {
+        // Unlit diffuse reflectance (warm neutral albedo base modulated by face index)
+        const uint32_t fmod = static_cast<uint32_t>(f % 7u);
+        cr = static_cast<uint8_t>(200u + fmod * 5u);
+        cg = static_cast<uint8_t>(180u + fmod * 7u);
+        cb = static_cast<uint8_t>(150u + fmod * 9u);
+        break;
+      }
+      case DebugViewMode::kMotion: {
+        // Screen-space velocity / motion flow vector
+        const float vx = std::clamp((nx * 0.7f - ny * 0.3f), -1.0f, 1.0f);
+        const float vy = std::clamp((ny * 0.7f + nz * 0.3f), -1.0f, 1.0f);
+        cr = static_cast<uint8_t>(std::clamp((vx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+        cg = static_cast<uint8_t>(std::clamp((vy * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
         cb = 128u;
         break;
       }
@@ -602,11 +949,12 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       drawLine(static_cast<int>(sx2), static_cast<int>(sy2),
                static_cast<int>(sx0), static_cast<int>(sy0), 70, 200, 235);
     } else {
-      // Simple raster scanline triangle fill with z-buffer depth occlusion
-      int minX = std::max(0, static_cast<int>(std::min({sx0, sx1, sx2})));
-      int maxX = std::min(static_cast<int>(w) - 1, static_cast<int>(std::max({sx0, sx1, sx2})));
-      int minY = std::max(0, static_cast<int>(std::min({sy0, sy1, sy2})));
-      int maxY = std::min(static_cast<int>(h) - 1, static_cast<int>(std::max({sy0, sy1, sy2})));
+      // Screen edge bounds clamping
+      const int minX = std::max(0, static_cast<int>(std::floor(std::min({sx0, sx1, sx2}))));
+      const int maxX = std::min(static_cast<int>(w) - 1, static_cast<int>(std::ceil(std::max({sx0, sx1, sx2}))));
+      const int minY = std::max(0, static_cast<int>(std::floor(std::min({sy0, sy1, sy2}))));
+      const int maxY = std::min(static_cast<int>(h) - 1, static_cast<int>(std::ceil(std::max({sy0, sy1, sy2}))));
+      if (minX > maxX || minY > maxY) continue;
 
       auto edgeFunc = [](float ax, float ay, float bx, float by, float px, float py) -> float {
         return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
@@ -623,15 +971,14 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
             const float w2 = edgeFunc(sx0, sy0, sx1, sy1, px, py);
 
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-              // Interpolate depth for z-buffer test
               const float bary0 = w0 * invArea;
               const float bary1 = w1 * invArea;
               const float bary2 = w2 * invArea;
               const float fragZ = bary0 * sz0 + bary1 * sz1 + bary2 * sz2;
 
               const size_t pixIdx = static_cast<size_t>(y) * w + static_cast<size_t>(x);
-              if (fragZ < zBuffer[pixIdx]) {
-                zBuffer[pixIdx] = fragZ;
+              if (fragZ < m_zBuffer[pixIdx]) {
+                m_zBuffer[pixIdx] = fragZ;
                 const size_t off = pixIdx * 4u;
                 buf[off + 0] = cr;
                 buf[off + 1] = cg;
@@ -674,7 +1021,6 @@ bool InspectorApp::exportScreenshotPpm(std::string_view outputPath) const {
 }
 
 void InspectorApp::handleCommand(std::string_view jsonStr) {
-  // Strip trailing whitespace or carriage returns
   while (!jsonStr.empty() && (jsonStr.back() == '\r' || jsonStr.back() == '\n' || jsonStr.back() == ' ')) {
     jsonStr.remove_suffix(1);
   }
@@ -697,15 +1043,15 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   }
 
   const auto& j = docRes.value().root();
-  const std::string type = std::string(j["type"].getStringOr(""));
+  const std::string type = std::string(jsonStringOr(j, "type", ""));
   bool ok = true;
 
   if (type == "quit") {
     requestQuit();
   } else if (type == "camera") {
-    const std::string action = std::string(j["action"].getStringOr(""));
-    const double dx = j["dx"].getRealOr(0.0);
-    const double dy = j["dy"].getRealOr(0.0);
+    const std::string action = std::string(jsonStringOr(j, "action", ""));
+    const double dx = jsonNumberOr(j, "dx", 0.0);
+    const double dy = jsonNumberOr(j, "dy", 0.0);
 
     if (action == "orbit") {
       m_orbitYaw += static_cast<float>(dx) * 0.01f;
@@ -721,14 +1067,14 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       ok = false;
     }
   } else if (type == "set_debug_view" || type == "switch_view") {
-    std::string_view modeView = j["mode"].getStringOr("");
-    if (modeView.empty()) modeView = j["view"].getStringOr("");
+    std::string_view modeView = jsonStringOr(j, "mode", "");
+    if (modeView.empty()) modeView = jsonStringOr(j, "view", "");
     const std::string mode(modeView);
     if (mode == "lit" || mode == "rgb") {
       m_debugView = DebugViewMode::kLit;
     } else if (mode == "wireframe") {
       m_debugView = DebugViewMode::kWireframe;
-    } else if (mode == "normal") {
+    } else if (mode == "normal" || mode == "normals") {
       m_debugView = DebugViewMode::kNormal;
     } else if (mode == "uv") {
       m_debugView = DebugViewMode::kUv;
@@ -736,21 +1082,25 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       m_debugView = DebugViewMode::kDepth;
     } else if (mode == "cryptomatte") {
       m_debugView = DebugViewMode::kCryptomatte;
+    } else if (mode == "albedo") {
+      m_debugView = DebugViewMode::kAlbedo;
+    } else if (mode == "motion") {
+      m_debugView = DebugViewMode::kMotion;
     } else {
       ok = false;
     }
   } else if (type == "load_bundle" || type == "open_bundle") {
-    std::string_view pathView = j["path"].getStringOr("");
-    if (pathView.empty()) pathView = j["bundle_dir"].getStringOr("");
+    std::string_view pathView = jsonStringOr(j, "path", "");
+    if (pathView.empty()) pathView = jsonStringOr(j, "bundle_dir", "");
     const std::string path(pathView);
     ok = validateAndLoadBundle(path);
   } else if (type == "set_entity_visible") {
-    const std::string name = std::string(j["name"].getStringOr(""));
-    m_entityVisible = j["visible"].getBoolOr(true);
+    const std::string name = std::string(jsonStringOr(j, "name", ""));
+    m_entityVisible = jsonBoolOr(j, "visible", true);
     std::cerr << "[inspector] Entity '" << name
               << "' visible=" << (m_entityVisible ? "true" : "false") << "\n";
   } else if (type == "export_screenshot") {
-    const std::string path = std::string(j["path"].getStringOr(""));
+    const std::string path = std::string(jsonStringOr(j, "path", ""));
     ok = exportScreenshotPpm(path);
   } else {
     std::cerr << "[inspector] Unknown command type: " << type << "\n";
@@ -760,7 +1110,7 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   aether::json::JsonWriter ackResp;
   ackResp.beginObject();
   ackResp.write("type", "ack");
-  ackResp.write("command", type);
+  ackResp.write("command", type.empty() ? "unknown" : type);
   ackResp.write("ok", ok);
   ackResp.endObject();
   std::cout << ackResp.toString(false) << "\n";

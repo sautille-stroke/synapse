@@ -11,9 +11,81 @@
 
 #include <chrono>
 #include <cstring>
+#include <fstream>
 #include <sstream>
+#include <string>
+#include <vector>
 
 using namespace synapse::inspector;
+
+namespace {
+
+// Helper to construct a valid minimal binary GLB buffer containing 1 triangle (3 vertices, 3 indices).
+std::vector<uint8_t> createMinimalGlb() {
+  // Triangle vertices: (0, 0, 0), (1, 0, 0), (0, 1, 0) -> 3 * 3 * 4 = 36 bytes
+  const float verts[9] = {
+      0.0f, 0.0f, 0.0f,
+      1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f,
+  };
+  // Indices: 0, 1, 2 (uint16) -> 3 * 2 = 6 bytes + 2 bytes padding = 8 bytes
+  const uint16_t indices[3] = {0, 1, 2};
+
+  std::vector<uint8_t> binData(44, 0);
+  std::memcpy(binData.data(), verts, sizeof(verts));
+  std::memcpy(binData.data() + 36, indices, sizeof(indices));
+
+  std::string jsonStr = R"({
+  "asset": {"version": "2.0"},
+  "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+  "accessors": [
+    {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+    {"bufferView": 1, "byteOffset": 0, "componentType": 5123, "count": 3, "type": "SCALAR"}
+  ],
+  "bufferViews": [
+    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+    {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+  ],
+  "buffers": [{"byteLength": 44}]
+})";
+
+  // Pad JSON chunk to 4-byte boundary with spaces
+  while (jsonStr.size() % 4 != 0) {
+    jsonStr.push_back(' ');
+  }
+
+  const uint32_t jsonLen = static_cast<uint32_t>(jsonStr.size());
+  const uint32_t binLen = static_cast<uint32_t>(binData.size());
+  const uint32_t totalLen = 12u + (8u + jsonLen) + (8u + binLen);
+
+  std::vector<uint8_t> glb(totalLen);
+  uint8_t* ptr = glb.data();
+
+  // Header: magic ("glTF"), version 2, totalLength
+  const uint32_t magic = 0x46546C67u;
+  const uint32_t version = 2u;
+  std::memcpy(ptr, &magic, 4);
+  std::memcpy(ptr + 4, &version, 4);
+  std::memcpy(ptr + 8, &totalLen, 4);
+  ptr += 12;
+
+  // Chunk 0: JSON (0x4E4F534A)
+  const uint32_t jsonType = 0x4E4F534Au;
+  std::memcpy(ptr, &jsonLen, 4);
+  std::memcpy(ptr + 4, &jsonType, 4);
+  std::memcpy(ptr + 8, jsonStr.data(), jsonLen);
+  ptr += 8 + jsonLen;
+
+  // Chunk 1: BIN (0x004E4942)
+  const uint32_t binType = 0x004E4942u;
+  std::memcpy(ptr, &binLen, 4);
+  std::memcpy(ptr + 4, &binType, 4);
+  std::memcpy(ptr + 8, binData.data(), binLen);
+
+  return glb;
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // SHM Server Tests
@@ -50,6 +122,51 @@ TEST(InspectorShmServer, BasicOpenClosePublish) {
   EXPECT_FALSE(server.isOpen());
 }
 
+TEST(InspectorShmServer, SeqlockTransitions) {
+  InspectorShmServer server;
+  const std::string shmName = "/test-shm-seqlock";
+  ASSERT_TRUE(server.open(shmName, 160, 120, true));
+
+  // Initial state: even (0) -> stable
+  EXPECT_EQ(server.sequenceNumber(), 0u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 0u);
+
+  // frontBuffer() starts write: increments to odd (1) -> write in progress
+  uint8_t* buf1 = server.frontBuffer();
+  ASSERT_NE(buf1, nullptr);
+  EXPECT_EQ(server.sequenceNumber(), 1u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 1u);  // odd!
+
+  // publishFrame completes write: increments to next even (2) -> stable
+  uint64_t f1 = server.publishFrame(60.0f, 0.016f, 0);
+  EXPECT_EQ(f1, 1u);
+  EXPECT_EQ(server.sequenceNumber(), 2u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 0u);  // even!
+
+  // Frame 2: frontBuffer() increments to odd (3)
+  uint8_t* buf2 = server.frontBuffer();
+  ASSERT_NE(buf2, nullptr);
+  EXPECT_EQ(server.sequenceNumber(), 3u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 1u);  // odd!
+
+  // Frame 2 publish: increments to next even (4)
+  uint64_t f2 = server.publishFrame(59.9f, 0.016f, 1);
+  EXPECT_EQ(f2, 2u);
+  EXPECT_EQ(server.sequenceNumber(), 4u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 0u);  // even!
+
+  server.close();
+}
+
+TEST(InspectorShmServer, DimensionLimits) {
+  InspectorShmServer server;
+  // Overly large dimensions (> kMaxDimension = 8192) must be rejected
+  EXPECT_FALSE(server.open("/test-shm-oob-dim", 10000, 100, true));
+  EXPECT_FALSE(server.open("/test-shm-oob-dim", 100, 10000, true));
+  EXPECT_FALSE(server.open("/test-shm-oob-dim", 0, 100, true));
+  EXPECT_FALSE(server.open("/test-shm-oob-dim", 100, 0, true));
+}
+
 // ---------------------------------------------------------------------------
 // Inspector App Lifecycle & AOV Tests
 // ---------------------------------------------------------------------------
@@ -72,8 +189,10 @@ TEST(InspectorApp, LifecycleAndAovs) {
   app.handleCommand(R"({"type":"camera","action":"zoom","dy":-5.0})");
   app.handleCommand(R"({"type":"camera","action":"pan","dx":2.0,"dy":1.0})");
 
-  // Test AOV view switching
-  const char* views[] = {"lit", "wireframe", "normal", "depth", "cryptomatte", "uv"};
+  // Test all 8 AOV debug views including Albedo and Motion
+  const char* views[] = {
+      "lit", "wireframe", "normal", "depth", "cryptomatte", "uv", "albedo", "motion"
+  };
   for (const char* v : views) {
     std::string cmd = std::string(R"({"type":"set_debug_view","mode":")") + v + R"("})";
     app.handleCommand(cmd);
@@ -85,10 +204,10 @@ TEST(InspectorApp, LifecycleAndAovs) {
     const uint8_t* pixels = app.shmServer().publishedBuffer();
     ASSERT_NE(pixels, nullptr) << "Pixels must be valid for view: " << v;
 
-    // Assert rendered pixels contain non-background content
+    // Assert rendered pixels contain non-background content (background is 16, 20, 28)
     bool hasNonZero = false;
     for (size_t i = 0; i < cfg.width * cfg.height * 4; ++i) {
-      if (pixels[i] != 0 && pixels[i] != 16) {
+      if (pixels[i] != 0 && pixels[i] != 16 && pixels[i] != 20 && pixels[i] != 28) {
         hasNonZero = true;
         break;
       }
@@ -97,7 +216,7 @@ TEST(InspectorApp, LifecycleAndAovs) {
   }
 
   // Test screenshot export
-  const std::string tmpPpm = "test_viewport_screenshot.ppm";
+  const std::string tmpPpm = ::testing::TempDir() + "/test_viewport_screenshot.ppm";
   bool exportOk = app.exportScreenshotPpm(tmpPpm);
   EXPECT_TRUE(exportOk) << "exportScreenshotPpm failed";
   EXPECT_TRUE(aether::fs::exists(tmpPpm)) << "PPM file does not exist";
@@ -108,13 +227,39 @@ TEST(InspectorApp, LifecycleAndAovs) {
   app.run();
 }
 
+TEST(InspectorApp, SafeJsonHandling) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-safe-json";
+  cfg.width = 160;
+  cfg.height = 120;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  // Malformed JSON strings must not crash or trigger abort
+  app.handleCommand("{bad json syntax");
+  app.handleCommand("");
+  app.handleCommand("   \r\n  ");
+
+  // Invalid types under -fno-exceptions must return ok:false rather than aborting
+  app.handleCommand(R"({"type": 12345})");
+  app.handleCommand(R"({"type": "camera", "action": false, "dx": "bad", "dy": null})");
+  app.handleCommand(R"({"type": "set_debug_view", "mode": 9999})");
+  app.handleCommand(R"({"type": "set_entity_visible", "visible": "not_a_bool"})");
+  app.handleCommand(R"({"type": "nonexistent_command"})");
+
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+}
+
 // ---------------------------------------------------------------------------
 // Bundle Manifest Loading
 // ---------------------------------------------------------------------------
 
 TEST(InspectorApp, BundleManifestLoading) {
-  // Create temporary bundle directory
-  const std::string bundleDir = "test_temp_bundle";
+  const std::string bundleDir = ::testing::TempDir() + "/test_native_bundle_obj";
+  (void)aether::fs::removeAll(bundleDir);
   (void)aether::fs::createDirectories(bundleDir);
 
   const std::string manifestContent = R"({
@@ -149,6 +294,9 @@ TEST(InspectorApp, BundleManifestLoading) {
   InspectorApp app(cfg);
   bool ok = app.init();
   ASSERT_TRUE(ok) << "Failed to load bundle in app.init";
+  EXPECT_TRUE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 3u);
+  EXPECT_EQ(app.faceCount(), 1u);
 
   app.renderFrame(0.016f);
   app.shmServer().publishFrame(60.0f, 0.016f);
@@ -159,12 +307,98 @@ TEST(InspectorApp, BundleManifestLoading) {
   (void)aether::fs::removeAll(bundleDir);
 }
 
+TEST(InspectorApp, GlbLoaderValidAndStub) {
+  const std::string bundleDir = ::testing::TempDir() + "/test_native_bundle_glb";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  // 1. Create valid GLB
+  const auto glbBytes = createMinimalGlb();
+  std::ofstream ofs(bundleDir + "/source/model.glb", std::ios::binary);
+  ofs.write(reinterpret_cast<const char*>(glbBytes.data()), static_cast<std::streamsize>(glbBytes.size()));
+  ofs.close();
+
+  const std::string manifestContent = R"({
+  "schema_version": "inspection.v1.0",
+  "bundle_id": "test_glb_001",
+  "sources": {
+    "source_model": "source/model.glb"
+  }
+})";
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json", manifestContent);
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-glb-load";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 160;
+  cfg.height = 120;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  EXPECT_TRUE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 3u);
+  EXPECT_EQ(app.faceCount(), 1u);
+
+  // 2. Test 12-byte stub GLB (minimal fixture): falls back safely to default cube without crash
+  std::ofstream stubOfs(bundleDir + "/source/stub.glb", std::ios::binary);
+  const uint32_t stubHeader[3] = {0x46546C67u, 2u, 12u};
+  stubOfs.write(reinterpret_cast<const char*>(stubHeader), 12);
+  stubOfs.close();
+
+  const std::string stubManifest = R"({
+  "schema_version": "inspection.v1.0",
+  "bundle_id": "test_stub_001",
+  "sources": {
+    "source_model": "source/stub.glb"
+  }
+})";
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json", stubManifest);
+
+  // Reload bundle
+  app.handleCommand(R"({"type":"load_bundle","path":")" + bundleDir + R"("})");
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);  // default cube
+
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, PathTraversalRejected) {
+  const std::string bundleDir = ::testing::TempDir() + "/test_traversal_bundle";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir);
+
+  const std::string manifestContent = R"({
+  "sources": {
+    "bad_parent": "../../etc/shadow.obj",
+    "bad_abs": "/etc/passwd.obj"
+  }
+})";
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json", manifestContent);
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-traversal";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  // Path traversal rejected -> safely falls back to default cube
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);
+
+  (void)aether::fs::removeAll(bundleDir);
+}
+
 // ---------------------------------------------------------------------------
 // OBJ Loader: Out-of-bounds, negative, quad/ngon indices
 // ---------------------------------------------------------------------------
 
 TEST(InspectorApp, ObjLoaderOutOfBoundsIndices) {
-  const std::string bundleDir = "test_oob_bundle";
+  const std::string bundleDir = ::testing::TempDir() + "/test_oob_bundle";
+  (void)aether::fs::removeAll(bundleDir);
   (void)aether::fs::createDirectories(bundleDir + "/source");
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",

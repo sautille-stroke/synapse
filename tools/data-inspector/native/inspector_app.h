@@ -3,8 +3,9 @@
 /// @brief Data Inspector native application — headless diagnostic rasterizer + SHM.
 ///
 /// Loads an InspectionBundle manifest, renders diagnostic viewport frames
-/// (Lit, Wireframe, WorldNormal, UV, Depth, Cryptomatte) into a triple-buffered
-/// shared memory region via @aether//pal:shm, and processes JSON-RPC commands over stdin.
+/// (Lit, Wireframe, WorldNormal, UV, Depth, Cryptomatte, Albedo, Motion) into a
+/// triple-buffered shared memory region via @aether//pal:shm with strict Seqlock,
+/// and processes JSON-RPC commands over stdin without exceptions.
 
 #include "inspector_shm_server.h"
 
@@ -26,6 +27,8 @@ enum class DebugViewMode : uint8_t {
   kUv = 3,          ///< UV coordinate visualisation.
   kDepth = 4,       ///< Camera linear depth visualisation.
   kCryptomatte = 5, ///< Entity ID segmentation mask visualisation.
+  kAlbedo = 6,      ///< Base color / diffuse reflectance visualisation.
+  kMotion = 7,      ///< Screen-space velocity / motion flow visualisation.
 };
 
 /// @brief Configuration for the inspector native process.
@@ -80,6 +83,12 @@ class InspectorApp {
   /// @brief Export current published buffer as a PPM image file.
   [[nodiscard]] bool exportScreenshotPpm(std::string_view outputPath) const;
 
+  /// @brief Diagnostic accessors for testing and inspection.
+  [[nodiscard]] size_t vertexCount() const noexcept { return m_mesh.vertices.size() / 3; }
+  [[nodiscard]] size_t faceCount() const noexcept { return m_mesh.faces.size() / 3; }
+  [[nodiscard]] DebugViewMode debugViewMode() const noexcept { return m_debugView; }
+  [[nodiscard]] bool hasCustomMesh() const noexcept { return m_hasCustomMesh; }
+
  private:
   InspectorConfig m_config;
   InspectorShmServer m_shm;
@@ -90,6 +99,9 @@ class InspectorApp {
   // Real 3D geometry container
   InspectorMesh m_mesh;
   bool m_hasCustomMesh = false;
+
+  // Persistent depth buffer to eliminate heap reallocation per frame at 60 Hz.
+  std::vector<float> m_zBuffer;
 
   // Camera orbit/pan/zoom state.
   float m_orbitYaw = 0.4f;
@@ -104,6 +116,7 @@ class InspectorApp {
   [[nodiscard]] bool validateAndLoadBundle(std::string_view bundlePath);
   void initDefaultMesh();
   bool loadObjMesh(std::string_view objPath);
+  bool loadGlbMesh(std::string_view glbPath);
   bool pollStdinCommands();
 };
 
