@@ -12,7 +12,7 @@ All image data is processed in **linear ACEScg** colour space.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -77,11 +77,15 @@ class HandRefiner:
         z_near: float = _Z_NEAR_DEFAULT,
         z_far: float = _Z_FAR_DEFAULT,
         *,
+        backend: str = "heuristic",
+        model_weights: Any | None = None,
         strict: bool = False,
     ) -> None:
         self._finger_count_expected = finger_count_expected
         self._z_near = z_near
         self._z_far = z_far
+        self._backend = backend
+        self._model_weights = model_weights
         self._strict = strict
 
     # -- public interface ----------------------------------------------------
@@ -185,6 +189,27 @@ class HandRefiner:
             *normal_map* are provided (critical FGPP geometric priors
             missing).
         """
+        if self._backend == "neural":
+            if self._model_weights is None:
+                if self._strict:
+                    from synapse.errors import NotImplementedStageError
+
+                    raise NotImplementedStageError(
+                        "Neural hand refinement backend requested, but real neural "
+                        "weights/model are not configured or available.",
+                        agent_fix_hint="Configure valid neural model weights or set backend='heuristic'.",
+                    )
+                logger.warning(
+                    "Neural hand backend requested but no weights available; falling back to heuristic."
+                )
+            elif callable(self._model_weights):
+                res = self._model_weights(roi)
+                if isinstance(res, RefinementResult):
+                    return res
+                raise ContractValidationError(
+                    "model_weights must return RefinementResult",
+                )
+
         has_real_priors = (
             priors is not None
             or depth_map is not None

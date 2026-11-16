@@ -16,17 +16,15 @@ refinements* of the **same** region before that compositing step.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import ClassVar, Sequence
 
 import numpy as np
 
 from synapse.refine.types import FusionMethod
 from synapse.render_core.pyramid import (
     build_laplacian_pyramid,
-    downsample2x,
     reconstruct_laplacian_pyramid,
     separable_gaussian,
-    upsample2x,
 )
 
 # ---------------------------------------------------------------------------
@@ -101,43 +99,29 @@ def _fuse_cascade(
 
     Begins with the lowest-weighted candidate at coarse resolution and
     progressively blends in higher-weighted candidates at finer
-    resolutions, producing a result that draws structure from the most
-    trusted candidate while incorporating detail from others.
+    resolutions using multiscale Gaussian pyramid residual synthesis.
     """
-    # Sort candidates by weight (ascending)  -- lowest weight contributes
-    # coarse structure, highest weight contributes fine detail.
     order = np.argsort(weights)
     h, w, c = candidates[0].shape
 
-    # Start from the coarsest (lowest weight) candidate
     result = candidates[order[0]].copy()
-
     n_cands = len(candidates)
+    if n_cands == 1:
+        return np.asarray(result)
+
     for step in range(1, n_cands):
         cand_idx = order[step]
-        # Blend ratio increases as we move to higher-weight candidates
-        alpha = weights[cand_idx] / max(float(np.sum(weights)), 1e-8)
-        alpha = np.clip(alpha, 0.0, 1.0)
+        alpha = float(weights[cand_idx] / max(float(np.sum(weights)), 1e-8))
+        alpha = float(np.clip(alpha, 0.0, 1.0))
 
-        # Progressive downscale / upscale for multi-resolution effect
-        scale = max(1, n_cands - step)
-        if scale > 1 and h > scale * 4 and w > scale * 4:
-            small_h = h // scale
-            small_w = w // scale
-            result_small = upsample2x(
-                downsample2x(result),
-                small_h,
-                small_w,
-            )
-            cand_small = upsample2x(
-                downsample2x(candidates[cand_idx]),
-                small_h,
-                small_w,
-            )
-            blended_small = (1.0 - alpha) * result_small + alpha * cand_small
-            result = upsample2x(blended_small, h, w)
-        else:
-            result = (1.0 - alpha) * result + alpha * candidates[cand_idx]
+        cand = candidates[cand_idx]
+        sigma = max(2.0 ** (n_cands - step), 1.0)
+        coarse_res = separable_gaussian(result, sigma)
+        coarse_cand = separable_gaussian(cand, sigma)
+
+        blended_coarse = (1.0 - alpha) * coarse_res + alpha * coarse_cand
+        detail_cand = cand - coarse_cand
+        result = blended_coarse + alpha * detail_cand
 
     return np.asarray(result)
 
@@ -148,24 +132,20 @@ def _fuse_latent_timestep_switch(
 ) -> np.ndarray:
     """Latent timestep-switch fusion.
 
-    Conceptually simulates a diffusion-like process: takes structure
-    from the first (lowest-indexed) candidate and detail from the last,
-    with smooth interpolation in between using Gaussian blur as a proxy
-    for denoising steps.
+    Takes base structure from the first candidate and high-frequency detail
+    from subsequent candidates, preserving energy conservation
+    (1.0 * structure + detail) to eliminate brightness attenuation.
     """
     n = len(candidates)
     h, w, c = candidates[0].shape
 
-    # Compute structure from first candidate (heavily blurred)
     structure_sigma = max(h, w) * 0.05
     structure = separable_gaussian(candidates[0], structure_sigma)
 
-    # Compute detail from last candidate
     detail_source = candidates[-1]
     detail_blurred = separable_gaussian(detail_source, structure_sigma)
     detail = detail_source - detail_blurred
 
-    # For middle candidates, interpolate contribution
     if n > 2:
         mid_weight_sum = float(np.sum(weights[1:-1]))
         if mid_weight_sum > 1e-8:
@@ -173,24 +153,13 @@ def _fuse_latent_timestep_switch(
             for k in range(1, n - 1):
                 mid_accum += weights[k] * candidates[k]
             mid_accum /= mid_weight_sum
-            # Blend mid-frequency from middle candidates
             mid_sigma = structure_sigma * 0.5
             mid_structure = separable_gaussian(mid_accum, mid_sigma)
             mid_detail = mid_accum - mid_structure
             detail = 0.5 * detail + 0.5 * mid_detail
 
-    # Weighted combination — normalise so w_struct + w_detail = 1.0
-    w_total = max(float(np.sum(weights)), 1e-8)
-    w_struct = weights[0] / w_total
-    w_detail = weights[-1] / w_total
-    # Ensure minimum structural contribution
-    w_struct = max(w_struct, 0.3)
-    # Re-normalise so they sum to exactly 1.0
-    w_sum = w_struct + w_detail
-    w_struct = w_struct / w_sum
-    w_detail = w_detail / w_sum
-
-    result = w_struct * structure + w_detail * detail
+    # Energy-conserving combination: 1.0 * structure + detail
+    result = 1.0 * structure + detail
     return np.asarray(result)
 
 
@@ -200,37 +169,32 @@ def _fuse_uncertainty(
 ) -> np.ndarray:
     """Uncertainty-weighted per-pixel fusion.
 
-    Computes per-pixel variance across candidates and uses inverse
-    variance to weight the contribution of each candidate.  Regions
-    where candidates agree strongly receive the mean; regions of
-    disagreement weight toward the candidate with lowest local variance.
+    Computes spatial disagreement variance across candidate models and uses
+    inverse variance to weight each candidate.
     """
     stack = np.stack(candidates, axis=0)  # (K, H, W, C)
     k_count = stack.shape[0]
 
-    # Per-candidate local variance (3x3 neighbourhood proxy)
+    # Consensus mean across ensemble models
+    consensus_mean = np.mean(stack, axis=0)  # (H, W, C)
+
+    # Per-candidate spatial variance (disagreement from consensus)
     local_vars = np.zeros((k_count,) + candidates[0].shape[:2], dtype=np.float32)
     for k in range(k_count):
-        # Compute per-pixel variance across channels
-        chan_var = np.var(stack[k], axis=-1)  # (H, W)
-        # Smooth to get local neighbourhood variance
-        smoothed = separable_gaussian(chan_var[:, :, np.newaxis], sigma=1.5)
+        disagreement = np.mean((stack[k] - consensus_mean) ** 2, axis=-1)  # (H, W)
+        smoothed = separable_gaussian(disagreement[:, :, np.newaxis], sigma=1.5)
         local_vars[k] = smoothed[:, :, 0]
 
-    # Inverse variance weighting (regularised)
     eps = 1e-6
-    inv_var = 1.0 / (local_vars + eps)  # (K, H, W)
+    inv_var = 1.0 / (local_vars + eps)
 
-    # Incorporate prior weights
     for k in range(k_count):
         inv_var[k] *= weights[k]
 
-    # Normalise
-    inv_var_sum = np.sum(inv_var, axis=0, keepdims=True)  # (1, H, W)
+    inv_var_sum = np.sum(inv_var, axis=0, keepdims=True)
     inv_var_sum = np.maximum(inv_var_sum, eps)
-    norm_weights = inv_var / inv_var_sum  # (K, H, W)
+    norm_weights = inv_var / inv_var_sum
 
-    # Weighted sum
     result = np.zeros_like(candidates[0])
     for k in range(k_count):
         result += norm_weights[k, :, :, np.newaxis] * stack[k]
@@ -243,47 +207,49 @@ def _fuse_poisson_gradient(
     weights: np.ndarray,
     n_iterations: int = 200,
 ) -> np.ndarray:
-    """Gradient-domain Poisson blending fusion.
-
-    Blends gradient fields from all candidates using the supplied
-    weights, then solves the Poisson equation via iterative Jacobi
-    to reconstruct a seamless image whose gradient field is the
-    weighted average of all candidate gradients.
-    """
+    """Gradient-domain Poisson blending fusion with aligned centered differences."""
     h, w, c = candidates[0].shape
 
-    # Compute weighted average of gradient fields
     target_gx = np.zeros_like(candidates[0])
     target_gy = np.zeros_like(candidates[0])
 
     for k, cand in enumerate(candidates):
         gx = np.zeros_like(cand)
         gy = np.zeros_like(cand)
-        gx[:, 1:, :] = cand[:, 1:, :] - cand[:, :-1, :]
-        gy[1:, :, :] = cand[1:, :, :] - cand[:-1, :, :]
+        # Centered difference for interior
+        gx[:, 1:-1, :] = (cand[:, 2:, :] - cand[:, :-2, :]) / 2.0
+        gy[1:-1, :, :] = (cand[2:, :, :] - cand[:-2, :, :]) / 2.0
+        # One-sided for boundaries
+        gx[:, 0, :] = cand[:, 1, :] - cand[:, 0, :]
+        gx[:, -1, :] = cand[:, -1, :] - cand[:, -2, :]
+        gy[0, :, :] = cand[1, :, :] - cand[0, :, :]
+        gy[-1, :, :] = cand[-1, :, :] - cand[-2, :, :]
+
         target_gx += weights[k] * gx
         target_gy += weights[k] * gy
 
-    # Divergence of target gradient field
+    # Centered divergence of target gradient field
     div = np.zeros_like(candidates[0])
-    # d(gx)/dx
-    div[:, 1:, :] += target_gx[:, 1:, :] - target_gx[:, :-1, :]
-    # d(gy)/dy
-    div[1:, :, :] += target_gy[1:, :, :] - target_gy[:-1, :, :]
+    div[:, 1:-1, :] += (target_gx[:, 2:, :] - target_gx[:, :-2, :]) / 2.0
+    div[1:-1, :, :] += (target_gy[2:, :, :] - target_gy[:-2, :, :]) / 2.0
+    div[:, 0, :] += target_gx[:, 1, :] - target_gx[:, 0, :]
+    div[:, -1, :] += target_gx[:, -1, :] - target_gx[:, -2, :]
+    div[0, :, :] += target_gy[1, :, :] - target_gy[0, :, :]
+    div[-1, :, :] += target_gy[-1, :, :] - target_gy[-2, :, :]
 
     # Initialise from weighted average
     result = np.zeros_like(candidates[0])
     for k, cand in enumerate(candidates):
         result += weights[k] * cand
 
-    # Jacobi iterations for Poisson equation: Laplacian(u) = div
+    # Jacobi iterations for Poisson equation
     for _ in range(n_iterations):
         padded = np.pad(result, ((1, 1), (1, 1), (0, 0)), mode="reflect")
         neighbour_sum = (
-            padded[:-2, 1:-1, :]   # up
-            + padded[2:, 1:-1, :]  # down
-            + padded[1:-1, :-2, :] # left
-            + padded[1:-1, 2:, :]  # right
+            padded[:-2, 1:-1, :]
+            + padded[2:, 1:-1, :]
+            + padded[1:-1, :-2, :]
+            + padded[1:-1, 2:, :]
         )
         result = (neighbour_sum - div) / 4.0
 
@@ -314,7 +280,7 @@ class MultiModelRefineFusion:
         )
     """
 
-    _DISPATCH = {
+    _DISPATCH: ClassVar[dict[FusionMethod, str]] = {
         FusionMethod.LAPLACIAN_FREQUENCY: "_fuse_laplacian_frequency",
         FusionMethod.CASCADE: "_fuse_cascade",
         FusionMethod.LATENT_TIMESTEP_SWITCH: "_fuse_latent_timestep_switch",

@@ -98,3 +98,4 @@ class RefinementResult:
     )
     inverse_affine_2x3: np.ndarray | None = None
     smoothed_bbox: np.ndarray | None = None
+    bypassed: bool = False

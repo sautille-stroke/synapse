@@ -658,3 +658,61 @@ def test_stitcher_hdr_pixel_inside_frame_not_truncated() -> None:
         f"HDR pixel at ({hdr_y},{hdr_x}) was truncated to {hdr_val:.4f}. "
         f"Expected > 1.0 (original was 3.0)"
     )
+
+
+def test_stitcher_roi_hdr_3_5_preservation() -> None:
+    """ROI with HDR=3.5 inside ROI core preserves 3.5 ± 0.05 after stitcher."""
+    h, w = 128, 128
+    frames = np.full((1, h, w, 3), 0.5, dtype=np.float32)
+
+    config = StitchConfig(border_ring_px=8)
+    stitcher = ScalpelStitcher(config)
+
+    # 40x40 patch with 3.5 inside core
+    refined = np.full((40, 40, 3), 3.5, dtype=np.float32)
+    bbox = np.array([30, 30, 70, 70], dtype=np.float32)
+    ref_result = RefinementResult(
+        refined_acescg=refined,
+        region=AnatomicalRegion.HAND,
+        fusion_method=FusionMethod.CASCADE,
+        bbox_xyxy=bbox,
+    )
+    result, _ = stitcher.stitch_sequence(frames, [[ref_result]])
+
+    # Center of ROI: (50, 50)
+    core_val = result[0, 50, 50, :]
+    np.testing.assert_allclose(
+        core_val, 3.5, atol=0.05,
+        err_msg=f"ROI HDR core value was {core_val}, expected 3.5 ± 0.05",
+    )
+
+
+def test_pipeline_all_bypass_preserves_bit_exact() -> None:
+    """All-bypass frame must produce bit-exact output identical to input (PSNR = inf)."""
+    from synapse.refine.pipeline import LocalRefinementPipeline
+    from synapse.refine.types import AnatomicalRegion, RefinementROI
+
+    h, w = 64, 64
+    rng = np.random.default_rng(99)
+    frames = rng.uniform(0.1, 0.9, (2, h, w, 3)).astype(np.float32)
+
+    # Both ROIs have high confidence (0.95 > 0.8) -> bypassed
+    rois_per_frame = [
+        [
+            RefinementROI(
+                bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
+                crop_acescg=frames[t, 10:30, 10:30, :].copy(),
+                region=AnatomicalRegion.HAND,
+                confidence=0.95,
+                frame_index=t,
+            )
+        ]
+        for t in range(2)
+    ]
+
+    pipeline = LocalRefinementPipeline()
+    result = pipeline.run(frames, rois_per_frame)
+
+    assert np.array_equal(result.frames_refined, frames), (
+        "All-bypass frames must be bit-exact identical to input frames"
+    )

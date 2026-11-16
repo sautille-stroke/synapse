@@ -21,12 +21,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synapse.composite.blend import (
-    border_ring_lab_match,
-    laplacian_pyramid_blend,
-)
+from synapse.composite.blend import border_ring_lab_match
 from synapse.composite.mask import generate_surgical_mask
 from synapse.refine.types import RefinementResult
+from synapse.render_core.morphology import (
+    binary_erosion as _binary_erosion,
+)
+from synapse.render_core.morphology import (
+    circular_structuring_element as _circular_structuring_element,
+)
 from synapse.style.aces_color import (
     acescg_to_linear_srgb,
     linear_to_srgb,
@@ -134,8 +137,11 @@ class ScalpelStitcher:
 
         for t in range(t_count):
             patches = refinements[t] if t < len(refinements) else []
+            active_patches = [p for p in patches if not getattr(p, "bypassed", False)]
 
-            for patch in patches:
+            frame_boundary_band = np.zeros((h, w), dtype=bool)
+
+            for patch in active_patches:
                 # -------------------------------------------------------
                 # 1. Inverse affine warp — place the refined crop into a
                 #    full-frame canvas at the correct position.
@@ -144,20 +150,27 @@ class ScalpelStitcher:
                     patch, h, w,
                 )
 
-                # -------------------------------------------------------
-                # PR-81: Initialise from background frame, NOT zeros.
-                # The warped fg_full only has valid pixels where
-                # fg_mask_bool is True; everywhere else must show the
-                # original frame to prevent black halos.
-                # -------------------------------------------------------
+                # Clamp fg_mask_bool to ROI bounding box with margin
+                target_bbox = (
+                    patch.smoothed_bbox
+                    if patch.smoothed_bbox is not None
+                    else patch.bbox_xyxy
+                )
+                bbox = np.asarray(target_bbox, dtype=np.intp)
+                x1 = max(int(bbox[0]) - ring, 0)
+                y1 = max(int(bbox[1]) - ring, 0)
+                x2 = min(int(bbox[2]) + ring, w)
+                y2 = min(int(bbox[3]) + ring, h)
+                roi_clamp_mask = np.zeros((h, w), dtype=bool)
+                roi_clamp_mask[y1:y2, x1:x2] = True
+                fg_mask_bool = fg_mask_bool & roi_clamp_mask
+
                 bg_frame = result[t].copy()
                 composite_full = bg_frame.copy()
                 composite_full[fg_mask_bool] = fg_full[fg_mask_bool]
 
                 # -------------------------------------------------------
                 # 2. Surgical mask — motion-adaptive feathered alpha.
-                #    PR-81: Constrain feathering to roi_rect interior
-                #    so it doesn't bleed outside the refinement area.
                 # -------------------------------------------------------
                 mv_frame = (
                     motion_vectors[t] if motion_vectors is not None else None
@@ -169,17 +182,6 @@ class ScalpelStitcher:
                     r_base=ring // 2,
                     feather_width=float(ring),
                 )
-
-                # PR-81: Clamp surgical mask to ROI bounding box to
-                # prevent feathering bleeding outside the refinement
-                # region. Pixels outside the bbox keep alpha=0.
-                bbox = patch.bbox_xyxy.astype(np.intp)
-                x1 = max(int(bbox[0]), 0)
-                y1 = max(int(bbox[1]), 0)
-                x2 = min(int(bbox[2]) + ring, w)
-                y2 = min(int(bbox[3]) + ring, h)
-                roi_clamp_mask = np.zeros((h, w), dtype=bool)
-                roi_clamp_mask[y1:y2, x1:x2] = True
                 surgical_alpha = surgical_alpha * roi_clamp_mask.astype(
                     np.float32,
                 )
@@ -191,37 +193,45 @@ class ScalpelStitcher:
                 fg_srgb = _acescg_to_srgb_f32(composite_full)
                 bg_srgb = _acescg_to_srgb_f32(bg_frame)
 
-                # Create an ROI-local mask for colour matching
                 roi_fg_mask = fg_mask_bool & roi_clamp_mask
                 matched_srgb = border_ring_lab_match(
                     fg_srgb, bg_srgb, roi_fg_mask,
                     ring_width_px=ring,
                 )
+                matched_acescg = _srgb_to_acescg_f32(matched_srgb)
+                # Preserve linear ACEScg HDR values (> 1.0) from composite_full
+                hdr_pixels = composite_full > 1.0
+                if np.any(hdr_pixels):
+                    matched_acescg[hdr_pixels] = composite_full[hdr_pixels]
 
                 # -------------------------------------------------------
-                # 4. Laplacian pyramid blend in sRGB then convert back.
-                #    PR-81: Preserve linear ACEScg HDR pixels (> 1.0)
-                #    outside the blend region — zero truncation.
+                # 4. Laplacian pyramid blend in linear ACEScg.
+                #    Preserves linear ACEScg HDR pixels (> 1.0) inside ROI
+                #    and in surrounding areas.
                 # -------------------------------------------------------
-                blended_srgb = laplacian_pyramid_blend(
-                    matched_srgb, bg_srgb, surgical_alpha,
+                blended_acescg = _laplacian_pyramid_blend_linear(
+                    matched_acescg, bg_frame, surgical_alpha,
                     num_levels=4,
                 )
-                blended_acescg = _srgb_to_acescg_f32(blended_srgb)
 
-                # PR-81: Preserve HDR. Only apply blended result where
-                # the surgical alpha is > 0. Outside, keep original
-                # frame pixels (including HDR > 1.0) completely intact.
                 alpha_3ch = surgical_alpha[..., np.newaxis]
                 result[t] = (
                     alpha_3ch * blended_acescg
                     + (1.0 - alpha_3ch) * bg_frame
                 ).astype(np.float32)
 
+                # In the interior core of the refined ROI (eroded away from the border ring),
+                # preserve the exact refined patch values (including HDR > 1.0)
+                se_core = _circular_structuring_element(ring)
+                core_mask = _binary_erosion(fg_mask_bool, se_core)
+                if np.any(core_mask):
+                    result[t][core_mask] = fg_full[core_mask]
+
                 # -------------------------------------------------------
                 # Measure border quality with real CIE ΔE₀₀.
                 # -------------------------------------------------------
                 border_mask = _border_ring_mask(h, w, ring, fg_mask_bool)
+                frame_boundary_band = frame_boundary_band | border_mask
                 if np.any(border_mask):
                     psnr_val = _border_psnr(
                         result[t], frames_acescg[t], border_mask,
@@ -236,21 +246,23 @@ class ScalpelStitcher:
                 total_patches += 1
 
             # -----------------------------------------------------------
-            # 5. Temporal EMA warp — smooth with previous composite.
+            # 5. Temporal EMA warp — smooth strictly in boundary_band.
             # -----------------------------------------------------------
             if (
                 t > 0
                 and prev_composite is not None
                 and motion_vectors is not None
+                and np.any(frame_boundary_band)
             ):
                 mv_t = motion_vectors[t]
-                result[t] = _temporal_ema_blend(
+                ema_blended = _temporal_ema_blend(
                     current=result[t],
                     prev_composite=prev_composite,
                     flow=mv_t,
                     ema_alpha=self.config.ema_alpha,
                     max_flow_magnitude=self.config.max_flow_magnitude,
                 )
+                result[t][frame_boundary_band] = ema_blended[frame_boundary_band]
 
             prev_composite = result[t].copy()
 
@@ -436,8 +448,49 @@ def _warp_affine_numpy(
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers — colour space conversion utilities
+# Internal helpers — colour space conversion utilities and linear blending
 # ---------------------------------------------------------------------------
+
+
+def _laplacian_pyramid_blend_linear(
+    fg_linear: np.ndarray,
+    bg_linear: np.ndarray,
+    alpha_mask: np.ndarray,
+    num_levels: int = 4,
+) -> np.ndarray:
+    """Multi-scale Laplacian pyramid blend in linear space (e.g. ACEScg).
+
+    Preserves HDR radiance values (> 1.0) without sRGB clamping.
+    """
+    from synapse.render_core.pyramid import (
+        build_gaussian_pyramid,
+        build_laplacian_pyramid,
+        reconstruct_laplacian_pyramid,
+    )
+
+    fg = fg_linear.astype(np.float64)
+    bg = bg_linear.astype(np.float64)
+    alpha = np.clip(alpha_mask.astype(np.float64), 0.0, 1.0)
+
+    min_dim = min(fg.shape[0], fg.shape[1])
+    max_levels = max(int(np.floor(np.log2(max(min_dim, 1)))), 1)
+    num_levels = min(num_levels, max_levels)
+
+    lap_fg = build_laplacian_pyramid(fg, num_levels)
+    lap_bg = build_laplacian_pyramid(bg, num_levels)
+    gauss_mask = build_gaussian_pyramid(alpha, num_levels)
+
+    lap_blended: list[np.ndarray] = []
+    for i in range(len(lap_fg)):
+        m = gauss_mask[i]
+        if lap_fg[i].ndim == 3 and m.ndim == 2:
+            m = m[..., np.newaxis]
+        blended_level = m * lap_fg[i] + (1.0 - m) * lap_bg[i]
+        lap_blended.append(blended_level)
+
+    result_lin = reconstruct_laplacian_pyramid(lap_blended)
+    result_lin = np.clip(result_lin, 0.0, None)
+    return np.asarray(result_lin.astype(fg_linear.dtype))
 
 
 def _acescg_to_srgb_f32(acescg: np.ndarray) -> np.ndarray:
@@ -553,8 +606,8 @@ def _backward_warp_bilinear(
     fl = flow.astype(np.float64)
 
     yy, xx = np.mgrid[:h, :w]
-    sx = xx.astype(np.float64) + fl[..., 0]
-    sy = yy.astype(np.float64) + fl[..., 1]
+    sx = xx.astype(np.float64) - fl[..., 0]
+    sy = yy.astype(np.float64) - fl[..., 1]
 
     # Clamp to valid range.
     sx_c = np.clip(sx, 0, w - 1)

@@ -189,8 +189,8 @@ class LocalRefinementPipeline:
         self.fusion = MultiModelRefineFusion()
 
         # --- Wire up anatomical refiners (PR-45 fix #1) ---
-        self.hand_refiner = HandRefiner()
-        self.face_refiner = FaceRefiner()
+        self.hand_refiner = HandRefiner(strict=self.strict)
+        self.face_refiner = FaceRefiner(strict=self.strict)
         # PR-81: Independent Kalman tracker per track_id instead of
         # a single shared tracker that cross-contaminates state.
         self._bbox_trackers: dict[str, KalmanBBoxTracker] = {}
@@ -247,6 +247,7 @@ class LocalRefinementPipeline:
             for roi_idx, roi in enumerate(rois):
                 total_rois += 1
                 smoothed_bbox: np.ndarray | None = None
+                is_bypassed = False
 
                 # --- PR-45 fix #2: Region-based dispatch when no
                 # explicit candidates are provided ---
@@ -259,12 +260,11 @@ class LocalRefinementPipeline:
                 else:
                     # Dispatch to region-specific refiner instead of
                     # identity self-merge (cands = [roi.crop_acescg]).
-                    # PR-81: Maintain independent KalmanBBoxTracker per
-                    # track_id to prevent cross-contamination between
-                    # different tracked entities.
                     track_id = f"{roi.region.name}_{roi_idx}"
                     if track_id not in self._bbox_trackers:
                         self._bbox_trackers[track_id] = KalmanBBoxTracker()
+                    else:
+                        self._bbox_trackers[track_id].predict()
                     tracker = self._bbox_trackers[track_id]
                     smoothed_bbox = tracker.update(roi.bbox_xyxy)
                     roi_smoothed = RefinementROI(
@@ -282,7 +282,8 @@ class LocalRefinementPipeline:
                         )
                     )
                     if not defective_rois:
-                        # All tiles healthy — use original crop
+                        # All tiles healthy — bypass refinement
+                        is_bypassed = True
                         cands = [roi.crop_acescg]
                     elif roi.region == AnatomicalRegion.HAND:
                         ref_result = self.hand_refiner.refine(roi_smoothed)
@@ -307,12 +308,17 @@ class LocalRefinementPipeline:
                     fusion_method=fusion_method,
                     quality_score=roi.confidence,
                     frame_index=t,
-                    bbox_xyxy=roi.bbox_xyxy.copy(),
+                    bbox_xyxy=(
+                        smoothed_bbox.copy()
+                        if smoothed_bbox is not None
+                        else roi.bbox_xyxy.copy()
+                    ),
                     smoothed_bbox=(
                         smoothed_bbox.copy()
                         if smoothed_bbox is not None
                         else None
                     ),
+                    bypassed=is_bypassed,
                 )
                 frame_refs.append(ref)
 
@@ -338,12 +344,23 @@ class LocalRefinementPipeline:
                 first_ref_patch = refinements[t][0].refined_acescg
                 break
 
+        # Compute real temporal warp error across frames
+        temporal_warp_err = 0.0
+        if t_count > 1:
+            diffs = []
+            for t_idx in range(1, t_count):
+                diffs.append(float(np.mean(np.abs(
+                    result_frames[t_idx].astype(np.float64) - result_frames[t_idx - 1].astype(np.float64)
+                ))))
+            temporal_warp_err = float(np.mean(diffs))
+
         # --- PR-45 fix #3 & #4: Consume GateVerdict and propagate
         # CircuitBreakerError ---
         try:
             verdict: GateVerdict = evaluate_refinement_gates(
                 border_psnr_db=stitch_report.mean_border_psnr_db,
                 border_ciede2000=stitch_report.mean_border_ciede2000,
+                temporal_warp_error=temporal_warp_err,
                 elapsed_seconds=elapsed,
                 thresholds=self.gate_thresholds,
                 original_patch=first_orig_patch,
