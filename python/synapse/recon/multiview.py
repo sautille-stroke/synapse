@@ -339,6 +339,14 @@ class MultiViewInitializer:
                 var_mask = frame_variance > var_thresh
                 mask = mask | var_mask
 
+            # Remove isolated 1-pixel salt-and-pepper noise via 3x3 majority vote
+            padded = np.pad(mask.astype(np.float32), 1, mode="edge")
+            neighbor_sum = np.zeros((h, w), dtype=np.float32)
+            for dy in range(3):
+                for dx in range(3):
+                    neighbor_sum += padded[dy : dy + h, dx : dx + w]
+            mask = neighbor_sum >= 5.0
+
             fg_fraction = float(np.mean(mask))
             if 0.01 < fg_fraction < 0.99:
                 masks[i] = mask.astype(np.float32)
@@ -586,7 +594,7 @@ class MultiViewInitializer:
         ny = int(by / self.voxel_size)
         nz = int(bz / self.voxel_size)
 
-        max_dim = 64
+        max_dim = 32
         if max(nx, ny, nz) > max_dim:
             scale = max_dim / max(nx, ny, nz)
             nx = max(int(nx * scale), 2)
