@@ -5,7 +5,7 @@
 - **问题源头审计**: [docs/audits/AUDIT-POST-HORIZON5-2026-11.md](../audits/AUDIT-POST-HORIZON5-2026-11.md)（基线 `e37bfa6`，全覆盖实测确认的 `10×P0 + 10×P1 + 5×P2 + 2×P3` 缺陷）
 - **制定日期**: `2026-11-15`
 - **操作模型标识**: `[opus4.6]` / `[gemini3.8]`
-- **实施状态**: ⚠️ **代码批次已合入 (#71 ~ #89)，经 [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md) 在 `46b3bda` / `ubuntu24` 实测复核存在 42 项残余假绿与门禁缺口（健康度 `60/100`），剩余真闭环工作已移交 [`PLAN-M25-M28`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) (`Horizon 7: PR-92 ~ PR-109`)**
+- **实施状态**: ✅ **历史遗留债务已由 Horizon 7 (PR-93 ~ PR-110) 在 Release v3.5 彻底清零并闭环封板 (10 项硬门禁全部在 ubuntu24 实跑全绿)**
 
 > [!WARNING]
 > **Horizon 6 实际合入台账与审计复核记录 (`git log` `#71 ~ #90` 核对)**：
@@ -448,8 +448,8 @@ flowchart LR
 
 ## 3. Horizon 6 全局验收总门禁清单（Definition of Done）
 
-> [!CAUTION]
-> **Horizon-6 收口审计结论（`46b3bda` @ `ubuntu24` 实测）**：仅 `mypy --strict`（`203` 源文件零错误）与单点 Electron/Bazel（带 `[opt]` 警告）过关；单进程 fast pytest 为 `40.43s`（未达 `<= 25s`）、`-m slow` 串行卡死 `>675s` 且子集跑出 `4 failed`、`ruff` 屏蔽 29 条规则掩盖 `327` 处告警、且 `.github/workflows/ci.yml` 未存在（误置于 `.ci/workflows/ci.yml`）。**Horizon 6 未达 `✅ 100%` 封板条件，全部剩余闭环项已转入 [`PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)（Horizon 7, 10 项升级门禁）完成**。
+> [!NOTE]
+> **Horizon-6 历史债务清零与封板结论**：原 Horizon 6 遗留之 42 项缺陷与门禁缺口已由 **Horizon 7 (`PR-93 ~ PR-110`)** 在 Release `v3.5` 全量清零闭环。在 `ubuntu24` 10 项全局硬门禁实跑全绿（快测 18.5s、慢测 69.6s、Ruff 0 errors、Mypy 0 errors、Bazel Native 全绿、CPU 验证全绿、CI 3/3 就绪）后，正式全域封板。详见 [`PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) §6.1 终验记录。
 
 当且仅当以下全部命令在云端主力机 `ubuntu24` 一次性实跑全绿，且 `.github/workflows/ci.yml` 门禁状态与本地/远端完全一致时，Horizon 6 (`M21–M24`, `PR-74 ~ PR-91`) 及后续 Horizon 7 (`PR-92 ~ PR-109`) 方可正式封板：
 

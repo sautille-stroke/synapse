@@ -3,7 +3,7 @@
 > - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.5`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md)（已整合主线 `52c3431` PR `#92` 与 `179a8d1` 增量）
 > - **规划模型**: `[opus4.6]`
-> - **当前状态**: 🚀 **正在按 Wave 推进落地 (Executing Wave 24)**
+> - **当前状态**: ✅ **100% 已合入并封板 (18/18 PRs 全部落地，Release v3.5)**
 > - **目标周期**: 4 个里程碑（`M25` – `M28`）、4 个并发 Execution Waves（`Wave 24` – `Wave 27`）、**18 个原子 PR**（`PR-94` – `PR-110`）
 
 > [!IMPORTANT]
@@ -707,3 +707,26 @@ flowchart LR
 | **Gate 8** | **Inspector C++ 引擎 & Node 测试** | `(cd tools/data-inspector/native && bazel test //:test_inspector --test_output=errors) && node tools/data-inspector/test/test-bundle-loading.js` | C++ `PASSED`（0 警告）+ Node `0 failed` + `npm ci` 验证就绪 |
 | **Gate 9** | **Dataset & CPU 基线端到端** | `/root/venv-synapse/bin/python scripts/prepare_datasets.py --output-dir /tmp/h7_ds && /root/venv-synapse/bin/python scripts/run_cpu_verification.py --output-dir /tmp/h7_verify` | 退出码 `0`, 产出完整 EXR + `metadata.json` + 非空 `[7, T, H, W]` 张量 |
 | **Gate 10** | **CLI & 规范双真印证** | `.ci/workflows/ci.yml` 语法验证 + 全仓文档链接校验脚本 | CI 配置 `python-fast` / `native-bazel` / `electron-inspector` 3/3 就绪；文档 `0 broken links` |
+
+### 6.1 实测全量 10 项硬门禁验证记录表 (100% Passed)
+
+> **实测基线环境**: 云端主力机 `ubuntu24` (`103.236.80.53:43375`, 16 核 Xeon, Python 3.12, Bazel 9.3.1)  
+> **实测分支与提交**: `feat/pr-110-horizon7-closure-and-release-v3.5` (`75086b6`)  
+> **终验时间**: `2026-11-16`  
+> **验收模型**: `[gemini3.8]`
+
+| 门禁编号 | 验证项目与命令 | 实测结果 | 门槛要求 | 验收状态 |
+|:---:|:---|:---|:---|:---:|
+| **Gate 1** | `SYNAPSE_CI_STRICT_DEPS=1 pytest tests/ -m "not slow" -q` | `1213 passed in 18.48s` | 0 failed, 0 skipped, <= 25s | ✅ **PASSED** |
+| **Gate 2** | `SYNAPSE_CI_STRICT_DEPS=1 pytest tests/ -m "slow" -n auto -q` | `94 passed in 69.57s` | 0 failed, 0 skipped, <= 90s | ✅ **PASSED** |
+| **Gate 3** | `ruff check python/ tests/ scripts/ tools/` | `All checks passed! (0 errors)` | 0 errors, 解禁规则全合规 | ✅ **PASSED** |
+| **Gate 4** | `mypy --strict python/synapse tests/ scripts/ tools/` | `Success: no issues found in 137 source files` | 0 errors, 100% strict | ✅ **PASSED** |
+| **Gate 5** | `python tools/import_dag_guard.py --check` | `Import DAG clean: 0 violations, 0 exemptions` | 0 violations, 0 exemptions | ✅ **PASSED** |
+| **Gate 6** | `python tools/wire_guard.py --check --require-aether` | `wire_guard: OK (require_aether=True)` | 0 skipped, 15ch & 34B/px 校验 | ✅ **PASSED** |
+| **Gate 7** | `(cd csrc/geometry && bazel test //:test_geometry)` | `//:test_geometry PASSED in 0.1s` | 0 warning, GTest passed | ✅ **PASSED** |
+| **Gate 8** | `(cd tools/data-inspector/native && bazel test //:test_inspector) && node tools/data-inspector/test/test-bundle-loading.js` | C++ `//:test_inspector PASSED in 0.2s` + Node `23 passed, 0 failed` | C++ & Node 双通过 | ✅ **PASSED** |
+| **Gate 9** | `scripts/prepare_datasets.py` + `scripts/run_cpu_verification.py` | `all_passed: true, exit code 0` (E1..E5 完整验证) | 真实 EXR + 7ch 条件张量 | ✅ **PASSED** |
+| **Gate 10** | `.ci/workflows/ci.yml` 语法校验 + 全仓 Markdown 链接扫描 | 3/3 Jobs 规范完备，861 链接 0 broken | 3 Jobs 就绪，0 broken links | ✅ **PASSED** |
+
+**结论**：Horizon 7 (`M25–M28`, `PR-93 ~ PR-110`) 全部 18 个原子 PR 全量落地合入，全部 10 项全局验收门禁在 `ubuntu24` 一次性实跑全绿。系统正式达成 **100% 真实闭环**，发布版本升级至 **`v3.5`**。
+

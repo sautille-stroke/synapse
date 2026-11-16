@@ -5,9 +5,9 @@
 # 0. Shared DervGen C++20 strict baseline (when sibling all-overview is present)
 try-import %workspace%/../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
-# 1. Bzlmod Registries — DervGen private BCR has priority, public BCR as fallback
-common --registry=https://bcr.dervgen.com/bcr
+# 1. Bzlmod Registries — public BCR has priority, DervGen private BCR as fallback
 common --registry=https://bcr.bazel.build
+common --registry=https://bcr.dervgen.com/bcr
 common --enable_platform_specific_config
 
 # 2. Build mode & RelWithDebInfo baseline
