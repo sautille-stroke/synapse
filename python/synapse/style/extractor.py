@@ -241,15 +241,15 @@ def _frechet_mean_s2(
         return np.array([0.0, 1.0, 0.0], dtype=np.float64)
     if len(directions) == 1:
         d = directions[0].astype(np.float64)
-        norm = np.linalg.norm(d)
-        return d / norm if norm > 1e-8 else np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        d_norm = float(np.linalg.norm(d))
+        return d / d_norm if d_norm > 1e-8 else np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
     unit_dirs: list[np.ndarray] = []
-    for d in directions:
-        d_arr = np.asarray(d, dtype=np.float64)
-        norm = float(np.linalg.norm(d_arr))
-        if norm > 1e-8:
-            unit_dirs.append(d_arr / norm)
+    for d_vec in directions:
+        d_arr = np.asarray(d_vec, dtype=np.float64)
+        arr_norm = float(np.linalg.norm(d_arr))
+        if arr_norm > 1e-8:
+            unit_dirs.append(d_arr / arr_norm)
 
     if not unit_dirs:
         return np.array([0.0, 1.0, 0.0], dtype=np.float64)

@@ -186,10 +186,12 @@ _LAB_DELTA_CU: float = _LAB_DELTA ** 3
 def _lab_f(t: np.ndarray) -> np.ndarray:
     """CIE Lab forward nonlinearity."""
     t_clipped = np.clip(t, 0.0, None)
-    return np.where(
-        t_clipped > _LAB_DELTA_CU,
-        np.cbrt(t_clipped),
-        t_clipped / (3.0 * _LAB_DELTA_SQ) + 4.0 / 29.0,
+    return np.asarray(
+        np.where(
+            t_clipped > _LAB_DELTA_CU,
+            np.cbrt(t_clipped),
+            t_clipped / (3.0 * _LAB_DELTA_SQ) + 4.0 / 29.0,
+        )
     )
 
 
