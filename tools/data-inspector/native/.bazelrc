@@ -7,22 +7,15 @@ try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cp
 # 1. Bzlmod Registries — DervGen private BCR has priority, public BCR as fallback
 common --registry=https://bcr.dervgen.com/bcr
 common --registry=https://bcr.bazel.build
+common --enable_platform_specific_config
 
-# 2. C++20 Standard
-build:macos --cxxopt=-std=c++20
-build:macos --host_cxxopt=-std=c++20
-build:linux --cxxopt=-std=c++20
-build:linux --host_cxxopt=-std=c++20
-build:windows --cxxopt=/std:c++20
-build:windows --host_cxxopt=/std:c++20
+# 2. Build mode & RelWithDebInfo baseline
+build:opt --strip=never
+build:reldbg --config=opt
 
 # 3. Exceptions/RTTI configuration
 build:macos --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
 build:linux --per_file_copt=^(?!.*[^/][+]/).*@-fno-exceptions,-fno-rtti
 build:windows --per_file_copt=^(?!.*[^/][+]/).*@/EHs-c-,/GR-,/D_HAS_EXCEPTIONS=0
-
-# 4. Default optimised build (RelWithDebInfo)
-build:opt --compilation_mode=opt
-build --config=opt
 
 try-import %workspace%/.bazelrc.user

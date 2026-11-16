@@ -1,9 +1,10 @@
 /// @file inspector_shm_server.cc
-/// @brief Shared-memory frame server backed by @aether//pal:shm.
+/// @brief Shared-memory frame server backed by @aether//pal:shm with strict Seqlock.
 
 #include "inspector_shm_server.h"
 
 #include <cstring>
+#include <new>
 #include <utility>
 
 namespace synapse::inspector {
@@ -23,7 +24,10 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width,
                               uint32_t height, bool unlinkOnClose) {
   close();
 
-  if (width == 0 || height == 0 || name.empty()) return false;
+  if (width == 0 || height == 0 || width > kMaxDimension ||
+      height > kMaxDimension || name.empty()) {
+    return false;
+  }
 
   const size_t requiredSize = computeTotalSize(width, height);
   auto shmResult = aether::pal::SharedMemory::create(
@@ -46,17 +50,17 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width,
   }
 
   std::memset(base, 0, requiredSize);
-  auto* hdr = static_cast<InspectorShmHeader*>(base);
+  auto* hdr = new (base) InspectorShmHeader();
   hdr->magic = kInspectorShmMagic;
   hdr->version = kInspectorShmVersion;
   hdr->width = width;
   hdr->height = height;
-  hdr->write_idx.store(0u, std::memory_order_relaxed);
-  hdr->buffer_count = kShmBufferCount;
-  hdr->frame_ready.store(0u, std::memory_order_release);
+  hdr->writeIdx.store(0u, std::memory_order_relaxed);
+  hdr->bufferCount = kShmBufferCount;
+  hdr->frameReady.store(0u, std::memory_order_release);
   hdr->fps.store(0.0f, std::memory_order_relaxed);
-  hdr->delta_time.store(0.0f, std::memory_order_relaxed);
-  hdr->debug_view.store(0u, std::memory_order_relaxed);
+  hdr->deltaTime.store(0.0f, std::memory_order_relaxed);
+  hdr->debugView.store(0u, std::memory_order_relaxed);
 
   return true;
 }
@@ -74,8 +78,19 @@ void InspectorShmServer::close() noexcept {
   m_stagingIdx = 0;
 }
 
+void InspectorShmServer::beginFrame() noexcept {
+  if (!m_shm.isValid()) return;
+  auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  uint64_t seq = hdr->frameReady.load(std::memory_order_relaxed);
+  if ((seq & 1u) == 0u) {
+    // Current seq is even (stable) -> transition to odd (write in progress)
+    hdr->frameReady.store(seq + 1u, std::memory_order_release);
+  }
+}
+
 uint8_t* InspectorShmServer::frontBuffer() noexcept {
   if (!m_shm.isValid()) return nullptr;
+  beginFrame();
   const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
   return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) +
                            frameBytes * m_stagingIdx);
@@ -85,7 +100,7 @@ const uint8_t* InspectorShmServer::publishedBuffer() const noexcept {
   if (!m_shm.isValid()) return nullptr;
   const auto* hdr = m_shm.as<InspectorShmHeader>(0);
   const uint32_t pubIdx =
-      hdr->write_idx.load(std::memory_order_acquire) % kShmBufferCount;
+      hdr->writeIdx.load(std::memory_order_acquire) % kShmBufferCount;
   const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
   return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * pubIdx);
 }
@@ -96,21 +111,31 @@ uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime,
   auto* hdr = m_shm.as<InspectorShmHeader>(0);
 
   // Store metadata with relaxed ordering — visibility is guaranteed by the
-  // release store on write_idx below.
+  // release store on frameReady below.
   hdr->fps.store(fps, std::memory_order_relaxed);
-  hdr->delta_time.store(deltaTime, std::memory_order_relaxed);
-  hdr->debug_view.store(debugView, std::memory_order_relaxed);
+  hdr->deltaTime.store(deltaTime, std::memory_order_relaxed);
+  hdr->debugView.store(debugView, std::memory_order_relaxed);
 
-  // Publish the completed buffer index with release semantics so that readers
-  // who acquire write_idx also see the pixel data and metadata written above.
-  hdr->write_idx.store(m_stagingIdx, std::memory_order_release);
+  // Publish the completed buffer index
+  hdr->writeIdx.store(m_stagingIdx, std::memory_order_release);
 
-  // Bump the monotonic frame counter (acq_rel to synchronise with readers).
-  const uint64_t readyCount =
-      hdr->frame_ready.fetch_add(1u, std::memory_order_acq_rel) + 1u;
+  // Advance Seqlock sequence to next even number (stable)
+  uint64_t seq = hdr->frameReady.load(std::memory_order_relaxed);
+  if ((seq & 1u) != 0u) {
+    seq += 1u;
+  } else {
+    seq += 2u;
+  }
+  hdr->frameReady.store(seq, std::memory_order_release);
 
   m_stagingIdx = (m_stagingIdx + 1u) % kShmBufferCount;
-  return readyCount;
+  return seq / 2u;
+}
+
+uint64_t InspectorShmServer::sequenceNumber() const noexcept {
+  if (!m_shm.isValid()) return 0;
+  const auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  return hdr->frameReady.load(std::memory_order_acquire);
 }
 
 }  // namespace synapse::inspector
