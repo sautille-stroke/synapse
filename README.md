@@ -42,28 +42,28 @@ flowchart LR
 
 ## 3. 模块架构与当前就绪状态
 
-> 整体设计与跨文档对齐决议见 [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)，架构审查见 [docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)，历次深度审计见 [AUDIT-POST-REFACTOR-2026-11](docs/audits/AUDIT-POST-REFACTOR-2026-11.md)、[AUDIT-RFC0063-AND-CODEBASE-2026-11](docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)、[AUDIT-POST-HORIZON5-2026-11](docs/audits/AUDIT-POST-HORIZON5-2026-11.md)（`e37bfa6`）与 [AUDIT-POST-HORIZON6-2026-11](docs/audits/AUDIT-POST-HORIZON6-2026-11.md)（`46b3bda`），M1–M28 全量 111-PR 实施总计划 (`v3.5`) 见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。当前云端主力机 `ubuntu24` 实跑全量 10 项终验门禁全绿（1,307 passed 用例：1,213 fast in 18.5s + 94 slow in 69.6s，0 failed，0 skipped；Ruff 0 errors；Mypy strict 0 errors；Import DAG 0 violations 0 exemptions；Wire Guard OK；Native Geometry & Inspector Bazel GTest PASSED；CPU verification E1..E5 全部通过），Release `v3.5` 达成 100% 真实闭环并封板（详见 [PLAN-M25-M28](docs/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)）。
+> 整体设计与跨文档对齐决议见 [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)，架构审查见 [docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)，历次深度审计见 [AUDIT-POST-REFACTOR-2026-11](docs/audits/AUDIT-POST-REFACTOR-2026-11.md)、[AUDIT-RFC0063-AND-CODEBASE-2026-11](docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)、[AUDIT-POST-HORIZON5-2026-11](docs/audits/AUDIT-POST-HORIZON5-2026-11.md)（`e37bfa6`）、[AUDIT-POST-HORIZON6-2026-11](docs/audits/AUDIT-POST-HORIZON6-2026-11.md)（`46b3bda`）与 [AUDIT-POST-HORIZON7-2026-11](docs/audits/AUDIT-POST-HORIZON7-2026-11.md)（`cf2a49f`），M1–M32 全量 129-PR 实施总计划 (`v3.6`) 见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。当前 `cf2a49f` 在云端主力机 `ubuntu24` 实测 `1,307` 项 pytest 用例全通过（`1,213` fast 单进程 `73.97s` / `-n auto` `22.09s` + `94` slow `-n auto` `89.19s`）、Import DAG & Wire Guard 15ch & Bazel GTest 均通过；经 Post-H7 独立复审确认仍存 **`49` 项残余工程/数学/跨仓与门禁缺口**（含全仓 207 文件 `mypy --strict` 20 错、Ruff 29 条规则未解禁、`.github/workflows/ci.yml` 未激活、RFC 0039 `JobBundle` 兼容、`p02` 主点反转、`WanAdapter` 滑窗与空域 LoRA 未接线、MC/Quad/Delight/Temporal 数学缺陷、`prepare_datasets` `fulgur` `SIGSEGV` 与 macOS/Win SHM 失效），已统一排入 **Horizon 8 (`M29–M32`, `PR-112 ~ PR-129`，详见 [PLAN-M29-M32](docs/plans/PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md))**。
 
 | 模块路径 | 核心职责 | 当前状态 | 对应实施里程碑 / 交付 |
 | :--- | :--- | :---: | :---: |
-| `csrc/geometry/` | Tier 0 现代 C++20 几何绑定与校验门禁（Bazel 9.3.1，委托 `@aether//geo` + `@aether//math` `DVec3`），流形/水密/简并/自交校验 | 🟢 已闭环 (`test_geometry` PASSED) | `PR-47`, `PR-84`, `PR-103` |
-| `python/synapse/render_core/` | 无状态底层软件光栅化、相机模型与基础几何生成原语（从 `bench/` 剥离解耦） | 🟢 已闭环 (齐次近面插值裁剪与光流) | `PR-48`, `PR-78`, `PR-95` |
-| `python/synapse/recon/` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060/0062）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK (<0.2 cm)、球谐与 Retinex 本征去光照、双轨可微逆渲染 | 🟢 已闭环 (`ReconPipeline` & 烘焙全绿) | `SYN-RFC-0060/0062`, `PR-100`, `PR-108` |
-| `python/synapse/refine/` | 局部解剖智能修正与多模型融合（RFC 0061）：MANO 手部先验、Canonical 面部身份保持、五维多模型融合核、512×512 瓦片与光流 Warp 手术刀缝合 | 🟢 已闭环 (HDR 缝合与 `strict` 门禁) | `SYN-RFC-0061`, `PR-101` |
-| `python/synapse/bench/` | `Synapse-Bench` 30 场景、11×4 条件因子、纯 NumPy 软光栅与 InspectionBundle 导出器 | 🟢 已就绪并全覆盖 (清理陈旧数据接通 RSI) | `PR-01`, `PR-15`, `PR-26`, `PR-106` |
-| `python/synapse/fgpp/` | 对齐 `@aether//fgpp` 的 15 标量通道 (`34B/px`) OpenEXR 读写、消毒器与 DLPack 桥接 | 🟢 已闭环 (UINT32 Fail-Closed & 内参重建) | `PR-02`, `PR-03`, `PR-74`, `PR-94` |
-| `python/synapse/cli/` | 双入口统一 CLI（`synapse` / `synapse-bench`、确定性退出码 `0/10/20/30/40/50`、显存预检） | 🟢 已闭环 (统一 `--json` & 确定性状态码) | `PR-04`, PR #22, `PR-97` |
-| `python/synapse/adapters/` | 双轨视频适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 API）、97f 因果滑窗与 Multi-LoRA 空间隔离 | 🟢 已闭环 (LoRAPatchHook & 相关性滑窗方差) | `PR-05~08`, `PR-16`, `PR-98` |
-| `python/synapse/style/` | 双曲正切软肩 ACEScg 逆色调映射、球谐主光提取与 `StyleProfile v2.0` 映射 | 🟢 已闭环 (IRLS/S^2 均值 & 前向软肩) | `PR-09`, `PR-78`, `PR-96` |
-| `python/synapse/composite/` | 穿模/闪烁检测、`3D ∪ SAM2` 膨胀掩膜、16px 环带 LAB 与光学增量拉普拉斯金字塔融合 | 🟢 已闭环 (穿地坐标/光流方向与精确 EDT) | `PR-10`, `PR-11`, `PR-96` |
-| `python/synapse/bridge/` | `foundary` 客户端、HITL 15m 熔断状态机与 `vg_bridge`（内建 `MockVgBackend` 回退） | 🟢 已闭环 (统一传输与文件锁状态机) | `PR-12`, `PR-98` |
-| `python/synapse/metrics/` | 四维 16 项指标与三级质量门禁档位（`track_b` / `track_a` / `rsi_promotion`，SSOT 对齐） | 🟢 已闭环 (R3D18 通道维/FVD/方向归一) | `PR-13`, PR #23, `PR-83`, `PR-102` |
-| `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器执行核、离线 `BenchPipelineRunner` 与解耦的 Stage 适配器 | 🟢 已闭环 (5 Stage 真实落盘与全指标) | `PR-14a`, `PR-14b`, `PR-75`, `PR-97` |
-| `python/synapse/training/` | 3D VAE / FGPP 离线潜空间 `WebDataset` 缓存与正交 LoRA 训练器（参考锚定 Diffusion-DPO） | 🟢 已闭环 (Fail-Closed/Losses/旋转门禁) | `PR-17~19`, PR #27, `PR-99` |
-| `python/synapse/inspect/` | Tier 0 几何硬门禁、Fibonacci 粗到精配准、微距 3D 反投、Visual Jev 判别与 3D 模型评估报告（SVG 雷达图） | 🟢 已闭环 (无参考门禁/XSS 转义) | `PR-20~23`, PR #31, `PR-106` |
-| `python/synapse/rsi/` | 课程域随机化、物理+PRM 双重验算、20% L0 黄金锚点经验回放与单调递增发布门禁 | 🟢 已闭环 (30 场景全量单调递增门禁) | `PR-24`, `PR-25`, `PR-106` |
-| `python/synapse/viewer/` | 静态 HTML 比较报告导出器（移除常驻 Daemon 遵守 Zero-Python 红线 #1） | 🟢 已收敛 (纯静态报告导出) | PR-01, PR-51, `PR-97` |
-| `tools/data-inspector/` | Electron 33 + `@aether//pal:shm` Native C++ 检查器 | 🟢 已闭环 (`test_inspector` PASSED, Node 23 测试 passed) | `PR-27~29`, `PR-104`, `PR-105` |
+| `csrc/geometry/` | Tier 0 现代 C++20 几何绑定与校验门禁（Bazel 9.3.1，委托 `@aether//geo` + `@aether//math` `DVec3`），流形/水密/简并/自交校验 | 🟡 可测待恢复 `--config=opt` (`O(d)` 伞环 & 分步编译待 `PR-121`) | `PR-47`, `PR-84`, `PR-103`, `PR-121` |
+| `python/synapse/render_core/` | 无状态底层软件光栅化、相机模型与基础几何生成原语（从 `bench/` 剥离解耦） | 🟡 齐次裁剪/EDT 就绪 (关节枢纽/基元水密/`binary_erosion` 待 `PR-114`) | `PR-48`, `PR-78`, `PR-95`, `PR-114` |
+| `python/synapse/recon/` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060/0062）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK (<0.2 cm)、球谐与 Retinex 本征去光照、双轨可微逆渲染 | 🟡 骨架就绪 (MC 外向法线/TSDF/`quad_remesh`/`delight` 待 `PR-118`) | `SYN-RFC-0060/0062`, `PR-100`, `PR-118` |
+| `python/synapse/refine/` | 局部解剖智能修正与多模型融合（RFC 0061）：MANO 手部先验、Canonical 面部身份保持、五维多模型融合核、512×512 瓦片与光流 Warp 手术刀缝合 | 🟡 部分闭合 (全旁路门禁/Stitcher $\alpha^2$/Tiled/Poisson 待 `PR-119`) | `SYN-RFC-0061`, `PR-101`, `PR-119` |
+| `python/synapse/bench/` | `Synapse-Bench` 30 场景、11×4 条件因子、纯 NumPy 软光栅与 InspectionBundle 导出器 | 🟡 就绪待真实化 (18/30 场景参数解析与导包校验待 `PR-124`) | `PR-01`, `PR-15`, `PR-26`, `PR-106`, `PR-124` |
+| `python/synapse/fgpp/` | 对齐 `@aether//fgpp` 的 15 标量通道 (`34B/px`) OpenEXR 读写、消毒器与 DLPack 桥接 | 🟡 `UINT32` 落地 (`p02` 主点反转与默认 `import_fgpp` 深度校验待 `PR-113`) | `PR-02`, `PR-03`, `PR-74`, `PR-94`, `PR-113` |
+| `python/synapse/cli/` | 双入口统一 CLI（`synapse` / `synapse-bench`、确定性退出码 `0/10/20/30/40/50`、显存预检） | 🟡 部分闭合 (前置 `--json` 污染与 `worker run` 信封对齐待 `PR-115`) | `PR-04`, PR #22, `PR-97`, `PR-115` |
+| `python/synapse/adapters/` | 双轨视频适配器（`Mock` / 白盒 `Wan 2.1` / 黑盒 API）、97f 因果滑窗与 Multi-LoRA 空间隔离 | 🟡 核心待接线 (`ConditionScheduler`/`LoRAPatchHook` 接入与 HTTP 安全待 `PR-116`) | `PR-05~08`, `PR-16`, `PR-98`, `PR-116` |
+| `python/synapse/style/` | 双曲正切/有理软肩 ACEScg 逆色调映射、球谐主光提取与 `StyleProfile v2.0` 映射 | 🟡 部分闭合 (有界有理软肩/负色域与 IRLS 背光雅可比待 `PR-114`) | `PR-09`, `PR-78`, `PR-96`, `PR-114` |
+| `python/synapse/composite/` | 穿模/闪烁检测、`3D ∪ SAM2` 膨胀掩膜、16px 环带 LAB 与光学增量拉普拉斯金字塔融合 | 🟡 部分闭合 (阶跃引导图与单调 EDT 内环混合待 `PR-114`) | `PR-10`, `PR-11`, `PR-96`, `PR-114` |
+| `python/synapse/bridge/` | `foundary` 客户端、HITL 15m 熔断状态机与 `vg_bridge`（内建 `MockVgBackend` 回退） | 🟡 部分闭合 (SSRF 防护、HITL 先验防负重置与 `mock=False` Fail-Closed 待 `PR-116`) | `PR-12`, `PR-98`, `PR-116` |
+| `python/synapse/metrics/` | 四维 16 项指标与三级质量门禁档位（`track_b` / `track_a` / `rsi_promotion`，SSOT 对齐） | 🟡 部分闭合 (Quad 水密/面积与 HDR 禁除 255 待 `PR-120`) | `PR-13`, PR #23, `PR-83`, `PR-102`, `PR-120` |
+| `python/synapse/pipeline/` | 无状态 `JobBundleWorker` 容器执行核、离线 `BenchPipelineRunner` 与解耦的 Stage 适配器 | 🟡 跨仓待对齐 (RFC 0039 `JobBundle` 兼容与 `Bench` 去假常数待 `PR-115, PR-124`) | `PR-14a`, `PR-14b`, `PR-97`, `PR-115`, `PR-124` |
+| `python/synapse/training/` | 3D VAE / FGPP 离线潜空间 `WebDataset` 缓存与正交 LoRA 训练器（参考锚定 Diffusion-DPO） | 🟡 DPO 落地 (通配符/`Edge/Normal` 损失/`t`/15ch 对齐与流式读待 `PR-117`) | `PR-17~19`, PR #27, `PR-99`, `PR-117` |
+| `python/synapse/inspect/` | Tier 0 几何硬门禁、Fibonacci 粗到精配准、微距 3D 反投、Visual Jev 判别与 3D 模型评估报告（SVG 雷达图） | 🟡 部分闭合 (无参考评级/`floating_island`/世界尺度与 `macro` 待 `PR-124`) | `PR-20~23`, PR #31, `PR-106`, `PR-124` |
+| `python/synapse/rsi/` | 课程域随机化、物理+PRM 双重验算、20% L0 黄金锚点经验回放与单调递增发布门禁 | 🟡 部分闭合 (`PromotionGate` 防空/防重/`NaN` 绕过与标量兼容性待 `PR-124`) | `PR-24`, `PR-25`, `PR-106`, `PR-124` |
+| `python/synapse/viewer/` | 静态 HTML 比较报告导出器（移除常驻 Daemon 遵守 Zero-Python 红线 #1） | 🟢 已收敛 (纯静态报告导出，符号链接防御加固于 `PR-115`) | PR-01, PR-51, `PR-97` |
+| `tools/data-inspector/` | Electron 33 + `@aether//pal:shm` Native C++ 检查器 | 🟡 Linux 通过 (GLB 防越界/ARM64 Seqlock/macOS-Win SHM 待 `PR-122, PR-123`) | `PR-27~29`, `PR-104`, `PR-105`, `PR-122`, `PR-123` |
 
 ---
 
@@ -71,13 +71,14 @@ flowchart LR
 
 - **[AGENTS.md](AGENTS.md)**：AI Agent 与开发者行为铁律、测试机器分工与编码规范
 - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)**：**整体设计深度评审与跨文档对齐决议**（`RV-01~RV-17` 纠偏、权威目录树、统一 CLI 语法树与三级门禁阈值表）
-- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**：**M1–M28 二十八阶段 110 个原子 PR 可落地实施总计划 (`v3.4`)** 及 `docs/plans/` 十份精细化执行子计划：
-  - [PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) · [PLAN-M25-M28](docs/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md)
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**：**M1–M32 三十二阶段 129 个原子 PR 可落地实施总计划 (`v3.6`)** 及 `docs/plans/` 十一份精细化执行子计划：
+  - [PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) · [PLAN-M25-M28](docs/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) · [PLAN-M29-M32](docs/plans/PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)
 - **[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)**：整体目标审查、跨仓职责定界与 10 大现状问题诊断报告
 - **[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](docs/audits/AUDIT-POST-REFACTOR-2026-11.md)**：**重构后全库架构、工程实现与技术债务深度审计报告（2026-11）**
 - **[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)**：**`RFC-0063` 与全库质量基线深度评审报告（`b98c6e5`）**
 - **[docs/audits/AUDIT-POST-HORIZON5-2026-11.md](docs/audits/AUDIT-POST-HORIZON5-2026-11.md)**：**Horizon-5 收官后全库深度复审报告（`e37bfa6`，`10×P0 + 10×P1 + 5×P2 + 2×P3` 台账与 `M21–M24` 映射）**
 - **[docs/audits/AUDIT-POST-HORIZON6-2026-11.md](docs/audits/AUDIT-POST-HORIZON6-2026-11.md)**：**Horizon-6 合入后全库五切片深度复审报告（`46b3bda`，`ubuntu24` 十项实测、`12×P0 + 16×P1 + 10×P2 + 4×P3` 台账与 `M25–M28` 映射）**
+- **[docs/audits/AUDIT-POST-HORIZON7-2026-11.md](docs/audits/AUDIT-POST-HORIZON7-2026-11.md)**：**Horizon-7 合入后全库五切片逐行复审、跨仓核验与 `ubuntu24` 门禁真值报告（`cf2a49f`，`14×P0 + 18×P1 + 12×P2 + 5×P3 = 49` 项台账与 `M29–M32` 映射）**
 - **[SYN-RFC-0060](docs/SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md)** · **[详细设计](docs/DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)**：**真实视频逆向 3D 动态数字孪生与联合反演规范**
 - **[SYN-RFC-0061](docs/SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)** · **[详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)** · **[ForgeKit 工具链](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)**：**局部解剖智能修正、多模型融合与手术刀缝合**
 - **[SYN-RFC-0062](docs/SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)** · **[详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)**：**3D 引导生成、可微逆向渲染与局部修补双向闭环**

@@ -3,7 +3,7 @@
 > - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.5`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md)（已整合主线 `52c3431` PR `#92` 与 `179a8d1` 增量）
 > - **规划模型**: `[opus4.6]`
-> - **当前状态**: ✅ **100% 已合入并封板 (18/18 PRs 全部落地，Release v3.5)**
+> - **当前状态**: ⚠️ **代码批次已合入 (`#93 ~ #110`, `cf2a49f`)；经 [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md) 独立实测复核，残余门禁偏差与 49 项深层缺陷已移交 [`PLAN-M29-M32`](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md) (Horizon 8)**
 > - **目标周期**: 4 个里程碑（`M25` – `M28`）、4 个并发 Execution Waves（`Wave 24` – `Wave 27`）、**18 个原子 PR**（`PR-94` – `PR-110`）
 
 > [!IMPORTANT]
@@ -729,4 +729,14 @@ flowchart LR
 | **Gate 10** | `.ci/workflows/ci.yml` 语法校验 + 全仓 Markdown 链接扫描 | 3/3 Jobs 规范完备，861 链接 0 broken | 3 Jobs 就绪，0 broken links | ✅ **PASSED** |
 
 **结论**：Horizon 7 (`M25–M28`, `PR-93 ~ PR-110`) 全部 18 个原子 PR 全量落地合入，全部 10 项全局验收门禁在 `ubuntu24` 一次性实跑全绿。系统正式达成 **100% 真实闭环**，发布版本升级至 **`v3.5`**。
+
+> [!WARNING]
+> **Post-Horizon-7 独立实测真值复核结论（`2026-11-16`, `cf2a49f`, `[gemini4]`）**：  
+> 经在云端主力机 `ubuntu24` 重新逐项实跑并结合五切片逐行审计（详见 [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md)），确认上表存在数处门禁命令范围与实态失真：
+> 1. **Gate 1 单进程实测 `73.97s`**（`18.48s` 实为 `-n auto` 16 核并发结果，超 `<=25s` 门槛 `3.0x`），且 `conftest.py` 漏拦模块级 `importorskip`；
+> 2. **Gate 3** [`pyproject.toml`](../../pyproject.toml#L96-L102) 中 **29 条被屏蔽的 Ruff 规则一条未解禁**，隔离检查仍存在 31+ 处高危违规；
+> 3. **Gate 4** 全仓 `mypy --strict python/synapse tests/ scripts/ tools/`（207 文件）**实测失败 `Found 20 errors in 6 files`**（`137 source files` 实为仅跑 `python/synapse` 漏掉了 `tests/` 与 `scripts/colab_runner.py:316-317`）；
+> 4. **Gate 9** 两脚本均无 `--output-dir` 参数（直接 `exit 2`），改用 `--output-root` 实跑 `prepare_datasets.py` 在步骤 `[1/4]` 调用 `fulgur` 无头导出发生 **`SIGSEGV`**；
+> 5. **Gate 10** `.github/workflows/` 至今不存在（`gh run list` 为 `0` 次运行），且 `.ci/workflows/ci.yml` 中 `python-fast` 与 `native-bazel` 存在组织名错误与依赖必败问题。  
+> 连同跨仓 RFC 0039 `JobBundle` 兼容、`p02` 水平主点符号反转、Wan 滑窗/空域 LoRA 未接线、MC 法线内翻/Quad 水密盲区、HDR 误除 255 及 macOS/Win SHM 失效在内的共 **49 项实证缺陷**，已全部排入 **[PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)**（Horizon 8）。
 
