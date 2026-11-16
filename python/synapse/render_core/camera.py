@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from synapse.errors import ContractValidationError
 from synapse.fgpp.frame import CameraParams
 
 
@@ -42,7 +43,7 @@ class CameraTrajectoryType(str, Enum):
 def _look_at(
     eye: np.ndarray,
     target: np.ndarray,
-    up: np.ndarray = np.array([0.0, 1.0, 0.0]),
+    up: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compute a 4×4 world-to-camera (view) matrix.
 
@@ -52,6 +53,9 @@ def _look_at(
     parallel to *up*, a fallback up-vector is used so the cross product
     remains well-conditioned.
     """
+    if up is None:
+        up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+
     forward = target - eye
     forward = forward / (np.linalg.norm(forward) + 1e-12)
 
@@ -76,10 +80,12 @@ def _look_at(
     view[:3, 3] = -view[:3, :3] @ eye
 
     # Sanity: rotation sub-matrix must be orthonormal (det ≈ 1)
-    assert abs(np.linalg.det(view[:3, :3]) - 1.0) < 1e-6, (
-        f"_look_at produced non-orthonormal rotation "
-        f"(det={np.linalg.det(view[:3, :3])})"
-    )
+    det = float(np.linalg.det(view[:3, :3]))
+    if abs(det - 1.0) >= 1e-4:
+        raise ContractValidationError(
+            f"_look_at produced non-orthonormal rotation (det={det})",
+            agent_fix_hint="Verify eye, target, and up vectors are linearly independent.",
+        )
     return view
 
 

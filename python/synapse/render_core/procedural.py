@@ -385,11 +385,11 @@ def generate_procedural_mesh(
 _HUMANOID_SEGMENTS: list[
     tuple[str, str, tuple[float, ...], str | None, tuple[float, float, float]]
 ] = [
-    # Torso (root) — centered at origin, tall box
-    ("torso", "cylinder", (0.18, 0.50), None, (0.0, 0.0, 0.0)),
-    # Pelvis — below torso
-    ("pelvis", "cylinder", (0.16, 0.15), "torso", (0.0, -0.325, 0.0)),
-    # Head — above torso
+    # Pelvis (root) — base of kinematic tree (pelvis -> spine -> arms, pelvis -> hips -> legs)
+    ("pelvis", "cylinder", (0.16, 0.15), None, (0.0, 0.0, 0.0)),
+    # Spine / Torso — above pelvis
+    ("torso", "cylinder", (0.18, 0.50), "pelvis", (0.0, 0.325, 0.0)),
+    # Head chain
     ("neck", "cylinder", (0.06, 0.10), "torso", (0.0, 0.30, 0.0)),
     ("head", "sphere", (0.12,), "neck", (0.0, 0.11, 0.0)),
     # Left arm chain
@@ -406,14 +406,14 @@ _HUMANOID_SEGMENTS: list[
      "right_upper_arm", (0.0, -0.265, 0.0)),
     ("right_hand", "box", (0.04, 0.08, 0.02),
      "right_forearm", (0.0, -0.165, 0.0)),
-    # Left leg chain
+    # Left leg chain (pelvis -> hip -> knee -> ankle)
     ("left_thigh", "cylinder", (0.07, 0.40),
      "pelvis", (-0.10, -0.275, 0.0)),
     ("left_shin", "cylinder", (0.05, 0.38),
      "left_thigh", (0.0, -0.39, 0.0)),
     ("left_foot", "box", (0.06, 0.04, 0.15),
      "left_shin", (0.0, -0.21, 0.04)),
-    # Right leg chain
+    # Right leg chain (pelvis -> hip -> knee -> ankle)
     ("right_thigh", "cylinder", (0.07, 0.40),
      "pelvis", (0.10, -0.275, 0.0)),
     ("right_shin", "cylinder", (0.05, 0.38),
@@ -705,12 +705,38 @@ def generate_humanoid_proxy(
     # Scale segments proportional to target
     cyl_segs = max(40, int(target_vertices / (n_segments * 2.5)))
 
-    # Get walk pose rotations
+    # Get walk pose rotations or explicit joint parameters
     phase = 0.0
     if pose_params is not None:
         phase = pose_params.get("phase", 0.0)
 
     walk_rotations = _compute_walk_pose(phase)
+    if pose_params is not None:
+        for k, v in pose_params.items():
+            if k == "phase":
+                continue
+            if isinstance(v, (int, float)):
+                val = float(v)
+                if k in ("hip", "left_hip", "left_thigh", "hip_angle"):
+                    walk_rotations["left_thigh"] = (val, 0.0, 0.0)
+                elif k in ("right_hip", "right_thigh"):
+                    walk_rotations["right_thigh"] = (val, 0.0, 0.0)
+                elif k in ("knee", "left_knee", "left_shin", "knee_angle"):
+                    walk_rotations["left_shin"] = (val, 0.0, 0.0)
+                elif k in ("right_knee", "right_shin"):
+                    walk_rotations["right_shin"] = (val, 0.0, 0.0)
+                elif k in ("ankle", "left_ankle", "left_foot"):
+                    walk_rotations["left_foot"] = (val, 0.0, 0.0)
+                elif k in ("right_ankle", "right_foot"):
+                    walk_rotations["right_foot"] = (val, 0.0, 0.0)
+                elif k in ("spine", "torso"):
+                    walk_rotations["torso"] = (val, 0.0, 0.0)
+                elif k in ("pelvis",):
+                    walk_rotations["pelvis"] = (val, 0.0, 0.0)
+                elif k in walk_rotations:
+                    walk_rotations[k] = (val, 0.0, 0.0)
+            elif isinstance(v, (tuple, list)) and len(v) == 3:
+                walk_rotations[k] = (float(v[0]), float(v[1]), float(v[2]))
 
     # Build each segment: compute world transform via parent chain
     all_vertices: list[np.ndarray] = []

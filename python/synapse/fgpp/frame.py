@@ -72,19 +72,37 @@ class CameraParams:
     def projection_matrix(self) -> np.ndarray:
         """Compute 4×4 perspective projection matrix.
 
-        Uses ``fov_degrees``, aspect ratio, ``z_near``, and ``z_far``
-        to build a standard OpenGL-style projection matrix.
+        Builds a standard OpenGL-style perspective projection matrix from full
+        intrinsics ``(fx, fy, cx, cy, width, height, z_near, z_far)``, preserving
+        principal point offsets and independent focal lengths.
         """
-        fov_rad = math.radians(self.fov_degrees)
-        aspect = self.width / max(self.height, 1)
-        f = 1.0 / math.tan(fov_rad / 2.0)
-        near, far = self.z_near, self.z_far
+        w, h = float(self.width), float(max(self.height, 1))
+        near, far = float(self.z_near), float(self.z_far)
+
+        if self.fx > 0 and self.fy > 0:
+            p00 = 2.0 * float(self.fx) / w
+            p11 = 2.0 * float(self.fy) / h
+            p02 = (2.0 * float(self.cx) - w) / w
+            p12 = (2.0 * float(self.cy) - h) / h
+        else:
+            fov_rad = math.radians(self.fov_degrees or 60.0)
+            f = 1.0 / math.tan(fov_rad / 2.0)
+            aspect = w / h
+            p00 = f / aspect
+            p11 = f
+            p02 = 0.0
+            p12 = 0.0
+
+        p22 = -(far + near) / (far - near)
+        p23 = -2.0 * far * near / (far - near)
 
         proj = np.zeros((4, 4), dtype=np.float64)
-        proj[0, 0] = f / aspect
-        proj[1, 1] = f
-        proj[2, 2] = -(far + near) / (far - near)
-        proj[2, 3] = -2.0 * far * near / (far - near)
+        proj[0, 0] = p00
+        proj[0, 2] = p02
+        proj[1, 1] = p11
+        proj[1, 2] = p12
+        proj[2, 2] = p22
+        proj[2, 3] = p23
         proj[3, 2] = -1.0
         return proj
 

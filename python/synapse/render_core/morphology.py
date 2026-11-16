@@ -47,15 +47,14 @@ def binary_dilation(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
 
     sh, sw = se.shape
     ph, pw = sh // 2, sw // 2
-    padded = np.pad(mask, ((ph, ph), (pw, pw)), constant_values=False)
-    result = np.zeros_like(padded, dtype=bool)
-    ys, xs = np.nonzero(se)
-    for dy, dx in zip(ys, xs):
-        oy = int(dy - ph)
-        ox = int(dx - pw)
-        shifted = np.roll(np.roll(padded, oy, axis=0), ox, axis=1)
-        result |= shifted
-    return result[ph : ph + mask.shape[0], pw : pw + mask.shape[1]]
+    H, W = mask.shape
+    padded = np.pad(mask.astype(bool), ((ph, ph), (pw, pw)), mode="constant", constant_values=False)
+    result = np.zeros((H, W), dtype=bool)
+    se_refl = se[::-1, ::-1]
+    ys, xs = np.nonzero(se_refl)
+    for sy, sx in zip(ys, xs):
+        result |= padded[sy : sy + H, sx : sx + W]
+    return result
 
 
 def binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
@@ -79,5 +78,12 @@ def binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     except ImportError:
         pass
 
-    bool_mask = mask.astype(bool)
-    return np.asarray(~binary_dilation(~bool_mask, se))
+    sh, sw = se.shape
+    ph, pw = sh // 2, sw // 2
+    H, W = mask.shape
+    padded = np.pad(mask.astype(bool), ((ph, ph), (pw, pw)), mode="constant", constant_values=True)
+    result = np.ones((H, W), dtype=bool)
+    ys, xs = np.nonzero(se)
+    for sy, sx in zip(ys, xs):
+        result &= padded[sy : sy + H, sx : sx + W]
+    return result

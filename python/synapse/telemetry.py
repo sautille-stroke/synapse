@@ -13,13 +13,13 @@ Provides lightweight telemetry primitives for CLI and worker runtimes:
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-# ---------------------------------------------------------------------------
-# W3C Trace Context
-# ---------------------------------------------------------------------------
+# W3C Trace Context Regex (traceparent: 00-32hex-16hex-2hex)
+W3C_TRACEPARENT_RE = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
 
 
 @dataclass
@@ -38,6 +38,14 @@ class TraceContext:
     trace_flags: str = "01"
     tracestate: str = ""
 
+    def __post_init__(self) -> None:
+        if not re.match(r"^[0-9a-f]{32}$", self.trace_id.lower()) or self.trace_id == "0" * 32:
+            self.trace_id = secrets.token_hex(16)
+        if not re.match(r"^[0-9a-f]{16}$", self.span_id.lower()) or self.span_id == "0" * 16:
+            self.span_id = secrets.token_hex(8)
+        if not re.match(r"^[0-9a-f]{2}$", self.trace_flags.lower()):
+            self.trace_flags = "01"
+
     @classmethod
     def from_env_or_dict(
         cls,
@@ -54,20 +62,22 @@ class TraceContext:
         if env is None:
             env = dict(os.environ)
 
-        traceparent = env.get("traceparent", env.get("TRACEPARENT", ""))
-        tracestate = env.get("tracestate", env.get("TRACESTATE", ""))
+        traceparent = env.get("traceparent", env.get("TRACEPARENT", "")).strip()
+        tracestate = env.get("tracestate", env.get("TRACESTATE", "")).strip()
 
         if traceparent:
-            parts = traceparent.split("-")
-            if len(parts) >= 4:
-                return cls(
-                    trace_id=parts[1],
-                    span_id=parts[2],
-                    trace_flags=parts[3],
-                    tracestate=tracestate,
-                )
+            m = W3C_TRACEPARENT_RE.match(traceparent.lower())
+            if m:
+                t_id, s_id, flags = m.groups()
+                if t_id != "0" * 32 and s_id != "0" * 16:
+                    return cls(
+                        trace_id=t_id,
+                        span_id=s_id,
+                        trace_flags=flags,
+                        tracestate=tracestate,
+                    )
 
-        # Generate random IDs when not provided
+        # Generate random IDs when not provided or invalid
         return cls(
             trace_id=secrets.token_hex(16),
             span_id=secrets.token_hex(8),
@@ -147,6 +157,8 @@ class MemoryForecaster:
         width: int,
         model_variant: str = "wan2.1_14b",
         dtype_bytes: int = 2,
+        num_layers: int | None = None,
+        available_vram_gb: float | None = None,
     ) -> MemoryForecast:
         """Estimate peak GPU memory for a single inference pass.
 
@@ -156,7 +168,7 @@ class MemoryForecaster:
         2. **Latent activations** — proportional to the spatiotemporal
            volume ``num_frames × H × W``.
         3. **Attention KV cache** — quadratic in the number of
-           spatiotemporal tokens.
+           spatiotemporal tokens across all layers.
 
         A 15 % overhead factor is applied for allocator fragmentation
         and cuDNN workspace.
@@ -167,6 +179,9 @@ class MemoryForecaster:
             width: Output frame width in pixels.
             model_variant: Model name key (e.g. ``"wan2.1_14b"``).
             dtype_bytes: Bytes per element (2 for FP16, 4 for FP32).
+            num_layers: Number of DiT layers (default 40 for 14B, 30 for 1.3B).
+            available_vram_gb: If specified, dynamically select fallback level
+                based on available GPU memory.
 
         Returns:
             A ``MemoryForecast`` with peak estimate and fallback level.
@@ -184,25 +199,36 @@ class MemoryForecaster:
         spatial_w = max(width // 8, 1)
         total_tokens = temporal_tokens * spatial_h * spatial_w
 
-        # KV cache: 2 (K+V) × tokens × head_dim × num_heads × dtype
-        # Approximate head_dim=128, num_heads=40 for 14B variant
+        # KV cache across all layers: 2 (K+V) × tokens × head_dim × num_heads × num_layers × dtype
         head_dim = 128
         num_heads = 40 if "14b" in model_variant else 16
-        kv_bytes = 2 * total_tokens * head_dim * num_heads * dtype_bytes
+        if num_layers is None:
+            num_layers = 40 if "14b" in model_variant else 30
+        kv_bytes = 2 * total_tokens * head_dim * num_heads * num_layers * dtype_bytes
         kv_gb = kv_bytes / (1024 ** 3)
 
         raw_peak = weight_gb + act_gb + kv_gb
         peak_gb = raw_peak * _OVERHEAD_FACTOR
 
         # Determine fallback level
-        if peak_gb <= _THRESHOLD_L0:
-            level = FallbackLevel.LEVEL_0_FULL
-        elif peak_gb <= _THRESHOLD_L1:
-            level = FallbackLevel.LEVEL_1_SPATIAL_TILE_2X2
-        elif peak_gb <= _THRESHOLD_L2:
-            level = FallbackLevel.LEVEL_2_CAUSAL_SHORT_WINDOW_49F
+        if available_vram_gb is not None:
+            if peak_gb <= available_vram_gb:
+                level = FallbackLevel.LEVEL_0_FULL
+            elif peak_gb <= available_vram_gb * 1.5:
+                level = FallbackLevel.LEVEL_1_SPATIAL_TILE_2X2
+            elif peak_gb <= available_vram_gb * 2.5:
+                level = FallbackLevel.LEVEL_2_CAUSAL_SHORT_WINDOW_49F
+            else:
+                level = FallbackLevel.REJECT_OOM
         else:
-            level = FallbackLevel.REJECT_OOM
+            if peak_gb <= _THRESHOLD_L0:
+                level = FallbackLevel.LEVEL_0_FULL
+            elif peak_gb <= _THRESHOLD_L1:
+                level = FallbackLevel.LEVEL_1_SPATIAL_TILE_2X2
+            elif peak_gb <= _THRESHOLD_L2:
+                level = FallbackLevel.LEVEL_2_CAUSAL_SHORT_WINDOW_49F
+            else:
+                level = FallbackLevel.REJECT_OOM
 
         return MemoryForecast(
             peak_gb=round(peak_gb, 2),
@@ -211,6 +237,7 @@ class MemoryForecaster:
                 "weights_gb": round(weight_gb, 2),
                 "activations_gb": round(act_gb, 2),
                 "kv_cache_gb": round(kv_gb, 2),
+                "num_layers": num_layers,
                 "overhead_factor": _OVERHEAD_FACTOR,
             },
         )
