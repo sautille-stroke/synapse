@@ -106,7 +106,9 @@ class ForwardGuide:
                 adapter, conditioning, total_locked, h, w
             )
         else:
-            frames = self._mock_generate(conditioning, total_locked, h, w)
+            frames = self._mock_generate(
+                conditioning, total_locked, h, w, n_preroll=actual_preroll
+            )
 
         # --- κ re-anchoring --------------------------------------------------
         actual_preroll = cfg.n_preroll
@@ -163,6 +165,8 @@ class ForwardGuide:
           return ``(shape[0], shape[1])``.
         - ``[C, H, W]`` (3-D, channels-first, ``C ∈ {1,2,3,4}``):
           return ``(shape[1], shape[2])``.
+        - ``[T, H, W]`` (3-D, scalar video sequence):
+          return ``(shape[1], shape[2])``.
         - ``[H, W]`` (2-D single-channel): return ``(shape[0], shape[1])``.
         """
         for arr in conditioning.values():
@@ -170,19 +174,12 @@ class ForwardGuide:
                 # [T, H, W, C] — video sequence
                 return int(arr.shape[1]), int(arr.shape[2])
             if arr.ndim == 3:
-                # Distinguish channels-last [H, W, C] from channels-first
-                # [C, H, W].  Standard FGPP channel counts are 1–4, so if
-                # the *last* dim is ≤ 4 we treat it as channels-last;
-                # otherwise if the *first* dim is ≤ 4 we treat it as
-                # channels-first.
+                # If the last dimension is small (<= 4), treat as channels-last [H, W, C].
+                # Otherwise, it is either channels-first [C, H, W] or scalar video [T, H, W];
+                # in both cases the spatial dimensions are (shape[1], shape[2]).
                 if arr.shape[2] <= 4:
-                    # channels-last: [H, W, C]
                     return int(arr.shape[0]), int(arr.shape[1])
-                if arr.shape[0] <= 4:
-                    # channels-first: [C, H, W]
-                    return int(arr.shape[1]), int(arr.shape[2])
-                # Ambiguous — fall through to channels-last heuristic
-                return int(arr.shape[0]), int(arr.shape[1])
+                return int(arr.shape[1]), int(arr.shape[2])
             if arr.ndim == 2:
                 return int(arr.shape[0]), int(arr.shape[1])
         return 64, 64  # Fallback for empty / scalar conditioning.
@@ -193,21 +190,20 @@ class ForwardGuide:
         total_frames: int,
         h: int,
         w: int,
+        n_preroll: int = 0,
     ) -> np.ndarray:
         """CPU-only pass-through that produces a neutral grey sequence.
 
-        Preroll frames are tinted warm (5500 K bias) so that tests can verify
-        that κ re-anchoring removes this contamination.
+        Preroll frames are tinted warm (5500 K bias) strictly for frames [:n_preroll]
+        so that tests can verify that κ re-anchoring removes this contamination
+        without contaminating production frames.
         """
         frames = np.full((total_frames, h, w, 3), 0.5, dtype=np.float32)
 
-        # Apply a slight warm tint to the first few frames to simulate
-        # preroll studio-lighting contamination (5500 K).
-        warm_tint = np.array([0.08, 0.02, -0.04], dtype=np.float32)
-        # Determine how many frames to tint — use the first conditioning
-        # channel's temporal extent or default to 8.
-        n_tinted = min(8, total_frames)
-        frames[:n_tinted] += warm_tint
+        if n_preroll > 0:
+            warm_tint = np.array([0.08, 0.02, -0.04], dtype=np.float32)
+            n_tinted = min(n_preroll, total_frames)
+            frames[:n_tinted] += warm_tint
 
         return frames
 

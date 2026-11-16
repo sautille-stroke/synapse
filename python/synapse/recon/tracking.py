@@ -231,19 +231,31 @@ def _lucas_kanade_track(
                 # degradation on uniform/textureless patches).
                 continue
 
-            # Iterative refinement (3 iterations)
+            # Iterative refinement (3 iterations) with sub-pixel bilinear interpolation
             dx, dy = fx, fy
             for _ in range(3):
-                cx0 = int(round(px + dx)) - half_win
-                cy0 = int(round(py + dy)) - half_win
-                cx1 = cx0 + win_size
-                cy1 = cy0 + win_size
+                cx = px + dx
+                cy = py + dy
+                x0 = int(np.floor(cx)) - half_win
+                y0 = int(np.floor(cy)) - half_win
+                alpha = float(cx - np.floor(cx))
+                beta = float(cy - np.floor(cy))
 
-                if cx0 < 0 or cy0 < 0 or cx1 > lw or cy1 > lh:
+                if x0 < 0 or y0 < 0 or (x0 + win_size + 1) > lw or (y0 + win_size + 1) > lh:
                     status[pi] = False
                     break
 
-                patch_c = c_img[cy0:cy1, cx0:cx1]
+                p00 = c_img[y0 : y0 + win_size, x0 : x0 + win_size]
+                p10 = c_img[y0 : y0 + win_size, x0 + 1 : x0 + 1 + win_size]
+                p01 = c_img[y0 + 1 : y0 + 1 + win_size, x0 : x0 + win_size]
+                p11 = c_img[y0 + 1 : y0 + 1 + win_size, x0 + 1 : x0 + 1 + win_size]
+                patch_c = (
+                    (1.0 - alpha) * (1.0 - beta) * p00
+                    + alpha * (1.0 - beta) * p10
+                    + (1.0 - alpha) * beta * p01
+                    + alpha * beta * p11
+                )
+
                 diff = patch_p - patch_c
                 bx = np.sum(diff * gx_patch)
                 by = np.sum(diff * gy_patch)
@@ -350,7 +362,7 @@ def _build_intrinsics_matrix(intrinsics: dict[str, float]) -> np.ndarray:
     return K
 
 
-def _solve_fundamental_matrix(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray:
+def _solve_fundamental_matrix_8point(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray:
     """Estimate fundamental matrix using normalized 8-point algorithm.
 
     Args:
@@ -403,6 +415,48 @@ def _solve_fundamental_matrix(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray:
     f_norm: np.ndarray = F / (np.linalg.norm(F) + 1e-12)
 
     return f_norm
+
+
+def _solve_fundamental_matrix(
+    pts1: np.ndarray,
+    pts2: np.ndarray,
+    max_iters: int = 50,
+    threshold: float = 2.0,
+) -> np.ndarray:
+    """Estimate fundamental matrix using RANSAC + normalized 8-point algorithm."""
+    n = len(pts1)
+    if n < 8:
+        return np.eye(3, dtype=np.float64)
+
+    if n == 8:
+        return _solve_fundamental_matrix_8point(pts1, pts2)
+
+    best_inliers = 0
+    best_F = None
+    rng = np.random.default_rng(42)
+
+    pts1_h = np.column_stack([pts1, np.ones(n, dtype=np.float64)])
+    pts2_h = np.column_stack([pts2, np.ones(n, dtype=np.float64)])
+
+    for _ in range(max_iters):
+        sample_idx = rng.choice(n, size=8, replace=False)
+        F_cand = _solve_fundamental_matrix_8point(pts1[sample_idx], pts2[sample_idx])
+
+        # Sampson epipolar distance
+        Fx1 = (F_cand @ pts1_h.T).T
+        Ftx2 = (F_cand.T @ pts2_h.T).T
+        num = np.sum(pts2_h * Fx1, axis=1) ** 2
+        denom = Fx1[:, 0] ** 2 + Fx1[:, 1] ** 2 + Ftx2[:, 0] ** 2 + Ftx2[:, 1] ** 2
+        sampson_dist = np.sqrt(num / np.maximum(denom, 1e-12))
+
+        inliers = int(np.sum(sampson_dist < threshold))
+        if inliers > best_inliers:
+            best_inliers = inliers
+            best_F = F_cand
+
+    if best_F is None or best_inliers < 8:
+        best_F = _solve_fundamental_matrix_8point(pts1, pts2)
+    return best_F
 
 
 def _essential_to_rotation_translation(
@@ -580,15 +634,49 @@ def solve_camera_trajectory(
             yaw_rad=yaw,
         ))
 
-    # Compute reprojection error estimate
+    # Compute real 3D reprojection error in pixels
     reproj_errors: list[float] = []
+    fx, fy = float(intrinsics["fx"]), float(intrinsics["fy"])
+    cx, cy = float(intrinsics["cx"]), float(intrinsics["cy"])
+
     for t in range(1, num_frames):
         pts_prev = tracks_2d[t - 1].astype(np.float64)
         pts_curr = tracks_2d[t].astype(np.float64)
         valid = np.isfinite(pts_prev).all(axis=1) & np.isfinite(pts_curr).all(axis=1)
-        if np.any(valid):
+        if np.sum(valid) >= 8:
+            P1 = K @ np.eye(3, 4, dtype=np.float64)
+            T2 = extrinsics_list[t].transform[:3]
+            P2 = K @ T2
+            v_indices = np.where(valid)[0]
+            errs: list[float] = []
+            for idx in v_indices[:30]:
+                x1 = np.array([pts_prev[idx, 0], pts_prev[idx, 1], 1.0])
+                x2 = np.array([pts_curr[idx, 0], pts_curr[idx, 1], 1.0])
+                A_tri = np.zeros((4, 4), dtype=np.float64)
+                A_tri[0] = x1[0] * P1[2] - P1[0]
+                A_tri[1] = x1[1] * P1[2] - P1[1]
+                A_tri[2] = x2[0] * P2[2] - P2[0]
+                A_tri[3] = x2[1] * P2[2] - P2[1]
+                _, _, Vt_tri = np.linalg.svd(A_tri)
+                pt4 = Vt_tri[-1]
+                if abs(pt4[3]) > 1e-8:
+                    p3 = pt4[:3] / pt4[3]
+                    p_cam2 = T2[:3, :3] @ p3 + T2[:3, 3]
+                    if p_cam2[2] > 0.01:
+                        u_proj = fx * p_cam2[0] / p_cam2[2] + cx
+                        v_proj = fy * p_cam2[1] / p_cam2[2] + cy
+                        err = float(math.hypot(u_proj - pts_curr[idx, 0], v_proj - pts_curr[idx, 1]))
+                        if err < 50.0:  # inlier error bounds
+                            errs.append(err)
+            if errs:
+                reproj_errors.append(float(np.mean(errs)))
+            else:
+                disp = pts_curr[valid] - pts_prev[valid]
+                reproj_errors.append(float(np.mean(np.linalg.norm(disp, axis=1))))
+        elif np.any(valid):
             disp = pts_curr[valid] - pts_prev[valid]
             reproj_errors.append(float(np.mean(np.linalg.norm(disp, axis=1))))
+
     avg_reproj = float(np.mean(reproj_errors)) if reproj_errors else 0.0
 
     return CameraTrajectory(

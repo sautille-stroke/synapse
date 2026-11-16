@@ -417,12 +417,12 @@ def decompose_intrinsic(
     relit = albedo_map.astype(np.float64) * shading_map
     specular_map = np.maximum(0.0, rad - relit).astype(np.float32)
 
-    # Compute delta_e_residual: re-light and compare to original (CIE76)
+    # Compute delta_e_residual: re-light and compare to original (CIEDE2000)
     relit_clamped = np.clip(relit, 0.0, 1.0)
     rad_clamped = np.clip(rad, 0.0, 1.0)
-    lab_relit = _rgb_to_lab(relit_clamped)
-    lab_orig = _rgb_to_lab(rad_clamped)
-    delta_e = float(np.mean(_delta_e_76(lab_relit, lab_orig)))
+    lab_relit = _rgb_to_lab(relit_clamped, is_linear=not is_uint8)
+    lab_orig = _rgb_to_lab(rad_clamped, is_linear=not is_uint8)
+    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_orig)))
 
     return DelightResult(
         albedo=albedo_map,
@@ -433,16 +433,23 @@ def decompose_intrinsic(
     )
 
 
-def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
-    """Convert sRGB [0,1] to CIELAB (pure numpy, no external deps).
+def _rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
+    """Convert RGB [0,1] to CIELAB (pure numpy, no external deps).
 
-    Uses D65 illuminant.  Accepts (..., 3) input.
+    Uses D65 illuminant. Accepts (..., 3) input.
+
+    Args:
+        rgb: Color array, values in [0, 1].
+        is_linear: If True, input is already linear (skips sRGB expansion).
 
     Returns:
         Array of shape (..., 3) with (L*, a*, b*).
     """
-    # sRGB → linear
-    lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    if is_linear:
+        lin = np.asarray(rgb, dtype=np.float64)
+    else:
+        # sRGB → linear
+        lin = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
 
     # linear sRGB → XYZ (D65)
     r, g, b = lin[..., 0], lin[..., 1], lin[..., 2]
@@ -553,8 +560,9 @@ def _project_mesh_to_view(
     camera: CameraExtrinsics,
     h: int,
     w: int,
+    faces: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Project mesh vertices into a camera view, returning a normal map and weight map.
+    """Project mesh into a camera view with Z-buffer occlusion testing.
 
     Args:
         vertices: Mesh vertices, shape (V, 3).
@@ -562,6 +570,8 @@ def _project_mesh_to_view(
         camera: Camera extrinsics with .transform (4x4 world-to-cam or cam-to-world).
         h: Image height.
         w: Image width.
+        faces: Optional mesh face indices (F, 3). If provided, rasterizes triangles
+            with Z-buffering; otherwise scatters vertices.
 
     Returns:
         normal_map: Projected normal map, shape (H, W, 3).
@@ -576,25 +586,20 @@ def _project_mesh_to_view(
     R = T[:3, :3]
     t = T[:3, 3]
 
-    # Determine if transform is world-to-camera or camera-to-world:
-    # camera.position should be consistent with t.
     cam_pos = np.asarray(camera.position, dtype=np.float64)
 
-    # Use camera.position for view direction computation
     # Transform vertices to camera space: p_cam = R @ p_world + t
     verts_cam = (R @ verts.T).T + t
 
-    # Simple pinhole projection (assume fx=fy=max(h,w), cx=w/2, cy=h/2)
+    # Simple pinhole projection
     fx = fy = float(max(h, w))
     cx, cy = w / 2.0, h / 2.0
 
-    # Only consider vertices in front of camera (z > 0)
     z = verts_cam[:, 2]
-    in_front = z > 0.01
 
     # Project to pixel coordinates
-    px = (fx * verts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
-    py = (fy * verts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
+    px = fx * verts_cam[:, 0] / np.clip(z, 1e-4, None) + cx
+    py = fy * verts_cam[:, 1] / np.clip(z, 1e-4, None) + cy
 
     # Compute view direction for cos_theta_v weighting
     view_dirs = verts - cam_pos[np.newaxis, :]
@@ -602,30 +607,71 @@ def _project_mesh_to_view(
     view_dist[view_dist < 1e-8] = 1.0
     view_dirs = view_dirs / view_dist
 
-    # cos(theta_v) = dot(normal, -view_dir)
     cos_theta = np.sum(nrms * (-view_dirs), axis=-1)
     cos_theta = np.clip(cos_theta, 0.0, 1.0)
 
-    # Rasterize (scatter) into maps
+    # Transform normals to camera space
+    nrms_cam = (R @ nrms.T).T
+
     normal_map = np.zeros((h, w, 3), dtype=np.float64)
     weight_map = np.zeros((h, w, 1), dtype=np.float64)
     depth_buf = np.full((h, w), np.inf, dtype=np.float64)
 
-    valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
-    indices = np.where(valid)[0]
+    if faces is not None and len(faces) > 0:
+        f_arr = np.asarray(faces, dtype=np.int64)
+        for tri in f_arr:
+            i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
+            z0, z1, z2 = float(z[i0]), float(z[i1]), float(z[i2])
+            if z0 <= 0.01 or z1 <= 0.01 or z2 <= 0.01:
+                continue
 
-    # Transform normals to camera space for the normal map
-    nrms_cam = (R @ nrms.T).T
+            x0, y0 = px[i0], py[i0]
+            x1, y1 = px[i1], py[i1]
+            x2, y2 = px[i2], py[i2]
 
-    for idx in indices:
-        xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
-        if zi < depth_buf[yi, xi]:
-            depth_buf[yi, xi] = zi
-            normal_map[yi, xi] = nrms_cam[idx]
-            weight_map[yi, xi, 0] = cos_theta[idx]
+            min_x = max(int(np.floor(min(x0, x1, x2))), 0)
+            max_x = min(int(np.ceil(max(x0, x1, x2))), w - 1)
+            min_y = max(int(np.floor(min(y0, y1, y2))), 0)
+            max_y = min(int(np.ceil(max(y0, y1, y2))), h - 1)
+            if min_x > max_x or min_y > max_y:
+                continue
+
+            det = float((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
+            if abs(det) < 1e-8:
+                continue
+
+            for py_i in range(min_y, max_y + 1):
+                for px_i in range(min_x, max_x + 1):
+                    w0 = ((x1 - px_i) * (y2 - py_i) - (y1 - py_i) * (x2 - px_i)) / det
+                    w1 = ((x2 - px_i) * (y0 - py_i) - (y2 - py_i) * (x0 - px_i)) / det
+                    w2 = 1.0 - w0 - w1
+                    if w0 >= -1e-4 and w1 >= -1e-4 and w2 >= -1e-4:
+                        zi = float(w0 * z0 + w1 * z1 + w2 * z2)
+                        if zi < depth_buf[py_i, px_i]:
+                            depth_buf[py_i, px_i] = zi
+                            normal_map[py_i, px_i] = (
+                                w0 * nrms_cam[i0] + w1 * nrms_cam[i1] + w2 * nrms_cam[i2]
+                            )
+                            weight_map[py_i, px_i, 0] = max(
+                                0.0,
+                                float(w0 * cos_theta[i0] + w1 * cos_theta[i1] + w2 * cos_theta[i2]),
+                            )
+    else:
+        # Vertex scatter fallback
+        in_front = z > 0.01
+        px_int = px.astype(np.int32)
+        py_int = py.astype(np.int32)
+        valid = in_front & (px_int >= 0) & (px_int < w) & (py_int >= 0) & (py_int < h) & (cos_theta > 0.05)
+        indices = np.where(valid)[0]
+
+        for idx in indices:
+            xi, yi, zi = int(px_int[idx]), int(py_int[idx]), float(z[idx])
+            if zi < depth_buf[yi, xi]:
+                depth_buf[yi, xi] = zi
+                normal_map[yi, xi] = nrms_cam[idx]
+                weight_map[yi, xi, 0] = cos_theta[idx]
 
     valid_mask = weight_map[..., 0] > 0.0
-    # Re-normalize projected normals
     nrm_lens = np.linalg.norm(normal_map, axis=-1, keepdims=True)
     nrm_lens[nrm_lens < 1e-12] = 1.0
     normal_map = normal_map / nrm_lens
@@ -690,7 +736,7 @@ def delight_multiview_albedo(
 
         # Project mesh normals into this view
         proj_normal, proj_weight, proj_valid = _project_mesh_to_view(
-            mesh_verts, mesh_nrms, cam, h, w,
+            mesh_verts, mesh_nrms, cam, h, w, faces=getattr(mesh, "faces", None),
         )
 
         # Use projected normals where available, fall back to pseudo-normals

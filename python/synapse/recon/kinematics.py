@@ -137,6 +137,7 @@ def solve_zero_slip_ik(
     if positions.ndim != 3 or positions.shape[0] == 0:
         return res
 
+    raw_positions = np.copy(positions)
     num_frames, num_joints, _ = positions.shape
     dt = 1.0 / max(fps, 1.0)
     # Threshold in meters per frame
@@ -191,10 +192,12 @@ def solve_zero_slip_ik(
                 stance_frames_count += 1
                 curr_pos = np.copy(positions[frame, j_foot])
 
-                # Measure raw horizontal slip speed
+                # Measure raw horizontal slip speed using immutable raw_positions
                 if frame > start_t:
-                    prev_raw = positions[frame - 1, j_foot]
-                    raw_horiz_dist = np.linalg.norm(curr_pos[[0, 2]] - prev_raw[[0, 2]])
+                    prev_raw = raw_positions[frame - 1, j_foot]
+                    raw_horiz_dist = np.linalg.norm(
+                        raw_positions[frame, j_foot, [0, 2]] - prev_raw[[0, 2]]
+                    )
                     raw_speed_cm_s = (raw_horiz_dist / dt) * 100.0
                 else:
                     raw_speed_cm_s = 0.0
@@ -241,6 +244,7 @@ def solve_zero_slip_ik(
                 anchor_pos = target_pos
 
     res["joint_positions"] = positions
+    res["raw_joint_positions"] = raw_positions
 
     mean_raw = float(np.mean(raw_slips_cm_s)) if raw_slips_cm_s else 0.0
     mean_clamped = float(np.mean(clamped_slips_cm_s)) if clamped_slips_cm_s else 0.0

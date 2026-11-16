@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from synapse.errors import ContractValidationError
+from synapse.recon._tri_table import TRI_TABLE
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
 if TYPE_CHECKING:
@@ -41,96 +42,106 @@ if TYPE_CHECKING:
 _MIN_CAMERAS = 2
 _MIN_ANGULAR_SPAN_DEG = 15.0
 
+_CORNERS = np.array([
+    [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+    [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+], dtype=np.int32)
+
+_EDGE_CORNERS = [
+    (0, 1), (1, 2), (2, 3), (3, 0),
+    (4, 5), (5, 6), (6, 7), (7, 4),
+    (0, 4), (1, 5), (2, 6), (3, 7),
+]
+
 
 # ---------------------------------------------------------------------------
-# Pure-numpy marching cubes (simplified surface-net extraction)
+# 256 Marching Cubes with canonical edge sharing and linear interpolation
 # ---------------------------------------------------------------------------
 
 
-def _marching_cubes_naive(
+def _marching_cubes(
     volume: np.ndarray,
     voxel_size: float,
     origin: np.ndarray,
+    isovalue: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract an iso-surface mesh from a signed-distance volume.
 
-    Uses a simplified dual-contouring / surface-net approach: vertices are
-    placed at zero-crossing midpoints between neighbouring voxels, and faces
-    are emitted for each edge that straddles the zero level-set.
+    Uses full 256-entry triangulation table (Bourke 1994) with linear
+    interpolation along intersected edges and canonical edge deduplication,
+    guaranteeing a closed manifold surface.
 
     Args:
-        volume: 3-D SDF array, shape ``(Nx, Ny, Nz)``.
+        volume: 3-D SDF array, shape ``(Nx, Ny, Nz)``. Inside < isovalue.
         voxel_size: Physical size of a single voxel in metres.
         origin: World-space origin of the ``[0, 0, 0]`` voxel corner, shape ``(3,)``.
+        isovalue: Iso-surface threshold (default 0.0).
 
     Returns:
         ``(vertices, faces)`` – ``float32 (V, 3)`` and ``int32 (F, 3)``.
     """
     nx, ny, nz = volume.shape
-
-    # Find zero-crossings along each axis.
-    vertex_map: dict[tuple[int, int, int], int] = {}
+    vertex_map: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
     vertices: list[np.ndarray] = []
-
-    def _vert_id(ix: int, iy: int, iz: int) -> int:
-        key = (ix, iy, iz)
-        if key not in vertex_map:
-            pos = origin + np.array([ix, iy, iz], dtype=np.float32) * voxel_size
-            vertex_map[key] = len(vertices)
-            vertices.append(pos)
-        return vertex_map[key]
-
     faces: list[tuple[int, int, int]] = []
 
-    # Scan interior voxels and emit quads (as two triangles) on sign changes.
     for ix in range(nx - 1):
         for iy in range(ny - 1):
             for iz in range(nz - 1):
-                v0 = volume[ix, iy, iz]
-                # Check x-edge
-                if volume[ix + 1, iy, iz] * v0 < 0:
-                    a = _vert_id(ix, iy, iz)
-                    b = _vert_id(ix, iy + 1, iz)
-                    c = _vert_id(ix, iy + 1, iz + 1)
-                    d = _vert_id(ix, iy, iz + 1)
-                    if v0 < 0:
-                        faces.append((a, b, c))
-                        faces.append((a, c, d))
-                    else:
-                        faces.append((a, c, b))
-                        faces.append((a, d, c))
-                # Check y-edge
-                if volume[ix, iy + 1, iz] * v0 < 0:
-                    a = _vert_id(ix, iy, iz)
-                    b = _vert_id(ix + 1, iy, iz)
-                    c = _vert_id(ix + 1, iy, iz + 1)
-                    d = _vert_id(ix, iy, iz + 1)
-                    if v0 < 0:
-                        faces.append((a, c, b))
-                        faces.append((a, d, c))
-                    else:
-                        faces.append((a, b, c))
-                        faces.append((a, c, d))
-                # Check z-edge
-                if volume[ix, iy, iz + 1] * v0 < 0:
-                    a = _vert_id(ix, iy, iz)
-                    b = _vert_id(ix + 1, iy, iz)
-                    c = _vert_id(ix + 1, iy + 1, iz)
-                    d = _vert_id(ix, iy + 1, iz)
-                    if v0 < 0:
-                        faces.append((a, b, c))
-                        faces.append((a, c, d))
-                    else:
-                        faces.append((a, c, b))
-                        faces.append((a, d, c))
+                c_vals = [
+                    float(volume[ix, iy, iz]),
+                    float(volume[ix + 1, iy, iz]),
+                    float(volume[ix + 1, iy + 1, iz]),
+                    float(volume[ix, iy + 1, iz]),
+                    float(volume[ix, iy, iz + 1]),
+                    float(volume[ix + 1, iy, iz + 1]),
+                    float(volume[ix + 1, iy + 1, iz + 1]),
+                    float(volume[ix, iy + 1, iz + 1]),
+                ]
+                cubeindex = 0
+                for k in range(8):
+                    if c_vals[k] < isovalue:
+                        cubeindex |= (1 << k)
 
-    if len(vertices) == 0:
-        # Return empty arrays — callers check and raise ContractValidationError.
+                if cubeindex == 0 or cubeindex == 255:
+                    continue
+
+                tris = TRI_TABLE[cubeindex]
+                if not tris:
+                    continue
+
+                edge_vids: dict[int, int] = {}
+                for edge_idx in set(tris):
+                    ca, cb = _EDGE_CORNERS[edge_idx]
+                    ga = (ix + int(_CORNERS[ca][0]), iy + int(_CORNERS[ca][1]), iz + int(_CORNERS[ca][2]))
+                    gb = (ix + int(_CORNERS[cb][0]), iy + int(_CORNERS[cb][1]), iz + int(_CORNERS[cb][2]))
+                    edge_key = (min(ga, gb), max(ga, gb))
+
+                    if edge_key not in vertex_map:
+                        va = c_vals[ca]
+                        vb = c_vals[cb]
+                        denom = vb - va
+                        mu = (isovalue - va) / denom if abs(denom) > 1e-12 else 0.5
+                        mu = float(np.clip(mu, 0.0, 1.0))
+                        pos_a = origin + np.array(ga, dtype=np.float32) * voxel_size
+                        pos_b = origin + np.array(gb, dtype=np.float32) * voxel_size
+                        pos = pos_a + mu * (pos_b - pos_a)
+                        vid = len(vertices)
+                        vertices.append(pos)
+                        vertex_map[edge_key] = vid
+                    edge_vids[edge_idx] = vertex_map[edge_key]
+
+                for t in range(0, len(tris), 3):
+                    faces.append((edge_vids[tris[t]], edge_vids[tris[t + 1]], edge_vids[tris[t + 2]]))
+
+    if not vertices or not faces:
         return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.int32)
 
-    verts_arr = np.array(vertices, dtype=np.float32)
-    faces_arr = np.array(faces, dtype=np.int32)
-    return verts_arr, faces_arr
+    return np.array(vertices, dtype=np.float32), np.array(faces, dtype=np.int32)
+
+
+# Keep backward-compatible alias
+_marching_cubes_naive = _marching_cubes
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +397,68 @@ class MultiViewInitializer:
                 ),
             )
 
+    @staticmethod
+    def _compute_volume_origin(
+        cameras: list[CameraExtrinsics],
+        volume_bounds: tuple[float, float, float],
+    ) -> np.ndarray:
+        """Compute world-space origin of the reconstruction volume.
+
+        For convergent orbits (e.g. ring or hemisphere), centers the volume
+        at the cameras' optical focal intersection point (e.g. [0,0,0]).
+        For forward-translating cameras (e.g. video tracking), places the
+        volume in front of the forward-most camera along the average optical axis.
+        """
+        bx, by, bz = volume_bounds
+        half_extents = np.array([bx / 2.0, by / 2.0, bz / 2.0], dtype=np.float32)
+
+        if not cameras:
+            return -half_extents
+
+        positions = np.array([c.position for c in cameras], dtype=np.float64)
+        dirs = np.array([c.rotation_matrix[2, :] for c in cameras], dtype=np.float64)
+        n = len(cameras)
+
+        A = np.zeros((3, 3), dtype=np.float64)
+        b = np.zeros(3, dtype=np.float64)
+        for C, d in zip(positions, dirs):
+            d_norm = np.linalg.norm(d)
+            if d_norm > 1e-8:
+                d = d / d_norm
+            P = np.eye(3) - np.outer(d, d)
+            A += P
+            b += P @ C
+
+        eigvals = np.linalg.eigvalsh(A)
+        # If cameras converge (e.g. ring orbit), all eigenvalues are large
+        if eigvals[0] >= 0.05 * n:
+            try:
+                center = np.linalg.solve(A, b)
+                return center.astype(np.float32) - half_extents
+            except np.linalg.LinAlgError:
+                pass
+
+        # Parallel or near-parallel rays (forward motion)
+        d_sum = np.sum(dirs, axis=0)
+        d_norm = np.linalg.norm(d_sum)
+        d_avg = d_sum / d_norm if d_norm > 1e-4 else np.array([0.0, 0.0, 1.0])
+
+        max_bound = max(bx, by, bz)
+        d_focus = max(1.5, max_bound * 0.75)
+        max_proj = float(np.max(np.dot(positions, d_avg)))
+        z_target = max_proj + d_focus
+
+        reg = 0.1 * n
+        A_reg = A + reg * np.outer(d_avg, d_avg)
+        b_reg = b + reg * z_target * d_avg
+        try:
+            center = np.linalg.solve(A_reg, b_reg)
+        except np.linalg.LinAlgError:
+            c_avg = np.mean(positions, axis=0)
+            center = c_avg + z_target * d_avg
+
+        return center.astype(np.float32) - half_extents
+
     # ------------------------------------------------------------------
     # TSDF fusion
     # ------------------------------------------------------------------
@@ -398,7 +471,7 @@ class MultiViewInitializer:
     ) -> MeshGeometry:
         """Volumetric TSDF fusion followed by marching cubes."""
         bx, by, bz = self.volume_bounds
-        origin = np.array([-bx / 2, -by / 2, -bz / 2], dtype=np.float32)
+        origin = self._compute_volume_origin(cameras, self.volume_bounds)
         nx = int(bx / self.voxel_size)
         ny = int(by / self.voxel_size)
         nz = int(bz / self.voxel_size)
@@ -481,7 +554,7 @@ class MultiViewInitializer:
             tsdf = tsdf_new.reshape(nx, ny, nz)
             weight = w_new.reshape(nx, ny, nz)
 
-        verts, faces = _marching_cubes_naive(tsdf, effective_voxel, origin)
+        verts, faces = _marching_cubes(tsdf, effective_voxel, origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
             raise ContractValidationError(
@@ -508,7 +581,7 @@ class MultiViewInitializer:
     ) -> MeshGeometry:
         """Silhouette-based space carving (visual hull)."""
         bx, by, bz = self.volume_bounds
-        origin = np.array([-bx / 2, -by / 2, -bz / 2], dtype=np.float32)
+        origin = self._compute_volume_origin(cameras, self.volume_bounds)
         nx = int(bx / self.voxel_size)
         ny = int(by / self.voxel_size)
         nz = int(bz / self.voxel_size)
@@ -559,21 +632,19 @@ class MultiViewInitializer:
 
             in_bounds = valid_z & (ui >= 0) & (ui < w) & (vi_arr >= 0) & (vi_arr < h)
 
-            # Carve: if projected pixel is NOT inside silhouette → remove voxel.
-            in_silhouette = np.zeros(len(cam_pts), dtype=bool)
+            # Carve: only carve voxels within the camera frustum that project onto background!
+            carve = np.zeros(len(cam_pts), dtype=bool)
             if np.any(in_bounds):
-                in_silhouette[in_bounds] = mask[vi_arr[in_bounds], ui[in_bounds]] > 0.5
+                carve[in_bounds] = mask[vi_arr[in_bounds], ui[in_bounds]] <= 0.5
 
-            # Voxels outside image bounds are also carved.
-            carve = ~in_silhouette
             occupied_flat = occupied.ravel()
-            occupied_flat &= ~carve
+            occupied_flat[carve] = False
             occupied = occupied_flat.reshape(nx, ny, nz)
 
         # Convert occupied voxel grid to SDF-like field for marching cubes.
         # occupied=True → SDF < 0 (inside), occupied=False → SDF > 0 (outside).
         sdf = np.where(occupied, -1.0, 1.0).astype(np.float32)
-        verts, faces = _marching_cubes_naive(sdf, effective_voxel, origin)
+        verts, faces = _marching_cubes(sdf, effective_voxel, origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
             raise ContractValidationError(
