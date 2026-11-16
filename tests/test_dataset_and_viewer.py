@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-
 from synapse.errors import ContractValidationError, ExitCode
 from synapse.generators.dataset import DatasetConfig, DatasetGenerator
 from synapse.generators.rasterizer import SoftwareRasterizer
