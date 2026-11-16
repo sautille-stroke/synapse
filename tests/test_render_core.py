@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from synapse.errors import ContractValidationError, evaluate_hitl_circuit_breaker
 from synapse.fgpp.frame import CameraParams
-from synapse.render_core.conditions import RenderingConditionTuple
+from synapse.render_core.conditions import Conditions
 from synapse.render_core.morphology import binary_dilation, binary_erosion
 from synapse.render_core.procedural import generate_humanoid_proxy
 from synapse.render_core.pyramid import separable_gaussian, upsample2x
@@ -514,5 +514,5 @@ class TestCircuitBreakerAndTelemetryHardening:
 
     def test_conditions_shutter_angle_default_zero(self) -> None:
         """get_shutter_angle_deg returns 0.0 when not specified."""
-        cond = RenderingConditionTuple()
+        cond = Conditions()
         assert cond.get_shutter_angle_deg() == 0.0
