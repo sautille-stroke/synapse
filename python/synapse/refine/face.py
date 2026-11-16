@@ -265,7 +265,12 @@ class FaceRefiner:
                     "Neural face backend requested but no weights available; falling back to heuristic."
                 )
             elif callable(self._model_weights):
-                return self._model_weights(roi)
+                res = self._model_weights(roi)
+                if isinstance(res, RefinementResult):
+                    return res
+                raise ContractValidationError(
+                    "model_weights must return RefinementResult",
+                )
 
         active_gallery = gallery or self._gallery
 

@@ -107,7 +107,7 @@ def _fuse_cascade(
     result = candidates[order[0]].copy()
     n_cands = len(candidates)
     if n_cands == 1:
-        return result
+        return np.asarray(result)
 
     for step in range(1, n_cands):
         cand_idx = order[step]

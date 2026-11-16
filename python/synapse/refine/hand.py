@@ -203,7 +203,12 @@ class HandRefiner:
                     "Neural hand backend requested but no weights available; falling back to heuristic."
                 )
             elif callable(self._model_weights):
-                return self._model_weights(roi)
+                res = self._model_weights(roi)
+                if isinstance(res, RefinementResult):
+                    return res
+                raise ContractValidationError(
+                    "model_weights must return RefinementResult",
+                )
 
         has_real_priors = (
             priors is not None

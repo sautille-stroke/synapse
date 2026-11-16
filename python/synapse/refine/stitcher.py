@@ -151,11 +151,12 @@ class ScalpelStitcher:
                 )
 
                 # Clamp fg_mask_bool to ROI bounding box with margin
-                bbox = (
+                target_bbox = (
                     patch.smoothed_bbox
-                    if getattr(patch, "smoothed_bbox", None) is not None
+                    if patch.smoothed_bbox is not None
                     else patch.bbox_xyxy
-                ).astype(np.intp)
+                )
+                bbox = np.asarray(target_bbox, dtype=np.intp)
                 x1 = max(int(bbox[0]) - ring, 0)
                 y1 = max(int(bbox[1]) - ring, 0)
                 x2 = min(int(bbox[2]) + ring, w)
