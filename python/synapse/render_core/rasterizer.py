@@ -88,29 +88,37 @@ def entity_hash(name: str) -> int:
 _CLIP_EPSILON: float = 1e-7
 
 
+@dataclass
+class _ClipVertex:
+    """Vertex representation in homogeneous clip space carrying all attributes."""
+
+    clip: np.ndarray  # [4] homogeneous coordinate (x, y, z, w)
+    normal: np.ndarray  # [3] surface normal
+    bc: np.ndarray  # [3] base color
+    view_z: float  # view-space z coordinate
+    prev_clip: np.ndarray | None = None  # [4] previous frame homogeneous coordinate
+
+
 def _clip_triangle_near_plane(
-    v0: np.ndarray,
-    v1: np.ndarray,
-    v2: np.ndarray,
-) -> list[np.ndarray]:
+    v0: _ClipVertex,
+    v1: _ClipVertex,
+    v2: _ClipVertex,
+) -> list[_ClipVertex]:
     """Clip a triangle against the near plane ``z + w >= 0`` in clip space.
 
-    Each vertex is a 4-element homogeneous clip-space coordinate ``[x,y,z,w]``.
-    Returns a list of 0–4 vertices forming the clipped convex polygon (may
-    become a quad if one vertex is behind the near plane).
-
-    Uses Sutherland-Hodgman algorithm for a single clip plane.
+    Directly interpolates all attributes in 4D homogeneous space before
+    perspective division.
     """
     input_verts = [v0, v1, v2]
-    output: list[np.ndarray] = []
+    output: list[_ClipVertex] = []
 
     for i in range(len(input_verts)):
-        current = input_verts[i]
+        curr = input_verts[i]
         prev = input_verts[i - 1]
 
-        # Inside test: z + w >= 0  (near plane in clip space)
-        d_curr = current[2] + current[3]
-        d_prev = prev[2] + prev[3]
+        # Inside test: z + w >= 0 (near plane in homogeneous clip space)
+        d_curr = float(curr.clip[2] + curr.clip[3])
+        d_prev = float(prev.clip[2] + prev.clip[3])
 
         curr_inside = d_curr >= -_CLIP_EPSILON
         prev_inside = d_prev >= -_CLIP_EPSILON
@@ -118,29 +126,53 @@ def _clip_triangle_near_plane(
         if curr_inside:
             if not prev_inside:
                 # Entering: emit intersection then current
-                t = d_prev / (d_prev - d_curr + 1e-30)
-                intersection = prev + t * (current - prev)
-                output.append(intersection)
-            output.append(current)
+                denom = d_prev - d_curr
+                t = 0.0 if abs(denom) < 1e-30 else d_prev / denom
+                t = max(0.0, min(1.0, float(t)))
+                inter_clip = prev.clip + t * (curr.clip - prev.clip)
+                inter_norm = prev.normal + t * (curr.normal - prev.normal)
+                n_len = float(np.linalg.norm(inter_norm))
+                if n_len > 1e-8:
+                    inter_norm = inter_norm / n_len
+                inter_bc = prev.bc + t * (curr.bc - prev.bc)
+                inter_vz = prev.view_z + t * (curr.view_z - prev.view_z)
+                inter_prev_clip = None
+                if prev.prev_clip is not None and curr.prev_clip is not None:
+                    inter_prev_clip = prev.prev_clip + t * (curr.prev_clip - prev.prev_clip)
+
+                output.append(_ClipVertex(
+                    clip=inter_clip,
+                    normal=inter_norm,
+                    bc=inter_bc,
+                    view_z=inter_vz,
+                    prev_clip=inter_prev_clip,
+                ))
+            output.append(curr)
         elif prev_inside:
             # Leaving: emit intersection only
-            t = d_prev / (d_prev - d_curr + 1e-30)
-            intersection = prev + t * (current - prev)
-            output.append(intersection)
+            denom = d_prev - d_curr
+            t = 0.0 if abs(denom) < 1e-30 else d_prev / denom
+            t = max(0.0, min(1.0, float(t)))
+            inter_clip = prev.clip + t * (curr.clip - prev.clip)
+            inter_norm = prev.normal + t * (curr.normal - prev.normal)
+            n_len = float(np.linalg.norm(inter_norm))
+            if n_len > 1e-8:
+                inter_norm = inter_norm / n_len
+            inter_bc = prev.bc + t * (curr.bc - prev.bc)
+            inter_vz = prev.view_z + t * (curr.view_z - prev.view_z)
+            inter_prev_clip = None
+            if prev.prev_clip is not None and curr.prev_clip is not None:
+                inter_prev_clip = prev.prev_clip + t * (curr.prev_clip - prev.prev_clip)
+
+            output.append(_ClipVertex(
+                clip=inter_clip,
+                normal=inter_norm,
+                bc=inter_bc,
+                view_z=inter_vz,
+                prev_clip=inter_prev_clip,
+            ))
 
     return output
-
-
-def _triangulate_polygon(
-    polygon: list[np.ndarray],
-) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """Fan-triangulate a convex polygon into triangles."""
-    if len(polygon) < 3:
-        return []
-    tris = []
-    for i in range(1, len(polygon) - 1):
-        tris.append((polygon[0], polygon[i], polygon[i + 1]))
-    return tris
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +223,7 @@ class SoftwareRasterizer:
         metallic: float = 0.0,
         entity_name: str = "default",
         prev_camera: CameraParams | None = None,
+        prev_vertices: np.ndarray | None = None,
     ) -> FGPPFrame:
         """Render a mesh and produce a full FGPPFrame.
 
@@ -211,6 +244,9 @@ class SoftwareRasterizer:
             Name used for Cryptomatte ID hashing.
         prev_camera:
             Previous frame camera for motion vector computation.
+        prev_vertices:
+            Optional ``[N, 3]`` previous frame vertex positions for deforming
+            or skeletal animation motion vectors.
         """
         W, H = self.width, self.height
         eid = np.uint32(entity_hash(entity_name))
@@ -242,15 +278,19 @@ class SoftwareRasterizer:
             prev_mvp = prev_proj @ prev_view
 
         # Transform vertices to clip space
-        verts_h = np.hstack([vertices.astype(np.float64),
-                             np.ones((N, 1), dtype=np.float64)])
+        verts_h = np.hstack([vertices.astype(np.float64), np.ones((N, 1), dtype=np.float64)])
         verts_clip = (mvp @ verts_h.T).T  # [N, 4]
         verts_view = (view @ verts_h.T).T  # [N, 4]
 
         # Pre-compute previous clip-space positions for motion vectors
         prev_verts_clip: np.ndarray | None = None
         if prev_mvp is not None:
-            prev_verts_clip = (prev_mvp @ verts_h.T).T  # [N, 4]
+            if prev_vertices is not None:
+                p_verts = prev_vertices.astype(np.float64)
+                p_verts_h = np.hstack([p_verts, np.ones((N, 1), dtype=np.float64)])
+            else:
+                p_verts_h = verts_h
+            prev_verts_clip = (prev_mvp @ p_verts_h.T).T  # [N, 4]
 
         # Init buffers
         depth_buf = np.full((H, W), np.inf, dtype=np.float64)
@@ -272,64 +312,43 @@ class SoftwareRasterizer:
         for fi in range(faces.shape[0]):
             i0, i1, i2 = faces[fi]
 
-            # Clip-space vertices for near-plane clipping
-            c0 = verts_clip[i0]
-            c1 = verts_clip[i1]
-            c2 = verts_clip[i2]
-
-            # Per-vertex attributes for interpolation
-            attr0 = {
-                "normal": norms[i0],
-                "bc": base_color[i0].astype(np.float64),
-                "view_z": float(verts_view[i0, 2]),
-                "clip": c0.copy(),
-            }
-            attr1 = {
-                "normal": norms[i1],
-                "bc": base_color[i1].astype(np.float64),
-                "view_z": float(verts_view[i1, 2]),
-                "clip": c1.copy(),
-            }
-            attr2 = {
-                "normal": norms[i2],
-                "bc": base_color[i2].astype(np.float64),
-                "view_z": float(verts_view[i2, 2]),
-                "clip": c2.copy(),
-            }
-
-            if prev_verts_clip is not None:
-                attr0["prev_clip"] = prev_verts_clip[i0].copy()
-                attr1["prev_clip"] = prev_verts_clip[i1].copy()
-                attr2["prev_clip"] = prev_verts_clip[i2].copy()
+            v0 = _ClipVertex(
+                clip=verts_clip[i0],
+                normal=norms[i0],
+                bc=base_color[i0].astype(np.float64),
+                view_z=float(verts_view[i0, 2]),
+                prev_clip=prev_verts_clip[i0] if prev_verts_clip is not None else None,
+            )
+            v1 = _ClipVertex(
+                clip=verts_clip[i1],
+                normal=norms[i1],
+                bc=base_color[i1].astype(np.float64),
+                view_z=float(verts_view[i1, 2]),
+                prev_clip=prev_verts_clip[i1] if prev_verts_clip is not None else None,
+            )
+            v2 = _ClipVertex(
+                clip=verts_clip[i2],
+                normal=norms[i2],
+                bc=base_color[i2].astype(np.float64),
+                view_z=float(verts_view[i2, 2]),
+                prev_clip=prev_verts_clip[i2] if prev_verts_clip is not None else None,
+            )
 
             # Sutherland-Hodgman near-plane clipping
-            clipped_poly = _clip_triangle_near_plane(c0, c1, c2)
+            clipped_poly = _clip_triangle_near_plane(v0, v1, v2)
             if len(clipped_poly) < 3:
                 continue
 
-            # Interpolate attributes for clipped vertices using
-            # barycentric coordinates relative to the original triangle
-            clipped_attrs = []
-            for cv in clipped_poly:
-                attr = self._interpolate_clip_attrs(
-                    c0, c1, c2, cv,
-                    attr0, attr1, attr2,
-                    prev_verts_clip is not None,
-                )
-                clipped_attrs.append(attr)
-
             # Triangulate the clipped polygon and rasterise each sub-triangle
             for ti in range(1, len(clipped_poly) - 1):
-                tri_clips = [clipped_poly[0], clipped_poly[ti], clipped_poly[ti + 1]]
-                tri_attrs = [clipped_attrs[0], clipped_attrs[ti], clipped_attrs[ti + 1]]
-
                 self._rasterize_clipped_triangle(
-                    W, H, tri_clips, tri_attrs,
+                    W, H,
+                    clipped_poly[0], clipped_poly[ti], clipped_poly[ti + 1],
                     depth_buf, color_buf, normal_buf, radiance_buf,
                     bcolor_buf, mask_buf, rm_buf, mv_buf,
                     eid, roughness, metallic,
                     light_d, light_c, amb,
-                    prev_mvp is not None,
+                    camera,
                 )
 
         # Clamp depth: replace inf with z_far
@@ -348,85 +367,13 @@ class SoftwareRasterizer:
             cryptomatte_id=mask_buf,
         )
 
-    @staticmethod
-    def _interpolate_clip_attrs(
-        c0: np.ndarray,
-        c1: np.ndarray,
-        c2: np.ndarray,
-        cv: np.ndarray,
-        attr0: dict[str, object],
-        attr1: dict[str, object],
-        attr2: dict[str, object],
-        has_prev: bool,
-    ) -> dict[str, object]:
-        """Compute interpolated attributes for a clipped vertex *cv*.
-
-        Uses barycentric coordinates in clip space to interpolate
-        per-vertex attributes from the original triangle.
-        """
-        # Compute barycentric coordinates using the 2D projection of
-        # clip-space x/w, y/w. But since cv may be on the near plane edge
-        # we use the clip-space coordinates directly with a robust method.
-        # Barycentric in 4D clip space using the x,y,z components
-        denom_mat = np.array([
-            [c0[0] - c2[0], c1[0] - c2[0]],
-            [c0[1] - c2[1], c1[1] - c2[1]],
-        ], dtype=np.float64)
-        rhs = np.array([cv[0] - c2[0], cv[1] - c2[1]], dtype=np.float64)
-        det = denom_mat[0, 0] * denom_mat[1, 1] - denom_mat[0, 1] * denom_mat[1, 0]
-        if abs(det) < 1e-20:
-            # Degenerate — use w-based fallback
-            w0, w1, w2 = 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0
-        else:
-            inv_det = 1.0 / det
-            w0 = (rhs[0] * denom_mat[1, 1] - rhs[1] * denom_mat[0, 1]) * inv_det
-            w1 = (denom_mat[0, 0] * rhs[1] - denom_mat[1, 0] * rhs[0]) * inv_det
-            w2 = 1.0 - w0 - w1
-
-        # Clamp barycentric weights
-        w0 = max(0.0, min(1.0, w0))
-        w1 = max(0.0, min(1.0, w1))
-        w2 = max(0.0, min(1.0, w2))
-        s = w0 + w1 + w2
-        if s > 1e-20:
-            w0 /= s
-            w1 /= s
-            w2 /= s
-
-        n0 = attr0["normal"]
-        n1 = attr1["normal"]
-        n2 = attr2["normal"]
-        assert isinstance(n0, np.ndarray) and isinstance(n1, np.ndarray) and isinstance(n2, np.ndarray)
-
-        bc0 = attr0["bc"]
-        bc1 = attr1["bc"]
-        bc2 = attr2["bc"]
-        assert isinstance(bc0, np.ndarray) and isinstance(bc1, np.ndarray) and isinstance(bc2, np.ndarray)
-
-        vz0 = float(attr0["view_z"])  # type: ignore[arg-type]
-        vz1 = float(attr1["view_z"])  # type: ignore[arg-type]
-        vz2 = float(attr2["view_z"])  # type: ignore[arg-type]
-
-        result: dict[str, object] = {
-            "normal": w0 * n0 + w1 * n1 + w2 * n2,
-            "bc": w0 * bc0 + w1 * bc1 + w2 * bc2,
-            "view_z": w0 * vz0 + w1 * vz1 + w2 * vz2,
-            "clip": cv.copy(),
-        }
-        if has_prev:
-            pc0 = attr0["prev_clip"]
-            pc1 = attr1["prev_clip"]
-            pc2 = attr2["prev_clip"]
-            assert isinstance(pc0, np.ndarray) and isinstance(pc1, np.ndarray) and isinstance(pc2, np.ndarray)
-            result["prev_clip"] = w0 * pc0 + w1 * pc1 + w2 * pc2
-        return result
-
     def _rasterize_clipped_triangle(
         self,
         W: int,
         H: int,
-        tri_clips: list[np.ndarray],
-        tri_attrs: list[dict[str, object]],
+        v0: _ClipVertex,
+        v1: _ClipVertex,
+        v2: _ClipVertex,
         depth_buf: np.ndarray,
         color_buf: np.ndarray,
         normal_buf: np.ndarray,
@@ -441,168 +388,155 @@ class SoftwareRasterizer:
         light_d: np.ndarray,
         light_c: np.ndarray,
         amb: float,
-        has_prev: bool,
+        camera: CameraParams,
     ) -> None:
         """Rasterize a single clipped triangle with perspective-correct 1/w interpolation."""
+        w0, w1, w2 = float(v0.clip[3]), float(v1.clip[3]), float(v2.clip[3])
+        if abs(w0) < _CLIP_EPSILON or abs(w1) < _CLIP_EPSILON or abs(w2) < _CLIP_EPSILON:
+            return
+
+        inv_w0, inv_w1, inv_w2 = 1.0 / w0, 1.0 / w1, 1.0 / w2
+
         # Perspective divide for screen coordinates
-        screen_pts = []
-        inv_ws = []
-        for clip_v in tri_clips:
-            w = clip_v[3]
-            if abs(w) < _CLIP_EPSILON:
-                return  # Degenerate
-            inv_w = 1.0 / w
-            ndc_x = clip_v[0] * inv_w
-            ndc_y = clip_v[1] * inv_w
-            sx = (ndc_x * 0.5 + 0.5) * W
-            sy = (1.0 - (ndc_y * 0.5 + 0.5)) * H
-            screen_pts.append((sx, sy))
-            inv_ws.append(inv_w)
+        sx0 = (v0.clip[0] * inv_w0 * 0.5 + 0.5) * W
+        sy0 = (1.0 - (v0.clip[1] * inv_w0 * 0.5 + 0.5)) * H
+        sx1 = (v1.clip[0] * inv_w1 * 0.5 + 0.5) * W
+        sy1 = (1.0 - (v1.clip[1] * inv_w1 * 0.5 + 0.5)) * H
+        sx2 = (v2.clip[0] * inv_w2 * 0.5 + 0.5) * W
+        sy2 = (1.0 - (v2.clip[1] * inv_w2 * 0.5 + 0.5)) * H
 
-        x0, y0 = screen_pts[0]
-        x1, y1 = screen_pts[1]
-        x2, y2 = screen_pts[2]
+        z0 = -float(v0.view_z)
+        z1 = -float(v1.view_z)
+        z2 = -float(v2.view_z)
 
-        # Linear view-space depth for each vertex (positive = in front)
-        vz0 = float(tri_attrs[0]["view_z"])  # type: ignore[arg-type]
-        vz1 = float(tri_attrs[1]["view_z"])  # type: ignore[arg-type]
-        vz2 = float(tri_attrs[2]["view_z"])  # type: ignore[arg-type]
-        z0 = -vz0  # convert to positive depth
-        z1 = -vz1
-        z2 = -vz2
-
-        # Bounding box
-        min_x = max(0, int(math.floor(min(x0, x1, x2))))
-        max_x = min(W - 1, int(math.ceil(max(x0, x1, x2))))
-        min_y = max(0, int(math.floor(min(y0, y1, y2))))
-        max_y = min(H - 1, int(math.ceil(max(y0, y1, y2))))
+        min_x = max(0, int(math.floor(min(sx0, sx1, sx2))))
+        max_x = min(W - 1, int(math.ceil(max(sx0, sx1, sx2))))
+        min_y = max(0, int(math.floor(min(sy0, sy1, sy2))))
+        max_y = min(H - 1, int(math.ceil(max(sy0, sy1, sy2))))
 
         if min_x > max_x or min_y > max_y:
             return
 
-        # Barycentric setup
-        denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+        denom = (sy1 - sy2) * (sx0 - sx2) + (sx2 - sx1) * (sy0 - sy2)
         if abs(denom) < 1e-10:
             return
         inv_denom = 1.0 / denom
 
-        # Per-vertex attributes
-        n0_attr = tri_attrs[0]["normal"]
-        n1_attr = tri_attrs[1]["normal"]
-        n2_attr = tri_attrs[2]["normal"]
-        assert isinstance(n0_attr, np.ndarray) and isinstance(n1_attr, np.ndarray) and isinstance(n2_attr, np.ndarray)
-        bc0_attr = tri_attrs[0]["bc"]
-        bc1_attr = tri_attrs[1]["bc"]
-        bc2_attr = tri_attrs[2]["bc"]
-        assert isinstance(bc0_attr, np.ndarray) and isinstance(bc1_attr, np.ndarray) and isinstance(bc2_attr, np.ndarray)
+        # Sample at pixel centers (px + 0.5, py + 0.5)
+        xs = np.arange(min_x, max_x + 1, dtype=np.float64) + 0.5
+        ys = np.arange(min_y, max_y + 1, dtype=np.float64) + 0.5
+        grid_x, grid_y = np.meshgrid(xs, ys)
 
-        # 1/w values for perspective-correct interpolation
-        iw0, iw1, iw2 = inv_ws[0], inv_ws[1], inv_ws[2]
+        bw0 = ((sy1 - sy2) * (grid_x - sx2) + (sx2 - sx1) * (grid_y - sy2)) * inv_denom
+        bw1 = ((sy2 - sy0) * (grid_x - sx2) + (sx0 - sx2) * (grid_y - sy2)) * inv_denom
+        bw2 = 1.0 - bw0 - bw1
 
-        # Pre-divide attributes by w for perspective-correct interpolation
-        n0_over_w = n0_attr * iw0
-        n1_over_w = n1_attr * iw1
-        n2_over_w = n2_attr * iw2
-        bc0_over_w = bc0_attr * iw0
-        bc1_over_w = bc1_attr * iw1
-        bc2_over_w = bc2_attr * iw2
+        inside = (bw0 >= 0.0) & (bw1 >= 0.0) & (bw2 >= 0.0)
+        if not np.any(inside):
+            return
 
-        # Previous clip-space vertices for motion vectors
-        prev_clips: list[np.ndarray] | None = None
-        if has_prev:
-            pc0 = tri_attrs[0].get("prev_clip")
-            pc1 = tri_attrs[1].get("prev_clip")
-            pc2 = tri_attrs[2].get("prev_clip")
-            if pc0 is not None and pc1 is not None and pc2 is not None:
-                assert isinstance(pc0, np.ndarray) and isinstance(pc1, np.ndarray) and isinstance(pc2, np.ndarray)
-                # Pre-divide prev_clip by w for perspective-correct interpolation
-                prev_clips = [pc0 * iw0, pc1 * iw1, pc2 * iw2]
+        interp_inv_w = bw0 * inv_w0 + bw1 * inv_w1 + bw2 * inv_w2
+        valid_w = inside & (abs(interp_inv_w) > 1e-20)
+        if not np.any(valid_w):
+            return
 
-        for py in range(min_y, max_y + 1):
-            for px in range(min_x, max_x + 1):
-                # Barycentric coordinates
-                bw0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) * inv_denom
-                bw1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) * inv_denom
-                bw2 = 1.0 - bw0 - bw1
+        w_correct = np.zeros_like(interp_inv_w)
+        w_correct[valid_w] = 1.0 / interp_inv_w[valid_w]
 
-                if bw0 < 0 or bw1 < 0 or bw2 < 0:
-                    continue
+        linear_depth = np.zeros_like(interp_inv_w)
+        linear_depth[valid_w] = (
+            bw0[valid_w] * z0 * inv_w0 + bw1[valid_w] * z1 * inv_w1 + bw2[valid_w] * z2 * inv_w2
+        ) * w_correct[valid_w]
 
-                # Perspective-correct 1/w interpolation
-                interp_inv_w = bw0 * iw0 + bw1 * iw1 + bw2 * iw2
-                if abs(interp_inv_w) < 1e-20:
-                    continue
-                w_correct = 1.0 / interp_inv_w
+        cur_depth_box = depth_buf[min_y : max_y + 1, min_x : max_x + 1]
+        closer = valid_w & (linear_depth > 0.0) & (linear_depth <= camera.z_far) & (linear_depth < cur_depth_box)
+        if not np.any(closer):
+            return
 
-                # Interpolate depth (perspective-correct)
-                z_interp = (bw0 * z0 * iw0 + bw1 * z1 * iw1 + bw2 * z2 * iw2) * w_correct
-                linear_depth = z_interp
+        cur_depth_box[closer] = linear_depth[closer]
 
-                if linear_depth <= 0 or linear_depth >= depth_buf[py, px]:
-                    continue
+        # Normal interpolation
+        n0_w = v0.normal * inv_w0
+        n1_w = v1.normal * inv_w1
+        n2_w = v2.normal * inv_w2
+        nx = (bw0 * n0_w[0] + bw1 * n1_w[0] + bw2 * n2_w[0]) * w_correct
+        ny = (bw0 * n0_w[1] + bw1 * n1_w[1] + bw2 * n2_w[1]) * w_correct
+        nz = (bw0 * n0_w[2] + bw1 * n1_w[2] + bw2 * n2_w[2]) * w_correct
 
-                depth_buf[py, px] = linear_depth
+        n_mag = np.sqrt(nx**2 + ny**2 + nz**2)
+        n_mag_safe = np.maximum(n_mag, 1e-8)
+        nx /= n_mag_safe
+        ny /= n_mag_safe
+        nz /= n_mag_safe
 
-                # Perspective-correct normal interpolation
-                n = (bw0 * n0_over_w + bw1 * n1_over_w + bw2 * n2_over_w) * w_correct
-                n_len = np.linalg.norm(n)
-                if n_len > 1e-8:
-                    n = n / n_len
+        norm_box = normal_buf[min_y : max_y + 1, min_x : max_x + 1]
+        norm_box[closer, 0] = nx[closer]
+        norm_box[closer, 1] = ny[closer]
+        norm_box[closer, 2] = nz[closer]
 
-                normal_buf[py, px] = n
+        # Base color interpolation
+        bc0_w = v0.bc * inv_w0
+        bc1_w = v1.bc * inv_w1
+        bc2_w = v2.bc * inv_w2
+        bc_r = (bw0 * bc0_w[0] + bw1 * bc1_w[0] + bw2 * bc2_w[0]) * w_correct
+        bc_g = (bw0 * bc0_w[1] + bw1 * bc1_w[1] + bw2 * bc2_w[1]) * w_correct
+        bc_b = (bw0 * bc0_w[2] + bw1 * bc1_w[2] + bw2 * bc2_w[2]) * w_correct
 
-                # Perspective-correct base color interpolation
-                bc = (bw0 * bc0_over_w + bw1 * bc1_over_w + bw2 * bc2_over_w) * w_correct
-                bcolor_buf[py, px] = bc
+        bc_box = bcolor_buf[min_y : max_y + 1, min_x : max_x + 1]
+        bc_box[closer, 0] = bc_r[closer]
+        bc_box[closer, 1] = bc_g[closer]
+        bc_box[closer, 2] = bc_b[closer]
 
-                # Diffuse shading
-                ndotl = max(0.0, float(np.dot(n, light_d)))
-                diffuse = bc * (amb + ndotl * light_c)
-                radiance_buf[py, px] = diffuse
-                color_buf[py, px] = diffuse
+        # Diffuse shading
+        ndotl = np.maximum(0.0, nx * light_d[0] + ny * light_d[1] + nz * light_d[2])
+        diff_r = bc_r * (amb + ndotl * light_c[0])
+        diff_g = bc_g * (amb + ndotl * light_c[1])
+        diff_b = bc_b * (amb + ndotl * light_c[2])
 
-                # Entity mask
-                mask_buf[py, px] = eid
+        rad_box = radiance_buf[min_y : max_y + 1, min_x : max_x + 1]
+        rad_box[closer, 0] = diff_r[closer]
+        rad_box[closer, 1] = diff_g[closer]
+        rad_box[closer, 2] = diff_b[closer]
 
-                # Roughness / metallic
-                rm_buf[py, px, 0] = roughness
-                rm_buf[py, px, 1] = metallic
+        col_box = color_buf[min_y : max_y + 1, min_x : max_x + 1]
+        col_box[closer, 0] = diff_r[closer]
+        col_box[closer, 1] = diff_g[closer]
+        col_box[closer, 2] = diff_b[closer]
 
-                # Motion vectors: compute screen-space displacement from
-                # prev_view_proj
-                if prev_clips is not None:
-                    # Interpolate previous clip-space position
-                    # (perspective-correct)
-                    prev_clip = (
-                        bw0 * prev_clips[0]
-                        + bw1 * prev_clips[1]
-                        + bw2 * prev_clips[2]
-                    ) * w_correct
-                    prev_w = prev_clip[3]
-                    if abs(prev_w) > _CLIP_EPSILON:
-                        prev_ndc_x = prev_clip[0] / prev_w
-                        prev_ndc_y = prev_clip[1] / prev_w
-                        prev_sx = (prev_ndc_x * 0.5 + 0.5) * W
-                        prev_sy = (1.0 - (prev_ndc_y * 0.5 + 0.5)) * H
-                        # Motion vector = current - previous (screen pixels)
-                        mv_buf[py, px, 0] = float(px - prev_sx)
-                        mv_buf[py, px, 1] = float(py - prev_sy)
+        mask_box = mask_buf[min_y : max_y + 1, min_x : max_x + 1]
+        mask_box[closer] = eid
 
-        return
+        rm_box = rm_buf[min_y : max_y + 1, min_x : max_x + 1]
+        rm_box[closer, 0] = roughness
+        rm_box[closer, 1] = metallic
+
+        # Motion vectors
+        if v0.prev_clip is not None and v1.prev_clip is not None and v2.prev_clip is not None:
+            pc0_w = v0.prev_clip * inv_w0
+            pc1_w = v1.prev_clip * inv_w1
+            pc2_w = v2.prev_clip * inv_w2
+
+            prev_cx = (bw0 * pc0_w[0] + bw1 * pc1_w[0] + bw2 * pc2_w[0]) * w_correct
+            prev_cy = (bw0 * pc0_w[1] + bw1 * pc1_w[1] + bw2 * pc2_w[1]) * w_correct
+            prev_cw = (bw0 * pc0_w[3] + bw1 * pc1_w[3] + bw2 * pc2_w[3]) * w_correct
+
+            valid_prev = closer & (prev_cw > _CLIP_EPSILON)
+            mv_box = mv_buf[min_y : max_y + 1, min_x : max_x + 1]
+
+            if np.any(valid_prev):
+                prev_ndc_x = prev_cx[valid_prev] / prev_cw[valid_prev]
+                prev_ndc_y = prev_cy[valid_prev] / prev_cw[valid_prev]
+                prev_sx = (prev_ndc_x * 0.5 + 0.5) * W
+                prev_sy = (1.0 - (prev_ndc_y * 0.5 + 0.5)) * H
+
+                mv_box[valid_prev, 0] = grid_x[valid_prev] - prev_sx
+                mv_box[valid_prev, 1] = grid_y[valid_prev] - prev_sy
+
+            invalid_prev = closer & ~valid_prev
+            if np.any(invalid_prev):
+                mv_box[invalid_prev, :] = 0.0
 
     @staticmethod
     def _build_projection(camera: CameraParams) -> np.ndarray:
-        """Build a 4×4 perspective projection matrix."""
-        fov_rad = math.radians(camera.fov_degrees or 60.0)
-        aspect = camera.width / max(camera.height, 1)
-        near = camera.z_near
-        far = camera.z_far
-
-        f = 1.0 / math.tan(fov_rad / 2.0)
-        proj = np.zeros((4, 4), dtype=np.float64)
-        proj[0, 0] = f / aspect
-        proj[1, 1] = f
-        proj[2, 2] = -(far + near) / (far - near)
-        proj[2, 3] = -2.0 * far * near / (far - near)
-        proj[3, 2] = -1.0
-        return proj
+        """Build a 4×4 perspective projection matrix from camera intrinsics."""
+        return camera.projection_matrix()

@@ -426,11 +426,11 @@ class Conditions:
     def get_shutter_angle_deg(self) -> float:
         """Return the shutter angle in degrees from F10_motion_blur."""
         if self.F10_motion_blur is None:
-            return 180.0
+            return 0.0
         level_data = RENDERING_CONDITION_FACTORS["F10_motion_blur"]["levels"].get(
             self.F10_motion_blur.value, {}
         )
-        return float(level_data.get("shutter_angle_deg", 180.0))
+        return float(level_data.get("shutter_angle_deg", 0.0))
 
 
 SINGLE_FACTOR_CONDITIONS: list[dict[str, str]] = []

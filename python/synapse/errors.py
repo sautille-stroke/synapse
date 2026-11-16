@@ -16,6 +16,7 @@ Exit code mapping::
 
 from __future__ import annotations
 
+import math
 from enum import IntEnum
 from typing import Any, Literal
 
@@ -219,9 +220,29 @@ def evaluate_hitl_circuit_breaker(
         max_seconds: Budget ceiling in seconds (default 900 = 15 min).
 
     Raises:
+        ContractValidationError: If ``elapsed_seconds`` is NaN, non-finite,
+            negative, or if ``domain`` is invalid (exit_code=10).
         CircuitBreakerError: If ``elapsed_seconds > max_seconds``
             (exit_code=40).
     """
+    if not math.isfinite(elapsed_seconds) or elapsed_seconds < 0.0:
+        raise ContractValidationError(
+            f"elapsed_seconds must be a finite, non-negative number, got {elapsed_seconds!r}",
+            agent_fix_hint="Ensure elapsed timer is initialized and valid before calling circuit breaker.",
+        )
+
+    if domain not in ("video_shot", "asset_3d"):
+        raise ContractValidationError(
+            f"Invalid HITL circuit breaker domain {domain!r}, must be 'video_shot' or 'asset_3d'",
+            agent_fix_hint="Specify domain='video_shot' or domain='asset_3d'.",
+        )
+
+    if not math.isfinite(max_seconds) or max_seconds <= 0.0:
+        raise ContractValidationError(
+            f"max_seconds must be a finite positive number, got {max_seconds!r}",
+            agent_fix_hint="Specify a positive number of seconds for max_seconds.",
+        )
+
     if elapsed_seconds <= max_seconds:
         return
 

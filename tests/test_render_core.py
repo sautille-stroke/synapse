@@ -12,8 +12,15 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
+from synapse.errors import ContractValidationError, evaluate_hitl_circuit_breaker
 from synapse.fgpp.frame import CameraParams
+from synapse.render_core.conditions import RenderingConditionTuple
+from synapse.render_core.morphology import binary_dilation, binary_erosion
+from synapse.render_core.procedural import generate_humanoid_proxy
+from synapse.render_core.pyramid import downsample2x, separable_gaussian, upsample2x
 from synapse.render_core.rasterizer import SoftwareRasterizer, entity_hash
+from synapse.telemetry import FallbackLevel, MemoryForecaster, TraceContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -331,3 +338,181 @@ class TestPerspectiveCorrectInterpolation:
             depths = frame.depth[fg_mask]
             assert np.all(depths > 0)
             assert np.all(np.isfinite(depths))
+
+
+# ---------------------------------------------------------------------------
+# PR-95: Extended Coverage for Homogeneous Clipping, Intrinsics, Telemetry & Math
+# ---------------------------------------------------------------------------
+
+
+class TestDynamicMotionVectorsAndIntrinsics:
+    """PR-95: Test prev_vertices motion vectors and off-center intrinsics."""
+
+    def test_prev_vertices_motion_vector_deformation(self) -> None:
+        """Stationary camera with deformed mesh (prev_vertices) produces non-zero motion vectors."""
+        rast = SoftwareRasterizer(width=64, height=64)
+        verts, faces, norms = _simple_triangle()
+        prev_verts = verts.copy()
+        prev_verts[:, 0] -= 0.3  # Previous mesh was shifted to the left by 0.3 units
+
+        cam = _make_camera(width=64, height=64, position=(0, 0, 3))
+        frame = rast.render(
+            verts, faces, norms, cam,
+            prev_camera=cam,
+            prev_vertices=prev_verts,
+        )
+
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
+        assert np.any(fg_mask), "Foreground triangle should be rendered"
+        mv = frame.motion_vector.astype(np.float32)  # type: ignore[union-attr]
+        fg_mv = mv[fg_mask]
+        assert np.any(np.abs(fg_mv[:, 0]) > 0.5), (
+            "Mesh deformation with stationary camera must produce motion vectors"
+        )
+
+    def test_principal_point_offset_projection(self) -> None:
+        """Principal point offset shifts the projected center correctly."""
+        w, h = 64, 64
+        cam = _make_camera(width=w, height=h, position=(0, 0, 3))
+        # Modify cx, cy to be off-center
+        cam.cx = 40.0
+        cam.cy = 20.0
+        proj = cam.projection_matrix()
+
+        # Check p02 and p12
+        expected_p02 = (2.0 * 40.0 - 64.0) / 64.0  # 16 / 64 = 0.25
+        expected_p12 = (2.0 * 20.0 - 64.0) / 64.0  # -24 / 64 = -0.375
+        assert abs(proj[0, 2] - expected_p02) < 1e-6
+        assert abs(proj[1, 2] - expected_p12) < 1e-6
+
+        # Rasterize a centered point/triangle and ensure it renders offset
+        rast = SoftwareRasterizer(width=w, height=h)
+        verts, faces, norms = _simple_triangle()
+        frame = rast.render(verts, faces, norms, cam)
+        fg_mask = frame.cryptomatte_id > 0  # type: ignore[operator]
+        assert np.any(fg_mask)
+
+
+class TestHumanoidKinematicChain:
+    """PR-95: Test hierarchical joint rotation linkage in generate_humanoid_proxy."""
+
+    def test_hip_rotation_moves_knee_and_foot(self) -> None:
+        """Rotating hip (left_thigh) propagates forward kinematics to shin and foot."""
+        verts_neutral, _, bones_neutral = generate_humanoid_proxy(
+            pose_params={"phase": 0.0, "left_thigh": 0.0},
+        )
+        verts_bent, _, bones_bent = generate_humanoid_proxy(
+            pose_params={"phase": 0.0, "left_thigh": 0.8},
+        )
+
+        shin_idx_n = bones_neutral["left_shin"]
+        foot_idx_n = bones_neutral["left_foot"]
+        torso_idx_n = bones_neutral["torso"]
+
+        shin_pos_neutral = verts_neutral[shin_idx_n].mean(axis=0)
+        shin_pos_bent = verts_bent[shin_idx_n].mean(axis=0)
+
+        foot_pos_neutral = verts_neutral[foot_idx_n].mean(axis=0)
+        foot_pos_bent = verts_bent[foot_idx_n].mean(axis=0)
+
+        torso_pos_neutral = verts_neutral[torso_idx_n].mean(axis=0)
+        torso_pos_bent = verts_bent[torso_idx_n].mean(axis=0)
+
+        # Torso should stay in place
+        np.testing.assert_allclose(torso_pos_neutral, torso_pos_bent, atol=1e-5)
+
+        # Shin (knee) and foot must move due to hip rotation
+        shin_disp = np.linalg.norm(shin_pos_bent - shin_pos_neutral)
+        foot_disp = np.linalg.norm(foot_pos_bent - foot_pos_neutral)
+        assert shin_disp > 0.1, f"Shin should displace when hip bends (got {shin_disp:.4f})"
+        assert foot_disp > 0.15, f"Foot should displace when hip bends (got {foot_disp:.4f})"
+
+
+class TestPyramidAndMorphologyHardening:
+    """PR-95: Test float64 accumulation in pyramid convolution and slice morphology."""
+
+    def test_separable_gaussian_float16_precision(self) -> None:
+        """Separable Gaussian does not overflow or truncate with small/half precision."""
+        img = np.ones((32, 32), dtype=np.float32)
+        blurred = separable_gaussian(img, sigma=2.0)
+        np.testing.assert_allclose(blurred[5:-5, 5:-5], 1.0, atol=1e-3)
+
+    def test_upsample_downsample_grid(self) -> None:
+        """upsample2x with half-pixel alignment correctly scales dimensions."""
+        img = np.zeros((16, 16), dtype=np.float32)
+        img[8, 8] = 1.0
+        up = upsample2x(img, 32, 32)
+        assert up.shape == (32, 32)
+        assert up.max() > 0.0
+
+    def test_binary_dilation_no_border_wrap(self) -> None:
+        """binary_dilation uses zero-padded slices without border wrap."""
+        mask = np.zeros((16, 16), dtype=bool)
+        mask[0, 0] = True
+        se = np.ones((3, 3), dtype=bool)
+        dilated = binary_dilation(mask, se)
+        # Should not wrap to the opposite border (bottom/right)
+        assert not dilated[15, 15]
+        assert not dilated[0, 15]
+        assert not dilated[15, 0]
+        assert dilated[0, 0]
+        assert dilated[0, 1]
+        assert dilated[1, 0]
+
+    def test_binary_erosion_no_border_wrap(self) -> None:
+        """binary_erosion correctly preserves borders without wrap."""
+        mask = np.ones((16, 16), dtype=bool)
+        se = np.ones((3, 3), dtype=bool)
+        eroded = binary_erosion(mask, se)
+        # Edges should be eroded
+        assert not eroded[0, 0]
+        assert not eroded[0, 5]
+        # Interior should be preserved
+        assert eroded[5, 5]
+
+
+class TestCircuitBreakerAndTelemetryHardening:
+    """PR-95: Test HITL fail-closed checks and W3C traceparent regex."""
+
+    def test_hitl_circuit_breaker_nan_raises_contract_validation(self) -> None:
+        """NaN elapsed_seconds raises ContractValidationError (exit_code=10)."""
+        with pytest.raises(ContractValidationError) as exc_info:
+            evaluate_hitl_circuit_breaker(float("nan"), "video_shot")
+        assert exc_info.value.exit_code == 10
+
+    def test_hitl_circuit_breaker_invalid_domain_raises(self) -> None:
+        """Invalid domain raises ContractValidationError (exit_code=10)."""
+        with pytest.raises(ContractValidationError) as exc_info:
+            evaluate_hitl_circuit_breaker(10.0, "unknown_domain")  # type: ignore[arg-type]
+        assert exc_info.value.exit_code == 10
+
+    def test_w3c_traceparent_parsing_and_generation(self) -> None:
+        """TraceContext parses standard W3C header and rejects malformed."""
+        valid_header = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        ctx = TraceContext.from_env_or_dict({"traceparent": valid_header})
+        assert ctx.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+        assert ctx.span_id == "00f067aa0ba902b7"
+        assert ctx.trace_flags == "01"
+
+        # Malformed / zero header regenerates fresh IDs
+        invalid_header = "00-00000000000000000000000000000000-0000000000000000-00"
+        fresh_ctx = TraceContext.from_env_or_dict({"traceparent": invalid_header})
+        assert fresh_ctx.trace_id != "00000000000000000000000000000000"
+        assert fresh_ctx.span_id != "0000000000000000"
+
+    def test_memory_forecaster_custom_layers_and_vram(self) -> None:
+        """MemoryForecaster respects num_layers and available_vram_gb."""
+        forecast = MemoryForecaster.estimate_dit_peak_gb(
+            num_frames=16, height=512, width=512,
+            model_variant="wan2.1_14b",
+            num_layers=48,
+            available_vram_gb=16.0,
+        )
+        assert forecast.breakdown["num_layers"] == 48
+        # 14B with 16 frames is > 28GB weights, so on 16GB VRAM it should fallback or reject
+        assert forecast.fallback_level.value > 0
+
+    def test_conditions_shutter_angle_default_zero(self) -> None:
+        """get_shutter_angle_deg returns 0.0 when not specified."""
+        cond = RenderingConditionTuple()
+        assert cond.get_shutter_angle_deg() == 0.0

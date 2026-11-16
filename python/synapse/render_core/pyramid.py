@@ -85,14 +85,14 @@ def separable_gaussian(
     def _convolve_axis(arr: np.ndarray, axis: int) -> np.ndarray:
         pad_widths: list[tuple[int, int]] = [(0, 0)] * arr.ndim
         pad_widths[axis] = (radius, radius)
-        padded = np.pad(arr, pad_widths, mode="reflect")
+        padded = np.pad(arr.astype(np.float64), pad_widths, mode="reflect")
         out_n = arr.shape[axis]
-        result = np.zeros_like(arr)
+        result = np.zeros(arr.shape, dtype=np.float64)
         for i, w in enumerate(kernel):
             slices_src: list[slice] = [slice(None)] * arr.ndim
             slices_src[axis] = slice(i, i + out_n)
             result += w * padded[tuple(slices_src)]
-        return result
+        return result.astype(arr.dtype)
 
     out = _convolve_axis(img, axis=0)
     out = _convolve_axis(out, axis=1)
@@ -137,8 +137,8 @@ def upsample2x(
     else:
         out = np.zeros((th, tw, img.shape[2]), dtype=img.dtype)
 
-    row_idx = np.arange(th, dtype=np.float64) * (h - 1) / max(th - 1, 1)
-    col_idx = np.arange(tw, dtype=np.float64) * (w - 1) / max(tw - 1, 1)
+    row_idx = np.clip((np.arange(th, dtype=np.float64) + 0.5) * (h / max(th, 1)) - 0.5, 0.0, float(h - 1))
+    col_idx = np.clip((np.arange(tw, dtype=np.float64) + 0.5) * (w / max(tw, 1)) - 0.5, 0.0, float(w - 1))
 
     r0 = np.floor(row_idx).astype(np.intp)
     r1 = np.minimum(r0 + 1, h - 1)
