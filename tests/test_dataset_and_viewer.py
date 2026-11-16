@@ -1,13 +1,13 @@
 """Unit and integration tests for synapse.models, generators, and viewer."""
 
 import json
-import socketserver
 import urllib.error
 import urllib.request
 from typing import Any
 
 import numpy as np
 import pytest
+from scripts.dev_preview_viewer import ViewerServer
 from synapse.errors import ContractValidationError, ExitCode
 from synapse.generators.dataset import DatasetConfig, DatasetGenerator
 from synapse.generators.rasterizer import SoftwareRasterizer
@@ -19,7 +19,6 @@ from synapse.generators.visualizer import (
     make_contact_sheet,
 )
 from synapse.models import list_builtin_models, load_model
-from scripts.dev_preview_viewer import ViewerServer, _ReusableHTTPServer
 from synapse.viewer.server import export_static_html
 
 

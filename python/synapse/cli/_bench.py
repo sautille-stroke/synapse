@@ -374,7 +374,9 @@ def dispatch_bench(
             "Use 'synapse-bench list', 'synapse-bench export-fgpp', etc.",
         )
         if json_mode:
-            import json, sys
+            import json
+            import sys
+
             json.dump(
                 err.to_json_dict(trace_ctx.trace_id),
                 sys.stdout,
