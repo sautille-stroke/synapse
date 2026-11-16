@@ -539,6 +539,7 @@ class HttpCloudTransport(CloudApiTransport):
         import json
         import urllib.error
         import urllib.request
+
         from synapse.telemetry import TraceContext
 
         req_payload = {

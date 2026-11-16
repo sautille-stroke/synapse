@@ -14,7 +14,11 @@ domain-specific fallback recommendation.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 from synapse.errors import (
@@ -106,14 +110,11 @@ FallbackAction = Literal[
 # Circuit breaker — canonical implementation moved to synapse.errors
 # -----------------------------------------------------------------------
 
+_DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes (kept for backward compat)
+
 # -----------------------------------------------------------------------
 # Persistent HITL Ledger with cross-process file locking
 # -----------------------------------------------------------------------
-
-import json
-import os
-import tempfile
-from pathlib import Path
 
 
 class PersistentHitlLedger:
@@ -199,6 +200,3 @@ class PersistentHitlLedger:
             return float(data.get(group_id, {}).get("elapsed_seconds", 0.0))
         finally:
             self._unlock_and_write(data, handle)
-
-
-_DEFAULT_MAX_SECONDS: float = 900.0  # 15 minutes (kept for backward compat)

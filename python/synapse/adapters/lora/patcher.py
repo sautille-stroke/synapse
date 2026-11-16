@@ -95,9 +95,7 @@ class LoRAPatchHook:
                     b_dim, l_dim, _ = lora_contrib.shape
                     if m.dim() == 1 and m.shape[0] == l_dim:
                         m = m.unsqueeze(0).unsqueeze(-1)
-                    elif m.dim() == 2 and m.shape == (b_dim, l_dim):
-                        m = m.unsqueeze(-1)
-                    elif m.dim() == 2 and m.shape == (1, l_dim):
+                    elif m.dim() == 2 and (m.shape == (b_dim, l_dim) or m.shape == (1, l_dim)):
                         m = m.unsqueeze(-1)
                     elif m.dim() >= 3 and m.numel() == b_dim * l_dim:
                         m = m.reshape(b_dim, l_dim, 1)

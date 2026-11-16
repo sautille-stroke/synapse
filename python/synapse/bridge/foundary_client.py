@@ -163,6 +163,7 @@ class HttpFoundaryTransport(FoundaryTransport):
         import time
         import urllib.error
         import urllib.request
+
         from synapse.errors import BackendUnavailableError
         from synapse.telemetry import TraceContext
 

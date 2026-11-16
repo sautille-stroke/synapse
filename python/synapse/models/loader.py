@@ -12,12 +12,11 @@ from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.models.asset import ModelAsset
 
 # Potential locations where sample/benchmark models reside
+_MODELS_ENV = os.environ.get("SYNAPSE_MODELS_DIR")
 _ASSET_SEARCH_PATHS: list[Path] = [
-    p for p in [
-        Path(env) if (env := os.environ.get("SYNAPSE_MODELS_DIR")) else None,
-        Path(__file__).resolve().parents[3] / "data" / "models",
-        Path("../fulgur/assets/models"),
-    ] if p is not None
+    *([Path(_MODELS_ENV)] if _MODELS_ENV else []),
+    Path(__file__).resolve().parents[3] / "data" / "models",
+    Path("../fulgur/assets/models"),
 ]
 
 
