@@ -570,8 +570,8 @@ def _project_mesh_to_view(
         camera: Camera extrinsics with .transform (4x4 world-to-cam or cam-to-world).
         h: Image height.
         w: Image width.
-        faces: Optional mesh face indices (F, 3). If provided, rasterizes triangles
-            with Z-buffering; otherwise scatters vertices.
+        faces: Optional mesh face indices (F, 3). If provided, samples face centers
+            and edge midpoints for dense coverage with Z-buffering.
 
     Returns:
         normal_map: Projected normal map, shape (H, W, 3).
@@ -581,99 +581,77 @@ def _project_mesh_to_view(
     verts = np.asarray(vertices, dtype=np.float64)
     nrms = np.asarray(normals, dtype=np.float64)
 
+    # Collect points: vertices + face centers + edge midpoints for dense rasterization
+    all_verts = [verts]
+    all_nrms = [nrms]
+
+    if faces is not None and len(faces) > 0:
+        f_arr = np.asarray(faces, dtype=np.int64)
+        if f_arr.ndim == 2 and f_arr.shape[1] >= 3:
+            f_tris = f_arr[:, :3]
+            face_cents = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) / 3.0
+            face_nrms = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) / 3.0
+            all_verts.append(face_cents)
+            all_nrms.append(face_nrms)
+
+            mid_01 = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]]) * 0.5
+            mid_12 = (verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) * 0.5
+            mid_20 = (verts[f_tris[:, 2]] + verts[f_tris[:, 0]]) * 0.5
+            n_mid_01 = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]]) * 0.5
+            n_mid_12 = (nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) * 0.5
+            n_mid_20 = (nrms[f_tris[:, 2]] + nrms[f_tris[:, 0]]) * 0.5
+            all_verts.extend([mid_01, mid_12, mid_20])
+            all_nrms.extend([n_mid_01, n_mid_12, n_mid_20])
+
+    v_pts = np.vstack(all_verts)
+    v_nrms = np.vstack(all_nrms)
+
     # Transform to camera space
     T = np.asarray(camera.transform, dtype=np.float64)
     R = T[:3, :3]
     t = T[:3, 3]
-
     cam_pos = np.asarray(camera.position, dtype=np.float64)
 
-    # Transform vertices to camera space: p_cam = R @ p_world + t
-    verts_cam = (R @ verts.T).T + t
+    pts_cam = (R @ v_pts.T).T + t
 
     # Simple pinhole projection
     fx = fy = float(max(h, w))
     cx, cy = w / 2.0, h / 2.0
 
-    z = verts_cam[:, 2]
+    z = pts_cam[:, 2]
+    in_front = z > 0.01
 
-    # Project to pixel coordinates
-    px = fx * verts_cam[:, 0] / np.clip(z, 1e-4, None) + cx
-    py = fy * verts_cam[:, 1] / np.clip(z, 1e-4, None) + cy
+    px = (fx * pts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
+    py = (fy * pts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
 
-    # Compute view direction for cos_theta_v weighting
-    view_dirs = verts - cam_pos[np.newaxis, :]
+    view_dirs = v_pts - cam_pos[np.newaxis, :]
     view_dist = np.linalg.norm(view_dirs, axis=-1, keepdims=True)
-    view_dist[view_dist < 1e-8] = 1.0
+    view_dist = np.maximum(view_dist, 1e-8)
     view_dirs = view_dirs / view_dist
 
-    cos_theta = np.sum(nrms * (-view_dirs), axis=-1)
+    cos_theta = np.sum(v_nrms * (-view_dirs), axis=-1)
     cos_theta = np.clip(cos_theta, 0.0, 1.0)
 
     # Transform normals to camera space
-    nrms_cam = (R @ nrms.T).T
+    nrms_cam = (R @ v_nrms.T).T
 
     normal_map = np.zeros((h, w, 3), dtype=np.float64)
     weight_map = np.zeros((h, w, 1), dtype=np.float64)
     depth_buf = np.full((h, w), np.inf, dtype=np.float64)
 
-    if faces is not None and len(faces) > 0:
-        f_arr = np.asarray(faces, dtype=np.int64)
-        for tri in f_arr:
-            i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
-            z0, z1, z2 = float(z[i0]), float(z[i1]), float(z[i2])
-            if z0 <= 0.01 or z1 <= 0.01 or z2 <= 0.01:
-                continue
+    valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
+    indices = np.where(valid)[0]
 
-            x0, y0 = px[i0], py[i0]
-            x1, y1 = px[i1], py[i1]
-            x2, y2 = px[i2], py[i2]
-
-            min_x = max(int(np.floor(min(x0, x1, x2))), 0)
-            max_x = min(int(np.ceil(max(x0, x1, x2))), w - 1)
-            min_y = max(int(np.floor(min(y0, y1, y2))), 0)
-            max_y = min(int(np.ceil(max(y0, y1, y2))), h - 1)
-            if min_x > max_x or min_y > max_y:
-                continue
-
-            det = float((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0))
-            if abs(det) < 1e-8:
-                continue
-
-            for py_i in range(min_y, max_y + 1):
-                for px_i in range(min_x, max_x + 1):
-                    w0 = ((x1 - px_i) * (y2 - py_i) - (y1 - py_i) * (x2 - px_i)) / det
-                    w1 = ((x2 - px_i) * (y0 - py_i) - (y2 - py_i) * (x0 - px_i)) / det
-                    w2 = 1.0 - w0 - w1
-                    if w0 >= -1e-4 and w1 >= -1e-4 and w2 >= -1e-4:
-                        zi = float(w0 * z0 + w1 * z1 + w2 * z2)
-                        if zi < depth_buf[py_i, px_i]:
-                            depth_buf[py_i, px_i] = zi
-                            normal_map[py_i, px_i] = (
-                                w0 * nrms_cam[i0] + w1 * nrms_cam[i1] + w2 * nrms_cam[i2]
-                            )
-                            weight_map[py_i, px_i, 0] = max(
-                                0.0,
-                                float(w0 * cos_theta[i0] + w1 * cos_theta[i1] + w2 * cos_theta[i2]),
-                            )
-    else:
-        # Vertex scatter fallback
-        in_front = z > 0.01
-        px_int = px.astype(np.int32)
-        py_int = py.astype(np.int32)
-        valid = in_front & (px_int >= 0) & (px_int < w) & (py_int >= 0) & (py_int < h) & (cos_theta > 0.05)
-        indices = np.where(valid)[0]
-
-        for idx in indices:
-            xi, yi, zi = int(px_int[idx]), int(py_int[idx]), float(z[idx])
-            if zi < depth_buf[yi, xi]:
-                depth_buf[yi, xi] = zi
-                normal_map[yi, xi] = nrms_cam[idx]
-                weight_map[yi, xi, 0] = cos_theta[idx]
+    for idx in indices:
+        xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
+        if zi < depth_buf[yi, xi]:
+            depth_buf[yi, xi] = zi
+            normal_map[yi, xi] = nrms_cam[idx]
+            weight_map[yi, xi, 0] = cos_theta[idx]
 
     valid_mask = weight_map[..., 0] > 0.0
     nrm_lens = np.linalg.norm(normal_map, axis=-1, keepdims=True)
-    nrm_lens[nrm_lens < 1e-12] = 1.0
+    nrm_lens = np.maximum(nrm_lens, 1e-12)
     normal_map = normal_map / nrm_lens
 
     return normal_map, weight_map, valid_mask
