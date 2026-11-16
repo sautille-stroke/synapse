@@ -22,3 +22,10 @@ local_path_override(
     module_name = "aether",
     path = "../../../aether",
 )
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.12",
+    ignore_root_user_error = True,
+)

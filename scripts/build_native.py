@@ -58,7 +58,9 @@ def _find_bazel() -> str | None:
     return None
 
 
-def _build_with_bazel(repo_root: Path, bazel_bin: str, quiet: bool = False) -> Path | None:
+def _build_with_bazel(
+    repo_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 15.0
+) -> Path | None:
     """Build _c_geometry using Bazel."""
     csrc_dir = repo_root / "csrc" / "geometry"
     config_flag = f"--config={_get_platform_config()}"
@@ -66,7 +68,19 @@ def _build_with_bazel(repo_root: Path, bazel_bin: str, quiet: bool = False) -> P
     if not quiet:
         print(f"[build_native] Running Bazel in {csrc_dir}: {' '.join(cmd)}")
 
-    result = subprocess.run(cmd, cwd=str(csrc_dir), capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            cmd, cwd=str(csrc_dir), capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        if not quiet:
+            print(f"[build_native] Bazel build timed out after {timeout}s", file=sys.stderr)
+        return None
+    except Exception as e:
+        if not quiet:
+            print(f"[build_native] Bazel invocation error: {e}", file=sys.stderr)
+        return None
+
     if result.returncode != 0:
         if not quiet:
             print("[build_native] Bazel build failed:", file=sys.stderr)
