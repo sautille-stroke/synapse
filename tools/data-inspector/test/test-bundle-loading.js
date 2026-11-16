@@ -449,7 +449,7 @@ test('validateShmName enforces POSIX rules and macOS PSHMNAMLEN', () => {
   assert.strictEqual(bad3.valid, false);
 });
 
-test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
+test('ShmFrameReader parses triple-buffered SHM header and pixel slot with Seqlock', () => {
   const w = 4;
   const h = 4;
   const frameBytes = w * h * 4;
@@ -462,7 +462,7 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
   buf.writeUInt32LE(h, 12);
   buf.writeUInt32LE(2, 16); // write_idx = slot 2
   buf.writeUInt32LE(SHM_BUFFER_COUNT, 20);
-  buf.writeBigUInt64LE(5n, 24); // frame_ready = 5
+  buf.writeBigUInt64LE(6n, 24); // frame_ready = 6 (even = stable)
   buf.writeFloatLE(60.0, 32);
   buf.writeFloatLE(0.016, 36);
   buf.writeUInt8(1, 40); // wireframe
@@ -490,7 +490,7 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
     assert.strictEqual(polled.header.width, w);
     assert.strictEqual(polled.header.height, h);
     assert.strictEqual(polled.header.writeIdx, 2);
-    assert.strictEqual(polled.header.frameReady, 5);
+    assert.strictEqual(polled.header.frameReady, 6);
     assert.strictEqual(polled.header.debugView, 1);
     assert.strictEqual(polled.pixels[0], 42);
     assert.strictEqual(polled.pixels[1], 84);
@@ -499,9 +499,55 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot', () => {
 
     // Subsequent poll without frame_ready increment returns null (spin-lock dedup).
     assert.strictEqual(reader.pollOnce(), null);
+
+    // Test Seqlock write-in-progress: odd frame_ready should be ignored
+    buf.writeBigUInt64LE(7n, 24); // odd -> write actively in progress
+    fs.writeFileSync(tmpShmFile, buf);
+    assert.strictEqual(reader.pollOnce(), null, 'Odd frameReady must be skipped as write-in-progress');
+
+    // Next even frame_ready should be read successfully
+    buf.writeBigUInt64LE(8n, 24); // even -> stable published frame
+    fs.writeFileSync(tmpShmFile, buf);
+    const polled2 = reader.pollOnce();
+    assert.ok(polled2, 'Next even frameReady should be read successfully');
+    assert.strictEqual(polled2.header.frameReady, 8);
+
     reader.close();
   } finally {
     fs.rmSync(tmpShmFile, { force: true });
+  }
+});
+
+test('BundleManager rejects symlink escaping bundle root directory', () => {
+  const tmpDir = path.join(os.tmpdir(), `test-symlink-bundle-${process.pid}`);
+  const outsideDir = path.join(os.tmpdir(), `test-symlink-outside-${process.pid}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.mkdirSync(outsideDir, { recursive: true });
+
+  const outsideFile = path.join(outsideDir, 'secret.obj');
+  fs.writeFileSync(outsideFile, 'v 0 0 0\n');
+
+  const symlinkPath = path.join(tmpDir, 'symlink_model.obj');
+  try {
+    fs.symlinkSync(outsideFile, symlinkPath);
+    const manifest = {
+      schema_version: 'inspection.v1.0',
+      bundle_id: 'test_symlink_001',
+      sources: {
+        source_model: 'symlink_model.obj',
+      },
+    };
+    fs.writeFileSync(path.join(tmpDir, 'bundle.json'), JSON.stringify(manifest));
+
+    const mgr = new BundleManager();
+    const res = mgr.loadBundle(tmpDir);
+    assert.strictEqual(res.ok, false);
+    assert.ok(res.error.includes('symlink') || res.error.includes('Symlink'));
+  } catch (err) {
+    if (err.code !== 'EPERM') throw err;
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });
 
@@ -579,8 +625,8 @@ if (nativeBin) {
     } finally {
       reader.close();
       try {
-        const shmPath = path.join('/dev/shm', shmName.replace(/^\/+/, ''));
-        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+        const targetPath = resolveShmFilePath(shmName);
+        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
       } catch (_) { /* ignore */ }
       fs.rmSync(shotPath, { force: true });
     }

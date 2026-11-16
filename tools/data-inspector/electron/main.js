@@ -1,7 +1,7 @@
 // electron/main.js — Electron main process for the Synapse Data Inspector.
 // Manages the BrowserWindow, IPC channels, and the native C++ subprocess.
 // H6-P0-10: security hardening (will-navigate, setWindowOpenHandler, CDP gate).
-// H6-P0-10: replace per-frame multi-MB IPC copy with header-only notification.
+// PR-105: drop-oldest frame throttle, strict will-navigate, dialog save screenshot.
 'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
@@ -43,12 +43,13 @@ function createWindow() {
     show: true,
   });
 
+  const appIndexFileUrl = `file://${path.resolve(inspectorRoot, 'renderer', 'index.html').replace(/\\/g, '/')}`;
   mainWindow.loadFile(path.join(inspectorRoot, 'renderer', 'index.html'));
 
-  // ─── Security: prevent navigation away from app ─────────────────
+  // ─── Security: strictly prevent navigation away from local app ────
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const appOrigin = `file://${path.resolve(inspectorRoot, 'renderer').replace(/\\/g, '/')}`;
-    if (!url.startsWith(appOrigin) && !url.startsWith('file://')) {
+    const rendererPrefix = `file://${path.resolve(inspectorRoot, 'renderer').replace(/\\/g, '/')}/`;
+    if (url !== appIndexFileUrl && !url.startsWith(rendererPrefix)) {
       event.preventDefault();
       console.warn('[security] Blocked navigation to:', url);
     }
@@ -65,7 +66,6 @@ function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // Disable devtools in production.
     mainWindow.webContents.on('devtools-opened', () => {
       mainWindow.webContents.closeDevTools();
     });
@@ -117,6 +117,20 @@ ipcMain.handle('open-bundle-dialog', async () => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('save-screenshot-dialog', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Viewport Screenshot',
+    defaultPath: 'viewport_screenshot.ppm',
+    filters: [
+      { name: 'PPM Image', extensions: ['ppm'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || !result.filePath) return null;
+  return result.filePath;
+});
+
 ipcMain.handle('load-bundle', async (_event, bundlePath) => {
   return bundleManager.loadBundle(bundlePath);
 });
@@ -127,8 +141,8 @@ ipcMain.handle('get-bundle-info', () => {
 
 // ─── Native process IPC ──────────────────────────────────────────
 ipcMain.handle('native-start', (_event, bundlePath, width, height) => {
-  const safeWidth = Math.max(1, Math.min(7680, Number(width) || 1280));
-  const safeHeight = Math.max(1, Math.min(4320, Number(height) || 720));
+  const safeWidth = Math.max(1, Math.min(8192, Number(width) || 1280));
+  const safeHeight = Math.max(1, Math.min(8192, Number(height) || 720));
   return nativeProc.start(bundlePath, safeWidth, safeHeight);
 });
 ipcMain.handle('native-stop', () => {
@@ -152,24 +166,35 @@ function canSendToRenderer() {
   );
 }
 
-// H6-P0-10: Replace per-frame multi-MB IPC copy with header-only notification.
-// The SHM region is read directly by the native process; we only forward the
-// lightweight header metadata to the renderer. The renderer uses the SHM path
-// (exposed via preload) to read pixel data on demand, or we batch-send only
-// when the frame has actually changed (dirty frame notification).
+// PR-105: Drop-oldest frame throttle preventing main event loop starvation
 let lastFrameTime = 0;
 const FRAME_IPC_INTERVAL = 33; // ~30fps throttle
+let pendingFrame = null;
+let frameSendScheduled = false;
+
 nativeProc.on('frame', (frame) => {
-  if (canSendToRenderer()) {
-    const now = Date.now();
-    if (now - lastFrameTime >= FRAME_IPC_INTERVAL) {
-      lastFrameTime = now;
-      // Send header + pixels — the SHM reader already ensures tear-free reads
-      // via sequence-number verification, so this is a clean frame.
-      mainWindow.webContents.send(
-        'native-frame', frame.header, frame.pixels
-      );
-    }
+  if (!canSendToRenderer()) return;
+
+  pendingFrame = frame;
+
+  const now = Date.now();
+  if (now - lastFrameTime >= FRAME_IPC_INTERVAL) {
+    lastFrameTime = now;
+    const toSend = pendingFrame;
+    pendingFrame = null;
+    mainWindow.webContents.send('native-frame', toSend.header, toSend.pixels);
+  } else if (!frameSendScheduled) {
+    frameSendScheduled = true;
+    const delay = Math.max(1, FRAME_IPC_INTERVAL - (now - lastFrameTime));
+    setTimeout(() => {
+      frameSendScheduled = false;
+      if (pendingFrame && canSendToRenderer()) {
+        lastFrameTime = Date.now();
+        const toSend = pendingFrame;
+        pendingFrame = null;
+        mainWindow.webContents.send('native-frame', toSend.header, toSend.pixels);
+      }
+    }, delay).unref?.();
   }
 });
 

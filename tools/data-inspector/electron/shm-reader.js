@@ -1,6 +1,6 @@
 // electron/shm-reader.js — Shared-memory frame reader for the Data Inspector.
 // Reads triple-buffered frames written by InspectorShmServer (@aether//pal:shm).
-// Uses sequence-number spin-lock for tear-free reads and dirty-frame detection.
+// Uses strict sequence-number lock (Seqlock) for tear-free reads and dirty-frame detection.
 'use strict';
 
 const EventEmitter = require('events');
@@ -22,7 +22,7 @@ const OFF_WIDTH       = 8;   // u32
 const OFF_HEIGHT      = 12;  // u32
 const OFF_WRITE_IDX   = 16;  // u32 (atomic latest completed buffer index)
 const OFF_BUF_COUNT   = 20;  // u32 (3 for triple-buffering)
-const OFF_FRAME_RDY   = 24;  // u64 (atomic monotonic frame counter)
+const OFF_FRAME_RDY   = 24;  // u64 (atomic monotonic frame counter / Seqlock)
 const OFF_FPS         = 32;  // f32
 const OFF_DELTA       = 36;  // f32
 const OFF_DEBUG_VIEW  = 40;  // u8
@@ -63,7 +63,7 @@ function validateShmName(shmName) {
 /**
  * Resolve a POSIX SHM name (e.g. "/inspector-frame-123") to its backing path.
  * On Linux, POSIX shm_open() creates files under /dev/shm/<name>.
- * On macOS / other platforms, falls back to os.tmpdir().
+ * On macOS / other platforms, falls back to os.tmpdir() or /tmp.
  * @param {string} shmName
  * @returns {string}
  */
@@ -76,13 +76,24 @@ function resolveShmFilePath(shmName) {
     return shmName;
   }
   const cleanName = shmName.replace(/^\/+/, '');
-  // Linux: /dev/shm is the standard POSIX SHM backing store.
+  // Linux: /dev/shm is standard POSIX SHM backing store.
   const devShmPath = path.join('/dev/shm', cleanName);
+  if (fs.existsSync(devShmPath)) {
+    return devShmPath;
+  }
   if (fs.existsSync('/dev/shm')) {
     return devShmPath;
   }
-  // macOS / fallback: use tmpdir.
-  return path.join(os.tmpdir(), cleanName);
+  // macOS / fallback: use tmpdir or /tmp
+  const slashTmp = path.join('/tmp', cleanName);
+  if (fs.existsSync(slashTmp)) {
+    return slashTmp;
+  }
+  const tmpPath = path.join(os.tmpdir(), cleanName);
+  if (fs.existsSync(tmpPath)) {
+    return tmpPath;
+  }
+  return tmpPath;
 }
 
 /**
@@ -108,7 +119,7 @@ function parseShmHeader(buf) {
   const deltaTime = buf.readFloatLE(OFF_DELTA);
   const debugView = buf.readUInt8(OFF_DEBUG_VIEW);
 
-  if (width === 0 || height === 0 || width > 7680 || height > 4320) {
+  if (width === 0 || height === 0 || width > 8192 || height > 8192) {
     return null;
   }
 
@@ -136,7 +147,7 @@ class ShmFrameReader extends EventEmitter {
     this._timer = null;
     this._lastFrameReady = 0;
     this._headerBuf = Buffer.alloc(HEADER_SIZE);
-    this._headerBuf2 = Buffer.alloc(HEADER_SIZE);  // Second header read for spin-lock verification
+    this._headerBuf2 = Buffer.alloc(HEADER_SIZE);
   }
 
   /**
@@ -165,8 +176,11 @@ class ShmFrameReader extends EventEmitter {
 
   /**
    * Poll the SHM region once and emit 'frame' if a new completed frame is ready.
-   * Uses a sequence-number spin-lock: reads header, then pixel data, then re-reads
-   * header to verify frameReady has not changed (no torn frame).
+   * Uses strict Seqlock protocol:
+   * 1. Reads header inside the retry loop.
+   * 2. Checks if frameReady is odd (write in progress) -> spins/retries.
+   * 3. Reads pixel buffer.
+   * 4. Re-reads header and verifies (seq2 & 1) === 0 and seq1 === seq2 (no torn frame).
    * @returns {{ header: object, pixels: Buffer }|null}
    */
   pollOnce() {
@@ -175,46 +189,52 @@ class ShmFrameReader extends EventEmitter {
     }
 
     try {
-      const bytesRead = fs.readSync(this._fd, this._headerBuf, 0, HEADER_SIZE, 0);
-      if (bytesRead < HEADER_SIZE) return null;
-
-      const header = parseShmHeader(this._headerBuf);
-      if (!header || header.frameReady === 0 || header.frameReady <= this._lastFrameReady) {
-        return null;
-      }
-
-      const frameBytes = header.width * header.height * 4;
-      const slot = header.writeIdx % header.bufferCount;
-      const pixelOffset = HEADER_SIZE + slot * frameBytes;
-
-      // Spin-lock: retry if writer changes frame during our read (torn frame detection).
       for (let attempt = 0; attempt < MAX_SPIN_RETRIES; attempt++) {
+        const bytesRead = fs.readSync(this._fd, this._headerBuf, 0, HEADER_SIZE, 0);
+        if (bytesRead < HEADER_SIZE) return null;
+
+        const header1 = parseShmHeader(this._headerBuf);
+        if (!header1) return null;
+
+        const seq1 = header1.frameReady;
+        // In Seqlock: odd sequence number indicates write actively in progress
+        if ((seq1 & 1) !== 0) {
+          continue;
+        }
+
+        // Deduplication: frame counter must advance beyond last processed frame
+        if (seq1 === 0 || seq1 <= this._lastFrameReady) {
+          return null;
+        }
+
+        const frameBytes = header1.width * header1.height * 4;
+        const slot = header1.writeIdx % header1.bufferCount;
+        const pixelOffset = HEADER_SIZE + slot * frameBytes;
+
         const pixels = Buffer.allocUnsafe(frameBytes);
         const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
         if (pixRead < frameBytes) {
           return null;
         }
 
-        // Re-read header to verify frame counter hasn't changed.
+        // Re-read header to verify frame counter hasn't changed during pixel read
         const verifyRead = fs.readSync(this._fd, this._headerBuf2, 0, HEADER_SIZE, 0);
         if (verifyRead < HEADER_SIZE) return null;
 
-        const verifyHeader = parseShmHeader(this._headerBuf2);
-        if (!verifyHeader) return null;
+        const header2 = parseShmHeader(this._headerBuf2);
+        if (!header2) return null;
 
-        // If frameReady is still the same, we have a consistent (tear-free) read.
-        if (verifyHeader.frameReady === header.frameReady) {
-          this._lastFrameReady = header.frameReady;
-          const frame = { header, pixels };
+        const seq2 = header2.frameReady;
+        // Strict Seqlock verification: both even and identical
+        if ((seq2 & 1) === 0 && seq1 === seq2) {
+          this._lastFrameReady = seq1;
+          const frame = { header: header2, pixels };
           this.emit('frame', frame);
           return frame;
         }
-        // Frame changed during read — retry with the new frame.
-        // Update header for next attempt.
-        this._headerBuf2.copy(this._headerBuf);
       }
 
-      // All retries exhausted (writer is faster than reader); skip this cycle.
+      // Writer was faster than reader or write was in progress for all attempts
       return null;
     } catch (_) {
       return null;
@@ -260,13 +280,22 @@ class ShmFrameReader extends EventEmitter {
 
 module.exports = {
   ShmFrameReader,
-  parseShmHeader,
-  resolveShmFilePath,
   validateShmName,
+  resolveShmFilePath,
+  parseShmHeader,
   DEFAULT_SHM_NAME,
-  INSPECTOR_SHM_MAGIC,
-  INSPECTOR_SHM_VERSION,
   HEADER_SIZE,
   SHM_BUFFER_COUNT,
-  MACOS_PSHMNAMLEN,
+  INSPECTOR_SHM_MAGIC,
+  INSPECTOR_SHM_VERSION,
+  OFF_MAGIC,
+  OFF_VERSION,
+  OFF_WIDTH,
+  OFF_HEIGHT,
+  OFF_WRITE_IDX,
+  OFF_BUF_COUNT,
+  OFF_FRAME_RDY,
+  OFF_FPS,
+  OFF_DELTA,
+  OFF_DEBUG_VIEW,
 };
