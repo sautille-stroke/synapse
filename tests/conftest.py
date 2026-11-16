@@ -20,10 +20,10 @@ _STRICT_DEPS = os.environ.get("SYNAPSE_CI_STRICT_DEPS", "0") == "1"
 def pytest_runtest_makereport(
     item: pytest.Item,
     call: pytest.CallInfo[None],
-) -> Generator[None, None, None]:
+) -> Generator[None, Any, None]:
     """Fail-fast on skipped tests when SYNAPSE_CI_STRICT_DEPS=1."""
     outcome = yield
-    rep = outcome.get_result()
+    rep: Any = outcome.get_result()
     if _STRICT_DEPS and rep.skipped and rep.when in ("setup", "call"):
         rep.outcome = "failed"
         rep.longrepr = (
