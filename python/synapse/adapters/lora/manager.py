@@ -299,7 +299,9 @@ class MultiLoRAManager:
                 .transpose(0, 1, 3, 2, 4)
                 .reshape(t, h_ds, w_ds, spatial_block * spatial_block)
             )
-            dominant = stats.mode(blocks, axis=-1).mode.squeeze(-1)
+            dominant = np.asarray(
+                stats.mode(blocks, axis=-1, keepdims=False).mode
+            ).reshape(t, h_ds, w_ds)
             return np.isin(dominant, list(target_entity_ids))
         except ImportError:
             mask = np.zeros((t, h_ds, w_ds), dtype=bool)
