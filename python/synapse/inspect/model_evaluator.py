@@ -291,7 +291,7 @@ def _default_load_mesh(p: str) -> Any:
         return mesh.normalize()
     try:
         import trimesh
-        tm = trimesh.load(p, force="mesh")
+        tm: Any = trimesh.load(p, force="mesh")
         mesh = MeshData(
             name=path.stem,
             vertices=np.asarray(tm.vertices, dtype=np.float32),

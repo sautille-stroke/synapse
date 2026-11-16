@@ -15,6 +15,13 @@ import numpy as np
 from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
 from synapse.render_core.mesh import MeshData, load_obj
 
+__all__ = [
+    "MeshData",
+    "load_mesh",
+    "load_obj",
+    "load_procedural",
+]
+
 # ---------------------------------------------------------------------------
 # Procedural mesh bridge
 # ---------------------------------------------------------------------------
