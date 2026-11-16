@@ -191,9 +191,8 @@ def _scenarios_dir() -> Path:
     """Locate the scenarios directory.
 
     Primary: ``synapse.bench.scenarios`` package data (wheel-friendly).
-    Fallback: ``data/scenarios/`` relative to repo root.
+    Fallback: ``python/synapse/bench/scenarios`` relative to this source file.
     """
-    # Try package data first (importlib.resources)
     try:
         pkg_files = importlib.resources.files("synapse.bench") / "scenarios"
         pkg_path = Path(str(pkg_files))
@@ -202,9 +201,12 @@ def _scenarios_dir() -> Path:
     except (TypeError, ModuleNotFoundError):
         pass
 
-    # Fallback to repo-relative data/scenarios/
-    pkg_root = Path(__file__).resolve().parent.parent.parent.parent
-    return pkg_root / "data" / "scenarios"
+    fallback_dir = Path(__file__).resolve().parent / "scenarios"
+    if fallback_dir.is_dir():
+        return fallback_dir
+    raise FileNotFoundError(
+        f"Scenarios directory not found in package resources or at {fallback_dir}"
+    )
 
 
 def list_scenarios(tier: ScenarioTier | None = None) -> list[Scenario]:
@@ -214,12 +216,9 @@ def list_scenarios(tier: ScenarioTier | None = None) -> list[Scenario]:
         return []
     scenarios = []
     for path in sorted(scenarios_dir.glob("*.json")):
-        try:
-            s = Scenario.load(path)
-            if tier is None or s.tier == tier:
-                scenarios.append(s)
-        except (json.JSONDecodeError, KeyError, ValueError):
-            continue
+        s = Scenario.load(path)
+        if tier is None or s.tier == tier:
+            scenarios.append(s)
     return scenarios
 
 

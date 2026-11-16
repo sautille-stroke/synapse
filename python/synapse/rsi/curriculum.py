@@ -13,6 +13,7 @@ and increases sampling probability for harder condition levels
 
 from __future__ import annotations
 
+import math
 import random
 from pathlib import Path
 
@@ -137,7 +138,12 @@ class CurriculumSampler:
             if factor not in bench_scores:
                 weights[factor] = 1.0
                 continue
-            score = max(0.0, min(1.0, float(bench_scores[factor])))
+            raw_score = float(bench_scores[factor])
+            if not math.isfinite(raw_score):
+                # NaN / Inf: treat as maximum weakness / failure (score = 0.0)
+                score = 0.0
+            else:
+                score = max(0.0, min(1.0, raw_score))
             if score < threshold:
                 deficit = (threshold - score) / max(threshold, 0.01)
                 weights[factor] = 1.0 + (boost - 1.0) * deficit
@@ -167,10 +173,15 @@ class CurriculumSampler:
         # Build weighted pool of (factor, level) pairs
         pool: list[tuple[str, str, float]] = []
         for factor, w in weights.items():
+            raw_val = (
+                float(bench_scores[factor]) if factor in bench_scores else 1.0
+            )
             is_weak = (
                 factor in bench_scores
-                and float(bench_scores[factor])
-                < self._config.weakness_threshold
+                and (
+                    not math.isfinite(raw_val)
+                    or raw_val < self._config.weakness_threshold
+                )
             )
             for i, level in enumerate(_DIFFICULTY_LEVELS):
                 if i > self._config.max_level:

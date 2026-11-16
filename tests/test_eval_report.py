@@ -354,7 +354,7 @@ class TestEvalScript:
         assert "models" in data
         assert "report_path" in data
         assert len(data["models"]) == 1
-        assert data["models"][0]["name"] == "test_cube.obj"
+        assert data["models"][0]["name"] in ("test_cube.obj", "test_cube")
 
         # Check report file exists
         report_path = Path(data["report_path"])

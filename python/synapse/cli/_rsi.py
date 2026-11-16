@@ -10,7 +10,6 @@ from synapse.cli.common import (
     ContractValidationError,
     ExitCode,
     Path,
-    QualityGateError,
     SynapseError,
     _run_with_json_mode,
     argparse,
@@ -208,48 +207,43 @@ def _cmd_rsi_gate_promote(
         baseline_temporal = float(baseline_temporal_raw)  # type: ignore[arg-type]
         candidate_temporal = float(candidate_temporal_raw)  # type: ignore[arg-type]
 
-        # Parse scenarios if provided
-        scenarios_raw = getattr(args, "scenarios", None)
-        scenarios_list: list[BenchScenarioScore] = []
-        if scenarios_raw:
-            sc_p = Path(scenarios_raw)
+        # Parse baseline and candidate scenarios separately
+        base_scenarios_raw = getattr(args, "baseline_scenarios", None) or getattr(args, "scenarios", None)
+        cand_scenarios_raw = getattr(args, "candidate_scenarios", None) or getattr(args, "scenarios", None)
+
+        def _parse_scenarios(raw: Any) -> list[BenchScenarioScore]:
+            if not raw:
+                return []
+            sc_p = Path(raw)
             if sc_p.is_file():
                 sc_data = json.loads(sc_p.read_text(encoding="utf-8"))
             else:
-                sc_data = json.loads(scenarios_raw)
+                sc_data = json.loads(raw)
+            out: list[BenchScenarioScore] = []
             if isinstance(sc_data, list):
                 for item in sc_data:
                     if isinstance(item, dict):
-                        scenarios_list.append(BenchScenarioScore.model_validate(item))
+                        out.append(BenchScenarioScore.model_validate(item))
+            return out
 
         baseline = BenchReport(
             overall_score=baseline_overall,
             geom_score=baseline_geom,
             temporal_score=baseline_temporal,
-            scenarios=scenarios_list,
+            scenarios=_parse_scenarios(base_scenarios_raw),
         )
         candidate = BenchReport(
             overall_score=candidate_overall,
             geom_score=candidate_geom,
             temporal_score=candidate_temporal,
-            scenarios=scenarios_list,
+            scenarios=_parse_scenarios(cand_scenarios_raw),
         )
 
     result = evaluate_monotonic_promotion(
-        baseline=baseline, candidate=candidate,
+        baseline=baseline,
+        candidate=candidate,
+        raise_on_reject=True,
     )
-
-    if getattr(args, "strict", False) and not result.promoted:
-        raise QualityGateError(
-            f"Candidate model failed monotonic promotion gate: {result.failures}",
-            agent_fix_hint="Ensure candidate scores monotonically improve over baseline on overall, geom, and temporal axes.",
-            details={
-                "failures": result.failures,
-                "conditions": result.conditions,
-                "baseline": baseline.model_dump(),
-                "candidate": candidate.model_dump(),
-            },
-        )
 
     return {
         "promoted": result.promoted,
@@ -361,6 +355,14 @@ def register_rsi_subparser(
     rsi_gate.add_argument(
         "--scenarios", default=None,
         help="Optional JSON string or path to JSON file with scenario scores list",
+    )
+    rsi_gate.add_argument(
+        "--baseline-scenarios", default=None,
+        help="Optional JSON string or path to JSON file with baseline scenario scores list",
+    )
+    rsi_gate.add_argument(
+        "--candidate-scenarios", default=None,
+        help="Optional JSON string or path to JSON file with candidate scenario scores list",
     )
     rsi_gate.add_argument(
         "--strict", action="store_true", default=False,

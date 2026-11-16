@@ -299,13 +299,14 @@ def align_reference_image_to_mesh(
     best_pose: CameraPose = candidates[0]
 
     for ci, cam in enumerate(candidates):
+        cam_fov = cam.fov_deg
         # Parameterise as spherical coords (theta, phi, radius)
         pos = np.array(cam.position, dtype=np.float64)
         r = float(np.linalg.norm(pos))
         theta = math.acos(np.clip(pos[1] / max(r, 1e-10), -1, 1))
         phi = math.atan2(pos[2], pos[0])
 
-        def _neg_iou(params: np.ndarray) -> float:
+        def _neg_iou(params: np.ndarray, fov: float = cam_fov) -> float:
             th, ph, rad = params
             x = rad * math.sin(th) * math.cos(ph)
             y = rad * math.cos(th)
@@ -317,7 +318,7 @@ def align_reference_image_to_mesh(
                     np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 ).T.flatten().tolist(),
-                fov_deg=cam.fov_deg,
+                fov_deg=fov,
                 resolution=(res, res),
             )
             sil = compute_silhouette(
@@ -351,7 +352,7 @@ def align_reference_image_to_mesh(
                     np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 ).T.flatten().tolist(),
-                fov_deg=cam.fov_deg,
+                fov_deg=cam_fov,
                 resolution=(res, res),
             )
 

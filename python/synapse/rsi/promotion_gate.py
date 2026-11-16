@@ -139,6 +139,8 @@ def evaluate_monotonic_promotion(
     candidate: BenchReport,
     epsilon_min: float = 0.0,
     noise_tolerance: float = 0.0,
+    min_scenarios: int = 30,
+    raise_on_reject: bool = True,
 ) -> PromotionResult:
     """Evaluate whether candidate weights should be promoted.
 
@@ -155,6 +157,10 @@ def evaluate_monotonic_promotion(
         epsilon_min: Minimum overall score improvement required.
         noise_tolerance: Maximum allowed per-scenario regression
             (0.0 = strict zero tolerance).
+        min_scenarios: Minimum required number of scenarios when scenario
+            breakdowns are provided (default: 30).
+        raise_on_reject: Whether to raise QualityGateError if not promoted
+            (default: True).
 
     Returns:
         PromotionResult with pass/fail and quarantine entries.
@@ -162,7 +168,8 @@ def evaluate_monotonic_promotion(
     Raises:
         ContractValidationError: If scenario sets mismatch or contain
             non-finite scores (exit code 10).
-        QualityGateError: If any condition fails (exit code 40).
+        QualityGateError: If any condition fails and raise_on_reject is True
+            (exit code 40).
     """
     _validate_finite_report(baseline, "baseline")
     _validate_finite_report(candidate, "candidate")
@@ -186,6 +193,12 @@ def evaluate_monotonic_promotion(
     failures: list[str] = []
     conditions: dict[str, bool] = {}
     quarantine: list[QuarantineEntry] = []
+
+    if len(baseline.scenarios) > 0 and len(baseline.scenarios) < min_scenarios:
+        failures.append(
+            f"Condition 0 failed: Scenario count {len(baseline.scenarios)} "
+            f"< required minimum {min_scenarios}"
+        )
 
     # Condition 1: Overall score improvement
     overall_improved = (
@@ -268,7 +281,7 @@ def evaluate_monotonic_promotion(
         lora_sha256=candidate.lora_sha256,
     )
 
-    if not promoted:
+    if not promoted and raise_on_reject:
         raise QualityGateError(
             "Monotonic promotion gate failed: "
             + "; ".join(failures),

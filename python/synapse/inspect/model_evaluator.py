@@ -215,6 +215,7 @@ def render_orbit_views(
     """Render orbit multi-view RGB images, base64 PNGs, and view labels."""
     from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
     from synapse.render_core.rasterizer import SoftwareRasterizer
+    from synapse.style.aces_color import linear_to_srgb
 
     cameras = generate_cameras(
         CameraTrajectoryType.ORBIT,
@@ -243,10 +244,9 @@ def render_orbit_views(
             camera=cam,
             entity_name="eval_model",
         )
-        rgb_f = np.clip(
-            np.asarray(frame.direct_radiance, dtype=np.float32), 0.0, 1.0
-        )
-        rgb_u8 = (rgb_f * 255.0).astype(np.uint8)
+        rad_f = np.asarray(frame.direct_radiance, dtype=np.float32)
+        rgb_srgb = np.clip(linear_to_srgb(rad_f), 0.0, 1.0)
+        rgb_u8 = (rgb_srgb * 255.0).astype(np.uint8)
         rgb_frames.append(rgb_u8)
         png_bytes = encode_png_rgb(rgb_u8)
         screenshots.append(base64.b64encode(png_bytes).decode("ascii"))
@@ -384,6 +384,12 @@ def evaluate_single_model(
         num_boundary_edges=n_boundary,
     )
 
+    floating_island_faces = 0
+    if geo_res.num_connected_components > 1:
+        floating_island_faces = max(
+            0, int(mesh.num_faces - (mesh.num_faces // geo_res.num_connected_components))
+        )
+
     metrics: dict[str, float] = {
         "is_manifold": 1.0 if geo_res.is_manifold else 0.0,
         "is_watertight": 1.0 if geo_res.is_watertight else 0.0,
@@ -393,6 +399,7 @@ def evaluate_single_model(
         "face_count": float(mesh.num_faces),
         "connected_components": float(geo_res.num_connected_components),
         "boundary_edges": float(n_boundary),
+        "floating_island_faces": float(floating_island_faces),
     }
 
     if log_fn:
@@ -540,15 +547,19 @@ def evaluate_3d_models_directory(
         )
 
     for i, model_path in enumerate(model_files, 1):
-        rel_key = model_path.relative_to(input_dir).with_suffix("").as_posix()
+        rel_posix = model_path.relative_to(input_dir).as_posix()
+        rel_stem = model_path.relative_to(input_dir).with_suffix("").as_posix()
         if log_fn:
-            log_fn(f"[{i}/{len(model_files)}] {rel_key}")
-        ref_mesh = reference_meshes.get(rel_key)
-        if ref_mesh is None:
-            ref_mesh = reference_meshes.get(model_path.stem)
+            log_fn(f"[{i}/{len(model_files)}] {rel_posix}")
+        ref_mesh = (
+            reference_meshes.get(rel_posix)
+            or reference_meshes.get(rel_stem)
+            or reference_meshes.get(model_path.name)
+            or reference_meshes.get(model_path.stem)
+        )
         if reference_dir is not None and ref_mesh is None and log_fn:
             log_fn(
-                f"  Warning: no matching reference mesh found for {rel_key} in {reference_dir}"
+                f"  Warning: no matching reference mesh found for {rel_posix} in {reference_dir}"
             )
         res = evaluate_single_model(
             model_path=model_path,
@@ -556,7 +567,7 @@ def evaluate_3d_models_directory(
             resolution=resolution,
             num_views=num_views,
             reference_mesh=ref_mesh,
-            model_name=rel_key,
+            model_name=rel_stem,
             log_fn=log_fn,
             geometry_backend=geometry_backend,
         )
