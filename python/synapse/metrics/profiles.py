@@ -52,6 +52,7 @@ _METRIC_DIRECTIONS: dict[str, str] = {
     # Roundtrip (additional)
     "f_score_5mm": _HIGHER,
     "watertight_pct": _HIGHER,
+    "non_manifold_edges": _LOWER,
     # Image quality & Synapse-Bench scenario aliases
     "psnr_db": _HIGHER,
     "ssim": _HIGHER,
@@ -105,6 +106,9 @@ TRACK_A_ASSET: dict[str, float] = {
     "albedo_delta_e00": 2.5,
     "border_ring_ciede2000": 2.5,
     "light_dir_error_deg": 10.0,
+    "non_manifold_edges": 0.0,
+    "f_score_5mm": 0.85,
+    "watertight_pct": 100.0,
 }
 
 RSI_PROMOTION: dict[str, float] = {
@@ -124,6 +128,9 @@ RSI_PROMOTION: dict[str, float] = {
     "albedo_delta_e00": 2.5,
     "border_ring_ciede2000": 2.0,
     "light_dir_error_deg": 5.0,
+    "non_manifold_edges": 0.0,
+    "f_score_5mm": 0.95,
+    "watertight_pct": 100.0,
 }
 
 RSI_PROMOTION_TARGET: dict[str, float] = {
@@ -143,6 +150,9 @@ RSI_PROMOTION_TARGET: dict[str, float] = {
     "albedo_delta_e00": 2.0,
     "border_ring_ciede2000": 1.5,
     "light_dir_error_deg": 5.0,
+    "non_manifold_edges": 0.0,
+    "f_score_5mm": 0.98,
+    "watertight_pct": 100.0,
 }
 
 _PROFILES: dict[GateProfileName, dict[str, float]] = {

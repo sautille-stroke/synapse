@@ -215,8 +215,9 @@ def compute_chamfer_distance_mm(
     Returns:
         Symmetric Chamfer distance in millimetres.
     """
+    seed_b = seed if mesh_or_points_a is mesh_or_points_b else seed + 1
     pts_a = _extract_or_sample_points(mesh_or_points_a, faces_a, num_samples, seed)
-    pts_b = _extract_or_sample_points(mesh_or_points_b, faces_b, num_samples, seed)
+    pts_b = _extract_or_sample_points(mesh_or_points_b, faces_b, num_samples, seed_b)
     return chamfer_mm(pts_a, pts_b, reduction=reduction)
 
 
@@ -280,11 +281,15 @@ def _is_mesh_watertight(faces: np.ndarray) -> bool:
 
     directed_edges: dict[tuple[int, int], int] = {}
     undirected_edges: dict[tuple[int, int], int] = {}
+    from collections import defaultdict
 
-    for poly in f:
+    vertex_faces: dict[int, list[int]] = defaultdict(list)
+
+    for f_idx, poly in enumerate(f):
         n = len(poly)
         for i in range(n):
             u, w = int(poly[i]), int(poly[(i + 1) % n])
+            vertex_faces[u].append(f_idx)
             directed_edges[(u, w)] = directed_edges.get((u, w), 0) + 1
             undirected_key = (min(u, w), max(u, w))
             undirected_edges[undirected_key] = undirected_edges.get(undirected_key, 0) + 1
@@ -299,6 +304,39 @@ def _is_mesh_watertight(faces: np.ndarray) -> bool:
         if count != 1:
             return False
         if directed_edges.get((w, u), 0) != 1:
+            return False
+
+    # Vertex manifold check: link of each vertex must form a single closed simple cycle (prevents pinch vertices)
+    for v, f_indices in vertex_faces.items():
+        if len(f_indices) < 3:
+            return False
+        next_vertex: dict[int, int] = {}
+        for fi in f_indices:
+            poly = f[fi]
+            n = len(poly)
+            for i in range(n):
+                if int(poly[i]) == v:
+                    a = int(poly[(i + 1) % n])
+                    b = int(poly[(i + 2) % n])
+                    if a in next_vertex:
+                        return False
+                    next_vertex[a] = b
+                    break
+        if not next_vertex:
+            return False
+        start = next(iter(next_vertex.keys()))
+        curr = start
+        visited_count = 0
+        while True:
+            if curr not in next_vertex:
+                return False
+            curr = next_vertex[curr]
+            visited_count += 1
+            if curr == start:
+                break
+            if visited_count > len(next_vertex):
+                return False
+        if visited_count != len(next_vertex):
             return False
 
     return True
@@ -399,12 +437,12 @@ def foot_sliding_cm(
     """Mean foot sliding distance during ground contact (cm).
 
     Args:
-        foot_positions: ``[T, num_feet, 3]`` world-space positions.
+        foot_positions: ``[T, num_feet, 3]`` world-space positions (Y-up convention).
         contact_phases: ``[T, num_feet]`` bool array (``True`` during
             ground contact).
 
     Returns:
-        Mean per-frame horizontal displacement during contact in
+        Mean per-frame horizontal displacement on ground XZ plane during contact in
         **centimetres** (scalar float).
     """
     pos = np.asarray(foot_positions, dtype=np.float64)
@@ -414,9 +452,9 @@ def foot_sliding_cm(
     if t_count < 2:
         return 0.0
 
-    # Horizontal displacement between consecutive contact frames
+    # Horizontal displacement on Y-up ground plane (XZ plane)
     delta = pos[1:] - pos[:-1]  # [T-1, num_feet, 3]
-    horiz = np.sqrt(delta[..., 0] ** 2 + delta[..., 1] ** 2)  # XY plane
+    horiz = np.sqrt(delta[..., 0] ** 2 + delta[..., 2] ** 2)  # XZ plane
 
     # Both frames must be in contact for the slide to count
     both_contact = contact[:-1] & contact[1:]  # [T-1, num_feet]

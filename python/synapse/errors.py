@@ -67,7 +67,7 @@ class SynapseError(Exception):
         }
 
 
-class ContractValidationError(SynapseError):
+class ContractValidationError(SynapseError, ValueError):
     """FGPP schema / contract violation (exit_code=10).
 
     Raised when metadata.json fails schema validation, channel names

@@ -71,14 +71,21 @@ def _fallback_temporal_warp_error(
     metric: Literal["l1", "rmse"] = "l1",
 ) -> float:
     """Warp each frame *t* to *t+1* using motion vectors and return error (L1 or RMSE)."""
-    frames = np.asarray(frames, dtype=np.float32)
+    raw_frames = np.asarray(frames)
+    if raw_frames.dtype == np.uint8 or (
+        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
+    ):
+        frames_f = raw_frames.astype(np.float32) / 255.0
+    else:
+        frames_f = raw_frames.astype(np.float32)
+
     motion_vectors = np.asarray(motion_vectors, dtype=np.float32)
 
-    t_count = frames.shape[0] - 1
+    t_count = frames_f.shape[0] - 1
     if t_count <= 0:
         return 0.0
 
-    h, w = frames.shape[1], frames.shape[2]
+    h, w = frames_f.shape[1], frames_f.shape[2]
 
     # Build base coordinate grids
     gy, gx = np.mgrid[0:h, 0:w].astype(np.float32)  # [H, W] each
@@ -86,15 +93,28 @@ def _fallback_temporal_warp_error(
     error_sum = 0.0
     for t in range(t_count):
         mv = motion_vectors[t]  # [H, W, 2]
-        src_x = gx + mv[..., 0]  # source x in frame t
-        src_y = gy + mv[..., 1]  # source y in frame t
+        # Reverse motion vector -mv per MotionVector.XY convention
+        src_x = np.clip(gx - mv[..., 0], 0.0, float(w - 1))
+        src_y = np.clip(gy - mv[..., 1], 0.0, float(h - 1))
 
-        # Nearest-neighbour sampling (clamp to border)
-        sx = np.clip(np.round(src_x).astype(np.int32), 0, w - 1)
-        sy = np.clip(np.round(src_y).astype(np.int32), 0, h - 1)
+        # Bilinear interpolation
+        x0 = np.floor(src_x).astype(np.int32)
+        x1 = np.minimum(x0 + 1, w - 1)
+        y0 = np.floor(src_y).astype(np.int32)
+        y1 = np.minimum(y0 + 1, h - 1)
 
-        warped = frames[t][sy, sx]  # [H, W, 3]
-        target = frames[t + 1]      # [H, W, 3]
+        wa = ((x1 - src_x) * (y1 - src_y))[..., np.newaxis]
+        wb = ((x1 - src_x) * (src_y - y0))[..., np.newaxis]
+        wc = ((src_x - x0) * (y1 - src_y))[..., np.newaxis]
+        wd = ((src_x - x0) * (src_y - y0))[..., np.newaxis]
+
+        warped = (
+            wa * frames_f[t][y0, x0]
+            + wb * frames_f[t][y1, x0]
+            + wc * frames_f[t][y0, x1]
+            + wd * frames_f[t][y1, x1]
+        )
+        target = frames_f[t + 1]  # [H, W, 3]
 
         if metric == "l1":
             pixel_err = np.abs(warped - target).mean(axis=-1)  # [H, W]
@@ -128,13 +148,20 @@ def _fallback_temporal_warp_error(
 
 def _fallback_flicker_score(frames: np.ndarray) -> float:
     """Second-order temporal Laplacian energy (flicker metric)."""
-    frames = np.asarray(frames, dtype=np.float32)
-    t_count = frames.shape[0]
+    raw_frames = np.asarray(frames)
+    if raw_frames.dtype == np.uint8 or (
+        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
+    ):
+        frames_f = raw_frames.astype(np.float32) / 255.0
+    else:
+        frames_f = raw_frames.astype(np.float32)
+
+    t_count = frames_f.shape[0]
     if t_count < 3:
         return 0.0
 
     # Vectorised Laplacian over all interior frames
-    lap = frames[:-2] - 2.0 * frames[1:-1] + frames[2:]  # [T-2, H, W, 3]
+    lap = frames_f[:-2] - 2.0 * frames_f[1:-1] + frames_f[2:]  # [T-2, H, W, 3]
     energy = (lap ** 2).mean()
     return float(energy)
 
@@ -153,7 +180,7 @@ def temporal_warp_error(
     """Warp each frame *t* to *t+1* using motion vectors and return warp error.
 
     Args:
-        frames: ``[T, H, W, 3]`` float32 RGB frames in [0, 1].
+        frames: ``[T, H, W, 3]`` float32 RGB frames in [0, 1] or uint8 in [0, 255].
         motion_vectors: ``[T-1, H, W, 2]`` per-pixel displacement
             (dx, dy) from frame *t* to frame *t+1*.
         occlusion_masks: Optional ``[T-1, H, W]`` float masks where
@@ -165,14 +192,22 @@ def temporal_warp_error(
     Returns:
         Mean error across all frame pairs (scalar float).
     """
+    raw_frames = np.asarray(frames)
+    if raw_frames.dtype == np.uint8 or (
+        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
+    ):
+        frames_f = raw_frames.astype(np.float32) / 255.0
+    else:
+        frames_f = raw_frames.astype(np.float32)
+
     if _HAS_NATIVE and metric == "rmse":
         return float(
             _native_temporal_warp_error(
-                frames, motion_vectors, occlusion_masks,
+                frames_f, motion_vectors, occlusion_masks,
             )
         )
     return _fallback_temporal_warp_error(
-        frames, motion_vectors, occlusion_masks, metric=metric,
+        frames_f, motion_vectors, occlusion_masks, metric=metric,
     )
 
 
@@ -184,14 +219,22 @@ def flicker_score(frames: np.ndarray) -> float:
     pixels and valid frames.
 
     Args:
-        frames: ``[T, H, W, 3]`` float32 RGB frames.
+        frames: ``[T, H, W, 3]`` float32 RGB frames or uint8.
 
     Returns:
         Scalar float (lower is better; 0 for perfectly static content).
     """
+    raw_frames = np.asarray(frames)
+    if raw_frames.dtype == np.uint8 or (
+        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
+    ):
+        frames_f = raw_frames.astype(np.float32) / 255.0
+    else:
+        frames_f = raw_frames.astype(np.float32)
+
     if _HAS_NATIVE:
-        return float(_native_flicker_score(frames))
-    return _fallback_flicker_score(frames)
+        return float(_native_flicker_score(frames_f))
+    return _fallback_flicker_score(frames_f)
 
 
 def fvd_feature_distance(
@@ -215,17 +258,25 @@ def fvd_feature_distance(
         Scalar float FVD (lower is better; 0 for identical
         distributions).
 
-    Note:
-        Requires ``scipy`` (lazy-imported).
-
-        Uses adaptive Tikhonov regularization (epsilon * I) on covariance
-        matrices to ensure numerical stability and eliminate
-        ``LinAlgWarning: Matrix is singular`` from ``scipy.linalg.sqrtm``.
+    Raises:
+        ContractValidationError: If N < 2 or M < 2 (insufficient samples for covariance).
     """
-    from scipy.linalg import sqrtm  # lazy import
+    from synapse.errors import ContractValidationError
 
     fr = np.asarray(features_real, dtype=np.float64)
     fg = np.asarray(features_gen, dtype=np.float64)
+
+    if fr.ndim == 1:
+        fr = fr.reshape(1, -1)
+    if fg.ndim == 1:
+        fg = fg.reshape(1, -1)
+
+    if fr.shape[0] < 2 or fg.shape[0] < 2:
+        raise ContractValidationError(
+            f"FVD requires at least 2 video samples per distribution to compute covariance; "
+            f"got {fr.shape[0]} real and {fg.shape[0]} generated samples.",
+            agent_fix_hint="Provide at least 2 video feature samples for FVD covariance estimation",
+        )
 
     mu1 = fr.mean(axis=0)
     mu2 = fg.mean(axis=0)
@@ -238,12 +289,7 @@ def fvd_feature_distance(
     if sigma2.ndim == 0:
         sigma2 = sigma2.reshape(1, 1)
 
-    # Adaptive Tikhonov regularization: epsilon * I to stabilize sqrtm
-    # Use max of trace-derived epsilon and a fixed floor to handle
-    # singular/near-singular covariance matrices robustly.
-    # The product sigma1 @ sigma2 can still be singular/ill-conditioned
-    # even when both inputs are positive definite, so we regularize
-    # aggressively enough that sqrtm does not trigger LinAlgWarning.
+    # Adaptive Tikhonov regularization: epsilon * I to stabilize square root
     d = sigma1.shape[0]
     eps_floor = 1e-7
     eps1 = max(float(np.trace(sigma1)) * 1e-6, eps_floor)
@@ -252,17 +298,20 @@ def fvd_feature_distance(
     sigma2 = sigma2 + eps2 * np.eye(d, dtype=np.float64)
 
     diff = mu1 - mu2
-    covmean = sqrtm(sigma1 @ sigma2)
 
-    # Numerical cleanup — drop small imaginary components
-    if np.iscomplexobj(covmean):
-        covmean = covmean.real
+    # Robust symmetric matrix square root via eigh (zero complex/imaginary error):
+    # Tr(sqrt(sigma1 @ sigma2)) = Tr(sqrt(sigma1^(1/2) @ sigma2 @ sigma1^(1/2)))
+    vals1, vecs1 = np.linalg.eigh(sigma1)
+    s1_sqrt = vecs1 @ np.diag(np.sqrt(np.maximum(vals1, 0.0))) @ vecs1.T
+    m = s1_sqrt @ sigma2 @ s1_sqrt
+    m = 0.5 * (m + m.T)
+    tr_covmean = float(np.sum(np.sqrt(np.maximum(np.linalg.eigvalsh(m), 0.0))))
 
     fvd = float(
         diff @ diff
         + np.trace(sigma1)
         + np.trace(sigma2)
-        - 2.0 * np.trace(covmean)
+        - 2.0 * tr_covmean
     )
     return max(fvd, 0.0)
 
@@ -294,20 +343,19 @@ def compute_fvd_from_videos(
     Raises:
         BackendUnavailableError: If ``require_pretrained=True`` or
             ``allow_statistical_proxy=False`` and PyTorch/torchvision is not installed.
-        ValueError: If input video batches have fewer than 2 videos for covariance estimation.
+        ContractValidationError: If input video batches have fewer than 2 videos for covariance estimation.
     """
     is_proxy = False
 
     if feature_extractor is None:
-        # Try to build a real pretrained 3D video feature extractor (R3D-18)
         try:
-            import torch  # noqa: F401
-            import torchvision  # noqa: F401
+            from synapse.errors import BackendUnavailableError
 
             feature_extractor = _build_r3d18_extractor()
-        except ImportError:
+        except (ImportError, BackendUnavailableError):
             if require_pretrained or not allow_statistical_proxy:
                 from synapse.errors import BackendUnavailableError
+
                 raise BackendUnavailableError(
                     "PyTorch and torchvision are required for neural FVD video feature extraction. "
                     "Install synapse[gpu] or provide a custom feature_extractor callable.",
@@ -327,43 +375,61 @@ def compute_fvd_from_videos(
         feats_gen = feats_gen[np.newaxis, :]
 
     if len(feats_real) < 2 or len(feats_gen) < 2:
-        raise ValueError(
+        from synapse.errors import ContractValidationError
+
+        raise ContractValidationError(
             f"FVD requires at least 2 video samples per distribution to compute covariance; "
-            f"got {len(feats_real)} real and {len(feats_gen)} generated."
+            f"got {len(feats_real)} real and {len(feats_gen)} generated.",
+            agent_fix_hint="Provide at least 2 video samples per distribution for FVD covariance estimation",
         )
 
     fvd_value = fvd_feature_distance(feats_real, feats_gen)
     return FVDResult(value=fvd_value, is_proxy_metric=is_proxy)
 
 
-def _build_r3d18_extractor() -> Any:
+def _build_r3d18_extractor(
+    weights: Any = "DEFAULT",
+    model: Any = None,
+) -> Any:
     """Build a pretrained R3D-18 penultimate-layer feature extractor.
 
     Returns:
         A callable that takes ``[N, T, H, W, 3]`` numpy video batch and
         returns ``[N, 512]`` numpy feature vectors.
     """
-    import torch
-    import torchvision.models.video as video_models
-    from torchvision import transforms
-    # Load pretrained R3D-18 and strip the final FC layer
-    model = video_models.r3d_18(weights="DEFAULT")
-    # Remove the final fully connected layer to get penultimate features
-    model.fc = torch.nn.Identity()
+    import os
+    from synapse.errors import BackendUnavailableError
+
+    try:
+        import torch
+    except ImportError as exc:
+        raise BackendUnavailableError(
+            f"PyTorch is required for R3D-18 feature extraction: {exc}",
+            agent_fix_hint="pip install torch",
+        ) from exc
+
+    if model is None:
+        try:
+            import torchvision.models.video as video_models
+
+            model = video_models.r3d_18(weights=weights)
+        except (ImportError, OSError, Exception) as exc:
+            torch_home = os.environ.get("TORCH_HOME", "~/.cache/torch")
+            raise BackendUnavailableError(
+                f"Failed to load R3D-18 video model/weights (TORCH_HOME={torch_home}): {exc}",
+                agent_fix_hint="Install torchvision and ensure weights are cached or internet is available",
+            ) from exc
+
+    if hasattr(model, "fc") and not isinstance(model.fc, torch.nn.Identity):
+        model.fc = torch.nn.Identity()
     model.eval()
 
-    # Standard video preprocessing
-    preprocess = transforms.Compose([
-        transforms.Resize(112),
-        transforms.CenterCrop(112),
-        transforms.Normalize(
-            mean=[0.43216, 0.394666, 0.37645],
-            std=[0.22803, 0.22145, 0.216989],
-        ),
-    ])
+    # Normalization parameters on [3, 1, 1, 1] channel axis
+    mean = torch.tensor([0.43216, 0.394666, 0.37645], dtype=torch.float32).view(3, 1, 1, 1)
+    std = torch.tensor([0.22803, 0.22145, 0.216989], dtype=torch.float32).view(3, 1, 1, 1)
 
     def _extract(vids: np.ndarray | list[np.ndarray]) -> np.ndarray:
-        arr = np.asarray(vids, dtype=np.float32)
+        arr = np.asarray(vids)
         if arr.ndim == 4:
             arr = arr[np.newaxis, ...]
 
@@ -371,13 +437,29 @@ def _build_r3d18_extractor() -> Any:
         with torch.no_grad():
             for i in range(arr.shape[0]):
                 v = arr[i]  # [T, H, W, C]
-                # Convert to [C, T, H, W] tensor
-                t_video = torch.from_numpy(v).permute(3, 0, 1, 2).float()
-                # Apply preprocessing per-channel across spatial dims
-                t_video = preprocess(t_video)
-                # Add batch dim [1, C, T, H, W]
-                t_video = t_video.unsqueeze(0)
-                feats = model(t_video)  # [1, 512]
+                t_video = torch.from_numpy(v.copy() if not v.flags.writeable else v)
+                if t_video.dtype == torch.uint8 or t_video.max() > 1.0:
+                    t_video = t_video.float() / 255.0
+                else:
+                    t_video = t_video.float()
+
+                # Permute to [C, T, H, W]
+                t_video = t_video.permute(3, 0, 1, 2)  # [3, T, H, W]
+
+                # Resize spatial dims to 112x112 via trilinear interpolation if needed
+                if t_video.shape[2] != 112 or t_video.shape[3] != 112:
+                    t_video = torch.nn.functional.interpolate(
+                        t_video.unsqueeze(0),
+                        size=(t_video.shape[1], 112, 112),
+                        mode="trilinear",
+                        align_corners=False,
+                    ).squeeze(0)
+
+                # Channel-wise normalization along dim=0
+                t_video = (t_video - mean) / std
+
+                # Forward pass: shape [1, C, T, H, W]
+                feats = model(t_video.unsqueeze(0))
                 all_feats.append(feats.squeeze(0).cpu().numpy())
 
         return np.array(all_feats, dtype=np.float64)
