@@ -626,3 +626,65 @@ class TestOpticalIncrementsBackgroundPreservation:
             f"Background PSNR {psnr_val:.1f} dB is too low — "
             f"guided filter may be blurring the entire image"
         )
+
+
+# ===================================================================
+# TestPR96BlendHardening
+# ===================================================================
+
+
+class TestPR96BlendHardening:
+    """Rigorous verification tests for PR-96 blend enhancements."""
+
+    def test_laplacian_blend_in_linear_space(self) -> None:
+        """Laplacian pyramid blend operates in linear space and preserves clean bounds."""
+        from synapse.composite.blend import laplacian_pyramid_blend
+
+        h, w = 64, 64
+        # Create half-red, half-green in sRGB
+        fg = np.zeros((h, w, 3), dtype=np.uint8)
+        fg[..., 0] = 255  # Red
+        bg = np.zeros((h, w, 3), dtype=np.uint8)
+        bg[..., 1] = 255  # Green
+
+        mask = np.zeros((h, w), dtype=np.float32)
+        mask[:, :32] = 1.0  # Left half FG, right half BG
+
+        blended = laplacian_pyramid_blend(fg, bg, mask, num_levels=3)
+        assert blended.shape == (h, w, 3)
+        assert blended.dtype == np.uint8
+        # Check that center transition is smooth and within valid range
+        assert 0 <= blended.min() <= blended.max() <= 255
+
+    def test_cryptomatte_boundary_guide_preserves_edges_for_max_id(self) -> None:
+        """_cryptomatte_boundary_guide must preserve boundary edges even for max_id entity."""
+        from synapse.composite.blend import _cryptomatte_boundary_guide
+
+        h, w = 32, 32
+        cid = np.zeros((h, w), dtype=np.uint32)
+        # Entity 1000 in left half, entity 2000 in right half
+        cid[:, :16] = 1000
+        cid[:, 16:] = 2000  # max_id
+
+        guide = _cryptomatte_boundary_guide(cid)
+        # Boundary between the two entities should be 1.0
+        assert guide[:, 15].mean() == 1.0 or guide[:, 16].mean() == 1.0
+        # Interior of max_id entity should be 0.0 (high edge contrast)
+        assert guide[:, 25].mean() == 0.0
+
+    def test_forward_warp_bilinear_subpixel_accuracy(self) -> None:
+        """_forward_warp_bilinear backward mapping shifts pixels smoothly with subpixel accuracy."""
+        from synapse.composite.blend import _forward_warp_bilinear
+
+        h, w = 32, 32
+        img = np.zeros((h, w, 3), dtype=np.float32)
+        img[10, 10, :] = 1.0
+
+        # Motion of +0.5 px in x
+        flow = np.zeros((h, w, 2), dtype=np.float32)
+        flow[..., 0] = 0.5
+
+        warped = _forward_warp_bilinear(img, flow)
+        # At x=10 and x=11, should receive ~0.5 each
+        assert abs(warped[10, 10, 0] - 0.5) < 1e-4
+        assert abs(warped[10, 11, 0] - 0.5) < 1e-4

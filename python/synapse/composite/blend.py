@@ -40,6 +40,7 @@ from synapse.style.aces_color import (
     linear_srgb_to_acescg,
     linear_to_srgb,
     rgb_to_cielab,
+    soft_knee_forward_tonemap,
     soft_knee_inverse_tonemap,
     srgb_to_linear,
 )
@@ -398,14 +399,18 @@ def laplacian_pyramid_blend(
 
     alpha = alpha_mask.astype(np.float64)
 
+    # Convert to linear space to eliminate dark fringe artefacts.
+    fg_lin = srgb_to_linear(fg)
+    bg_lin = srgb_to_linear(bg)
+
     # Clamp num_levels based on image size.
     min_dim = min(fg.shape[0], fg.shape[1])
     max_levels = max(int(np.floor(np.log2(max(min_dim, 1)))), 1)
     num_levels = min(num_levels, max_levels)
 
-    # Build Laplacian pyramids for fg and bg.
-    lap_fg = _build_laplacian_pyramid(fg, num_levels)
-    lap_bg = _build_laplacian_pyramid(bg, num_levels)
+    # Build Laplacian pyramids for fg and bg in linear space.
+    lap_fg = _build_laplacian_pyramid(fg_lin, num_levels)
+    lap_bg = _build_laplacian_pyramid(bg_lin, num_levels)
 
     # Build Gaussian pyramid for the mask.
     gauss_mask = _build_gaussian_pyramid(alpha, num_levels)
@@ -419,8 +424,10 @@ def laplacian_pyramid_blend(
         blended_level = m * lap_fg[i] + (1.0 - m) * lap_bg[i]
         lap_blended.append(blended_level)
 
-    # Reconstruct from blended Laplacian pyramid.
-    result = _reconstruct_laplacian_pyramid(lap_blended)
+    # Reconstruct from blended Laplacian pyramid and convert back to sRGB.
+    result_lin = _reconstruct_laplacian_pyramid(lap_blended)
+    result_lin = np.clip(result_lin, 0.0, None)
+    result = linear_to_srgb(result_lin)
     result = np.clip(result, 0.0, 1.0)
 
     if is_uint8:
@@ -437,66 +444,51 @@ def _forward_warp_bilinear(
     img: np.ndarray,
     flow: np.ndarray,
 ) -> np.ndarray:
-    """Forward-warp *img* by a per-pixel flow field using bilinear splatting.
+    """Warp *img* by flow field using backward bilinear interpolation.
 
-    Pixels that receive no contribution retain the original value from
-    *img* (fallback).
-
-    Convention: ``flow[y, x] = (dx, dy)`` is the screen-space displacement
-    of pixel ``(x, y)`` from the current frame to the next.  The flow sign
-    follows the camera coordinate system: positive dx = rightward motion,
-    positive dy = downward motion (consistent with rasterizer motion
-    vectors ``current_screen - prev_screen``).
+    For destination pixel (x, y), samples source image at (x - dx, y - dy).
 
     Args:
         img: ``[H, W, 3]`` uint8 or float source image.
-        flow: ``[H, W, 2]`` float32 flow field (dx, dy) in the standard
-            camera coordinate sign convention.
+        flow: ``[H, W, 2]`` float32/float64 flow field (dx, dy).
 
     Returns:
         Warped image with the same shape and dtype as *img*.
     """
     h, w = img.shape[:2]
     src = img.astype(np.float64)
-    result = np.zeros_like(src)
-    weight = np.zeros((h, w), dtype=np.float64)
+    flow_safe = np.nan_to_num(flow.astype(np.float64), nan=0.0, posinf=0.0, neginf=0.0)
 
     yy, xx = np.mgrid[:h, :w]
-    # Forward warp: pixel at (x,y) splatted to (x+dx, y+dy)
-    tx = xx.astype(np.float64) + flow[..., 0].astype(np.float64)
-    ty = yy.astype(np.float64) + flow[..., 1].astype(np.float64)
+    src_x = np.clip(xx.astype(np.float64) - flow_safe[..., 0], 0.0, float(w - 1))
+    src_y = np.clip(yy.astype(np.float64) - flow_safe[..., 1], 0.0, float(h - 1))
 
-    # Bilinear splatting
-    x0 = np.floor(tx).astype(np.intp)
-    y0 = np.floor(ty).astype(np.intp)
-    fx = tx - x0.astype(np.float64)
-    fy = ty - y0.astype(np.float64)
+    x0 = np.floor(src_x).astype(np.intp)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    y0 = np.floor(src_y).astype(np.intp)
+    y1 = np.clip(y0 + 1, 0, h - 1)
 
-    for dy_off, wy in [(0, 1.0 - fy), (1, fy)]:
-        for dx_off, wx in [(0, 1.0 - fx), (1, fx)]:
-            yp = y0 + dy_off
-            xp = x0 + dx_off
-            w_splat = wy * wx
+    wx1 = src_x - x0.astype(np.float64)
+    wx0 = 1.0 - wx1
+    wy1 = src_y - y0.astype(np.float64)
+    wy0 = 1.0 - wy1
 
-            valid = (xp >= 0) & (xp < w) & (yp >= 0) & (yp < h)
-            yv = yp[valid]
-            xv = xp[valid]
-            wv = w_splat[valid]
+    # Bilinear interpolation
+    w00 = (wx0 * wy0)[..., np.newaxis]
+    w01 = (wx0 * wy1)[..., np.newaxis]
+    w10 = (wx1 * wy0)[..., np.newaxis]
+    w11 = (wx1 * wy1)[..., np.newaxis]
 
-            # Scatter-add
-            np.add.at(weight, (yv, xv), wv)
-            for c in range(src.shape[2]):
-                np.add.at(result[..., c], (yv, xv), wv * src[..., c][valid])
+    warped = (
+        w00 * src[y0, x0]
+        + w01 * src[y1, x0]
+        + w10 * src[y0, x1]
+        + w11 * src[y1, x1]
+    )
 
-    # Normalise
-    mask = weight > 0
-    for c in range(result.shape[2]):
-        result[..., c][mask] /= weight[mask]
-
-    # Fill holes with original
-    result[~mask] = src[~mask]
-
-    return result.astype(img.dtype)
+    if np.issubdtype(img.dtype, np.integer):
+        return np.asarray(np.clip(warped, 0.0, 255.0).astype(img.dtype))
+    return np.asarray(warped.astype(img.dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -577,11 +569,11 @@ def composite_surgical_sequence(
                     flow_mag = float(np.mean(
                         np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)
                     ))
-                    # Adaptive alpha: large motion -> reduce EMA weight
+                    # Adaptive alpha: large motion -> trust current frame (effective_alpha -> 1.0) to eliminate ghosting
                     if flow_mag > 15.0:
-                        effective_alpha = max(
-                            0.30,
-                            ema_alpha * (15.0 / max(flow_mag, 1e-6)),
+                        effective_alpha = min(
+                            1.0,
+                            1.0 - (1.0 - ema_alpha) * (15.0 / max(flow_mag, 15.0)),
                         )
 
                     # Forward bilinear warp
@@ -692,10 +684,11 @@ def composite_optical_increments(
                 )
             frame_acescg = frame_acescg + caustics_acescg
 
-        # 5. ACEScg → linear sRGB → sRGB display.
+        # 5. ACEScg → linear sRGB → soft-knee forward tonemap → sRGB display.
         frame_linear_out = acescg_to_linear_srgb(frame_acescg)
         frame_linear_out = np.clip(frame_linear_out, 0.0, None)
-        frame_srgb_out = linear_to_srgb(frame_linear_out)
+        frame_tonemapped = soft_knee_forward_tonemap(frame_linear_out)
+        frame_srgb_out = linear_to_srgb(frame_tonemapped)
         frame_srgb_out = np.clip(frame_srgb_out, 0.0, 1.0)
 
         result[t] = (frame_srgb_out * 255.0).astype(np.uint8)
@@ -706,9 +699,9 @@ def composite_optical_increments(
 def _cryptomatte_boundary_guide(cid: np.ndarray) -> np.ndarray:
     """Extract Cryptomatte boundary as a grayscale guide image.
 
-    Boundary pixels (where adjacent IDs differ) are set to 1.0,
-    interior pixels to the normalised Cryptomatte ID as a grayscale
-    hint.
+    Boundary pixels (where adjacent IDs differ across any entity or background)
+    are set to 1.0, and interior pixels to 0.0, ensuring high edge contrast
+    for all entities regardless of their ID values.
 
     Args:
         cid: ``[H, W]`` uint32 Cryptomatte IDs.
@@ -725,14 +718,6 @@ def _cryptomatte_boundary_guide(cid: np.ndarray) -> np.ndarray:
         boundary[:-1, :] |= cid[:-1, :] != cid[1:, :]
         boundary[1:, :] |= cid[:-1, :] != cid[1:, :]
 
-    # Normalised grayscale from IDs.
-    cid_f = cid.astype(np.float64)
-    max_id = float(np.max(cid_f))
-    if max_id > 0:
-        guide = cid_f / max_id
-    else:
-        guide = np.zeros((h, w), dtype=np.float64)
-
-    # Override boundary pixels.
+    guide = np.zeros((h, w), dtype=np.float64)
     guide[boundary] = 1.0
     return guide

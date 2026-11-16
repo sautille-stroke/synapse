@@ -115,6 +115,175 @@ def _estimate_grain_sigma(rgb_linear: np.ndarray) -> float:
     return max(float(sigma), 0.0)
 
 
+def _estimate_contrast(rgb_linear: np.ndarray) -> float:
+    """Estimate scene contrast from linear luminance.
+
+    Measures standard deviation of log2 luminance relative to a reference standard (1.5 EV).
+    For uniform or near-flat images, returns 1.0.
+    """
+    lum = (
+        0.2126 * rgb_linear[..., 0]
+        + 0.7152 * rgb_linear[..., 1]
+        + 0.0722 * rgb_linear[..., 2]
+    )
+    pos = lum[lum > 1e-6]
+    if pos.size < 10:
+        return 1.0
+    std = float(np.std(np.log2(pos)))
+    if std < 1e-4:
+        return 1.0
+    contrast = std / 1.5
+    return float(np.clip(contrast, 0.1, 5.0))
+
+
+def _estimate_saturation(rgb_linear: np.ndarray) -> float:
+    """Estimate scene colour saturation.
+
+    Measures mean HSV saturation relative to reference natural image saturation (0.35).
+    """
+    max_c = np.max(rgb_linear, axis=-1)
+    min_c = np.min(rgb_linear, axis=-1)
+    denom = max_c + 1e-6
+    sat = (max_c - min_c) / denom
+    valid = max_c > 1e-4
+    if not np.any(valid):
+        return 0.0
+    mean_sat = float(np.mean(sat[valid]))
+    rel_sat = mean_sat / 0.35
+    return float(np.clip(rel_sat, 0.0, 5.0))
+
+
+def _solve_half_cosine_light_irls(
+    normals: np.ndarray,
+    ratio: np.ndarray,
+    max_iter: int = 6,
+) -> tuple[float, np.ndarray, float]:
+    """Solve for key light vector and ambient ratio using IRLS.
+
+    Models observed ratio y ≈ a0 + max(0, dot(n, L_vec)).
+    Uses Huber loss weights to reject specular, shadow, and occlusion outliers.
+
+    Args:
+        normals: [M, 3] float64 unit surface normals.
+        ratio: [M] float64 observed radiance / albedo ratio.
+        max_iter: Maximum IRLS iterations.
+
+    Returns:
+        tuple of (ambient_ratio, unit_light_dir, light_norm).
+    """
+    m = len(ratio)
+    if m < 4:
+        return 0.2, np.array([0.0, 1.0, 0.0], dtype=np.float64), 0.0
+
+    nx = normals[:, 0]
+    ny = normals[:, 1]
+    nz = normals[:, 2]
+    A = np.column_stack([np.ones(m, dtype=np.float64), nx, ny, nz])
+
+    # Initial OLS fit
+    beta, _, _, _ = np.linalg.lstsq(A, ratio, rcond=None)
+
+    for _ in range(max_iter):
+        a0 = beta[0]
+        L_vec = beta[1:4]
+        dot_nl = nx * L_vec[0] + ny * L_vec[1] + nz * L_vec[2]
+        pred = a0 + np.maximum(0.0, dot_nl)
+        residual = ratio - pred
+
+        med_res = float(np.median(residual))
+        mad = float(np.median(np.abs(residual - med_res)))
+        scale = 1.4826 * mad + 1e-6
+
+        u = np.abs(residual - med_res) / scale
+        huber_w = np.where(u <= 1.345, 1.0, 1.345 / np.maximum(u, 1e-6))
+        facing_w = np.where(dot_nl < -0.05, 0.1, 1.0)
+        w = np.clip(huber_w * facing_w, 1e-4, 1.0)
+
+        w_sqrt = np.sqrt(w)[:, np.newaxis]
+        A_w = A * w_sqrt
+        y_w = ratio * w_sqrt[:, 0]
+        beta_new, _, _, _ = np.linalg.lstsq(A_w, y_w, rcond=None)
+        if np.linalg.norm(beta_new - beta) < 1e-5:
+            beta = beta_new
+            break
+        beta = beta_new
+
+    a0_final = max(0.0, float(beta[0]))
+    L_vec_final = beta[1:4]
+    L_norm = float(np.linalg.norm(L_vec_final))
+    if L_norm > 1e-6:
+        unit_dir = L_vec_final / L_norm
+        amb = a0_final / (a0_final + L_norm) if (a0_final + L_norm) > 0.0 else 0.2
+        amb_ratio = float(np.clip(amb, 0.0, 1.0))
+    else:
+        unit_dir = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        amb_ratio = 0.2
+
+    return amb_ratio, unit_dir, L_norm
+
+
+def _frechet_mean_s2(
+    directions: list[np.ndarray],
+    max_iter: int = 25,
+) -> np.ndarray:
+    """Compute the Fréchet (Karcher) mean on the unit 2-sphere S^2.
+
+    Uses Riemannian gradient descent with logarithmic and exponential maps on S^2.
+
+    Args:
+        directions: List of [3] unit vectors.
+        max_iter: Maximum iterations.
+
+    Returns:
+        [3] float64 unit vector representing the spherical center of mass.
+    """
+    if not directions:
+        return np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    if len(directions) == 1:
+        d = directions[0].astype(np.float64)
+        d_norm = float(np.linalg.norm(d))
+        return d / d_norm if d_norm > 1e-8 else np.array([0.0, 1.0, 0.0], dtype=np.float64)
+
+    unit_dirs: list[np.ndarray] = []
+    for d_vec in directions:
+        d_arr = np.asarray(d_vec, dtype=np.float64)
+        arr_norm = float(np.linalg.norm(d_arr))
+        if arr_norm > 1e-8:
+            unit_dirs.append(d_arr / arr_norm)
+
+    if not unit_dirs:
+        return np.array([0.0, 1.0, 0.0], dtype=np.float64)
+
+    sum_vec = np.sum(unit_dirs, axis=0)
+    sum_norm = float(np.linalg.norm(sum_vec))
+    mu = sum_vec / sum_norm if sum_norm > 1e-8 else unit_dirs[0].copy()
+
+    for _ in range(max_iter):
+        tangents: list[np.ndarray] = []
+        for x in unit_dirs:
+            cos_theta = float(np.clip(np.dot(mu, x), -1.0, 1.0))
+            theta = float(np.arccos(cos_theta))
+            if theta < 1e-7:
+                tangents.append(np.zeros(3, dtype=np.float64))
+            else:
+                sin_theta = float(np.sin(theta))
+                v = (theta / max(sin_theta, 1e-12)) * (x - mu * cos_theta)
+                tangents.append(v)
+
+        mean_tangent = np.mean(tangents, axis=0)
+        step = float(np.linalg.norm(mean_tangent))
+        if step < 1e-7:
+            break
+
+        v_unit = mean_tangent / step
+        mu = np.cos(step) * mu + np.sin(step) * v_unit
+        mu_norm = float(np.linalg.norm(mu))
+        if mu_norm > 1e-12:
+            mu /= mu_norm
+
+    return mu
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -143,17 +312,23 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     cct_list: list[float] = []
     ev_list: list[float] = []
     grain_list: list[float] = []
+    contrast_list: list[float] = []
+    sat_list: list[float] = []
 
     for t in range(T):
         frame_linear = srgb_to_linear(frames[t])
         cct_list.append(_estimate_cct_mccamy(frame_linear))
         ev_list.append(_estimate_exposure_ev(frame_linear))
         grain_list.append(_estimate_grain_sigma(frame_linear))
+        contrast_list.append(_estimate_contrast(frame_linear))
+        sat_list.append(_estimate_saturation(frame_linear))
 
     return StyleDescriptor(
         color_temp_kelvin=float(np.median(cct_list)),
         exposure_ev=float(np.median(ev_list)),
         grain_sigma=float(np.median(grain_list)),
+        contrast=float(np.median(contrast_list)),
+        saturation=float(np.median(sat_list)),
     )
 
 
@@ -258,29 +433,21 @@ def extract_style_fgpp_intrinsic(
         nx = normals[..., 0].ravel()[valid]
         ny = normals[..., 1].ravel()[valid]
         nz = normals[..., 2].ravel()[valid]
+        valid_normals = np.column_stack([nx, ny, nz])
 
-        # Design matrix: [1, nx, ny, nz]
-        A = np.column_stack([np.ones_like(nx), nx, ny, nz])
-
-        # Solve least squares: ratio ≈ A @ [a0, a1, a2, a3]
-        result, _, _, _ = np.linalg.lstsq(A, ratio, rcond=None)
-        a0 = result[0]
-        light_vec = result[1:4]
-        light_norm = float(np.linalg.norm(light_vec))
+        # Solve half-cosine lighting model via IRLS
+        amb_ratio, light_dir, light_norm = _solve_half_cosine_light_irls(
+            valid_normals, ratio
+        )
 
         if light_norm > 1e-6:
-            light_dir = light_vec / light_norm
             light_dirs.append(light_dir)
-            amb = float(a0 / (a0 + light_norm)) if (a0 + light_norm) > 0 else 0.2
-            ambient_ratios.append(np.clip(amb, 0.0, 1.0))
+            ambient_ratios.append(amb_ratio)
 
-    # Cross-frame median aggregation
+    # Cross-frame spherical Fréchet mean aggregation
     if light_dirs:
-        median_dir = np.median(np.array(light_dirs), axis=0)
-        norm = float(np.linalg.norm(median_dir))
-        if norm > 1e-8:
-            median_dir = median_dir / norm
-        desc.key_light_dir_world = median_dir.tolist()
+        mean_dir = _frechet_mean_s2(light_dirs)
+        desc.key_light_dir_world = mean_dir.tolist()
 
     if ambient_ratios:
         desc.ambient_ratio = float(np.median(ambient_ratios))

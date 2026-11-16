@@ -567,3 +567,115 @@ class TestExtractorFloatHDRInput:
         desc = extract_style_optical(frames)
         # 128/255 ≈ 0.502 → reasonable exposure
         assert abs(desc.exposure_ev) < 10.0
+
+
+# ===================================================================
+# TestPR96StyleHardening
+# ===================================================================
+
+
+class TestPR96StyleHardening:
+    """Rigorous verification tests for PR-96 style hardening."""
+
+    def test_acescg_d65_white_point_exact(self) -> None:
+        """_M_SRGB_TO_ACESCG row sums must equal 1.0, preserving D65 white point."""
+        from synapse.style.aces_color import _M_ACESCG_TO_SRGB, _M_SRGB_TO_ACESCG
+
+        row_sums = _M_SRGB_TO_ACESCG.sum(axis=1)
+        np.testing.assert_allclose(row_sums, [1.0, 1.0, 1.0], atol=1e-12)
+
+        white = np.array([1.0, 1.0, 1.0], dtype=np.float64)
+        aces_white = _M_SRGB_TO_ACESCG @ white
+        np.testing.assert_allclose(aces_white, [1.0, 1.0, 1.0], atol=1e-12)
+
+        srgb_rec = _M_ACESCG_TO_SRGB @ aces_white
+        np.testing.assert_allclose(srgb_rec, [1.0, 1.0, 1.0], atol=1e-12)
+
+    def test_soft_knee_forward_and_inverse_roundtrip(self) -> None:
+        """soft_knee_forward_tonemap and soft_knee_inverse_tonemap must roundtrip within 1e-4."""
+        from synapse.style.aces_color import (
+            soft_knee_forward_tonemap,
+            soft_knee_inverse_tonemap,
+        )
+
+        test_vals = np.linspace(0.0, 3.0, 301)
+        # Forward tonemap of inverted values must return original test_vals
+        inverted = soft_knee_inverse_tonemap(test_vals)
+        recovered = soft_knee_forward_tonemap(inverted)
+        np.testing.assert_allclose(recovered, test_vals, atol=1e-4)
+
+    def test_irls_dominant_light_outlier_rejection(self) -> None:
+        """IRLS light solver recovers true direction within 5° despite 30% gross outliers."""
+        from synapse.style.extractor import _solve_half_cosine_light_irls
+
+        rng = np.random.default_rng(2026)
+        L_gt = np.array([0.6, 0.7, 0.387], dtype=np.float64)
+        L_gt /= np.linalg.norm(L_gt)
+        a0_gt = 0.25
+
+        N = 1200
+        normals = rng.standard_normal((N, 3))
+        normals /= np.linalg.norm(normals, axis=-1, keepdims=True)
+
+        dot_nl = np.maximum(0.0, np.dot(normals, L_gt))
+        ratio = a0_gt + dot_nl
+
+        # Inject 30% gross outliers (e.g. specular highlights or occlusions)
+        outlier_mask = rng.uniform(0.0, 1.0, N) < 0.30
+        ratio[outlier_mask] += rng.uniform(3.0, 15.0, int(outlier_mask.sum()))
+
+        amb_rec, L_rec, _ = _solve_half_cosine_light_irls(normals, ratio)
+        cos_err = float(np.clip(np.dot(L_rec, L_gt), -1.0, 1.0))
+        angle_err = math.degrees(math.acos(cos_err))
+        assert angle_err < 5.0, f"IRLS angle error {angle_err:.2f}° exceeded 5° threshold"
+        assert 0.0 <= amb_rec <= 1.0
+
+    def test_frechet_mean_s2_convergence(self) -> None:
+        """Fréchet mean on S^2 correctly aggregates vectors on the unit sphere."""
+        from synapse.style.extractor import _frechet_mean_s2
+
+        # Symmetrical directions around [0, 0, 1]
+        v1 = np.array([0.1, 0.0, 0.995], dtype=np.float64)
+        v1 /= np.linalg.norm(v1)
+        v2 = np.array([-0.1, 0.0, 0.995], dtype=np.float64)
+        v2 /= np.linalg.norm(v2)
+
+        mean_v = _frechet_mean_s2([v1, v2])
+        np.testing.assert_allclose(mean_v, [0.0, 0.0, 1.0], atol=1e-4)
+
+    def test_style_descriptor_extra_forbid(self) -> None:
+        """StyleDescriptor must forbid unknown fields."""
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError):
+            StyleDescriptor(unknown_field_123=42)  # type: ignore[call-arg]
+
+    def test_style_descriptor_ambient_ratio_bounds(self) -> None:
+        """StyleDescriptor ambient_ratio must be in [0, 1]."""
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError):
+            StyleDescriptor(ambient_ratio=1.5)
+        with pytest.raises(pydantic.ValidationError):
+            StyleDescriptor(ambient_ratio=-0.1)
+
+    def test_save_style_profile_yaml_raises_backend_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """save_style_profile_yaml must raise BackendUnavailableError(30) when pyyaml is missing."""
+        import builtins
+
+        from synapse.errors import BackendUnavailableError
+        from synapse.style.profile_mapper import save_style_profile_yaml
+
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "yaml":
+                raise ImportError("No module named 'yaml'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "test.yaml"
+            with pytest.raises(BackendUnavailableError) as exc_info:
+                save_style_profile_yaml(StyleDescriptor(), p)
+            assert exc_info.value.exit_code == 30

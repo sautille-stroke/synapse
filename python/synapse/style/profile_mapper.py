@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from synapse.errors import BackendUnavailableError
 from synapse.style.descriptor import StyleDescriptor
 
 
@@ -49,25 +50,35 @@ def save_style_profile_yaml(
     desc: StyleDescriptor,
     path: str | Path,
 ) -> Path:
-    """Save a StyleDescriptor as a YAML file (JSON fallback if no pyyaml).
+    """Save a StyleDescriptor as a YAML file (or JSON file if path ends with .json).
 
     Args:
         desc: Extracted style descriptor.
-        path: Output file path (suffix overridden to ``.json`` on fallback).
+        path: Output file path.
 
     Returns:
         Path to the written file.
+
+    Raises:
+        BackendUnavailableError: If PyYAML is required but not installed.
     """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     d = to_style_profile_dict(desc)
 
+    if p.suffix.lower() == ".json":
+        p.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        return p
+
     try:
         import yaml
+
         p.write_text(yaml.dump(d, default_flow_style=False), encoding="utf-8")
-    except ImportError:
-        p = p.with_suffix(".json")
-        p.write_text(json.dumps(d, indent=2), encoding="utf-8")
+    except ImportError as err:
+        raise BackendUnavailableError(
+            f"PyYAML is not installed to write '{p}': {err}",
+            agent_fix_hint="Install PyYAML via 'pip install pyyaml' to write YAML files.",
+        ) from err
 
     return p
 
@@ -82,15 +93,17 @@ def to_engine_light_overrides(desc: StyleDescriptor) -> dict[str, Any]:
         Dict with ``directional_light``, ``ambient_light``, and
         ``exposure`` keys suitable for engine scene override injection.
     """
+    directional_intensity = float(max(0.0, 1.0 - desc.ambient_ratio))
+    ambient_intensity = float(max(0.0, desc.ambient_ratio))
     return {
         "directional_light": {
             "direction": desc.key_light_dir_world,
             "color": desc.key_light_rgb,
-            "intensity": 1.0 - desc.ambient_ratio,
+            "intensity": directional_intensity,
         },
         "ambient_light": {
             "color": [1.0, 1.0, 1.0],
-            "intensity": desc.ambient_ratio,
+            "intensity": ambient_intensity,
         },
         "exposure": {
             "ev_compensation": desc.exposure_ev,
