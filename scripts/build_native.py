@@ -219,8 +219,13 @@ def _build_direct_fallback(
     dry_run: bool = False,
     quiet: bool = False,
     as_json: bool = False,
+    timeout: float = 300.0,
 ) -> bool:
     """Directly compile _c_geometry using host C++20 compiler.
+
+    Compiles aether geo sources (mesh_checks.cc, mesh_forensics.cc) with
+    ``-fno-exceptions -fno-rtti`` and bindings.cc with ``-fexceptions -frtti``
+    into separate object files, then links them into a single shared library.
 
     Returns True on success, False on failure.
     """
@@ -235,7 +240,6 @@ def _build_direct_fallback(
         )
         return False
 
-    sources = [bindings_src]
     aether_geo_srcs = _find_aether_geo_src(repo_root)
     if not aether_geo_srcs and not dry_run:
         _emit_error(
@@ -245,8 +249,6 @@ def _build_direct_fallback(
             as_json=as_json,
         )
         return False
-    elif aether_geo_srcs:
-        sources.extend(aether_geo_srcs)
 
     pybind_inc = _find_pybind11_include(dry_run=dry_run)
     if not pybind_inc:
@@ -272,7 +274,7 @@ def _build_direct_fallback(
         includes.append(f"-I{inc}")
 
     is_windows = sys.platform == "win32"
-    source_args = [str(s) for s in sources]
+
     if is_windows:
         compiler = os.environ.get("CXX") or shutil.which("cl")
         if not compiler:
@@ -286,24 +288,6 @@ def _build_direct_fallback(
                     as_json=as_json,
                 )
                 return False
-
-        python_lib = _find_windows_python_lib()
-        lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
-
-        cmd = [
-            compiler,
-            "/O2",
-            "/std:c++20",
-            "/utf-8",
-            "/LD",
-            "/EHsc",
-            "/DNOMINMAX",
-            "/D_CRT_SECURE_NO_WARNINGS",
-            *includes,
-            *source_args,
-            f"/Fe:{output_file}",
-            *lib_args,
-        ]
     else:
         compiler = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("g++") or shutil.which("c++")
         if not compiler:
@@ -317,39 +301,117 @@ def _build_direct_fallback(
                     as_json=as_json,
                 )
                 return False
+
+    # --- Split compilation: aether geo sources vs pybind11 bindings ---
+    obj_dir = output_file.parent
+    obj_files: list[Path] = []
+
+    def _run_compile(cmd: list[str], label: str) -> bool:
+        if not quiet:
+            print(f"[build_native] {label}:")
+            print(" ", " ".join(cmd))
+        if dry_run:
+            return True
+        try:
+            res = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            if not quiet:
+                print(f"[build_native] {label} timed out after {timeout}s", file=sys.stderr)
+            return False
+        if res.returncode != 0:
+            if not quiet:
+                print(f"[build_native] {label} failed:", file=sys.stderr)
+                if res.stdout:
+                    print(res.stdout, file=sys.stderr)
+                if res.stderr:
+                    print(res.stderr, file=sys.stderr)
+            return False
+        return True
+
+    if is_windows:
+        # --- Step 1a: Compile aether geo sources with /EHs-c- /GR- ---
+        for src in (aether_geo_srcs or []):
+            obj_name = src.stem + ".obj"
+            obj_path = obj_dir / obj_name
+            cmd = [
+                compiler, "/c", "/O2", "/std:c++20", "/utf-8",
+                "/EHs-c-", "/GR-", "/D_HAS_EXCEPTIONS=0",
+                "/DNOMINMAX", "/D_CRT_SECURE_NO_WARNINGS",
+                *includes, str(src), f"/Fo:{obj_path}",
+            ]
+            if not _run_compile(cmd, f"Compiling {src.name} (no-exceptions)"):
+                return False
+            obj_files.append(obj_path)
+
+        # --- Step 1b: Compile bindings.cc with /EHsc /GR ---
+        bindings_obj = obj_dir / "bindings.obj"
         cmd = [
-            compiler,
-            "-O3",
-            "-Wall",
-            "-shared",
-            "-std=c++20",
-            "-fPIC",
-            "-fvisibility=hidden",
-            *includes,
-            *source_args,
-            "-o",
-            str(output_file),
+            compiler, "/c", "/O2", "/std:c++20", "/utf-8",
+            "/EHsc", "/GR",
+            "/DNOMINMAX", "/D_CRT_SECURE_NO_WARNINGS",
+            *includes, str(bindings_src), f"/Fo:{bindings_obj}",
+        ]
+        if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
+            return False
+        obj_files.append(bindings_obj)
+
+        # --- Step 2: Link ---
+        python_lib = _find_windows_python_lib()
+        lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
+        link_cmd = [
+            compiler, "/LD",
+            *[str(o) for o in obj_files],
+            f"/Fe:{output_file}",
+            *lib_args,
+        ]
+        if not _run_compile(link_cmd, "Linking shared library"):
+            return False
+    else:
+        common_flags = [
+            "-O3", "-Wall", "-std=c++20", "-fPIC", "-fvisibility=hidden",
+        ]
+
+        # --- Step 1a: Compile aether geo sources with -fno-exceptions -fno-rtti ---
+        for src in (aether_geo_srcs or []):
+            obj_name = src.stem + ".o"
+            obj_path = obj_dir / obj_name
+            cmd = [
+                compiler, "-c", *common_flags,
+                "-fno-exceptions", "-fno-rtti",
+                *includes, str(src), "-o", str(obj_path),
+            ]
+            if not _run_compile(cmd, f"Compiling {src.name} (no-exceptions)"):
+                return False
+            obj_files.append(obj_path)
+
+        # --- Step 1b: Compile bindings.cc with -fexceptions -frtti ---
+        bindings_obj = obj_dir / "bindings.o"
+        cmd = [
+            compiler, "-c", *common_flags,
+            "-fexceptions", "-frtti",
+            *includes, str(bindings_src), "-o", str(bindings_obj),
+        ]
+        if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
+            return False
+        obj_files.append(bindings_obj)
+
+        # --- Step 2: Link ---
+        link_cmd = [
+            compiler, "-shared",
+            *[str(o) for o in obj_files],
+            "-o", str(output_file),
         ]
         if sys.platform == "darwin":
-            cmd.extend(["-Wl,-undefined,dynamic_lookup"])
+            link_cmd.extend(["-Wl,-undefined,dynamic_lookup"])
+        if not _run_compile(link_cmd, "Linking shared library"):
+            return False
 
-    if not quiet:
-        print(f"[build_native] Compiling fallback with {compiler}:")
-        print(" ", " ".join(cmd))
     if dry_run:
         if not quiet:
             print("[build_native] (dry-run mode, skipping execution)")
         return True
-
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        if not quiet:
-            print("[build_native] Fallback compilation failed:", file=sys.stderr)
-            if res.stdout:
-                print(res.stdout, file=sys.stderr)
-            if res.stderr:
-                print(res.stderr, file=sys.stderr)
-        return False
 
     return output_file.is_file()
 
@@ -486,6 +548,12 @@ def main() -> int:
         action="store_true",
         help="Emit single JSON envelope output.",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        help="Compilation timeout in seconds (default: 300).",
+    )
     args = parser.parse_args()
 
     repo_root = _get_repo_root()
@@ -547,7 +615,7 @@ def main() -> int:
         ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_out = Path(tmp_dir) / f"_c_geometry{ext_suffix}"
-            if _build_direct_fallback(repo_root, temp_out, dry_run=args.dry_run, quiet=quiet, as_json=args.json):
+            if _build_direct_fallback(repo_root, temp_out, dry_run=args.dry_run, quiet=quiet, as_json=False, timeout=args.timeout):
                 if args.dry_run:
                     if args.json:
                         print(json.dumps({"status": "ok", "backend": "direct", "dry_run": True}))
