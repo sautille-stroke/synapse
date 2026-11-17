@@ -101,6 +101,14 @@ class InspectorShmServer {
   [[nodiscard]] bool open(std::string_view name, uint32_t width,
                           uint32_t height, bool unlinkOnClose = true);
 
+  /// @brief Open a file-backed shared memory region for the given resolution.
+  /// @param filePath      Filesystem path to use for the memory-mapped file.
+  /// @param width         Frame width in pixels (1..kMaxDimension).
+  /// @param height        Frame height in pixels (1..kMaxDimension).
+  /// @return true on success.
+  [[nodiscard]] bool openFile(std::string_view filePath, uint32_t width,
+                              uint32_t height);
+
   /// @brief Close and optionally unlink the shared memory region.
   void close() noexcept;
 

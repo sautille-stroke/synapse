@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -165,6 +166,34 @@ TEST(InspectorShmServer, DimensionLimits) {
   EXPECT_FALSE(server.open("/test-shm-oob-dim", 100, 10000, true));
   EXPECT_FALSE(server.open("/test-shm-oob-dim", 0, 100, true));
   EXPECT_FALSE(server.open("/test-shm-oob-dim", 100, 0, true));
+}
+
+TEST(InspectorShmServer, FileBackedShmOpenPublish) {
+  InspectorShmServer server;
+  auto tmpFile = std::filesystem::temp_directory_path() / "test-insp-file-shm.bin";
+  std::error_code ec;
+  std::filesystem::remove(tmpFile, ec);
+
+  const uint32_t width = 64;
+  const uint32_t height = 64;
+  bool ok = server.openFile(tmpFile.string(), width, height);
+  ASSERT_TRUE(ok) << "openFile failed on: " << tmpFile.string();
+  EXPECT_TRUE(server.isOpen());
+
+  uint8_t* front = server.frontBuffer();
+  ASSERT_NE(front, nullptr);
+  std::memset(front, 0x5A, static_cast<size_t>(width) * height * 4);
+
+  uint64_t frameNum = server.publishFrame(30.0f, 0.033f, 0);
+  EXPECT_EQ(frameNum, 1u);
+
+  const uint8_t* pub = server.publishedBuffer();
+  ASSERT_NE(pub, nullptr);
+  EXPECT_EQ(pub[0], 0x5A);
+
+  server.close();
+  EXPECT_FALSE(server.isOpen());
+  std::filesystem::remove(tmpFile, ec);
 }
 
 // ---------------------------------------------------------------------------
