@@ -536,7 +536,7 @@ def main() -> int:
         help="Only verify existing extension integrity.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print compiler commands without executing.")
-    parser.add_argument("--backend", choices=["auto", "bazel", "direct"], default="auto", help="Build backend to use.")
+    parser.add_argument("--backend", choices=["auto", "bazel", "direct", "compiler"], default="auto", help="Build backend to use.")
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -557,6 +557,8 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = _get_repo_root()
+    if args.backend == "compiler":
+        args.backend = "direct"
     target_dir = args.output_dir if args.output_dir else repo_root / "python" / "synapse"
     quiet = args.json
 
