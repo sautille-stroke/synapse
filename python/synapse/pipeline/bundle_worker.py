@@ -54,12 +54,12 @@ class ClosureType(str, Enum):
 
 
 CLOSURE_TYPE_MAP: dict[str, str] = {
-    "neural_video": "neural_video_generate",
-    "surgical_inpaint": "surgical_composite",
-    "mesh_reconstruct": "video_to_3d_invert",
-    "optical_polish": "style_extract_and_map",
-    "mocap_ik": "kinematic_distill",
-    "delighting": "delight_albedo",
+    ClosureType.NEURAL_VIDEO: "neural_video_generate",
+    ClosureType.SURGICAL_INPAINT: "surgical_composite",
+    ClosureType.MESH_RECONSTRUCT: "video_to_3d_invert",
+    ClosureType.OPTICAL_POLISH: "style_extract_and_map",
+    ClosureType.MOCAP_IK: "kinematic_distill",
+    ClosureType.DELIGHTING: "delight_albedo",
 }
 """Mapping from RFC 0039 ``closure_type`` to synapse stage names."""
 
@@ -862,12 +862,14 @@ class JobBundleWorker:
         t_start = time.monotonic()
         _ensure_stage_adapters_loaded()
 
-        # Path normalization and symlink rejection for inputs/outputs
+        # Path normalization and symlink rejection for inputs/outputs.
+        # Check is_symlink() on the *original* path before resolve(),
+        # because resolve() follows symlinks and the resolved path
+        # will never report is_symlink() == True.
         for label, mapping in [("inputs", manifest.inputs), ("outputs", manifest.outputs)]:
             for key, val in mapping.items():
-                p = Path(val).resolve()
-                mapping[key] = str(p)
-                if p.is_symlink():
+                raw = Path(val)
+                if raw.is_symlink():
                     return ResultManifest(
                         job_id=manifest.job_id,
                         stage=manifest.stage,
@@ -876,10 +878,11 @@ class JobBundleWorker:
                         timings={"total_seconds": time.monotonic() - t_start},
                         agent_fix_hint=(
                             f"Symlinks are forbidden in {label}: "
-                            f"'{key}' -> '{val}' resolves to a symlink. "
+                            f"'{key}' -> '{val}' is a symlink. "
                             "Use real paths only."
                         ),
                     )
+                mapping[key] = str(raw.resolve())
 
         handler = _STAGE_HANDLERS.get(manifest.stage)
         if handler is None:
