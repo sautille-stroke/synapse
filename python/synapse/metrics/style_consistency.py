@@ -6,6 +6,8 @@ curve RMSE, and histogram intersection — all pure NumPy.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 
 
@@ -14,6 +16,7 @@ def border_ring_ciede2000(
     background: np.ndarray,
     mask: np.ndarray,
     ring_width: int = 16,
+    input_space: Literal["srgb", "linear"] = "srgb",
 ) -> float:
     """Mean CIEDE2000 in the border ring around a composited region.
 
@@ -22,10 +25,12 @@ def border_ring_ciede2000(
     *composited* and *background* in the resulting ring.
 
     Args:
-        composited: ``[H, W, 3]`` sRGB image in [0, 1].
-        background: ``[H, W, 3]`` sRGB image in [0, 1].
+        composited: ``[H, W, 3]`` image in [0, 1].
+        background: ``[H, W, 3]`` image in [0, 1].
         mask: ``[H, W]`` bool mask of the composited foreground.
         ring_width: Dilation radius in pixels (default 16).
+        input_space: Colour space of the input images (``"srgb"`` or
+            ``"linear"``).
 
     Returns:
         Mean CIEDE2000 in the border ring (scalar float).
@@ -60,8 +65,16 @@ def border_ring_ciede2000(
     comp = np.asarray(composited, dtype=np.float64)
     bg = np.asarray(background, dtype=np.float64)
 
-    lab_comp = rgb_to_cielab(srgb_to_linear(comp))
-    lab_bg = rgb_to_cielab(srgb_to_linear(bg))
+    if input_space == "srgb":
+        lab_comp = rgb_to_cielab(srgb_to_linear(comp))
+        lab_bg = rgb_to_cielab(srgb_to_linear(bg))
+    elif input_space == "linear":
+        lab_comp = rgb_to_cielab(comp)
+        lab_bg = rgb_to_cielab(bg)
+    else:
+        raise ValueError(
+            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
+        )
 
     de = ciede2000_delta_e(lab_comp, lab_bg)  # [H, W]
     return float(np.mean(de[ring]))

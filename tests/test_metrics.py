@@ -586,3 +586,211 @@ class TestStyleConsistency:
         b = np.array([5, 10, 30, 50], dtype=np.float64)
         # min: [5, 10, 30, 40] sum=85; sum(a)=100
         assert histogram_intersection(a, b) == pytest.approx(0.85, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# PR-120: Quad watertight, HDR temporal, alias override, mixed dtype
+# ---------------------------------------------------------------------------
+
+
+class TestQuadWatertight:
+    """Quad mesh watertight check with the corrected vertex ring."""
+
+    def test_quad_cube_is_watertight(self) -> None:
+        """A 6-face Quad cube must be reported as watertight (100%)."""
+        from synapse.metrics.roundtrip import _is_mesh_watertight
+
+        # Unit cube: 8 vertices, 6 quad faces
+        verts = np.array(
+            [
+                [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+            ],
+            dtype=np.float64,
+        )
+        # 6 faces with consistent winding (outward normals)
+        faces = [
+            [0, 3, 2, 1],  # bottom (-Z)
+            [4, 5, 6, 7],  # top (+Z)
+            [0, 1, 5, 4],  # front (-Y)
+            [2, 3, 7, 6],  # back (+Y)
+            [0, 4, 7, 3],  # left (-X)
+            [1, 2, 6, 5],  # right (+X)
+        ]
+        assert _is_mesh_watertight(verts, faces) is True
+
+
+class TestHDRTemporalNoDiv255:
+    """HDR float32 frames must NOT be divided by 255."""
+
+    def test_temporal_warp_error_hdr_passthrough(self) -> None:
+        """temporal_warp_error on float32 HDR [0, 3.5] must NOT div by 255."""
+        from synapse.metrics.temporal import temporal_warp_error
+
+        rng = np.random.default_rng(99)
+        T, H, W = 4, 32, 32
+        # HDR frames with values up to 3.5
+        frames = rng.uniform(0.0, 3.5, (T, H, W, 3)).astype(np.float32)
+        mvs = np.zeros((T - 1, H, W, 2), dtype=np.float32)
+        err = temporal_warp_error(frames, mvs)
+        # With zero motion vectors, warp error == difference between
+        # consecutive frames.  Mean absolute difference of uniform[0,3.5]
+        # pairs ≈ 3.5/3 ≈ 1.17.  If erroneously divided by 255, error
+        # would be ~0.005.
+        assert err > 0.1, f"HDR warp error {err} suspiciously low — was it divided by 255?"
+
+    def test_flicker_score_hdr_passthrough(self) -> None:
+        """flicker_score on float32 HDR [0, 3.5] must NOT div by 255."""
+        from synapse.metrics.temporal import flicker_score
+
+        rng = np.random.default_rng(42)
+        T, H, W = 5, 16, 16
+        frames = rng.uniform(0.0, 3.5, (T, H, W, 3)).astype(np.float32)
+        score = flicker_score(frames)
+        # Random HDR frames have high flicker.  If divided by 255, the
+        # score would be near zero.
+        assert score > 0.01, f"HDR flicker {score} suspiciously low — was it divided by 255?"
+
+
+class TestMixedDtypePSNR:
+    """Mixed uint8/float32 pair of the same image should yield near-infinity PSNR."""
+
+    def test_mixed_uint8_float32_same_image(self) -> None:
+        from synapse.metrics.image_quality import psnr
+
+        rng = np.random.default_rng(7)
+        img_u8 = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
+        img_f = img_u8.astype(np.float64) / 255.0
+        val = psnr(img_u8, img_f)
+        # Both represent the same image; PSNR should be very high
+        assert val > 60.0, f"Mixed dtype PSNR {val} too low — independent normalization broken?"
+
+
+class TestAliasOverride:
+    """scenario_overrides using alias names must override canonical thresholds."""
+
+    def test_style_color_de_overrides_border_ring(self) -> None:
+        from synapse.metrics.profiles import evaluate_metrics_gate
+
+        measured = {"border_ring_ciede2000": 4.0}
+        # Default TRACK_B_VIDEO threshold for border_ring_ciede2000 is 3.0
+        # Without override, 4.0 > 3.0 → fail
+        verdict_no_override = evaluate_metrics_gate(
+            measured, profile="track_b_video",
+        )
+        assert not verdict_no_override.passed
+
+        # With alias override style_color_de=5.0, it should relax
+        # border_ring_ciede2000 threshold to 5.0, so 4.0 < 5.0 → pass
+        verdict_with_override = evaluate_metrics_gate(
+            measured,
+            profile="track_b_video",
+            scenario_overrides={"style_color_de": 5.0},
+        )
+        assert verdict_with_override.passed, (
+            f"Alias override style_color_de=5.0 did not relax "
+            f"border_ring_ciede2000; violations: {verdict_with_override.violations}"
+        )
+
+
+class TestAlbedoDeltaE00InputSpace:
+    """albedo_delta_e00 with input_space='linear' skips sRGB-to-linear."""
+
+    def test_linear_input_identical(self) -> None:
+        from synapse.metrics import albedo_delta_e00
+
+        img = np.full((4, 4, 3), 0.5, dtype=np.float64)
+        de = albedo_delta_e00(img, img, input_space="linear")
+        assert de == pytest.approx(0.0, abs=1e-6)
+
+
+class TestQuadGeometryAndSampling:
+    """Quad mesh surface sampling, signed volume, and F-score integration."""
+
+    @pytest.fixture
+    def quad_cube(self) -> tuple[np.ndarray, list[list[int]]]:
+        verts = np.array(
+            [
+                [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+            ],
+            dtype=np.float64,
+        )
+        faces = [
+            [0, 3, 2, 1],  # bottom (-Z)
+            [4, 5, 6, 7],  # top (+Z)
+            [0, 1, 5, 4],  # front (-Y)
+            [2, 3, 7, 6],  # back (+Y)
+            [0, 4, 7, 3],  # left (-X)
+            [1, 2, 6, 5],  # right (+X)
+        ]
+        return verts, faces
+
+    def test_quad_cube_watertight_pct(self, quad_cube: tuple[np.ndarray, list[list[int]]]) -> None:
+        from synapse.metrics.roundtrip import watertight_pct
+
+        verts, faces = quad_cube
+        pct = watertight_pct([(verts, faces)])
+        assert pct == pytest.approx(100.0)
+
+    def test_quad_cube_signed_volume(self, quad_cube: tuple[np.ndarray, list[list[int]]]) -> None:
+        from synapse.metrics.roundtrip import _signed_volume
+
+        verts, faces = quad_cube
+        vol = abs(_signed_volume(verts, faces))
+        # Unit cube has exact volume 1.0; without fan triangulation on quads,
+        # it would only be 0.5 (losing half each quad)
+        assert vol == pytest.approx(1.0, abs=1e-5)
+
+    def test_quad_cube_surface_sampling(self, quad_cube: tuple[np.ndarray, list[list[int]]]) -> None:
+        from synapse.metrics.roundtrip import sample_mesh_surface
+
+        verts, faces = quad_cube
+        pts = sample_mesh_surface(verts, faces, num_samples=1000, seed=42)
+        assert pts.shape == (1000, 3)
+        # All samples should lie within [0, 1]^3
+        assert np.all(pts >= -1e-6) and np.all(pts <= 1.0 + 1e-6)
+
+    def test_f_score_with_mesh_tuple(self, quad_cube: tuple[np.ndarray, list[list[int]]]) -> None:
+        from synapse.metrics.roundtrip import f_score_1mm
+
+        verts, faces = quad_cube
+        # Compare mesh to itself passed as (verts, faces) tuple
+        score = f_score_1mm((verts, faces), (verts, faces))
+        assert score == pytest.approx(1.0, abs=0.01)
+
+
+class TestTemporalWarpResolutionScaling:
+    """temporal_warp_error scales motion vectors when resolution differs."""
+
+    def test_mismatched_resolution_interpolates_and_scales(self) -> None:
+        from synapse.metrics.temporal import temporal_warp_error
+
+        T, H, W = 3, 32, 32
+        frames = np.ones((T, H, W, 3), dtype=np.float32) * 0.5
+        # Motion vectors at half resolution [T-1, 16, 16, 2]
+        mvs_half = np.zeros((T - 1, 16, 16, 2), dtype=np.float32)
+        err = temporal_warp_error(frames, mvs_half)
+        assert err == pytest.approx(0.0, abs=1e-6)
+
+    def test_insufficient_mv_frames_raises_value_error(self) -> None:
+        from synapse.metrics.temporal import temporal_warp_error
+
+        frames = np.ones((5, 16, 16, 3), dtype=np.float32)
+        # Only 2 MV frames when 4 are required
+        mvs = np.zeros((2, 16, 16, 2), dtype=np.float32)
+        with pytest.raises(ValueError, match="Expected at least 4 motion vector frames"):
+            temporal_warp_error(frames, mvs)
+
+
+class TestBorderRingCIEDE2000InputSpace:
+    """border_ring_ciede2000 supports input_space='linear'."""
+
+    def test_linear_identical_images_zero(self) -> None:
+        from synapse.metrics.style_consistency import border_ring_ciede2000
+
+        img = np.full((32, 32, 3), 0.5, dtype=np.float64)
+        mask = np.zeros((32, 32), dtype=bool)
+        mask[10:22, 10:22] = True
+        err = border_ring_ciede2000(img, img, mask, ring_width=4, input_space="linear")
+        assert err == pytest.approx(0.0, abs=1e-6)

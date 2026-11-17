@@ -72,9 +72,7 @@ def _fallback_temporal_warp_error(
 ) -> float:
     """Warp each frame *t* to *t+1* using motion vectors and return error (L1 or RMSE)."""
     raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8 or (
-        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
-    ):
+    if raw_frames.dtype == np.uint8:
         frames_f = raw_frames.astype(np.float32) / 255.0
     else:
         frames_f = raw_frames.astype(np.float32)
@@ -85,6 +83,12 @@ def _fallback_temporal_warp_error(
     if t_count <= 0:
         return 0.0
 
+    if motion_vectors.shape[0] < t_count:
+        raise ValueError(
+            f"Expected at least {t_count} motion vector frames for {frames_f.shape[0]} video frames, "
+            f"got {motion_vectors.shape[0]}."
+        )
+
     h, w = frames_f.shape[1], frames_f.shape[2]
 
     # Build base coordinate grids
@@ -92,10 +96,39 @@ def _fallback_temporal_warp_error(
 
     error_sum = 0.0
     for t in range(t_count):
-        mv = motion_vectors[t]  # [H, W, 2]
+        mv = motion_vectors[t]  # [H, W, 2] or [H_mv, W_mv, 2]
+        if mv.shape[0] != h or mv.shape[1] != w:
+            sx = float(w) / float(mv.shape[1])
+            sy = float(h) / float(mv.shape[0])
+            src_mv_x = np.clip(gx / sx, 0.0, float(mv.shape[1] - 1))
+            src_mv_y = np.clip(gy / sy, 0.0, float(mv.shape[0] - 1))
+            x0_mv = np.floor(src_mv_x).astype(np.int32)
+            x1_mv = np.minimum(x0_mv + 1, mv.shape[1] - 1)
+            y0_mv = np.floor(src_mv_y).astype(np.int32)
+            y1_mv = np.minimum(y0_mv + 1, mv.shape[0] - 1)
+            fx_mv = (src_mv_x - x0_mv)[..., np.newaxis]
+            fy_mv = (src_mv_y - y0_mv)[..., np.newaxis]
+            mv_scaled = (
+                (1.0 - fx_mv) * (1.0 - fy_mv) * mv[y0_mv, x0_mv]
+                + (1.0 - fx_mv) * fy_mv * mv[y1_mv, x0_mv]
+                + fx_mv * (1.0 - fy_mv) * mv[y0_mv, x1_mv]
+                + fx_mv * fy_mv * mv[y1_mv, x1_mv]
+            )
+            mv_scaled[..., 0] *= sx
+            mv_scaled[..., 1] *= sy
+            mv = mv_scaled
+
         # Reverse motion vector -mv per MotionVector.XY convention
-        src_x = np.clip(gx - mv[..., 0], 0.0, float(w - 1))
-        src_y = np.clip(gy - mv[..., 1], 0.0, float(h - 1))
+        raw_src_x = gx - mv[..., 0]
+        raw_src_y = gy - mv[..., 1]
+        valid_in_bounds = (
+            (raw_src_x >= 0.0)
+            & (raw_src_x <= float(w - 1))
+            & (raw_src_y >= 0.0)
+            & (raw_src_y <= float(h - 1))
+        )
+        src_x = np.clip(raw_src_x, 0.0, float(w - 1))
+        src_y = np.clip(raw_src_y, 0.0, float(h - 1))
 
         # Bilinear interpolation
         x0 = np.floor(src_x).astype(np.int32)
@@ -126,23 +159,18 @@ def _fallback_temporal_warp_error(
         else:
             raise ValueError(f"Unsupported warp error metric: '{metric}'. Choose 'l1' or 'rmse'.")
 
+        valid_weight = valid_in_bounds.astype(np.float32)
         if occlusion_masks is not None:
-            weight = 1.0 - np.asarray(
-                occlusion_masks[t], dtype=np.float32,
-            )
-            weight_sum = weight.sum()
-            if weight_sum > 0:
-                if metric == "l1":
-                    err_val = (pixel_err * weight).sum() / weight_sum
-                else:
-                    err_val = np.sqrt((pixel_err * weight).sum() / weight_sum)
-            else:
-                err_val = 0.0
-        else:
+            valid_weight *= (1.0 - np.asarray(occlusion_masks[t], dtype=np.float32))
+
+        weight_sum = valid_weight.sum()
+        if weight_sum > 0:
             if metric == "l1":
-                err_val = pixel_err.mean()
+                err_val = (pixel_err * valid_weight).sum() / weight_sum
             else:
-                err_val = np.sqrt(pixel_err.mean())
+                err_val = np.sqrt((pixel_err * valid_weight).sum() / weight_sum)
+        else:
+            err_val = 0.0
 
         error_sum += float(err_val)
 
@@ -152,9 +180,7 @@ def _fallback_temporal_warp_error(
 def _fallback_flicker_score(frames: np.ndarray) -> float:
     """Second-order temporal Laplacian energy (flicker metric)."""
     raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8 or (
-        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
-    ):
+    if raw_frames.dtype == np.uint8:
         frames_f = raw_frames.astype(np.float32) / 255.0
     else:
         frames_f = raw_frames.astype(np.float32)
@@ -196,9 +222,7 @@ def temporal_warp_error(
         Mean error across all frame pairs (scalar float).
     """
     raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8 or (
-        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
-    ):
+    if raw_frames.dtype == np.uint8:
         frames_f = raw_frames.astype(np.float32) / 255.0
     else:
         frames_f = raw_frames.astype(np.float32)
@@ -228,9 +252,7 @@ def flicker_score(frames: np.ndarray) -> float:
         Scalar float (lower is better; 0 for perfectly static content).
     """
     raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8 or (
-        np.issubdtype(raw_frames.dtype, np.floating) and raw_frames.max() > 1.0
-    ):
+    if raw_frames.dtype == np.uint8:
         frames_f = raw_frames.astype(np.float32) / 255.0
     else:
         frames_f = raw_frames.astype(np.float32)
@@ -292,13 +314,13 @@ def fvd_feature_distance(
     if sigma2.ndim == 0:
         sigma2 = sigma2.reshape(1, 1)
 
-    # Adaptive Tikhonov regularization: epsilon * I to stabilize square root
+    # Adaptive symmetric Tikhonov regularization: epsilon * I to stabilize square root
+    # Unified epsilon eliminates null-space asymmetry bias when N < D.
     d = sigma1.shape[0]
     eps_floor = 1e-7
-    eps1 = max(float(np.trace(sigma1)) * 1e-6, eps_floor)
-    eps2 = max(float(np.trace(sigma2)) * 1e-6, eps_floor)
-    sigma1 = sigma1 + eps1 * np.eye(d, dtype=np.float64)
-    sigma2 = sigma2 + eps2 * np.eye(d, dtype=np.float64)
+    eps = max(max(float(np.trace(sigma1)), float(np.trace(sigma2))) * 1e-6, eps_floor)
+    sigma1 = sigma1 + eps * np.eye(d, dtype=np.float64)
+    sigma2 = sigma2 + eps * np.eye(d, dtype=np.float64)
 
     diff = mu1 - mu2
 
@@ -442,7 +464,7 @@ def _build_r3d18_extractor(
             for i in range(arr.shape[0]):
                 v = arr[i]  # [T, H, W, C]
                 t_video = torch.from_numpy(v.copy() if not v.flags.writeable else v)
-                if t_video.dtype == torch.uint8 or t_video.max() > 1.0:
+                if t_video.dtype == torch.uint8:
                     t_video = t_video.float() / 255.0
                 else:
                     t_video = t_video.float()
