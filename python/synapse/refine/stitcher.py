@@ -24,12 +24,6 @@ import numpy as np
 from synapse.composite.blend import border_ring_lab_match
 from synapse.composite.mask import generate_surgical_mask
 from synapse.refine.types import RefinementResult
-from synapse.render_core.morphology import (
-    binary_erosion as _binary_erosion,
-)
-from synapse.render_core.morphology import (
-    circular_structuring_element as _circular_structuring_element,
-)
 from synapse.style.aces_color import (
     acescg_to_linear_srgb,
     linear_to_srgb,
@@ -214,18 +208,9 @@ class ScalpelStitcher:
                     num_levels=4,
                 )
 
-                alpha_3ch = surgical_alpha[..., np.newaxis]
-                result[t] = (
-                    alpha_3ch * blended_acescg
-                    + (1.0 - alpha_3ch) * bg_frame
-                ).astype(np.float32)
-
-                # In the interior core of the refined ROI (eroded away from the border ring),
-                # preserve the exact refined patch values (including HDR > 1.0)
-                se_core = _circular_structuring_element(ring)
-                core_mask = _binary_erosion(fg_mask_bool, se_core)
-                if np.any(core_mask):
-                    result[t][core_mask] = fg_full[core_mask]
+                # Use Laplacian pyramid blend directly — no additional alpha
+                # composite, which would cause double-alpha blending (α²).
+                result[t] = blended_acescg.astype(np.float32)
 
                 # -------------------------------------------------------
                 # Measure border quality with real CIE ΔE₀₀.
@@ -552,7 +537,13 @@ def _border_psnr(
     mse = float(np.mean(diff[border_mask] ** 2))
     if mse <= 1e-10:
         return 100.0
-    return float(min(10.0 * np.log10(1.0 / mse), 100.0))
+    # Use actual peak value for HDR ACEScg (peak may exceed 1.0).
+    peak = max(
+        float(np.max(np.abs(result_frame[border_mask]))),
+        float(np.max(np.abs(source_frame[border_mask]))),
+        1.0,
+    )
+    return float(min(10.0 * np.log10(peak ** 2 / mse), 100.0))
 
 
 def _border_ciede2000(

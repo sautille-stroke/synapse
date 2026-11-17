@@ -20,6 +20,9 @@ def _xyxy_to_cxcywh(bbox_xyxy: np.ndarray) -> np.ndarray:
 def _cxcywh_to_xyxy(cxcywh: np.ndarray) -> np.ndarray:
     """Convert ``[cx, cy, w, h]`` → ``[x1, y1, x2, y2]``."""
     cx, cy, w, h = cxcywh
+    # Clamp width and height to >= 1.0 to prevent degenerate boxes
+    w = max(float(w), 1.0)
+    h = max(float(h), 1.0)
     return np.array([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dtype=np.float32)
 
 
@@ -109,7 +112,13 @@ class KalmanBBoxTracker:
     def reset(self) -> None:
         """Reset the tracker to its uninitialised state."""
         self._x = np.zeros(self._DIM_STATE, dtype=np.float64)
-        self._P = np.eye(self._DIM_STATE, dtype=np.float64) * 10.0
+        # Covariance: larger uncertainty for position/size than velocities.
+        p_diag = np.array(
+            [100.0, 100.0, 100.0, 100.0,   # cx, cy, w, h
+             10.0,  10.0,  10.0,  10.0],    # velocities
+            dtype=np.float64,
+        )
+        self._P = np.diag(p_diag)
 
         # State-transition matrix (constant-velocity model)
         self._F = np.eye(self._DIM_STATE, dtype=np.float64)
