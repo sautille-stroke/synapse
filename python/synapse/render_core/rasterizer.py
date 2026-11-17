@@ -77,8 +77,12 @@ def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
 
 
 def entity_hash(name: str) -> int:
-    """Compute a 32-bit Cryptomatte entity ID for *name*."""
-    return _murmurhash3_32(name.encode("utf-8"))
+    """Compute a 32-bit Cryptomatte entity ID for *name*.
+
+    Returns a non-zero hash; background ``0`` is reserved.
+    """
+    h = _murmurhash3_32(name.encode("utf-8"))
+    return h if h != 0 else 1
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +253,14 @@ class SoftwareRasterizer:
             or skeletal animation motion vectors.
         """
         W, H = self.width, self.height
+        if camera.width > 0 and camera.width != W:
+            raise ValueError(
+                f"Camera width {camera.width} != rasterizer width {W}"
+            )
+        if camera.height > 0 and camera.height != H:
+            raise ValueError(
+                f"Camera height {camera.height} != rasterizer height {H}"
+            )
         eid = np.uint32(entity_hash(entity_name))
 
         # Per-vertex base color default
@@ -295,7 +307,9 @@ class SoftwareRasterizer:
         # Init buffers
         depth_buf = np.full((H, W), np.inf, dtype=np.float64)
         color_buf = np.zeros((H, W, 3), dtype=np.float64)
-        normal_buf = np.zeros((H, W, 3), dtype=np.float64)
+        normal_buf = np.tile(
+            np.array([0.0, 0.0, 1.0], dtype=np.float64), (H, W, 1),
+        )
         radiance_buf = np.zeros((H, W, 3), dtype=np.float64)
         bcolor_buf = np.zeros((H, W, 3), dtype=np.float64)
         mask_buf = np.zeros((H, W), dtype=np.uint32)

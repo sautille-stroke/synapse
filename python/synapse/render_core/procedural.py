@@ -629,7 +629,6 @@ def _compute_walk_pose(
     forearm_bend = 0.20
 
     s = math.sin(phase)
-    math.cos(phase)
 
     rotations: dict[str, tuple[float, float, float]] = {}
 

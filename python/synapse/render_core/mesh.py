@@ -99,11 +99,14 @@ def load_obj(path: str | Path) -> MeshData:
                 face_t: list[int] = []
                 for vert in parts[1:]:
                     indices = vert.split("/")
-                    face_v.append(int(indices[0]) - 1)  # OBJ is 1-based
+                    vi = int(indices[0])
+                    face_v.append(vi - 1 if vi > 0 else len(vertices) + vi)
                     if len(indices) > 1 and indices[1]:
-                        face_t.append(int(indices[1]) - 1)
+                        ti = int(indices[1])
+                        face_t.append(ti - 1 if ti > 0 else len(uvs) + ti)
                     if len(indices) > 2 and indices[2]:
-                        face_n.append(int(indices[2]) - 1)
+                        ni = int(indices[2])
+                        face_n.append(ni - 1 if ni > 0 else len(normals) + ni)
 
                 # Fan triangulation for polygons
                 for i in range(1, len(face_v) - 1):

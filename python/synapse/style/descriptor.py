@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import math
+
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_3_element_finite_nonneg(v: list[float], field_name: str) -> list[float]:
+    """Validate that *v* has exactly 3 finite non-negative elements."""
+    if len(v) != 3:
+        raise ValueError(f"{field_name} must have exactly 3 elements, got {len(v)}")
+    for i, x in enumerate(v):
+        if not math.isfinite(x):
+            raise ValueError(f"{field_name}[{i}] must be finite, got {x}")
+        if x < 0.0:
+            raise ValueError(f"{field_name}[{i}] must be non-negative, got {x}")
+    return v
+
+
+def _validate_3_element_finite(v: list[float], field_name: str) -> list[float]:
+    """Validate that *v* has exactly 3 finite elements (may be negative)."""
+    if len(v) != 3:
+        raise ValueError(f"{field_name} must have exactly 3 elements, got {len(v)}")
+    for i, x in enumerate(v):
+        if not math.isfinite(x):
+            raise ValueError(f"{field_name}[{i}] must be finite, got {x}")
+    return v
 
 
 class StyleDescriptor(BaseModel):
@@ -30,3 +54,13 @@ class StyleDescriptor(BaseModel):
     grain_sigma: float = Field(default=0.0, ge=0.0)
     vignette_strength: float = Field(default=0.0, ge=0.0, le=1.0)
     tone_curve_lut_1d: list[float] | None = None
+
+    @field_validator("key_light_dir_world")
+    @classmethod
+    def _validate_light_dir(cls, v: list[float]) -> list[float]:
+        return _validate_3_element_finite(v, "key_light_dir_world")
+
+    @field_validator("key_light_rgb")
+    @classmethod
+    def _validate_light_rgb(cls, v: list[float]) -> list[float]:
+        return _validate_3_element_finite_nonneg(v, "key_light_rgb")
