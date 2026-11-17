@@ -300,7 +300,10 @@ def _verify_e4_real_gpu(
     assert f0.cryptomatte_id is not None
 
     try:
-        from safetensors.torch import save_file
+        import importlib.util
+
+        if importlib.util.find_spec("safetensors") is None:
+            raise ImportError("safetensors not installed")
     except ImportError as exc:
         raise BackendUnavailableError(
             "safetensors is required for real GPU LoRA packaging",
