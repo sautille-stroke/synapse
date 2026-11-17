@@ -126,14 +126,28 @@ class TiledBypassExecutor:
         weight = np.zeros((h, w, 1), dtype=np.float32)
 
         stride = max(ts // 2, 1)
-        for y0 in range(0, max(h - ts + 1, 1), stride):
-            for x0 in range(0, max(w - ts + 1, 1), stride):
+
+        # Build tile start lists with guaranteed end-tile coverage.
+        starts_y = sorted({*range(0, max(h - ts + 1, 1), stride), max(h - ts, 0)})
+        starts_x = sorted({*range(0, max(w - ts + 1, 1), stride), max(w - ts, 0)})
+
+        for y0 in starts_y:
+            for x0 in starts_x:
                 y1 = min(y0 + ts, h)
                 x1 = min(x0 + ts, w)
                 tile = crop[y0:y1, x0:x1]
                 processed = process_tile_fn(tile)
-                out[y0:y1, x0:x1] += processed
-                weight[y0:y1, x0:x1] += 1.0
 
-        weight = np.maximum(weight, 1.0)
+                # 2D Hann (raised cosine) window for seamless tile blending.
+                th, tw = y1 - y0, x1 - x0
+                wy = np.hanning(th).astype(np.float32)
+                wx = np.hanning(tw).astype(np.float32)
+                hann = (wy[:, None] * wx[None, :])[..., np.newaxis]  # (th, tw, 1)
+                # Clamp Hann minimum to avoid divide-by-zero at corners.
+                hann = np.maximum(hann, 1e-6)
+
+                out[y0:y1, x0:x1] += processed * hann
+                weight[y0:y1, x0:x1] += hann
+
+        weight = np.maximum(weight, 1e-6)
         return out / weight

@@ -216,26 +216,21 @@ def _fuse_poisson_gradient(
     for k, cand in enumerate(candidates):
         gx = np.zeros_like(cand)
         gy = np.zeros_like(cand)
-        # Centered difference for interior
-        gx[:, 1:-1, :] = (cand[:, 2:, :] - cand[:, :-2, :]) / 2.0
-        gy[1:-1, :, :] = (cand[2:, :, :] - cand[:-2, :, :]) / 2.0
-        # One-sided for boundaries
-        gx[:, 0, :] = cand[:, 1, :] - cand[:, 0, :]
-        gx[:, -1, :] = cand[:, -1, :] - cand[:, -2, :]
-        gy[0, :, :] = cand[1, :, :] - cand[0, :, :]
-        gy[-1, :, :] = cand[-1, :, :] - cand[-2, :, :]
+        # Forward-difference gradient (proper adjoint pair with backward-diff divergence)
+        gx[:, :-1, :] = cand[:, 1:, :] - cand[:, :-1, :]
+        gy[:-1, :, :] = cand[1:, :, :] - cand[:-1, :, :]
 
         target_gx += weights[k] * gx
         target_gy += weights[k] * gy
 
-    # Centered divergence of target gradient field
+    # Backward-difference divergence (adjoint of forward-diff gradient)
     div = np.zeros_like(candidates[0])
-    div[:, 1:-1, :] += (target_gx[:, 2:, :] - target_gx[:, :-2, :]) / 2.0
-    div[1:-1, :, :] += (target_gy[2:, :, :] - target_gy[:-2, :, :]) / 2.0
-    div[:, 0, :] += target_gx[:, 1, :] - target_gx[:, 0, :]
-    div[:, -1, :] += target_gx[:, -1, :] - target_gx[:, -2, :]
-    div[0, :, :] += target_gy[1, :, :] - target_gy[0, :, :]
-    div[-1, :, :] += target_gy[-1, :, :] - target_gy[-2, :, :]
+    # Interior: backward difference of target_gx along x
+    div[:, 1:, :] += target_gx[:, 1:, :] - target_gx[:, :-1, :]
+    div[:, 0, :] += target_gx[:, 0, :]
+    # Interior: backward difference of target_gy along y
+    div[1:, :, :] += target_gy[1:, :, :] - target_gy[:-1, :, :]
+    div[0, :, :] += target_gy[0, :, :]
 
     # Initialise from weighted average
     result = np.zeros_like(candidates[0])
