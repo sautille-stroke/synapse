@@ -11,12 +11,15 @@ methods to keep the base package lightweight.
 
 from __future__ import annotations
 
+import fnmatch
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from synapse.errors import ContractValidationError
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -282,7 +285,7 @@ class StatelessLoRATrainer:
                 continue
             if isinstance(child, LoRALinear):
                 continue
-            if any(pat in name for pat in target_patterns):
+            if any(fnmatch.fnmatch(name, pat) or pat in name for pat in target_patterns):
                 lora = LoRALinear(
                     child,
                     rank=self._config.rank,
@@ -302,9 +305,20 @@ class StatelessLoRATrainer:
                 attr = parts[0]
             setattr(parent, attr, new_mod)
 
+        first_call = not self._target_patterns
         if target_patterns:
             self._target_patterns = list(target_patterns)
         self._optimizer = None
+
+        if injected == 0 and target_patterns and first_call:
+            raise ContractValidationError(
+                f"inject_lora matched 0 layers for target_modules={target_patterns!r}. "
+                "Verify patterns against the model's named_modules.",
+                agent_fix_hint=(
+                    "Run `list(module.named_modules())` to see available layer names, "
+                    "then adjust `target_modules` in the LoRA manifest."
+                ),
+            )
 
         if self._config.max_trainable_ratio is not None:
             total = sum(p.numel() for p in module.parameters())
@@ -416,6 +430,19 @@ class StatelessLoRATrainer:
             torch.float16 if self._config.mixed_precision == "fp16" else torch.bfloat16
         )
 
+        # GradScaler for fp16 to prevent gradient underflow
+        use_scaler = (
+            autocast_enabled
+            and self._config.mixed_precision == "fp16"
+        )
+        if use_scaler and not hasattr(self, "_grad_scaler"):
+            self._grad_scaler = torch.amp.GradScaler()  # type: ignore[attr-defined]
+
+        # Move batch tensors to same device as module
+        for k, v in batch.items():
+            if hasattr(v, "to") and hasattr(v, "device"):
+                batch[k] = v.to(device=next(module.parameters()).device)
+
         with torch.autocast(
             device_type=device_type, dtype=amp_dtype, enabled=autocast_enabled
         ):
@@ -427,7 +454,10 @@ class StatelessLoRATrainer:
                 )
 
         scaled_loss = raw_loss / float(accum)
-        scaled_loss.backward()
+        if use_scaler:
+            self._grad_scaler.scale(scaled_loss).backward()
+        else:
+            scaled_loss.backward()
         self._micro_step += 1
 
         if self._micro_step % accum == 0:
@@ -435,8 +465,14 @@ class StatelessLoRATrainer:
             trainable_params = [
                 p for p in module.parameters() if p.requires_grad
             ]
-            torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
-            self._optimizer.step()
+            if use_scaler:
+                self._grad_scaler.unscale_(self._optimizer)
+                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                self._grad_scaler.step(self._optimizer)
+                self._grad_scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                self._optimizer.step()
             self._optimizer.zero_grad()
 
         self._step_count = step
@@ -546,9 +582,19 @@ class StatelessLoRATrainer:
         x_1 = batch["latent"]
         x_0 = batch["noise"]
         t = self._sample_timesteps(x_1, batch)
+        # Store sampled t back into batch so _call_module can forward it to DiT
+        batch["t"] = t
         x_t = (1.0 - t) * x_0 + t * x_1
         v_pred = self._call_module(module, x_t, batch)
         loss = self._flow_matching_loss(v_pred, x_1, x_0)
+
+        # Auto-extract depth and normal from fgpp_cond if separate keys missing
+        if (
+            "fgpp_cond" in batch
+            and batch["fgpp_cond"] is not None
+            and ("depth" not in batch or "normal" not in batch)
+        ):
+            self._extract_auxiliary_from_fgpp(batch)
 
         # Wire optional EdgePreservingLoss
         if self._config.edge_loss_weight > 0.0:
@@ -578,6 +624,64 @@ class StatelessLoRATrainer:
                 )
 
         return loss
+
+    @staticmethod
+    def _extract_auxiliary_from_fgpp(batch: dict[str, Any]) -> None:
+        """Extract depth and normal from fgpp_cond when separate keys are absent.
+
+        FGPP raw layout ``[T, H, W, 15]``:
+        - Channel 0: ``CameraLinearDepth.Z``
+        - Channels 1-3: ``DirectRadiance.RGB``
+        - Channels 4-6: ``WorldNormal.XYZ`` (used as normal ground truth)
+
+        Wan control layout ``[7, T, H, W]``:
+        - Channel 0: depth
+        - Channels 1-3: normal
+
+        The extracted arrays are down-sampled 8× to match the latent spatial
+        resolution (VAE factor) using simple strided slicing.
+        """
+        import torch
+
+        fgpp = batch["fgpp_cond"]
+        if isinstance(fgpp, torch.Tensor):
+            fgpp_np = fgpp.detach().cpu().numpy()
+        else:
+            fgpp_np = fgpp
+
+        import numpy as np
+
+        if fgpp_np.ndim == 4 and fgpp_np.shape[-1] == 15:
+            # Raw FGPP: [T, H, W, 15]
+            if "depth" not in batch:
+                depth = fgpp_np[..., 0]  # [T, H, W]
+                depth_ds = depth[:, ::8, ::8]  # downsample 8x
+                batch["depth"] = torch.as_tensor(
+                    depth_ds, dtype=torch.float32,
+                ).unsqueeze(0)  # [1, T, H//8, W//8]
+            if "normal" not in batch:
+                normal = fgpp_np[..., 4:7]  # [T, H, W, 3]
+                normal_ds = normal[:, ::8, ::8, :]
+                # Transpose to [3, T, H//8, W//8] for channel-first
+                batch["normal"] = torch.as_tensor(
+                    np.ascontiguousarray(normal_ds.transpose(3, 0, 1, 2)),
+                    dtype=torch.float32,
+                ).unsqueeze(0)  # [1, 3, T, H//8, W//8]
+        elif fgpp_np.ndim == 4 and fgpp_np.shape[0] == 7:
+            # Wan control: [7, T, H, W]
+            if "depth" not in batch:
+                depth = fgpp_np[0]  # [T, H, W]
+                depth_ds = depth[:, ::8, ::8]
+                batch["depth"] = torch.as_tensor(
+                    depth_ds, dtype=torch.float32,
+                ).unsqueeze(0)
+            if "normal" not in batch:
+                normal = fgpp_np[1:4]  # [3, T, H, W]
+                normal_ds = normal[:, :, ::8, ::8]
+                batch["normal"] = torch.as_tensor(
+                    np.ascontiguousarray(normal_ds),
+                    dtype=torch.float32,
+                ).unsqueeze(0)  # [1, 3, T, H//8, W//8]
 
     def _dpo_step(
         self,

@@ -10,6 +10,7 @@ Heavy dependencies (``safetensors``, ``torch``) are lazy-imported.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import math
@@ -357,7 +358,7 @@ def _validate_safetensors_weights(
     if target_modules:
         unauthorized = []
         for key in keys:
-            if not any(pat in key for pat in target_modules):
+            if not any(fnmatch.fnmatch(key, f"*{pat}*") or pat in key for pat in target_modules):
                 unauthorized.append(key)
         if unauthorized:
             raise ContractValidationError(
@@ -390,6 +391,15 @@ def _evaluate_gates(
         failures.append(
             "No benchmark metrics provided (fail-closed gate)"
         )
+
+    # Fail-closed: required gate metrics must be present when not skipping bench
+    _REQUIRED_GATE_KEYS = ("chamfer_mm", "normal_angular_error_deg", "border_ring_ciede2000")
+    if not skip_bench and metrics:
+        for req_key in _REQUIRED_GATE_KEYS:
+            if req_key not in metrics:
+                failures.append(
+                    f"Missing required gate metric '{req_key}' (fail-closed)"
+                )
 
     for key, val in metrics.items():
         if not isinstance(val, (int, float)) or not math.isfinite(val):

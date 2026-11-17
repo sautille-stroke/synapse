@@ -826,3 +826,236 @@ class TestStageRegistration:
 
         stages = get_registered_stages()
         assert "lora_train" in stages
+
+
+# -------------------------------------------------------------------
+# PR-117: fnmatch matching, GradScaler, fgpp_cond extraction tests
+# -------------------------------------------------------------------
+
+
+@pytest.mark.slow
+@pytest.mark.usefixtures("_require_torch")
+class TestPR117TrainerEnhancements:
+    """PR-117: Unified fnmatch matching, GradScaler, fgpp_cond extraction."""
+
+    @staticmethod
+    def _make_toy_model() -> Any:
+        """Build a tiny 2-layer MLP for testing."""
+        import torch
+
+        class ToyDiT(torch.nn.Module):
+            def __init__(self, dim: int = 64) -> None:
+                super().__init__()
+                self.ffn = torch.nn.Sequential(
+                    torch.nn.Linear(dim, dim * 4),
+                    torch.nn.GELU(),
+                    torch.nn.Linear(dim * 4, dim),
+                )
+
+            def forward(self, x: Any) -> Any:
+                return self.ffn(x)
+
+        return ToyDiT(dim=64)
+
+    def test_fnmatch_glob_patterns(self) -> None:
+        """PR-117: fnmatch glob patterns (e.g., 'ffn.*') match layers correctly."""
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(category="style", rank=4)
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+
+        # 'ffn.*' glob should match both ffn.0 and ffn.2
+        count = trainer.inject_lora(model, target_patterns=["ffn.*"])
+        assert count == 2, f"Expected 2 layers matched by 'ffn.*', got {count}"
+
+    def test_fnmatch_no_match_raises_contract_error(self) -> None:
+        """PR-117: inject_lora raises ContractValidationError when 0 layers match."""
+        from synapse.errors import ContractValidationError
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(category="style", rank=4)
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+
+        with pytest.raises(ContractValidationError, match="matched 0 layers"):
+            trainer.inject_lora(model, target_patterns=["nonexistent_layer_xyz.*"])
+
+    def test_gradscaler_created_for_fp16(self) -> None:
+        """PR-117: GradScaler is created when mixed_precision='fp16' and CUDA available."""
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        torch.manual_seed(117)
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(
+            category="style", rank=4, mixed_precision="fp16",
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+
+        batch = {
+            "latent": torch.randn(2, 64),
+            "noise": torch.randn(2, 64),
+        }
+        result = trainer.train_step(model, batch, 0)
+        assert "loss" in result
+        # GradScaler is only created on CUDA; on CPU fp16 autocast is disabled
+        if torch.cuda.is_available():
+            assert hasattr(trainer, "_grad_scaler")
+        else:
+            # On CPU, autocast is disabled so scaler is not created
+            assert not hasattr(trainer, "_grad_scaler")
+
+    def test_batch_device_migration(self) -> None:
+        """PR-117: batch tensors are migrated to same device as module params."""
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        torch.manual_seed(117)
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(category="style", rank=4)
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+
+        # Batch tensors on CPU (default) — should be auto-migrated
+        batch = {
+            "latent": torch.randn(2, 64),
+            "noise": torch.randn(2, 64),
+        }
+        result = trainer.train_step(model, batch, 0)
+        assert "loss" in result
+        assert np.isfinite(result["loss"])
+
+    def test_sft_step_stores_t_in_batch(self) -> None:
+        """PR-117: _sft_step stores sampled timestep t back into batch."""
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        torch.manual_seed(117)
+        model = self._make_toy_model()
+        cfg = LoRATrainConfig(category="style", rank=4)
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn.0", "ffn.2"])
+
+        batch: dict[str, Any] = {
+            "latent": torch.randn(4, 64),
+            "noise": torch.randn(4, 64),
+        }
+        assert "t" not in batch
+        trainer.train_step(model, batch, 0)
+        # After train_step, batch should contain 't' from the SFT flow
+        assert "t" in batch
+        assert isinstance(batch["t"], torch.Tensor)
+
+    def test_extract_auxiliary_from_raw_fgpp(self) -> None:
+        """PR-117: _extract_auxiliary_from_fgpp extracts depth/normal from [T,H,W,15]."""
+        import torch
+        from synapse.training.trainer import StatelessLoRATrainer
+
+        # Raw FGPP: [T, H, W, 15]
+        t, h, w = 4, 32, 32
+        fgpp = np.zeros((t, h, w, 15), dtype=np.float32)
+        fgpp[..., 0] = np.linspace(1.0, 10.0, h * w).reshape(1, h, w)  # depth
+        fgpp[..., 4] = 0.0  # normal x
+        fgpp[..., 5] = 0.0  # normal y
+        fgpp[..., 6] = 1.0  # normal z
+
+        batch: dict[str, Any] = {
+            "fgpp_cond": torch.as_tensor(fgpp),
+        }
+
+        StatelessLoRATrainer._extract_auxiliary_from_fgpp(batch)
+
+        assert "depth" in batch
+        assert "normal" in batch
+        # Downsampled 8x: H//8=4, W//8=4
+        assert batch["depth"].shape == (1, t, h // 8, w // 8)
+        assert batch["normal"].shape == (1, 3, t, h // 8, w // 8)
+
+    def test_extract_auxiliary_from_wan_7ch(self) -> None:
+        """PR-117: _extract_auxiliary_from_fgpp extracts depth/normal from [7,T,H,W]."""
+        from synapse.training.trainer import StatelessLoRATrainer
+
+        # Wan control: [7, T, H, W]
+        t, h, w = 4, 32, 32
+        fgpp = np.zeros((7, t, h, w), dtype=np.float32)
+        fgpp[0] = np.linspace(1.0, 10.0, h * w).reshape(1, h, w)  # depth
+        fgpp[1:4] = np.array([0.0, 0.0, 1.0]).reshape(3, 1, 1, 1)  # normal
+
+        batch: dict[str, Any] = {
+            "fgpp_cond": fgpp,
+        }
+
+        StatelessLoRATrainer._extract_auxiliary_from_fgpp(batch)
+
+        assert "depth" in batch
+        assert "normal" in batch
+        assert batch["depth"].shape == (1, t, h // 8, w // 8)
+        assert batch["normal"].shape == (1, 3, t, h // 8, w // 8)
+
+    def test_extract_auxiliary_no_overwrite(self) -> None:
+        """PR-117: _extract_auxiliary_from_fgpp does not overwrite existing keys."""
+        import torch
+        from synapse.training.trainer import StatelessLoRATrainer
+
+        sentinel = torch.ones(1)
+        batch: dict[str, Any] = {
+            "fgpp_cond": np.zeros((4, 32, 32, 15), dtype=np.float32),
+            "depth": sentinel,
+            "normal": sentinel,
+        }
+
+        StatelessLoRATrainer._extract_auxiliary_from_fgpp(batch)
+
+        # Should NOT overwrite existing keys
+        assert batch["depth"] is sentinel
+        assert batch["normal"] is sentinel
+
+
+class TestNormalReconstructionLoss4D5D:
+    """PR-117: NormalReconstructionLoss supports 4D/5D tensors and channel truncation."""
+
+    def test_batch_4d_format(self) -> None:
+        """[B, 3, H, W] batch format produces valid loss."""
+        n_pred = np.random.randn(2, 3, 8, 8)
+        n_gt = np.random.randn(2, 3, 8, 8)
+        loss = normal_reconstruction_loss(n_pred, n_gt)
+        assert 0.0 <= loss <= 2.0
+
+    def test_video_5d_format(self) -> None:
+        """[B, 3, T, H, W] video format produces valid loss."""
+        torch = pytest.importorskip("torch")
+        from synapse.training.losses import NormalReconstructionLoss
+
+        loss_fn = NormalReconstructionLoss()
+        n_pred = torch.randn(1, 3, 4, 8, 8)
+        n_gt = torch.randn(1, 3, 4, 8, 8)
+        loss = loss_fn(n_pred, n_gt)
+        assert 0.0 <= float(loss) <= 2.0
+
+    def test_channel_truncation(self) -> None:
+        """Inputs with >3 channels are truncated to 3."""
+        n_pred = np.random.randn(8, 8, 5)  # 5 channels
+        n_gt = np.random.randn(8, 8, 5)
+        loss = normal_reconstruction_loss(n_pred, n_gt)
+        assert 0.0 <= loss <= 2.0
+
+    def test_mask_device_consistency(self) -> None:
+        """PR-117: mask tensor is moved to same device as loss_map."""
+        torch = pytest.importorskip("torch")
+        from synapse.training.losses import NormalReconstructionLoss
+
+        loss_fn = NormalReconstructionLoss()
+        n_pred = torch.randn(8, 8, 3, requires_grad=True)
+        n_gt = torch.randn(8, 8, 3)
+        mask = np.ones((8, 8), dtype=np.float64)  # numpy mask
+        loss = loss_fn(n_pred, n_gt, mask=mask)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert n_pred.grad is not None

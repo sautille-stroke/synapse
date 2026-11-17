@@ -194,21 +194,23 @@ class TestIngestionGates:
         assert "Gate 4" in reason
 
     def test_ingestion_gate_rejects_bad_rotation(self) -> None:
-        """Sample with det(R) ≠ 1 must be rejected."""
+        """Sample with det(R) ≠ 1 must be rejected via camera_matrices."""
         fgpp = _good_fgpp()
-        # Set rotation to a matrix with det != 1.
-        bad_rot = np.array([
+        # Build a [T, 4, 4] camera matrix with bad rotation (det != 1).
+        t = fgpp.shape[0]
+        bad_cam = np.tile(np.eye(4, dtype=np.float32), (t, 1, 1))
+        bad_cam[:, :3, :3] = np.array([
             [2.0, 0.0, 0.0],
             [0.0, 2.0, 0.0],
             [0.0, 0.0, 2.0],
-        ], dtype=np.float32).flatten()
-        fgpp[..., 7:16] = bad_rot
-        # Restore Cryptomatte at index 14 (overlaps rotation indices)
-        # so that Gate 1 does not fire before Gate 5.
-        fgpp[..., 14] = 1.0
+        ], dtype=np.float32)
         builder = _make_builder()
         passed, reason = builder._validate_ingestion_quality(
-            {"video_frames": _good_frames(), "fgpp_cond": fgpp},
+            {
+                "video_frames": _good_frames(),
+                "fgpp_cond": fgpp,
+                "camera_matrices": bad_cam,
+            },
         )
         assert not passed
         assert "Gate 5" in reason

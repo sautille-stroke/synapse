@@ -781,6 +781,7 @@ class WanAdapter(VideoModelAdapter):
                         window_frames=window_size,
                         stride_frames=stride,
                         overlap_frames=overlap,
+                        total_frames=total_frames,
                     )
                     detector = DiscontinuityDetector()
                     scheduler = ConditionScheduler(plan=plan, detector=detector)

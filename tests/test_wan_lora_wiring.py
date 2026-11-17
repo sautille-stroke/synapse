@@ -162,7 +162,7 @@ class TestWanAdapterLoRAGenerate:
             payload, config, model=mock_model, fgpp_frames=frames,
         )
 
-        mgr.build_spatial_lora_masks.assert_called_once()  # type: ignore[union-attr]
+        mgr.build_spatial_lora_masks.assert_called()  # type: ignore[union-attr]
         mgr.apply_merged_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
         mgr.restore_base_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
@@ -265,11 +265,21 @@ class TestWanAdapterLoRAGenerate:
         from synapse.adapters.lora.manager import MultiLoRAManager
         from synapse.adapters.lora.manifest import LoRAManifest
 
+        class SpatialAttn(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.to_q = torch.nn.Linear(8, 8, bias=False)
+
+        class CrossAttn(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.to_k = torch.nn.Linear(8, 8, bias=False)
+
         class ToyModel(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
-                self.spatial = torch.nn.Linear(8, 8, bias=False)
-                self.cross = torch.nn.Linear(8, 8, bias=False)
+                self.spatial_attn = SpatialAttn()
+                self.cross_attn = CrossAttn()
 
         model = ToyModel()
 
@@ -280,7 +290,7 @@ class TestWanAdapterLoRAGenerate:
             alpha=4.0,
             adapter_path="id.safetensors",
             adapter_sha256="a" * 64,
-            target_modules=["spatial"],
+            target_modules=["spatial_attn.to_q"],
         )
         style_manifest = LoRAManifest(
             name="art-style",
@@ -289,7 +299,7 @@ class TestWanAdapterLoRAGenerate:
             alpha=4.0,
             adapter_path="style.safetensors",
             adapter_sha256="b" * 64,
-            target_modules=["cross"],
+            target_modules=["cross_attn.to_k"],
         )
 
         manager = MultiLoRAManager(
@@ -303,11 +313,11 @@ class TestWanAdapterLoRAGenerate:
         ], dtype=np.uint32)  # [T=2, H=2, W=2]
 
         with manager.manage_spatial_hooks(model, cryptomatte_ids=crypt, target_entity_ids={1}):
-            assert len(model.spatial._forward_hooks) > 0
-            assert len(model.cross._forward_hooks) > 0
+            assert len(model.spatial_attn.to_q._forward_hooks) > 0
+            assert len(model.cross_attn.to_k._forward_hooks) > 0
 
         # Exited context cleanly: hooks must be detached
-        assert len(model.spatial._forward_hooks) == 0
-        assert len(model.cross._forward_hooks) == 0
+        assert len(model.spatial_attn.to_q._forward_hooks) == 0
+        assert len(model.cross_attn.to_k._forward_hooks) == 0
 
 

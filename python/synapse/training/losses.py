@@ -189,11 +189,27 @@ class NormalReconstructionLoss:
         n_p = torch.as_tensor(n_pred, dtype=torch.float32)
         n_g = torch.as_tensor(n_gt, dtype=torch.float32)
 
-        # If channel-first [3, H, W], transpose to [H, W, 3]
-        if n_p.ndim == 3 and n_p.shape[0] == 3:
+        # Handle various tensor layouts: [3, H, W], [B, 3, H, W], [B, C, T, H, W]
+        if n_p.ndim == 5:
+            # Video: [B, 3, T, H, W] → flatten to [B*T, H, W, 3]
+            b, c, t, h, w = n_p.shape
+            n_p = n_p.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, min(c, 3))
+            n_g = n_g.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, min(n_g.shape[1], 3))
+        elif n_p.ndim == 4:
+            # Batch: [B, 3, H, W] → [B, H, W, 3]
+            n_p = n_p.permute(0, 2, 3, 1)
+            n_g = n_g.permute(0, 2, 3, 1)
+        elif n_p.ndim == 3 and n_p.shape[0] == 3:
+            # If channel-first [3, H, W], transpose to [H, W, 3]
             n_p = n_p.permute(1, 2, 0)
         if n_g.ndim == 3 and n_g.shape[0] == 3:
             n_g = n_g.permute(1, 2, 0)
+
+        # Ensure only 3-channel normals are used
+        if n_p.shape[-1] > 3:
+            n_p = n_p[..., :3]
+        if n_g.shape[-1] > 3:
+            n_g = n_g[..., :3]
 
         # L2-normalise
         eps = 1e-8
@@ -205,7 +221,7 @@ class NormalReconstructionLoss:
         loss_map = 1.0 - cos_sim
 
         if mask is not None:
-            fg = torch.as_tensor(mask, dtype=torch.float32) > 0
+            fg = torch.as_tensor(mask, dtype=torch.float32, device=loss_map.device) > 0
             if fg.any():
                 return torch.mean(loss_map[fg])
             return (n_p * 0.0).sum()
