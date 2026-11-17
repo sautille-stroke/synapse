@@ -112,8 +112,7 @@ class BundleManifest(BaseModel):
     def _check_schema_version(cls, v: str) -> str:
         if v != "synapse.job_bundle.v1.0":
             raise ValueError(
-                f"Unsupported schema_version '{v}'; "
-                "expected 'synapse.job_bundle.v1.0'"
+                f"Unsupported schema_version '{v}'; expected 'synapse.job_bundle.v1.0'"
             )
         return v
 
@@ -158,8 +157,7 @@ class BundleManifest(BaseModel):
                 f"Unknown closure_type '{closure_type}'. "
                 f"Valid types: {sorted(CLOSURE_TYPE_MAP.keys())}",
                 agent_fix_hint=(
-                    f"Use one of the supported closure types: "
-                    f"{sorted(CLOSURE_TYPE_MAP.keys())}"
+                    f"Use one of the supported closure types: {sorted(CLOSURE_TYPE_MAP.keys())}"
                 ),
             )
 
@@ -188,8 +186,7 @@ class BundleManifest(BaseModel):
                     raise AssetNotFoundError(
                         f"Asset file not found: {asset_path!r}",
                         agent_fix_hint=(
-                            f"Ensure '{asset_path}' exists on disk "
-                            "before submitting the JobBundle."
+                            f"Ensure '{asset_path}' exists on disk before submitting the JobBundle."
                         ),
                     )
 
@@ -239,9 +236,7 @@ class BundleManifest(BaseModel):
 
         # Extract traceparent from payload or env
         traceparent = (
-            raw.get("traceparent")
-            or payload.get("traceparent")
-            or os.environ.get("TRACEPARENT")
+            raw.get("traceparent") or payload.get("traceparent") or os.environ.get("TRACEPARENT")
         )
 
         return cls(
@@ -396,10 +391,7 @@ def _handle_fgpp_validate(
 
         raise AssetNotFoundError(
             f"metadata.json not found in {fgpp_dir}",
-            agent_fix_hint=(
-                "Run the FGPP exporter to generate metadata.json "
-                f"in '{fgpp_dir}'."
-            ),
+            agent_fix_hint=(f"Run the FGPP exporter to generate metadata.json in '{fgpp_dir}'."),
         )
 
     raw = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -409,8 +401,7 @@ def _handle_fgpp_validate(
         from synapse.errors import ContractValidationError
 
         raise ContractValidationError(
-            f"Schema version mismatch: expected "
-            f"'{FGPP_SCHEMA_VERSION}', got '{schema_ver}'",
+            f"Schema version mismatch: expected '{FGPP_SCHEMA_VERSION}', got '{schema_ver}'",
             agent_fix_hint=(
                 "Re-export with a compatible FGPP producer "
                 f"(expected schema '{FGPP_SCHEMA_VERSION}')."
@@ -418,7 +409,8 @@ def _handle_fgpp_validate(
         )
 
     num_frames = raw.get(
-        "num_frames", raw.get("total_frames", 0),
+        "num_frames",
+        raw.get("total_frames", 0),
     )
 
     return {
@@ -496,8 +488,7 @@ def _handle_neural_video_generate(
                 f"exceeds budget {budget.free_vram_gb:.1f} GiB "
                 "even after fallback to 49-frame window",
                 agent_fix_hint=(
-                    "Increase hardware_budget.free_vram_gb or "
-                    "reduce resolution/frame count."
+                    "Increase hardware_budget.free_vram_gb or reduce resolution/frame count."
                 ),
             )
     elif ratio > 0.80:
@@ -519,10 +510,17 @@ def _handle_neural_video_generate(
         height=height,
         num_frames=num_frames,
         extra={
-            k: v for k, v in params.items()
-            if k not in {
-                "num_frames", "height", "width",
-                "model_variant", "adapter", "seed", "fps",
+            k: v
+            for k, v in params.items()
+            if k
+            not in {
+                "num_frames",
+                "height",
+                "width",
+                "model_variant",
+                "adapter",
+                "seed",
+                "fps",
             }
         },
     )
@@ -552,19 +550,20 @@ def _handle_neural_video_generate(
         raise AssetNotFoundError(
             f"No EXR frames found in FGPP directory: {fgpp_dir_str!r}",
             agent_fix_hint=(
-                "Ensure the FGPP directory contains frame_*.exr files "
-                "alongside metadata.json."
+                "Ensure the FGPP directory contains frame_*.exr files alongside metadata.json."
             ),
         )
     conditions = adapter.prepare_conditions(fgpp_seq, gen_cfg)
 
     result: VideoResult = adapter.generate(
-        conditions=conditions, config=gen_cfg,
+        conditions=conditions,
+        config=gen_cfg,
     )
 
     # Write output
     output_path = manifest.outputs.get(
-        "video", str(Path("output") / "video.npy"),
+        "video",
+        str(Path("output") / "video.npy"),
     )
     out_p = Path(output_path)
     # np.save auto-appends .npy if suffix missing; normalise beforehand
@@ -623,9 +622,7 @@ def _handle_style_extract_and_map(
         )
 
     frames: list[np.ndarray] = []
-    for img_path in sorted(frames_dir.glob("*.png"))[
-        :num_frames
-    ]:
+    for img_path in sorted(frames_dir.glob("*.png"))[:num_frames]:
         # Lazy import: PIL is optional
         try:
             from PIL import Image
@@ -639,11 +636,8 @@ def _handle_style_extract_and_map(
             from synapse.errors import BackendUnavailableError
 
             raise BackendUnavailableError(
-                "PIL (Pillow) is required for loading frame images "
-                "but is not installed.",
-                agent_fix_hint=(
-                    "Install Pillow: pip install 'Pillow>=9.0'"
-                ),
+                "PIL (Pillow) is required for loading frame images but is not installed.",
+                agent_fix_hint=("Install Pillow: pip install 'Pillow>=9.0'"),
             ) from None
 
     if not frames:
@@ -651,10 +645,7 @@ def _handle_style_extract_and_map(
 
         raise AssetNotFoundError(
             f"No .png frame files found in {frames_dir}",
-            agent_fix_hint=(
-                "Ensure frames_dir contains .png frame files for "
-                "style extraction."
-            ),
+            agent_fix_hint=("Ensure frames_dir contains .png frame files for style extraction."),
         )
 
     descriptor = extract_style_optical(np.asarray(frames, dtype=np.uint8))
@@ -723,8 +714,7 @@ def _handle_surgical_composite(
         from synapse.errors import BackendUnavailableError
 
         raise BackendUnavailableError(
-            "PIL (Pillow) is required for loading frame images "
-            "but is not installed.",
+            "PIL (Pillow) is required for loading frame images but is not installed.",
             agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
         ) from None
 
@@ -734,14 +724,16 @@ def _handle_surgical_composite(
     rendered_list: list[np.ndarray] = []
     for img_path in sorted(rendered_dir.glob("*.png"))[:num_frames]:
         img = np.array(
-            Image.open(img_path).convert("RGB"), dtype=np.uint8,
+            Image.open(img_path).convert("RGB"),
+            dtype=np.uint8,
         )
         rendered_list.append(img)
 
     neural_list: list[np.ndarray] = []
     for img_path in sorted(neural_dir.glob("*.png"))[:num_frames]:
         img = np.array(
-            Image.open(img_path).convert("RGB"), dtype=np.uint8,
+            Image.open(img_path).convert("RGB"),
+            dtype=np.uint8,
         )
         neural_list.append(img)
 
@@ -750,9 +742,7 @@ def _handle_surgical_composite(
 
         raise AssetNotFoundError(
             f"No .png frames found in rendered_dir: {rendered_dir}",
-            agent_fix_hint=(
-                "Ensure rendered_dir contains .png frame files."
-            ),
+            agent_fix_hint=("Ensure rendered_dir contains .png frame files."),
         )
 
     if not neural_list:
@@ -760,9 +750,7 @@ def _handle_surgical_composite(
 
         raise AssetNotFoundError(
             f"No .png frames found in neural_dir: {neural_dir}",
-            agent_fix_hint=(
-                "Ensure neural_dir contains .png frame files."
-            ),
+            agent_fix_hint=("Ensure neural_dir contains .png frame files."),
         )
 
     rendered_frames = np.stack(rendered_list, axis=0)
@@ -782,15 +770,16 @@ def _handle_surgical_composite(
         )
         for t in range(rendered_frames.shape[0]):
             diff = np.abs(
-                rendered_frames[t].astype(np.float32)
-                - neural_frames[t].astype(np.float32),
+                rendered_frames[t].astype(np.float32) - neural_frames[t].astype(np.float32),
             )
             binary_mask = diff.mean(axis=-1) > 10.0
             masks[t] = generate_surgical_mask(binary_mask)
 
     # Composite
     composited = composite_surgical_sequence(
-        neural_frames, rendered_frames, masks,
+        neural_frames,
+        rendered_frames,
+        masks,
     )
 
     output_path = manifest.outputs.get(
@@ -918,17 +907,15 @@ class JobBundleWorker:
                 timings={
                     "total_seconds": t_end - t_start,
                 },
-                agent_fix_hint=(
-                    getattr(exc, "agent_fix_hint", "")
-                    or str(exc)
-                ),
+                agent_fix_hint=(getattr(exc, "agent_fix_hint", "") or str(exc)),
             )
 
         t_end = time.monotonic()
 
         # Build output file entries with SHA256
         output_paths: dict[str, str] = result_data.get(
-            "output_paths", {},
+            "output_paths",
+            {},
         )
         output_files: dict[str, OutputFileEntry] = {}
         for key, fpath in output_paths.items():
@@ -1024,20 +1011,16 @@ def run_worker_cli(
             "status": "error",
             "exit_code": 20,
             "trace_id": trace_ctx.trace_id,
-            "message": (
-                f"Bundle manifest not found: {manifest_file}"
-            ),
-            "agent_fix_hint": (
-                f"Ensure '{manifest_file}' exists and is a "
-                "valid JSON file."
-            ),
+            "message": (f"Bundle manifest not found: {manifest_file}"),
+            "agent_fix_hint": (f"Ensure '{manifest_file}' exists and is a valid JSON file."),
         }
         if json_mode:
             json.dump(err, sys.stdout, default=str)
             print()
         else:
             print(
-                f"Error: {err['message']}", file=sys.stderr,
+                f"Error: {err['message']}",
+                file=sys.stderr,
             )
         return 20
 
@@ -1052,8 +1035,7 @@ def run_worker_cli(
             "trace_id": trace_ctx.trace_id,
             "message": f"Invalid JSON in bundle manifest: {exc}",
             "agent_fix_hint": (
-                "Fix the JSON syntax in the bundle manifest file "
-                f"'{manifest_file}' and retry."
+                f"Fix the JSON syntax in the bundle manifest file '{manifest_file}' and retry."
             ),
         }
         if json_mode:
@@ -1061,7 +1043,8 @@ def run_worker_cli(
             print()
         else:
             print(
-                f"Error: {err['message']}", file=sys.stderr,
+                f"Error: {err['message']}",
+                file=sys.stderr,
             )
         return 10
 
@@ -1072,9 +1055,7 @@ def run_worker_cli(
             "status": "error",
             "exit_code": 10,
             "trace_id": trace_ctx.trace_id,
-            "message": (
-                f"Bundle manifest validation failed: {exc}"
-            ),
+            "message": (f"Bundle manifest validation failed: {exc}"),
             "agent_fix_hint": (
                 "Ensure the bundle manifest conforms to the "
                 "synapse.job_bundle.v1.0 schema. Check required "
@@ -1086,7 +1067,8 @@ def run_worker_cli(
             print()
         else:
             print(
-                f"Error: {err['message']}", file=sys.stderr,
+                f"Error: {err['message']}",
+                file=sys.stderr,
             )
         return 10
 
@@ -1130,9 +1112,7 @@ def run_worker_cli(
             )
         for key, entry in result.output_files.items():
             print(
-                f"  {key}: {entry.path} "
-                f"({entry.size_bytes} bytes, "
-                f"sha256={entry.sha256[:16]}...)",
+                f"  {key}: {entry.path} ({entry.size_bytes} bytes, sha256={entry.sha256[:16]}...)",
             )
 
     return result.exit_code

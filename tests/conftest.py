@@ -31,9 +31,7 @@ def pytest_runtest_makereport(
         and not getattr(rep, "wasxfail", None)
     ):
         rep.outcome = "failed"
-        rep.longrepr = (
-            f"SYNAPSE_CI_STRICT_DEPS=1 forbids skipped tests: {rep.longrepr}"
-        )
+        rep.longrepr = f"SYNAPSE_CI_STRICT_DEPS=1 forbids skipped tests: {rep.longrepr}"
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -79,6 +77,7 @@ def cached_rasterizer_64() -> Any:
     if key not in _rasterizer_cache:
         try:
             from synapse.render_core.rasterizer import SoftwareRasterizer
+
             _rasterizer_cache[key] = SoftwareRasterizer(width=64, height=64)
         except ImportError:
             return None
@@ -92,6 +91,7 @@ def cached_rasterizer_128() -> Any:
     if key not in _rasterizer_cache:
         try:
             from synapse.render_core.rasterizer import SoftwareRasterizer
+
             _rasterizer_cache[key] = SoftwareRasterizer(width=128, height=128)
         except ImportError:
             return None

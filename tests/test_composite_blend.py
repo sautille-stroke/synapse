@@ -30,6 +30,7 @@ from synapse.style.aces_color import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_solid_image(
     h: int,
     w: int,
@@ -45,17 +46,21 @@ def _make_solid_image(
 
 
 def _make_circle_mask(
-    h: int, w: int, cx: int, cy: int, radius: int,
+    h: int,
+    w: int,
+    cx: int,
+    cy: int,
+    radius: int,
 ) -> np.ndarray:
     """Create a circular bool mask [H, W]."""
     yy, xx = np.ogrid[:h, :w]
-    return ((xx - cx) ** 2 + (yy - cy) ** 2) <= radius ** 2  # type: ignore[no-any-return]
+    return ((xx - cx) ** 2 + (yy - cy) ** 2) <= radius**2  # type: ignore[no-any-return]
 
 
-def _mean_ciede2000(img1_srgb: np.ndarray, img2_srgb: np.ndarray,
-                    mask: np.ndarray) -> float:
+def _mean_ciede2000(img1_srgb: np.ndarray, img2_srgb: np.ndarray, mask: np.ndarray) -> float:
     """Compute mean CIEDE2000 over masked pixels."""
     from synapse.style.aces_color import ciede2000_delta_e
+
     a = img1_srgb.astype(np.float64) / 255.0
     b = img2_srgb.astype(np.float64) / 255.0
     lab_a = rgb_to_cielab(srgb_to_linear(a))
@@ -93,6 +98,7 @@ class TestBorderRingLabMatch:
             _binary_erosion,
             _circular_structuring_element,
         )
+
         se = _circular_structuring_element(12)
         eroded = _binary_erosion(mask, se)
         inner_band = mask & (~eroded)
@@ -101,12 +107,9 @@ class TestBorderRingLabMatch:
             de_before = _mean_ciede2000(fg, bg, inner_band)
             de_after = _mean_ciede2000(result, bg, inner_band)
             assert de_after < de_before, (
-                f"CIEDE2000 should decrease: before={de_before:.2f} "
-                f"after={de_after:.2f}"
+                f"CIEDE2000 should decrease: before={de_before:.2f} after={de_after:.2f}"
             )
-            assert de_after < 2.5, (
-                f"CIEDE2000 after match should be < 2.5, got {de_after:.2f}"
-            )
+            assert de_after < 2.5, f"CIEDE2000 after match should be < 2.5, got {de_after:.2f}"
 
     def test_warm_color_shift(self) -> None:
         """Border-ring match handles warm colour shift reasonably."""
@@ -166,11 +169,11 @@ class TestLaplacianPyramidBlend:
 
         # Hard binary mask.
         hard_mask = np.zeros((h, w), dtype=np.float32)
-        hard_mask[:, :w // 2] = 1.0
+        hard_mask[:, : w // 2] = 1.0
 
         # Soft mask with gradient at boundary.
         soft_mask = np.zeros((h, w), dtype=np.float32)
-        soft_mask[:, :w // 2 - 16] = 1.0
+        soft_mask[:, : w // 2 - 16] = 1.0
         for i in range(32):
             col = w // 2 - 16 + i
             if 0 <= col < w:
@@ -183,18 +186,15 @@ class TestLaplacianPyramidBlend:
         boundary_slice = slice(w // 2 - 20, w // 2 + 20)
 
         grad_hard = np.abs(
-            np.diff(blend_hard[:, boundary_slice, :].astype(np.float64),
-                    axis=1)
+            np.diff(blend_hard[:, boundary_slice, :].astype(np.float64), axis=1)
         ).mean()
         grad_soft = np.abs(
-            np.diff(blend_soft[:, boundary_slice, :].astype(np.float64),
-                    axis=1)
+            np.diff(blend_soft[:, boundary_slice, :].astype(np.float64), axis=1)
         ).mean()
 
         # Soft mask should produce smoother transitions (lower gradient).
         assert grad_soft <= grad_hard + 1.0, (
-            f"Soft gradient ({grad_soft:.2f}) should be <= "
-            f"hard gradient ({grad_hard:.2f})"
+            f"Soft gradient ({grad_soft:.2f}) should be <= hard gradient ({grad_hard:.2f})"
         )
 
     def test_identical_images_yield_original(self) -> None:
@@ -251,7 +251,10 @@ class TestSurgicalSequence:
     """Tests for composite_surgical_sequence."""
 
     def _make_sequence(
-        self, t: int = 8, h: int = 64, w: int = 64,
+        self,
+        t: int = 8,
+        h: int = 64,
+        w: int = 64,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Create synthetic video, rerendered, and mask sequences."""
         rng = np.random.RandomState(123)
@@ -261,7 +264,11 @@ class TestSurgicalSequence:
         # Place a circular mask in each frame.
         for i in range(t):
             masks[i] = _make_circle_mask(
-                h, w, w // 2, h // 2, 15,
+                h,
+                w,
+                w // 2,
+                h // 2,
+                15,
             ).astype(np.float32)
         return video, rerendered, masks
 
@@ -272,17 +279,21 @@ class TestSurgicalSequence:
 
         # Compositing without EMA (alpha=1.0 means no temporal blend).
         no_ema = composite_surgical_sequence(
-            video, rerendered, masks, ema_alpha=1.0,
+            video,
+            rerendered,
+            masks,
+            ema_alpha=1.0,
         )
         # Compositing with EMA.
         with_ema = composite_surgical_sequence(
-            video, rerendered, masks, ema_alpha=0.7,
+            video,
+            rerendered,
+            masks,
+            ema_alpha=0.7,
         )
 
         # Measure inter-frame variance at boundary.
-        boundary = _make_circle_mask(64, 64, 32, 32, 17) & ~_make_circle_mask(
-            64, 64, 32, 32, 13
-        )
+        boundary = _make_circle_mask(64, 64, 32, 32, 17) & ~_make_circle_mask(64, 64, 32, 32, 13)
         if np.any(boundary):
             diffs_no_ema = []
             diffs_with_ema = []
@@ -302,8 +313,7 @@ class TestSurgicalSequence:
             mean_with_ema = np.mean(diffs_with_ema)
             # EMA should not increase flicker significantly.
             assert mean_with_ema <= mean_no_ema + 5.0, (
-                f"EMA flicker ({mean_with_ema:.2f}) should be <= "
-                f"no-EMA ({mean_no_ema:.2f})"
+                f"EMA flicker ({mean_with_ema:.2f}) should be <= no-EMA ({mean_no_ema:.2f})"
             )
 
     def test_smoke_full_pipeline(self) -> None:
@@ -327,7 +337,10 @@ class TestOpticalIncrements:
     """Tests for composite_optical_increments."""
 
     def _make_inputs(
-        self, t: int = 4, h: int = 64, w: int = 64,
+        self,
+        t: int = 4,
+        h: int = 64,
+        w: int = 64,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Create synthetic inputs for optical increments."""
         rng = np.random.RandomState(42)
@@ -335,8 +348,8 @@ class TestOpticalIncrements:
         fgpp = rng.random((t, h, w, 3)).astype(np.float32)
         cids = np.zeros((t, h, w), dtype=np.uint32)
         # Two entities.
-        cids[:, :h // 2, :] = 1
-        cids[:, h // 2:, :] = 2
+        cids[:, : h // 2, :] = 1
+        cids[:, h // 2 :, :] = 2
         return video, fgpp, cids
 
     def test_contact_shadow_darkens(self) -> None:
@@ -345,7 +358,9 @@ class TestOpticalIncrements:
 
         # No shadow.
         no_shadow = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=None,
             caustics_map=None,
             guided_filter_r=0,
@@ -353,10 +368,14 @@ class TestOpticalIncrements:
 
         # With shadow (0.5 = 50% attenuation everywhere).
         shadow = np.full(
-            (4, 64, 64), 0.5, dtype=np.float32,
+            (4, 64, 64),
+            0.5,
+            dtype=np.float32,
         )
         with_shadow = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=shadow,
             caustics_map=None,
             guided_filter_r=0,
@@ -366,8 +385,7 @@ class TestOpticalIncrements:
         mean_no = no_shadow.astype(np.float64).mean()
         mean_with = with_shadow.astype(np.float64).mean()
         assert mean_with < mean_no, (
-            f"Shadow should darken: no_shadow_mean={mean_no:.2f} "
-            f"with_shadow_mean={mean_with:.2f}"
+            f"Shadow should darken: no_shadow_mean={mean_no:.2f} with_shadow_mean={mean_with:.2f}"
         )
 
     def test_caustics_brightens(self) -> None:
@@ -376,7 +394,9 @@ class TestOpticalIncrements:
 
         # No caustics.
         no_caustics = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=None,
             caustics_map=None,
             guided_filter_r=0,
@@ -384,10 +404,14 @@ class TestOpticalIncrements:
 
         # With caustics (add bright highlights).
         caustics = np.full(
-            (4, 64, 64, 3), 0.3, dtype=np.float32,
+            (4, 64, 64, 3),
+            0.3,
+            dtype=np.float32,
         )
         with_caustics = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=None,
             caustics_map=caustics,
             guided_filter_r=0,
@@ -404,15 +428,25 @@ class TestOpticalIncrements:
     def test_no_nan_inf_in_output(self) -> None:
         """Output should never contain NaN or Inf."""
         video, fgpp, cids = self._make_inputs()
-        shadow = np.random.RandomState(7).random(
-            (4, 64, 64),
-        ).astype(np.float32)
-        caustics = np.random.RandomState(8).random(
-            (4, 64, 64, 3),
-        ).astype(np.float32)
+        shadow = (
+            np.random.RandomState(7)
+            .random(
+                (4, 64, 64),
+            )
+            .astype(np.float32)
+        )
+        caustics = (
+            np.random.RandomState(8)
+            .random(
+                (4, 64, 64, 3),
+            )
+            .astype(np.float32)
+        )
 
         result = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=shadow,
             caustics_map=caustics,
         )
@@ -425,7 +459,9 @@ class TestOpticalIncrements:
         video, fgpp, cids = self._make_inputs()
 
         result = composite_optical_increments(
-            video, fgpp, cids,
+            video,
+            fgpp,
+            cids,
             contact_shadow_map=None,
             caustics_map=None,
         )
@@ -459,7 +495,7 @@ class TestGuidedFilter:
         h, w = 64, 64
         # Guide with a sharp vertical edge.
         guide = np.zeros((h, w), dtype=np.float64)
-        guide[:, w // 2:] = 1.0
+        guide[:, w // 2 :] = 1.0
 
         # Source with smooth gradient across the edge.
         src = np.linspace(0, 1, w, dtype=np.float64)
@@ -471,15 +507,13 @@ class TestGuidedFilter:
         # filtered result than a naive box blur.
         edge_col = w // 2
         edge_gradient_result = abs(
-            float(result[h // 2, edge_col])
-            - float(result[h // 2, edge_col - 1])
+            float(result[h // 2, edge_col]) - float(result[h // 2, edge_col - 1])
         )
 
         # A fully smoothed version would have gradient ~ 1/w.
         naive_gradient = 1.0 / w
         assert edge_gradient_result > naive_gradient, (
-            f"Edge gradient ({edge_gradient_result:.4f}) should be > "
-            f"naive ({naive_gradient:.4f})"
+            f"Edge gradient ({edge_gradient_result:.4f}) should be > naive ({naive_gradient:.4f})"
         )
 
     def test_multichannel(self) -> None:
@@ -582,7 +616,7 @@ class TestOpticalIncrementsBackgroundPreservation:
         mse = np.mean((a_f - b_f) ** 2)
         if mse < 1e-10:
             return 100.0
-        return float(10.0 * np.log10(255.0 ** 2 / mse))
+        return float(10.0 * np.log10(255.0**2 / mse))
 
     def test_non_masked_area_preserves_high_freq(self) -> None:
         """Background (Cryptomatte == 0) high-frequency PSNR matches
@@ -602,7 +636,9 @@ class TestOpticalIncrementsBackgroundPreservation:
 
         # No shadow, no caustics — pure passthrough
         result = composite_optical_increments(
-            bg, fgpp, cids,
+            bg,
+            fgpp,
+            cids,
             contact_shadow_map=None,
             caustics_map=None,
             guided_filter_r=4,

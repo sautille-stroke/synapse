@@ -126,10 +126,7 @@ class LoRAManifest(BaseModel):
     def _validate_sha256(cls, v: str) -> str:
         """Ensure SHA256 is a 64-char lowercase hex string."""
         if not re.fullmatch(r"[0-9a-f]{64}", v):
-            raise ValueError(
-                f"adapter_sha256 must be a 64-char lowercase hex string; "
-                f"got '{v}'."
-            )
+            raise ValueError(f"adapter_sha256 must be a 64-char lowercase hex string; got '{v}'.")
         return v
 
     @model_validator(mode="after")

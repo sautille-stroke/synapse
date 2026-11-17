@@ -53,16 +53,20 @@ class LoRAGateThresholds(BaseModel):
     """
 
     chamfer_mm: float = Field(
-        default=float(RSI_PROMOTION["chamfer_mm"]), ge=0.0,
+        default=float(RSI_PROMOTION["chamfer_mm"]),
+        ge=0.0,
     )
     normal_angular_error_deg: float = Field(
-        default=float(RSI_PROMOTION["normal_angular_error_deg"]), ge=0.0,
+        default=float(RSI_PROMOTION["normal_angular_error_deg"]),
+        ge=0.0,
     )
     border_ring_ciede2000: float = Field(
-        default=float(RSI_PROMOTION["border_ring_ciede2000"]), ge=0.0,
+        default=float(RSI_PROMOTION["border_ring_ciede2000"]),
+        ge=0.0,
     )
     negative_regression_pct: float = Field(
-        default=8.0, ge=0.0,
+        default=8.0,
+        ge=0.0,
     )
 
     @classmethod
@@ -202,17 +206,12 @@ def package_and_gate_lora_bundle(
     if not src.is_file():
         raise AssetNotFoundError(
             f"LoRA weights file not found: {src}",
-            agent_fix_hint=(
-                f"Ensure trained LoRA weights exist at '{src}' "
-                "before packaging."
-            ),
+            agent_fix_hint=(f"Ensure trained LoRA weights exist at '{src}' before packaging."),
         )
     if src.stat().st_size == 0:
         raise AssetNotFoundError(
             f"LoRA weights file is empty (0 bytes): {src}",
-            agent_fix_hint=(
-                "Re-export non-empty LoRA safetensors checkpoint."
-            ),
+            agent_fix_hint=("Re-export non-empty LoRA safetensors checkpoint."),
         )
 
     # ── Validate .safetensors header and weight keys ────────────
@@ -270,8 +269,7 @@ def package_and_gate_lora_bundle(
             "LoRA quality gate requires 'bench_metrics' when "
             "skip_bench=False, but none were provided.",
             agent_fix_hint=(
-                "Provide measured benchmark metrics or pass "
-                "skip_bench=True for un-gated packaging."
+                "Provide measured benchmark metrics or pass skip_bench=True for un-gated packaging."
             ),
         )
     elif bench_metrics is None:
@@ -302,8 +300,7 @@ def package_and_gate_lora_bundle(
 
     if not report.passed:
         raise QualityGateError(
-            f"LoRA bundle failed quality gate: "
-            f"{'; '.join(report.failures)}",
+            f"LoRA bundle failed quality gate: {'; '.join(report.failures)}",
             agent_fix_hint=report.agent_fix_hint,
             details=result,
         )
@@ -388,44 +385,27 @@ def _evaluate_gates(
     threshold_dict = thresholds.model_dump()
 
     if not skip_bench and not metrics:
-        failures.append(
-            "No benchmark metrics provided (fail-closed gate)"
-        )
+        failures.append("No benchmark metrics provided (fail-closed gate)")
 
     # Fail-closed: required gate metrics must be present when not skipping bench
     _REQUIRED_GATE_KEYS = ("chamfer_mm", "normal_angular_error_deg", "border_ring_ciede2000")
     if not skip_bench and metrics:
         for req_key in _REQUIRED_GATE_KEYS:
             if req_key not in metrics:
-                failures.append(
-                    f"Missing required gate metric '{req_key}' (fail-closed)"
-                )
+                failures.append(f"Missing required gate metric '{req_key}' (fail-closed)")
 
     for key, val in metrics.items():
         if not isinstance(val, (int, float)) or not math.isfinite(val):
-            failures.append(
-                f"{key}={val!r} is non-finite (NaN/Inf)"
-            )
+            failures.append(f"{key}={val!r} is non-finite (NaN/Inf)")
 
     # Check chamfer distance
     chamfer = metrics.get("chamfer_mm")
-    if (
-        chamfer is not None
-        and math.isfinite(chamfer)
-        and chamfer > thresholds.chamfer_mm
-    ):
-        failures.append(
-            f"chamfer_mm={chamfer:.2f} > "
-            f"threshold={thresholds.chamfer_mm:.2f}"
-        )
+    if chamfer is not None and math.isfinite(chamfer) and chamfer > thresholds.chamfer_mm:
+        failures.append(f"chamfer_mm={chamfer:.2f} > threshold={thresholds.chamfer_mm:.2f}")
 
     # Check normal angular error
     nae = metrics.get("normal_angular_error_deg")
-    if (
-        nae is not None
-        and math.isfinite(nae)
-        and nae > thresholds.normal_angular_error_deg
-    ):
+    if nae is not None and math.isfinite(nae) and nae > thresholds.normal_angular_error_deg:
         failures.append(
             f"normal_angular_error_deg={nae:.2f} > "
             f"threshold="
@@ -434,15 +414,9 @@ def _evaluate_gates(
 
     # Check border ring CIE dE2000
     ciede = metrics.get("border_ring_ciede2000")
-    if (
-        ciede is not None
-        and math.isfinite(ciede)
-        and ciede > thresholds.border_ring_ciede2000
-    ):
+    if ciede is not None and math.isfinite(ciede) and ciede > thresholds.border_ring_ciede2000:
         failures.append(
-            f"border_ring_ciede2000={ciede:.2f} > "
-            f"threshold="
-            f"{thresholds.border_ring_ciede2000:.2f}"
+            f"border_ring_ciede2000={ciede:.2f} > threshold={thresholds.border_ring_ciede2000:.2f}"
         )
 
     # Check negative scenario regression
@@ -450,17 +424,10 @@ def _evaluate_gates(
         key = f"regression_{scenario_id}_pct"
         reg = metrics.get(key)
         if reg is None:
+            failures.append(f"Missing required negative scenario metric '{key}'")
+        elif math.isfinite(reg) and reg > thresholds.negative_regression_pct:
             failures.append(
-                f"Missing required negative scenario metric '{key}'"
-            )
-        elif (
-            math.isfinite(reg)
-            and reg > thresholds.negative_regression_pct
-        ):
-            failures.append(
-                f"{key}={reg:.2f}% > "
-                f"threshold="
-                f"{thresholds.negative_regression_pct:.2f}%"
+                f"{key}={reg:.2f}% > threshold={thresholds.negative_regression_pct:.2f}%"
             )
 
     passed = len(failures) == 0
@@ -468,8 +435,7 @@ def _evaluate_gates(
     if not passed:
         hint = (
             "Review training hyperparameters (rank, alpha, lr) "
-            "and ensure training data quality. Specific failures: "
-            + "; ".join(failures)
+            "and ensure training data quality. Specific failures: " + "; ".join(failures)
         )
 
     return LoRAEvaluationReport(
@@ -480,4 +446,3 @@ def _evaluate_gates(
         failures=failures,
         agent_fix_hint=hint,
     )
-

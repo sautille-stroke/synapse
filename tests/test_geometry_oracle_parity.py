@@ -24,6 +24,7 @@ from synapse.recon.geometry import (
 
 try:
     import synapse._c_geometry as _c_geometry
+
     HAS_NATIVE_GEOMETRY = True
 except ImportError:
     _c_geometry = None
@@ -194,15 +195,15 @@ def _make_quad_self_intersection_second_triangle() -> tuple[np.ndarray, np.ndarr
     verts = np.array(
         [
             # Quad A: XY plane
-            [-2.0, -1.0, 0.0],   # 0
-            [2.0, -1.0, 0.0],    # 1
-            [2.0, 1.0, 0.0],     # 2
-            [-2.0, 1.0, 0.0],    # 3
+            [-2.0, -1.0, 0.0],  # 0
+            [2.0, -1.0, 0.0],  # 1
+            [2.0, 1.0, 0.0],  # 2
+            [-2.0, 1.0, 0.0],  # 3
             # Quad B: crosses quad A in XZ plane
-            [0.0, 0.0, -2.0],    # 4
-            [10.0, 0.0, -2.0],   # 5 — far right
-            [10.0, 0.0, 2.0],    # 6 — far right
-            [0.0, 0.0, 2.0],     # 7
+            [0.0, 0.0, -2.0],  # 4
+            [10.0, 0.0, -2.0],  # 5 — far right
+            [10.0, 0.0, 2.0],  # 6 — far right
+            [0.0, 0.0, 2.0],  # 7
         ],
         dtype=np.float64,
     )
@@ -323,7 +324,10 @@ class TestGeometryOracleExactness:
         faces = np.array(faces_list, dtype=np.int64)
         assert len(faces) == 300
         res = validate_mesh_geometry(
-            verts, faces, min_face_ratio=0.01, backend="python",
+            verts,
+            faces,
+            min_face_ratio=0.01,
+            backend="python",
         )
         # 0.01 * 300 = 3.0; 3 < 3.0 is False -> 0 floating island faces!
         assert res.floating_island_face_indices == []
@@ -332,10 +336,10 @@ class TestGeometryOracleExactness:
         """Quad where v0,v1,v2 are healthy but v0,v2,v3 form a degenerate needle."""
         verts = np.array(
             [
-                [0.0, 0.0, 0.0],   # v0
-                [1.0, 0.0, 0.0],   # v1
-                [1.0, 1.0, 0.0],   # v2 — first sub-tri (v0,v1,v2) is healthy
-                [2.0, 2.0, 0.0],   # v3 — second sub-tri (v0,v2,v3): v0,v2,v3
+                [0.0, 0.0, 0.0],  # v0
+                [1.0, 0.0, 0.0],  # v1
+                [1.0, 1.0, 0.0],  # v2 — first sub-tri (v0,v1,v2) is healthy
+                [2.0, 2.0, 0.0],  # v3 — second sub-tri (v0,v2,v3): v0,v2,v3
             ],
             dtype=np.float64,
         )
@@ -354,15 +358,15 @@ class TestGeometryOracleExactness:
         verts = np.array(
             [
                 # Quad A (z=0 plane)
-                [0.0, 0.0, 0.0],   # 0
-                [2.0, 0.0, 0.0],   # 1
-                [2.0, 2.0, 0.0],   # 2
-                [0.0, 4.0, 0.0],   # 3
+                [0.0, 0.0, 0.0],  # 0
+                [2.0, 0.0, 0.0],  # 1
+                [2.0, 2.0, 0.0],  # 2
+                [0.0, 4.0, 0.0],  # 3
                 # Quad B (XZ plane, crossing through quad A's second triangle)
                 [5.0, 5.0, -1.0],  # 4 — far from quad A
                 [6.0, 5.0, -1.0],  # 5 — far from quad A
-                [6.0, 5.0, 1.0],   # 6 — far from quad A
-                [0.5, 3.0, 1.0],   # 7 — in second tri region of quad A
+                [6.0, 5.0, 1.0],  # 6 — far from quad A
+                [0.5, 3.0, 1.0],  # 7 — in second tri region of quad A
             ],
             dtype=np.float64,
         )
@@ -373,8 +377,8 @@ class TestGeometryOracleExactness:
         # Place v4,v6,v7 to cross the XY plane through (0,2,3).
         verts[4] = [0.5, 3.0, -1.0]  # below z=0
         verts[5] = [6.0, 5.0, -1.0]  # far away, first sub-tri won't intersect
-        verts[6] = [6.0, 5.0, 1.0]   # far away
-        verts[7] = [0.5, 3.0, 1.0]   # above z=0
+        verts[6] = [6.0, 5.0, 1.0]  # far away
+        verts[7] = [0.5, 3.0, 1.0]  # above z=0
         # Now (4,6,7): v4=(0.5,3,-1), v6=(6,5,1), v7=(0.5,3,1)
         # This still likely won't intersect A's second tri at (0,2,3)=(0,0,0),(2,2,0),(0,4,0).
         # Let me use a simpler construction:
@@ -382,17 +386,17 @@ class TestGeometryOracleExactness:
         verts = np.array(
             [
                 # Quad A: XY plane, fan: (0,1,2) and (0,2,3)
-                [-2.0, -1.0, 0.0],   # 0
-                [2.0, -1.0, 0.0],    # 1
-                [2.0, 1.0, 0.0],     # 2
-                [-2.0, 1.0, 0.0],    # 3
+                [-2.0, -1.0, 0.0],  # 0
+                [2.0, -1.0, 0.0],  # 1
+                [2.0, 1.0, 0.0],  # 2
+                [-2.0, 1.0, 0.0],  # 3
                 # Quad B: XZ plane, fan: (4,5,6) and (4,6,7)
                 # First tri (4,5,6): far from quad A
-                [10.0, 0.0, -1.0],   # 4
-                [12.0, 0.0, -1.0],   # 5
-                [12.0, 0.0, 1.0],    # 6
+                [10.0, 0.0, -1.0],  # 4
+                [12.0, 0.0, -1.0],  # 5
+                [12.0, 0.0, 1.0],  # 6
                 # Second tri (4,6,7): crosses through quad A's second tri
-                [-1.0, 0.0, 1.0],    # 7 — close to origin, above z=0
+                [-1.0, 0.0, 1.0],  # 7 — close to origin, above z=0
             ],
             dtype=np.float64,
         )
@@ -402,10 +406,10 @@ class TestGeometryOracleExactness:
         # The y-coordinate of tri B is all y=0, which IS inside quad A's y range [-1,1].
         # Actually tri-tri intersection will check this properly.
         # Let me simplify: make the second sub-triangle of B clearly cross A.
-        verts[4] = [0.0, 0.0, -2.0]   # below
+        verts[4] = [0.0, 0.0, -2.0]  # below
         verts[5] = [10.0, 0.0, -2.0]  # far right, below
-        verts[6] = [10.0, 0.0, 2.0]   # far right, above
-        verts[7] = [0.0, 0.0, 2.0]    # above
+        verts[6] = [10.0, 0.0, 2.0]  # far right, above
+        verts[7] = [0.0, 0.0, 2.0]  # above
         # Fan B: (4,5,6) = (0,0,-2),(10,0,-2),(10,0,2) — far right, no overlap with A
         # Fan B: (4,6,7) = (0,0,-2),(10,0,2),(0,0,2) — crosses z=0 at x=0,y=0
         # Quad A fan: (0,1,2) = (-2,-1,0),(2,-1,0),(2,1,0) and (0,2,3) = (-2,-1,0),(2,1,0),(-2,1,0)
@@ -448,10 +452,16 @@ class TestNativeVsPythonOracleParity:
         verts, faces = mesh_builder()
 
         py_res = validate_mesh_geometry(
-            verts, faces, require_watertight=True, backend="python",
+            verts,
+            faces,
+            require_watertight=True,
+            backend="python",
         )
         cpp_res = validate_mesh_geometry(
-            verts, faces, require_watertight=True, backend="native",
+            verts,
+            faces,
+            require_watertight=True,
+            backend="native",
         )
 
         assert cpp_res.is_manifold == py_res.is_manifold
@@ -461,20 +471,14 @@ class TestNativeVsPythonOracleParity:
         assert cpp_res.degenerate_face_indices == py_res.degenerate_face_indices
         assert cpp_res.self_intersecting_pairs == py_res.self_intersecting_pairs
         assert cpp_res.num_connected_components == py_res.num_connected_components
-        assert (
-            cpp_res.floating_island_face_indices
-            == py_res.floating_island_face_indices
-        )
+        assert cpp_res.floating_island_face_indices == py_res.floating_island_face_indices
         assert cpp_res.passed == py_res.passed
 
         # Also verify 1-D flat index buffer and default num_vertices=0 in _c_geometry
         vpf = int(faces.shape[1])
         flat_faces = faces.ravel()
         assert _c_geometry.check_manifold(verts, flat_faces, vpf) == py_res.is_manifold
-        assert (
-            _c_geometry.check_watertight(verts, flat_faces, vpf)
-            == py_res.is_watertight
-        )
+        assert _c_geometry.check_watertight(verts, flat_faces, vpf) == py_res.is_watertight
         comps_cpp = _c_geometry.find_connected_components(faces)  # num_vertices=0!
         comps_py = find_connected_components(faces)
         assert [list(c) for c in comps_cpp] == [list(c) for c in comps_py]
@@ -491,10 +495,16 @@ class TestNativeVsPythonOracleParity:
         verts, faces = mesh_builder()
 
         py_res = validate_mesh_geometry(
-            verts, faces, require_watertight=False, backend="python",
+            verts,
+            faces,
+            require_watertight=False,
+            backend="python",
         )
         cpp_res = validate_mesh_geometry(
-            verts, faces, require_watertight=False, backend="native",
+            verts,
+            faces,
+            require_watertight=False,
+            backend="native",
         )
 
         assert cpp_res.is_manifold == py_res.is_manifold
@@ -504,10 +514,7 @@ class TestNativeVsPythonOracleParity:
         assert cpp_res.degenerate_face_indices == py_res.degenerate_face_indices
         assert cpp_res.self_intersecting_pairs == py_res.self_intersecting_pairs
         assert cpp_res.num_connected_components == py_res.num_connected_components
-        assert (
-            cpp_res.floating_island_face_indices
-            == py_res.floating_island_face_indices
-        )
+        assert cpp_res.floating_island_face_indices == py_res.floating_island_face_indices
         assert cpp_res.passed == py_res.passed
 
     def test_empty_and_oob_parity(self) -> None:
@@ -539,10 +546,16 @@ class TestNativeVsPythonOracleParity:
         verts = np.asarray(cube.vertices, dtype=np.float64)
         faces = np.asarray(cube.faces, dtype=np.int64)
         py_res = validate_mesh_geometry(
-            verts, faces, require_watertight=False, backend="python",
+            verts,
+            faces,
+            require_watertight=False,
+            backend="python",
         )
         cpp_res = validate_mesh_geometry(
-            verts, faces, require_watertight=False, backend="native",
+            verts,
+            faces,
+            require_watertight=False,
+            backend="native",
         )
         assert py_res.self_intersecting_pairs == []
         assert cpp_res.self_intersecting_pairs == []

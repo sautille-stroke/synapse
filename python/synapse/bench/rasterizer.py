@@ -4,7 +4,7 @@
     Import from ``synapse.render_core.rasterizer`` instead.
 """
 
-__all__ = ['SoftwareRasterizer', 'entity_hash']
+__all__ = ["SoftwareRasterizer", "entity_hash"]
 
 from synapse.render_core.rasterizer import (  # noqa: F401
     SoftwareRasterizer,

@@ -39,15 +39,13 @@ def test_no_import_cycles() -> None:
 
     if errors:
         raise AssertionError(
-            f"{len(errors)} fatal error(s):\n"
-            + "\n".join(f"  • {e}" for e in errors)
+            f"{len(errors)} fatal error(s):\n" + "\n".join(f"  • {e}" for e in errors)
         )
 
     if cycles:
         cycle_strs = [" → ".join(scc) + f" → {scc[0]}" for scc in cycles]
         raise AssertionError(
-            f"{len(cycles)} import cycle(s) detected:\n"
-            + "\n".join(f"  • {s}" for s in cycle_strs)
+            f"{len(cycles)} import cycle(s) detected:\n" + "\n".join(f"  • {s}" for s in cycle_strs)
         )
 
 
@@ -59,14 +57,12 @@ def test_no_tier_violations() -> None:
 
     if errors:
         raise AssertionError(
-            f"{len(errors)} fatal error(s):\n"
-            + "\n".join(f"  • {e}" for e in errors)
+            f"{len(errors)} fatal error(s):\n" + "\n".join(f"  • {e}" for e in errors)
         )
 
     if tier_violations:
         violation_strs = [
-            f"{src} (T{s_t}) → {dst} (T{d_t})"
-            for src, dst, s_t, d_t in tier_violations
+            f"{src} (T{s_t}) → {dst} (T{d_t})" for src, dst, s_t, d_t in tier_violations
         ]
         raise AssertionError(
             f"{len(tier_violations)} tier violation(s) (upward cross-tier imports):\n"
@@ -146,9 +142,7 @@ def test_relative_import_resolved_by_guard(tmp_path: Path) -> None:
     edges, _toplevel, _, _ = mod.scan_import_dag(tmp_path)
     # The relative import `from ..fgpp import schema` from synapse.inspect.schemas
     # should resolve to synapse.fgpp and create edge inspect → fgpp
-    assert ("inspect", "fgpp") in edges, (
-        f"Relative import was not resolved. Edges: {edges}"
-    )
+    assert ("inspect", "fgpp") in edges, f"Relative import was not resolved. Edges: {edges}"
 
 
 def test_non_constant_dynamic_import_caught(tmp_path: Path) -> None:
@@ -180,9 +174,7 @@ def test_syntax_error_treated_as_failure(tmp_path: Path) -> None:
     )
 
     _, _toplevel, _, errors = mod.scan_import_dag(tmp_path)
-    assert any("SyntaxError" in e for e in errors), (
-        f"Expected SyntaxError. Got: {errors}"
-    )
+    assert any("SyntaxError" in e for e in errors), f"Expected SyntaxError. Got: {errors}"
 
 
 def test_lazy_init_no_eager_cli_pipeline() -> None:

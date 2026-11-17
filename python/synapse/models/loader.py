@@ -64,7 +64,11 @@ def _load_from_trimesh_geom(name: str, geom: Any) -> ModelAsset:
     faces = np.ascontiguousarray(geom.faces, dtype=np.int32)
 
     # Normals
-    if hasattr(geom, "vertex_normals") and geom.vertex_normals is not None and len(geom.vertex_normals) == len(vertices):
+    if (
+        hasattr(geom, "vertex_normals")
+        and geom.vertex_normals is not None
+        and len(geom.vertex_normals) == len(vertices)
+    ):
         normals = np.ascontiguousarray(geom.vertex_normals, dtype=np.float32)
     else:
         if hasattr(geom, "recompute_normals"):
@@ -73,7 +77,11 @@ def _load_from_trimesh_geom(name: str, geom: Any) -> ModelAsset:
 
     # UVs
     uvs = None
-    if hasattr(geom.visual, "uv") and geom.visual.uv is not None and len(geom.visual.uv) == len(vertices):
+    if (
+        hasattr(geom.visual, "uv")
+        and geom.visual.uv is not None
+        and len(geom.visual.uv) == len(vertices)
+    ):
         uvs = np.ascontiguousarray(geom.visual.uv, dtype=np.float32)
 
     # Textures & Materials
@@ -205,6 +213,7 @@ def load_model(
         return asset.normalize(target_radius) if normalize else asset
     elif name_str in ("sphere", "cube", "torus", "cylinder"):
         from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
+
         pm = generate_procedural_mesh(ProceduralMeshType(name_str))
         asset = ModelAsset(
             name=name_str,

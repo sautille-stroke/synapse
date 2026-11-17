@@ -105,8 +105,7 @@ class CanonicalAnchorGallery:
         emb = np.asarray(embedding, dtype=np.float64).ravel()
         if emb.shape[0] != self._embedding_dim:
             raise ValueError(
-                f"Embedding dimension mismatch: expected "
-                f"{self._embedding_dim}, got {emb.shape[0]}."
+                f"Embedding dimension mismatch: expected {self._embedding_dim}, got {emb.shape[0]}."
             )
         self._anchors.append((float(yaw_deg), float(pitch_deg), emb))
 
@@ -140,10 +139,7 @@ class CanonicalAnchorGallery:
             If no anchors have been added.
         """
         if not self._anchors:
-            raise RuntimeError(
-                "CanonicalAnchorGallery has no anchors. "
-                "Call add_anchor() first."
-            )
+            raise RuntimeError("CanonicalAnchorGallery has no anchors. Call add_anchor() first.")
 
         query = np.array([yaw_deg, pitch_deg], dtype=np.float64)
 
@@ -165,7 +161,7 @@ class CanonicalAnchorGallery:
 
         # Inverse-distance weighting
         weights = np.array(
-            [1.0 / (d ** _IDW_POWER) for d in distances],
+            [1.0 / (d**_IDW_POWER) for d in distances],
             dtype=np.float64,
         )
         weight_sum = weights.sum()
@@ -305,7 +301,8 @@ class FaceRefiner:
 
             # Get IDW-weighted identity embedding for this pose
             identity_emb = active_gallery.interpolate_identity(
-                yaw_deg=est_yaw, pitch_deg=est_pitch,
+                yaw_deg=est_yaw,
+                pitch_deg=est_pitch,
             )
 
             # Derive per-channel colour statistics from the identity
@@ -314,11 +311,14 @@ class FaceRefiner:
             emb_abs = np.abs(identity_emb)
             # Partition embedding into 3 equal segments for R, G, B
             seg_len = len(emb_abs) // 3
-            channel_weights = np.array([
-                float(np.mean(emb_abs[:seg_len])),
-                float(np.mean(emb_abs[seg_len:2 * seg_len])),
-                float(np.mean(emb_abs[2 * seg_len:])),
-            ], dtype=np.float32)
+            channel_weights = np.array(
+                [
+                    float(np.mean(emb_abs[:seg_len])),
+                    float(np.mean(emb_abs[seg_len : 2 * seg_len])),
+                    float(np.mean(emb_abs[2 * seg_len :])),
+                ],
+                dtype=np.float32,
+            )
             # Normalise to [0.8, 1.2] range for gentle colour adjustment
             cw_mean = float(np.mean(channel_weights))
             if cw_mean > 1e-8:
@@ -353,9 +353,7 @@ class FaceRefiner:
                 roi.frame_index,
             )
             # Revert to a softer blend to stay within threshold
-            refined = (
-                roi.crop_acescg * 0.8 + refined * 0.2
-            ).astype(np.float32)
+            refined = (roi.crop_acescg * 0.8 + refined * 0.2).astype(np.float32)
             quality = 0.6
             fusion = FusionMethod.UNCERTAINTY_WEIGHTED
 

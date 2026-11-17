@@ -173,15 +173,9 @@ def _verify_e2_style_and_composite(
     assert 0.01 < float(np.mean(alpha_mask > 0.5)) < 0.90
 
     base_rgb = np.clip(f0.direct_radiance.astype(np.float32), 0.0, 1.0)
-    patch_rgb = np.clip(
-        base_rgb * np.array([1.08, 0.96, 0.94], dtype=np.float32), 0.0, 1.0
-    )
-    matched_patch = border_ring_lab_match(
-        patch_rgb, base_rgb, alpha_mask > 0.5, ring_width_px=16
-    )
-    blended = laplacian_pyramid_blend(
-        matched_patch, base_rgb, alpha_mask, num_levels=4
-    )
+    patch_rgb = np.clip(base_rgb * np.array([1.08, 0.96, 0.94], dtype=np.float32), 0.0, 1.0)
+    matched_patch = border_ring_lab_match(patch_rgb, base_rgb, alpha_mask > 0.5, ring_width_px=16)
+    blended = laplacian_pyramid_blend(matched_patch, base_rgb, alpha_mask, num_levels=4)
     assert blended.shape == base_rgb.shape
     assert bool(np.all(np.isfinite(blended)))
 
@@ -223,6 +217,7 @@ def _verify_e3_long_horizon_scheduler(
     # Inject a synthetic frame-to-frame discontinuity at frame 64 in memory to verify detector
     # Use deepcopy to avoid corrupting the original sequence for downstream tests
     import copy
+
     test_seq = copy.deepcopy(seq_97f)
     f64 = test_seq.frames[64]
     if f64.motion_vector is not None:
@@ -266,9 +261,7 @@ def _verify_e4_feature_store_and_multi_lora(
             latent_encoder=vae_enc,
             text_encoder=txt_enc,
         )
-        rgb_video = np.zeros(
-            (seq_track_a.num_frames, f0.height, f0.width, 3), dtype=np.uint8
-        )
+        rgb_video = np.zeros((seq_track_a.num_frames, f0.height, f0.width, 3), dtype=np.uint8)
         for i, fr in enumerate(seq_track_a.frames):
             if fr.direct_radiance is not None:
                 rad = np.clip(fr.direct_radiance.astype(np.float32), 0.0, 1.0)
@@ -377,7 +370,8 @@ def main() -> int:
         help="Root directory of exported Golden FGPP datasets.",
     )
     parser.add_argument(
-        "--report-out", "--output-dir",
+        "--report-out",
+        "--output-dir",
         type=Path,
         default=Path("data/manifests/ubuntu24_cpu_verification_report.json"),
         dest="report_out",

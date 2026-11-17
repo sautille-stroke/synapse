@@ -98,10 +98,10 @@ def _apply_silhouette_shift(
     shifted = np.zeros_like(frame)
 
     if shift_px > 0:
-        shifted[:, shift_px:, :] = frame[:, :w - shift_px, :]
+        shifted[:, shift_px:, :] = frame[:, : w - shift_px, :]
     else:
         s = -shift_px
-        shifted[:, :w - s, :] = frame[:, s:, :]
+        shifted[:, : w - s, :] = frame[:, s:, :]
 
     frame[mask] = shifted[mask]
     return frame
@@ -190,9 +190,7 @@ class MockVideoAdapter(VideoModelAdapter):
                 world_normal[i] = frame.world_normal.astype(np.float32)
 
             if frame.direct_radiance is not None:
-                direct_radiance[i] = frame.direct_radiance.astype(
-                    np.float32
-                )
+                direct_radiance[i] = frame.direct_radiance.astype(np.float32)
 
             if frame.cryptomatte_id is not None:
                 cryptomatte_id[i] = frame.cryptomatte_id
@@ -265,9 +263,7 @@ class MockVideoAdapter(VideoModelAdapter):
                 frames_linear[slice_t:] *= conditions.base_color[slice_t - 1 : slice_t]
 
         # --- Step 3: Film grain noise --------------------------------------
-        grain = rng.normal(
-            0.0, 0.02, size=(n_frames, h, w, 3)
-        ).astype(np.float32)
+        grain = rng.normal(0.0, 0.02, size=(n_frames, h, w, 3)).astype(np.float32)
         frames_linear = frames_linear + grain
 
         # --- Step 4: Defect injections -------------------------------------
@@ -278,9 +274,7 @@ class MockVideoAdapter(VideoModelAdapter):
             if t1 < 0:
                 t1 = n_frames - 1
 
-            affected_frames = range(
-                max(0, t0), min(n_frames, t1 + 1)
-            )
+            affected_frames = range(max(0, t0), min(n_frames, t1 + 1))
 
             # Build per-frame entity mask
             for t in affected_frames:
@@ -299,9 +293,7 @@ class MockVideoAdapter(VideoModelAdapter):
 
                 # Flicker (brightness oscillation)
                 if defect.flicker_amplitude != 0.0:
-                    phase = math.sin(
-                        2.0 * math.pi * t / max(n_frames, 1)
-                    )
+                    phase = math.sin(2.0 * math.pi * t / max(n_frames, 1))
                     flicker = 1.0 + defect.flicker_amplitude * phase
                     frames_linear[t][mask] *= flicker
 
@@ -310,23 +302,24 @@ class MockVideoAdapter(VideoModelAdapter):
                     ratio = _kelvin_rgb_ratio(defect.kelvin_shift)
                     frames_linear[t][mask] *= ratio
 
-            applied_defects.append({
-                "silhouette_shift_px": defect.silhouette_shift_px,
-                "flicker_amplitude": defect.flicker_amplitude,
-                "kelvin_shift": defect.kelvin_shift,
-                "entity_id": defect.entity_id,
-                "frame_range": [t0, t1],
-            })
+            applied_defects.append(
+                {
+                    "silhouette_shift_px": defect.silhouette_shift_px,
+                    "flicker_amplitude": defect.flicker_amplitude,
+                    "kelvin_shift": defect.kelvin_shift,
+                    "entity_id": defect.entity_id,
+                    "frame_range": [t0, t1],
+                }
+            )
 
         # --- Step 5: Linear → sRGB → uint8 --------------------------------
         frames_linear = np.clip(frames_linear, 0.0, 1.0)
         frames_srgb = _linear_to_srgb(frames_linear)
-        frames_u8 = np.clip(
-            np.round(frames_srgb * 255.0), 0, 255
-        ).astype(np.uint8)
+        frames_u8 = np.clip(np.round(frames_srgb * 255.0), 0, 255).astype(np.uint8)
 
         # Validate generated frames are non-degenerate
         from synapse.metrics.image_quality import validate_output_non_degenerate
+
         validate_output_non_degenerate(frames_u8)
 
         return VideoResult(

@@ -30,9 +30,7 @@ from synapse.render_core.morphology import exact_euclidean_distance_transform
 class VideoDefectRegion:
     """A detected visual defect in a video frame range."""
 
-    defect_type: Literal[
-        "temporal_flicker", "silhouette_drift", "ground_violation"
-    ]
+    defect_type: Literal["temporal_flicker", "silhouette_drift", "ground_violation"]
     frame_range: tuple[int, int]  # [start, end] inclusive
     bbox_xyxy: tuple[int, int, int, int]  # (x1, y1, x2, y2)
     entity_id: int  # Cryptomatte ID (0 = global)
@@ -88,13 +86,20 @@ def _sobel_edges(gray: np.ndarray) -> np.ndarray:
     # Use slicing-based convolution to stay fully vectorised.
     padded = np.pad(gray, 1, mode="edge")
     gx = (
-        -padded[:-2, :-2] + padded[:-2, 2:]
-        - 2.0 * padded[1:-1, :-2] + 2.0 * padded[1:-1, 2:]
-        - padded[2:, :-2] + padded[2:, 2:]
+        -padded[:-2, :-2]
+        + padded[:-2, 2:]
+        - 2.0 * padded[1:-1, :-2]
+        + 2.0 * padded[1:-1, 2:]
+        - padded[2:, :-2]
+        + padded[2:, 2:]
     )
     gy = (
-        -padded[:-2, :-2] - 2.0 * padded[:-2, 1:-1] - padded[:-2, 2:]
-        + padded[2:, :-2] + 2.0 * padded[2:, 1:-1] + padded[2:, 2:]
+        -padded[:-2, :-2]
+        - 2.0 * padded[:-2, 1:-1]
+        - padded[:-2, 2:]
+        + padded[2:, :-2]
+        + 2.0 * padded[2:, 1:-1]
+        + padded[2:, 2:]
     )
     return np.asarray(np.sqrt(gx * gx + gy * gy), dtype=np.float32)
 
@@ -114,9 +119,14 @@ def _block_mean(img: np.ndarray, block: int) -> np.ndarray:
         bw = w // block
         return np.asarray(img.reshape(bh, block, bw, block).mean(axis=(1, 3)), dtype=np.float32)
 
-    pad_img = np.pad(img.astype(np.float64), ((0, pad_h), (0, pad_w)), mode="constant", constant_values=0.0)
+    pad_img = np.pad(
+        img.astype(np.float64), ((0, pad_h), (0, pad_w)), mode="constant", constant_values=0.0
+    )
     valid_mask = np.pad(
-        np.ones((h, w), dtype=np.float64), ((0, pad_h), (0, pad_w)), mode="constant", constant_values=0.0
+        np.ones((h, w), dtype=np.float64),
+        ((0, pad_h), (0, pad_w)),
+        mode="constant",
+        constant_values=0.0,
     )
 
     bh, bw = pad_img.shape
@@ -128,9 +138,7 @@ def _block_mean(img: np.ndarray, block: int) -> np.ndarray:
     return np.asarray(np.where(counts > 0, sums / np.maximum(counts, 1.0), 0.0), dtype=np.float32)
 
 
-def _simple_warp(
-    frame: np.ndarray, mv: np.ndarray
-) -> np.ndarray:
+def _simple_warp(frame: np.ndarray, mv: np.ndarray) -> np.ndarray:
     """Warp *frame* by *mv* using backward nearest-neighbour sampling: dst(x, y) = src(x - mv_x, y - mv_y).
 
     Args:
@@ -198,14 +206,16 @@ def _detect_temporal_flicker(
         x2 = min((int(np.max(xs)) + 1) * _BLOCK_SIZE, w)
         y2 = min((int(np.max(ys)) + 1) * _BLOCK_SIZE, h)
 
-        defects.append(VideoDefectRegion(
-            defect_type="temporal_flicker",
-            frame_range=(t, t + 1),
-            bbox_xyxy=(x1, y1, x2, y2),
-            entity_id=0,
-            severity_score=severity,
-            details={"max_block_mean": max_mean, "hot_ratio": hot_ratio},
-        ))
+        defects.append(
+            VideoDefectRegion(
+                defect_type="temporal_flicker",
+                frame_range=(t, t + 1),
+                bbox_xyxy=(x1, y1, x2, y2),
+                entity_id=0,
+                severity_score=severity,
+                details={"max_block_mean": max_mean, "hot_ratio": hot_ratio},
+            )
+        )
 
     return defects
 
@@ -252,17 +262,21 @@ def _detect_silhouette_drift(
         mean_dist = float(dist_from_boundary[drift_mask].mean())
         severity = float(np.clip(mean_dist / (threshold * 5.0), 0.0, 1.0))
 
-        defects.append(VideoDefectRegion(
-            defect_type="silhouette_drift",
-            frame_range=(t, t),
-            bbox_xyxy=(
-                int(np.min(xs)), int(np.min(ys)),
-                int(np.max(xs)) + 1, int(np.max(ys)) + 1,
-            ),
-            entity_id=0,
-            severity_score=severity,
-            details={"mean_edge_distance": mean_dist},
-        ))
+        defects.append(
+            VideoDefectRegion(
+                defect_type="silhouette_drift",
+                frame_range=(t, t),
+                bbox_xyxy=(
+                    int(np.min(xs)),
+                    int(np.min(ys)),
+                    int(np.max(xs)) + 1,
+                    int(np.max(ys)) + 1,
+                ),
+                entity_id=0,
+                severity_score=severity,
+                details={"mean_edge_distance": mean_dist},
+            )
+        )
 
     return defects
 
@@ -305,7 +319,7 @@ def _detect_ground_violation(
         # Derive focal length from fov_degrees if intrinsics are missing.
         if cam.fx > 0:
             fx = float(cam.fx)
-        elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
+        elif hasattr(cam, "fov_degrees") and cam.fov_degrees > 0:
             fx = float(w) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
         else:
             # Fallback: assume 60° horizontal FoV when no intrinsics are
@@ -314,7 +328,7 @@ def _detect_ground_violation(
             fx = float(w) / (2.0 * math.tan(math.radians(30.0)))
         if cam.fy > 0:
             fy = float(cam.fy)
-        elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
+        elif hasattr(cam, "fov_degrees") and cam.fov_degrees > 0:
             fy = float(h) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
         else:
             fy = float(h) / (2.0 * math.tan(math.radians(30.0)))
@@ -348,9 +362,7 @@ def _detect_ground_violation(
             y1 = int(ys.min())
             x2 = int(xs.max()) + 1
             y2 = int(ys.max()) + 1
-            entity_violations.setdefault(int(eid), []).append(
-                (t, min_y, x1, y1, x2, y2)
-            )
+            entity_violations.setdefault(int(eid), []).append((t, min_y, x1, y1, x2, y2))
 
     # Emit defects for entities violating ground across >= 2 frames.
     for eid, violations in entity_violations.items():
@@ -364,18 +376,18 @@ def _detect_ground_violation(
         y2_all = [v[5] for v in violations]
 
         worst_y = min(min_ys)
-        severity = float(np.clip(
-            abs(worst_y - ground_y) / 1.0, 0.0, 1.0
-        ))
+        severity = float(np.clip(abs(worst_y - ground_y) / 1.0, 0.0, 1.0))
         bbox = (min(x1_all), min(y1_all), max(x2_all), max(y2_all))
-        defects.append(VideoDefectRegion(
-            defect_type="ground_violation",
-            frame_range=(min(frames), max(frames)),
-            bbox_xyxy=bbox,
-            entity_id=eid,
-            severity_score=severity,
-            details={"min_world_y": worst_y},
-        ))
+        defects.append(
+            VideoDefectRegion(
+                defect_type="ground_violation",
+                frame_range=(min(frames), max(frames)),
+                bbox_xyxy=bbox,
+                entity_id=eid,
+                severity_score=severity,
+                details={"min_world_y": worst_y},
+            )
+        )
 
     return defects
 
@@ -410,10 +422,7 @@ def detect_video_artifacts(
             the last dimension is not 3.
     """
     if video_srgb.ndim != 4 or video_srgb.shape[-1] != 3:
-        raise ValueError(
-            f"Expected video_srgb shape [T, H, W, 3], "
-            f"got {video_srgb.shape}"
-        )
+        raise ValueError(f"Expected video_srgb shape [T, H, W, 3], got {video_srgb.shape}")
 
     th = {**_DEFAULT_THRESHOLDS, **(thresholds or {})}
 
@@ -427,15 +436,9 @@ def detect_video_artifacts(
         video_gray[t] = _to_grayscale(video_srgb[t])
 
     all_defects: list[VideoDefectRegion] = []
-    all_defects.extend(
-        _detect_temporal_flicker(video_gray, fgpp_frames, th["flicker"])
-    )
-    all_defects.extend(
-        _detect_silhouette_drift(video_gray, fgpp_frames, th["silhouette"])
-    )
-    all_defects.extend(
-        _detect_ground_violation(fgpp_frames, th["ground_y"])
-    )
+    all_defects.extend(_detect_temporal_flicker(video_gray, fgpp_frames, th["flicker"]))
+    all_defects.extend(_detect_silhouette_drift(video_gray, fgpp_frames, th["silhouette"]))
+    all_defects.extend(_detect_ground_violation(fgpp_frames, th["ground_y"]))
 
     # Sort by severity descending.
     all_defects.sort(key=lambda d: d.severity_score, reverse=True)

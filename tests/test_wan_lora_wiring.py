@@ -31,12 +31,16 @@ from synapse.fgpp.frame import CameraParams, FGPPFrame
 
 def _make_camera(w: int = 8, h: int = 8) -> CameraParams:
     return CameraParams(
-        fx=100.0, fy=100.0,
-        cx=w / 2.0, cy=h / 2.0,
-        width=w, height=h,
+        fx=100.0,
+        fy=100.0,
+        cx=w / 2.0,
+        cy=h / 2.0,
+        width=w,
+        height=h,
         view_matrix=np.eye(4, dtype=np.float64),
         world_matrix=np.eye(4, dtype=np.float64),
-        z_near=0.1, z_far=100.0,
+        z_near=0.1,
+        z_far=100.0,
     )
 
 
@@ -62,7 +66,9 @@ def _make_lora_manifests_for_wan() -> list[tuple[Any, float]]:
 
 
 def _make_fgpp_frames_with_cryptomatte(
-    n: int = 2, h: int = 8, w: int = 8,
+    n: int = 2,
+    h: int = 8,
+    w: int = 8,
 ) -> list[FGPPFrame]:
     """Create FGPP frames that carry ``cryptomatte_id``."""
     rng = np.random.RandomState(0)
@@ -70,32 +76,40 @@ def _make_fgpp_frames_with_cryptomatte(
     for i in range(n):
         cam = _make_camera(w, h)
         crypt = rng.randint(1, 5, (h, w)).astype(np.uint32)
-        frames.append(FGPPFrame(
-            camera=cam,
-            depth=np.ones((h, w), dtype=np.float32),
-            cryptomatte_id=crypt,
-            frame_index=i,
-        ))
+        frames.append(
+            FGPPFrame(
+                camera=cam,
+                depth=np.ones((h, w), dtype=np.float32),
+                cryptomatte_id=crypt,
+                frame_index=i,
+            )
+        )
     return frames
 
 
 def _make_fgpp_frames_without_cryptomatte(
-    n: int = 2, h: int = 8, w: int = 8,
+    n: int = 2,
+    h: int = 8,
+    w: int = 8,
 ) -> list[FGPPFrame]:
     """Create FGPP frames *without* ``cryptomatte_id``."""
     frames: list[FGPPFrame] = []
     for i in range(n):
         cam = _make_camera(w, h)
-        frames.append(FGPPFrame(
-            camera=cam,
-            depth=np.ones((h, w), dtype=np.float32),
-            frame_index=i,
-        ))
+        frames.append(
+            FGPPFrame(
+                camera=cam,
+                depth=np.ones((h, w), dtype=np.float32),
+                frame_index=i,
+            )
+        )
     return frames
 
 
 def _fake_backend(
-    num_frames: int = 2, h: int = 8, w: int = 8,
+    num_frames: int = 2,
+    h: int = 8,
+    w: int = 8,
 ) -> LocalCallableBackend:
     def fn(
         payload: PreparedConditionPayload,
@@ -103,6 +117,7 @@ def _fake_backend(
     ) -> np.ndarray:
         rng = np.random.default_rng(42)
         return rng.integers(10, 240, size=(num_frames, h, w, 3), dtype=np.uint8)
+
     return LocalCallableBackend(pipeline_fn=fn)
 
 
@@ -125,6 +140,7 @@ class TestWanAdapterLoRAConstruction:
         )
         assert adapter._lora_manager is not None
         from synapse.adapters.lora.manager import MultiLoRAManager
+
         assert isinstance(adapter._lora_manager, MultiLoRAManager)
 
     def test_wan_adapter_without_lora_manifests(self) -> None:
@@ -159,7 +175,10 @@ class TestWanAdapterLoRAGenerate:
         payload = PreparedConditionPayload()
 
         result = adapter.generate(
-            payload, config, model=mock_model, fgpp_frames=frames,
+            payload,
+            config,
+            model=mock_model,
+            fgpp_frames=frames,
         )
 
         mgr.build_spatial_lora_masks.assert_called()  # type: ignore[union-attr]
@@ -196,7 +215,10 @@ class TestWanAdapterLoRAGenerate:
 
         with pytest.raises(RuntimeError, match="backend kaboom"):
             adapter.generate(
-                payload, config, model=mock_model, fgpp_frames=frames,
+                payload,
+                config,
+                model=mock_model,
+                fgpp_frames=frames,
             )
 
         # restore MUST still be called despite the error
@@ -223,15 +245,16 @@ class TestWanAdapterLoRAGenerate:
         payload = PreparedConditionPayload()
 
         result = adapter.generate(
-            payload, config, model=mock_model, fgpp_frames=frames,
+            payload,
+            config,
+            model=mock_model,
+            fgpp_frames=frames,
         )
 
         mgr.build_spatial_lora_masks.assert_not_called()  # type: ignore[union-attr]
         mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
         mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
-
-
 
     def test_wan_adapter_generate_skips_lora_without_model(self) -> None:
         """When ``model`` is None, LoRA methods must NOT be called."""
@@ -308,10 +331,13 @@ class TestWanAdapterLoRAGenerate:
             test_synthetic=True,
         )
 
-        crypt = np.array([
-            [[1, 0], [0, 1]],
-            [[1, 1], [0, 0]],
-        ], dtype=np.uint32)  # [T=2, H=2, W=2]
+        crypt = np.array(
+            [
+                [[1, 0], [0, 1]],
+                [[1, 1], [0, 0]],
+            ],
+            dtype=np.uint32,
+        )  # [T=2, H=2, W=2]
 
         with manager.manage_spatial_hooks(model, cryptomatte_ids=crypt, target_entity_ids={1}):
             assert len(model.spatial_attn.to_q._forward_hooks) > 0
@@ -320,5 +346,3 @@ class TestWanAdapterLoRAGenerate:
         # Exited context cleanly: hooks must be detached
         assert len(model.spatial_attn.to_q._forward_hooks) == 0
         assert len(model.cross_attn.to_k._forward_hooks) == 0
-
-

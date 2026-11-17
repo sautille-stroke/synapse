@@ -44,19 +44,37 @@ class TestReconGeometry:
     @pytest.fixture
     def cube_mesh(self) -> tuple[np.ndarray, np.ndarray]:
         """A standard watertight cube with 8 vertices and 12 triangles."""
-        verts = np.array([
-            [-1.0, -1.0, -1.0], [ 1.0, -1.0, -1.0], [ 1.0,  1.0, -1.0], [-1.0,  1.0, -1.0],
-            [-1.0, -1.0,  1.0], [ 1.0, -1.0,  1.0], [ 1.0,  1.0,  1.0], [-1.0,  1.0,  1.0],
-        ], dtype=np.float32)
+        verts = np.array(
+            [
+                [-1.0, -1.0, -1.0],
+                [1.0, -1.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [-1.0, 1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [-1.0, 1.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
         # Consistent CCW winding
-        faces = np.array([
-            [0, 2, 1], [0, 3, 2],  # -Z
-            [4, 5, 6], [4, 6, 7],  # +Z
-            [0, 1, 5], [0, 5, 4],  # -Y
-            [2, 3, 7], [2, 7, 6],  # +Y
-            [0, 4, 7], [0, 7, 3],  # -X
-            [1, 2, 6], [1, 6, 5],  # +X
-        ], dtype=np.int32)
+        faces = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],  # -Z
+                [4, 5, 6],
+                [4, 6, 7],  # +Z
+                [0, 1, 5],
+                [0, 5, 4],  # -Y
+                [2, 3, 7],
+                [2, 7, 6],  # +Y
+                [0, 4, 7],
+                [0, 7, 3],  # -X
+                [1, 2, 6],
+                [1, 6, 5],  # +X
+            ],
+            dtype=np.int32,
+        )
         return verts, faces
 
     def test_cube_is_manifold(self, cube_mesh: tuple[np.ndarray, np.ndarray]) -> None:
@@ -102,11 +120,13 @@ class TestReconGeometry:
         # Rotate 45 deg around Z and translate by [0.5, -1.2, 3.0]
         angle = math.pi / 4.0
         cos_a, sin_a = math.cos(angle), math.sin(angle)
-        r_gt = np.array([
-            [cos_a, -sin_a, 0.0],
-            [sin_a,  cos_a, 0.0],
-            [0.0,    0.0,   1.0],
-        ])
+        r_gt = np.array(
+            [
+                [cos_a, -sin_a, 0.0],
+                [sin_a, cos_a, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
         t_gt = np.array([0.5, -1.2, 3.0])
         tgt = (r_gt @ src.T).T + t_gt
 
@@ -336,8 +356,16 @@ class TestReconDelight:
         sphere_albedo = res.albedo[sphere_mask].astype(np.float64)  # (M, 3)
 
         # Variance of luminance across sphere
-        rad_lum = 0.2126 * sphere_radiance[:, 0] + 0.7152 * sphere_radiance[:, 1] + 0.0722 * sphere_radiance[:, 2]
-        alb_lum = 0.2126 * sphere_albedo[:, 0] + 0.7152 * sphere_albedo[:, 1] + 0.0722 * sphere_albedo[:, 2]
+        rad_lum = (
+            0.2126 * sphere_radiance[:, 0]
+            + 0.7152 * sphere_radiance[:, 1]
+            + 0.0722 * sphere_radiance[:, 2]
+        )
+        alb_lum = (
+            0.2126 * sphere_albedo[:, 0]
+            + 0.7152 * sphere_albedo[:, 1]
+            + 0.0722 * sphere_albedo[:, 2]
+        )
 
         rad_var = float(np.var(rad_lum))
         alb_var = float(np.var(alb_lum))
@@ -387,13 +415,25 @@ class TestReconDelight:
         rng = np.random.default_rng(123)
 
         # Create a simple mesh (flat plane)
-        verts = np.array([
-            [-1, -1, 2], [1, -1, 2], [1, 1, 2], [-1, 1, 2],
-        ], dtype=np.float32)
+        verts = np.array(
+            [
+                [-1, -1, 2],
+                [1, -1, 2],
+                [1, 1, 2],
+                [-1, 1, 2],
+            ],
+            dtype=np.float32,
+        )
         faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
-        norms = np.array([
-            [0, 0, -1], [0, 0, -1], [0, 0, -1], [0, 0, -1],
-        ], dtype=np.float32)
+        norms = np.array(
+            [
+                [0, 0, -1],
+                [0, 0, -1],
+                [0, 0, -1],
+                [0, 0, -1],
+            ],
+            dtype=np.float32,
+        )
         mesh = MeshGeometry(vertices=verts, faces=faces, normals=norms)
 
         # Create camera extrinsics for 3 views
@@ -520,15 +560,36 @@ class TestReconPipelineEndToEnd:
 
         # Provide initial_mesh to skip MultiViewInitializer, which requires
         # real multi-view parallax that synthetic frames cannot provide.
-        cube_v = np.array([
-            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-        ], dtype=np.float32)
-        cube_f = np.array([
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
-            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
-        ], dtype=np.int32)
+        cube_v = np.array(
+            [
+                [-1, -1, -1],
+                [1, -1, -1],
+                [1, 1, -1],
+                [-1, 1, -1],
+                [-1, -1, 1],
+                [1, -1, 1],
+                [1, 1, 1],
+                [-1, 1, 1],
+            ],
+            dtype=np.float32,
+        )
+        cube_f = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
+            dtype=np.int32,
+        )
         initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
 
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
@@ -561,30 +622,53 @@ class TestReconPipelineEndToEnd:
         # Provide a real skeleton template with joint positions
         joint_pos = np.zeros((num_frames, 9, 3), dtype=np.float64)
         for t in range(num_frames):
-            joint_pos[t, 1] = [-0.15, 0.9, 0.0]   # left hip
+            joint_pos[t, 1] = [-0.15, 0.9, 0.0]  # left hip
             joint_pos[t, 4] = [-0.15, 0.45, 0.05]  # left knee
-            joint_pos[t, 7] = [-0.15, 0.0, 0.0]    # left foot
-            joint_pos[t, 2] = [0.15, 0.9, 0.0]     # right hip
+            joint_pos[t, 7] = [-0.15, 0.0, 0.0]  # left foot
+            joint_pos[t, 2] = [0.15, 0.9, 0.0]  # right hip
             joint_pos[t, 5] = [0.15, 0.45, -0.05]  # right knee
-            joint_pos[t, 8] = [0.15, 0.0, 0.0]     # right foot
+            joint_pos[t, 8] = [0.15, 0.0, 0.0]  # right foot
         skeleton_template = {"joint_positions": joint_pos}
 
         # Provide initial_mesh to skip MultiViewInitializer
-        cube_v = np.array([
-            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-        ], dtype=np.float32)
-        cube_f = np.array([
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
-            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
-        ], dtype=np.int32)
+        cube_v = np.array(
+            [
+                [-1, -1, -1],
+                [1, -1, -1],
+                [1, 1, -1],
+                [-1, 1, -1],
+                [-1, -1, 1],
+                [1, -1, 1],
+                [1, 1, 1],
+                [-1, 1, 1],
+            ],
+            dtype=np.float32,
+        )
+        cube_f = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
+            dtype=np.int32,
+        )
         initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
 
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
         res = pipeline.run(
-            frames, initial_mesh=initial_mesh,
-            skeleton_template=skeleton_template, fps=30.0,
+            frames,
+            initial_mesh=initial_mesh,
+            skeleton_template=skeleton_template,
+            fps=30.0,
         )
 
         assert isinstance(res, ReconResult)
@@ -707,15 +791,36 @@ class TestStagesReconPersistence:
 
         # Mock MultiViewInitializer.reconstruct to return a known cube mesh
         # since synthetic frames cannot produce real multi-view parallax.
-        cube_v = np.array([
-            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-        ], dtype=np.float32)
-        cube_f = np.array([
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
-            [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
-        ], dtype=np.int32)
+        cube_v = np.array(
+            [
+                [-1, -1, -1],
+                [1, -1, -1],
+                [1, 1, -1],
+                [-1, 1, -1],
+                [-1, -1, 1],
+                [1, -1, 1],
+                [1, 1, 1],
+                [-1, 1, 1],
+            ],
+            dtype=np.float32,
+        )
+        cube_f = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
+            dtype=np.int32,
+        )
         mock_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
 
         with patch(
@@ -795,9 +900,7 @@ class TestPipelineIntrinsicsDerivation:
         # Minimal tracks: 3 frames, 4 points
         rng = np.random.RandomState(42)
         tracks = rng.rand(3, 4, 2).astype(np.float32) * 100
-        traj = solve_camera_trajectory(
-            tracks, frame_height=480, frame_width=640
-        )
+        traj = solve_camera_trajectory(tracks, frame_height=480, frame_width=640)
         assert traj is not None
         assert len(traj.extrinsics) == 3
 

@@ -25,6 +25,7 @@ from synapse.recon.geometry import check_manifold, check_watertight
 # Helpers
 # -------------------------------------------------------------------
 
+
 def _make_tiny_png() -> str:
     """Create a base64-encoded 4x4 red PNG for testing."""
     w, h = 4, 4
@@ -35,11 +36,7 @@ def _make_tiny_png() -> str:
 
     def chunk(ct: bytes, data: bytes) -> bytes:
         r = ct + data
-        return (
-            struct.pack(">I", len(data))
-            + r
-            + struct.pack(">I", zlib.crc32(r) & 0xFFFFFFFF)
-        )
+        return struct.pack(">I", len(data)) + r + struct.pack(">I", zlib.crc32(r) & 0xFFFFFFFF)
 
     png = b"\x89PNG\r\n\x1a\n"
     png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
@@ -196,7 +193,10 @@ class TestHTMLReport:
     def test_report_screenshot_gallery(self, tmp_path: Path) -> None:
         model = _make_model_result("gallery_test.obj", n_screenshots=4)
         model.screenshot_labels = [
-            "Front", "Right", "Back", "Left",
+            "Front",
+            "Right",
+            "Back",
+            "Left",
         ]
         data = EvalReportData(
             timestamp="2024-01-01 00:00:00 UTC",
@@ -239,7 +239,9 @@ class TestTopologyChecks:
 
     def test_sphere_is_manifold(self) -> None:
         sphere = generate_procedural_mesh(
-            ProceduralMeshType.SPHERE, segments=16, rings=8,
+            ProceduralMeshType.SPHERE,
+            segments=16,
+            rings=8,
         )
         assert check_manifold(sphere.vertices, sphere.faces) is True
 
@@ -247,7 +249,9 @@ class TestTopologyChecks:
         # UV-sphere has a seam and poles with split vertices,
         # so it is not geometrically watertight.
         sphere = generate_procedural_mesh(
-            ProceduralMeshType.SPHERE, segments=16, rings=8,
+            ProceduralMeshType.SPHERE,
+            segments=16,
+            rings=8,
         )
         assert check_watertight(sphere.vertices, sphere.faces) is False
 
@@ -279,19 +283,13 @@ class TestNormalizeMetric:
         assert _normalize_metric("is_manifold", 0.0) == pytest.approx(0.0)
 
     def test_silhouette_iou(self) -> None:
-        assert _normalize_metric("silhouette_iou", 0.95) == pytest.approx(
-            0.95
-        )
+        assert _normalize_metric("silhouette_iou", 0.95) == pytest.approx(0.95)
 
     def test_volume_breathing_zero(self) -> None:
-        assert _normalize_metric("volume_breathing", 0.0) == pytest.approx(
-            1.0
-        )
+        assert _normalize_metric("volume_breathing", 0.0) == pytest.approx(1.0)
 
     def test_volume_breathing_half(self) -> None:
-        assert _normalize_metric("volume_breathing", 0.25) == pytest.approx(
-            0.5
-        )
+        assert _normalize_metric("volume_breathing", 0.25) == pytest.approx(0.5)
 
     def test_defect_counts_zero_is_best(self) -> None:
         assert _normalize_metric("num_degenerate_faces", 0.0) == pytest.approx(1.0)
@@ -334,11 +332,16 @@ class TestEvalScript:
             [
                 sys.executable,
                 str(script_path),
-                "--input-dir", str(model_dir),
-                "--output-dir", str(output_dir),
-                "--resolution", "64",
-                "--num-views", "4",
-                "--backend", "python",
+                "--input-dir",
+                str(model_dir),
+                "--output-dir",
+                str(output_dir),
+                "--resolution",
+                "64",
+                "--num-views",
+                "4",
+                "--backend",
+                "python",
                 "--json",
             ],
             capture_output=True,
@@ -371,8 +374,10 @@ class TestEvalScript:
             [
                 sys.executable,
                 str(script_path),
-                "--input-dir", str(tmp_path / "nonexistent"),
-                "--output-dir", str(tmp_path / "output"),
+                "--input-dir",
+                str(tmp_path / "nonexistent"),
+                "--output-dir",
+                str(tmp_path / "output"),
                 "--json",
             ],
             capture_output=True,
@@ -392,8 +397,10 @@ class TestEvalScript:
             [
                 sys.executable,
                 str(script_path),
-                "--input-dir", str(empty),
-                "--output-dir", str(tmp_path / "output"),
+                "--input-dir",
+                str(empty),
+                "--output-dir",
+                str(tmp_path / "output"),
                 "--json",
             ],
             capture_output=True,
@@ -412,9 +419,12 @@ class TestEvalScript:
             [
                 sys.executable,
                 str(script_path),
-                "--input-dir", str(model_dir),
-                "--output-dir", str(tmp_path / "output"),
-                "--profile", "NON_EXISTENT_PROFILE",
+                "--input-dir",
+                str(model_dir),
+                "--output-dir",
+                str(tmp_path / "output"),
+                "--profile",
+                "NON_EXISTENT_PROFILE",
                 "--json",
             ],
             capture_output=True,
@@ -440,13 +450,20 @@ class TestEvalScript:
                 "--json",
                 "inspect",
                 "evaluate",
-                "--input-dir", str(model_dir),
-                "--reference-dir", str(model_dir),
-                "--output-dir", str(out_dir),
-                "--gate-profile", "track_b_video",
-                "--resolution", "64",
-                "--views", "4",
-                "--backend", "python",
+                "--input-dir",
+                str(model_dir),
+                "--reference-dir",
+                str(model_dir),
+                "--output-dir",
+                str(out_dir),
+                "--gate-profile",
+                "track_b_video",
+                "--resolution",
+                "64",
+                "--views",
+                "4",
+                "--backend",
+                "python",
             ]
         )
         assert rc == 0
@@ -460,7 +477,8 @@ class TestEvalScript:
                 "inspect",
                 "mesh",
                 str(model_dir / "test_cube.obj"),
-                "--backend", "python",
+                "--backend",
+                "python",
             ]
         )
         assert rc_mesh == 0

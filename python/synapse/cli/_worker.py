@@ -21,15 +21,20 @@ def register_worker_subparser(
     """Register the ``worker`` subcommand tree."""
     parents = [json_parent] if json_parent is not None else []
     worker_parser = subparsers.add_parser(
-        "worker", help="Job bundle worker operations", parents=parents,
+        "worker",
+        help="Job bundle worker operations",
+        parents=parents,
     )
     worker_sub = worker_parser.add_subparsers(dest="worker_command")
 
     worker_run = worker_sub.add_parser(
-        "run", help="Execute a job bundle", parents=parents,
+        "run",
+        help="Execute a job bundle",
+        parents=parents,
     )
     worker_run.add_argument(
-        "--bundle", required=True,
+        "--bundle",
+        required=True,
         help="Path to bundle directory or manifest JSON file",
     )
     return cast(argparse.ArgumentParser, worker_parser)

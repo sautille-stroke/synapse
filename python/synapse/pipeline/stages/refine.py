@@ -84,7 +84,8 @@ def handle_anatomical_refine(
     # Parse fusion method
     fusion_name = str(params.get("fusion_method", "LAPLACIAN_FREQUENCY"))
     fusion_method = _METHOD_MAP.get(
-        fusion_name, FusionMethod.LAPLACIAN_FREQUENCY,
+        fusion_name,
+        FusionMethod.LAPLACIAN_FREQUENCY,
     )
 
     # Load ROIs — no synthetic fallback

@@ -192,11 +192,10 @@ class TestFaceRefiner:
 
         # The gaze deviation for a near-uniform crop should be very small
         gaze_dev = refiner._compute_gaze_deviation(
-            roi.crop_acescg, result.refined_acescg,
+            roi.crop_acescg,
+            result.refined_acescg,
         )
-        assert gaze_dev <= 4.5, (
-            f"Gaze deviation {gaze_dev:.2f}° exceeds 4.5° threshold"
-        )
+        assert gaze_dev <= 4.5, f"Gaze deviation {gaze_dev:.2f}° exceeds 4.5° threshold"
 
     def test_face_refiner_with_gallery(self) -> None:
         """Refiner should use gallery's interpolate_identity for identity fusion."""
@@ -220,9 +219,7 @@ class TestFaceRefiner:
         # With identity fusion active, output should differ from input
         # (the gallery-driven colour correction should modify values).
         diff = np.abs(result.refined_acescg - roi.crop_acescg)
-        assert diff.max() > 0.0, (
-            "Gallery-based identity fusion did not modify the output"
-        )
+        assert diff.max() > 0.0, "Gallery-based identity fusion did not modify the output"
 
     def test_face_refiner_gallery_interpolation_called(self) -> None:
         """Verify that interpolate_identity is called during refinement."""
@@ -257,9 +254,7 @@ class TestHandRefiner:
         refiner = HandRefiner(finger_count_expected=5)
         mask = _make_hand_mask_with_fingers(5, size=80)
         count, is_valid = refiner._validate_finger_topology(mask)
-        assert is_valid, (
-            f"5-finger mask should be valid, but got count={count}"
-        )
+        assert is_valid, f"5-finger mask should be valid, but got count={count}"
         assert count == 5
 
     def test_hand_refiner_rejects_six_fingers(self) -> None:
@@ -267,9 +262,7 @@ class TestHandRefiner:
         refiner = HandRefiner(finger_count_expected=5)
         mask = _make_hand_mask_with_fingers(6, size=80)
         count, is_valid = refiner._validate_finger_topology(mask)
-        assert not is_valid, (
-            f"6-finger mask should be invalid, but got count={count}"
-        )
+        assert not is_valid, f"6-finger mask should be invalid, but got count={count}"
         assert count == 6
 
         # Full refine path should still produce a result (fallback)
@@ -284,16 +277,14 @@ class TestHandRefiner:
     def test_hand_prepare_priors_produces_normalized_outputs(self) -> None:
         """Assert all prior outputs are in [0, 1] range."""
         roi = _make_roi(48, 48, region=AnatomicalRegion.HAND)
-        depth = np.random.RandomState(0).uniform(0.5, 50.0, (48, 48)).astype(
-            np.float32
-        )
-        normals = np.random.RandomState(1).uniform(-1, 1, (48, 48, 3)).astype(
-            np.float32
-        )
+        depth = np.random.RandomState(0).uniform(0.5, 50.0, (48, 48)).astype(np.float32)
+        normals = np.random.RandomState(1).uniform(-1, 1, (48, 48, 3)).astype(np.float32)
 
         refiner = HandRefiner()
         priors = refiner.prepare_hard_priors(
-            roi, depth_map=depth, normal_map=normals,
+            roi,
+            depth_map=depth,
+            normal_map=normals,
         )
 
         log_depth = priors["log_depth_normalized"]
@@ -301,12 +292,8 @@ class TestHandRefiner:
         assert log_depth.max() <= 1.0, f"log_depth max={log_depth.max()}"
 
         cam_normals = priors["camera_normal_encoded"]
-        assert cam_normals.min() >= 0.0, (
-            f"cam_normals min={cam_normals.min()}"
-        )
-        assert cam_normals.max() <= 1.0, (
-            f"cam_normals max={cam_normals.max()}"
-        )
+        assert cam_normals.min() >= 0.0, f"cam_normals min={cam_normals.min()}"
+        assert cam_normals.max() <= 1.0, f"cam_normals max={cam_normals.max()}"
 
         hand_mask = priors["hand_mask"]
         assert hand_mask.min() >= 0.0
@@ -423,8 +410,7 @@ class TestHandRefinerHDRPreservation:
         # The HDR region should NOT be clipped to 1.0
         hdr_region = result.refined_acescg[10:15, 10:15, :]
         assert hdr_region.max() > 1.0, (
-            f"HDR values were clipped: max={hdr_region.max():.4f}, "
-            f"expected > 1.0"
+            f"HDR values were clipped: max={hdr_region.max():.4f}, expected > 1.0"
         )
 
 

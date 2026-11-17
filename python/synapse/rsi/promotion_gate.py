@@ -106,7 +106,8 @@ class PromotionResult(BaseModel):
 
 
 def _validate_finite_report(
-    report: BenchReport, label: str,
+    report: BenchReport,
+    label: str,
 ) -> None:
     """Ensure all aggregate and scenario scores are finite."""
     for name in ("overall_score", "geom_score", "temporal_score"):
@@ -115,8 +116,7 @@ def _validate_finite_report(
             raise ContractValidationError(
                 f"Non-finite {name}={val!r} in {label} BenchReport",
                 agent_fix_hint=(
-                    f"Ensure {label} benchmark evaluation produced "
-                    "finite aggregate scores."
+                    f"Ensure {label} benchmark evaluation produced finite aggregate scores."
                 ),
             )
     for sc in report.scenarios:
@@ -127,8 +127,7 @@ def _validate_finite_report(
                     f"Non-finite {name}={val!r} for scenario "
                     f"'{sc.scenario_id}' in {label} BenchReport",
                     agent_fix_hint=(
-                        f"Re-evaluate scenario '{sc.scenario_id}' to "
-                        "eliminate NaN/Inf scores."
+                        f"Re-evaluate scenario '{sc.scenario_id}' to eliminate NaN/Inf scores."
                     ),
                 )
 
@@ -210,8 +209,7 @@ def evaluate_monotonic_promotion(
             f"extra_in_candidate={extra}. "
             "Dropping scenarios to bypass promotion gate is FORBIDDEN.",
             agent_fix_hint=(
-                "Evaluate candidate on the exact same scenario set "
-                "as the baseline report."
+                "Evaluate candidate on the exact same scenario set as the baseline report."
             ),
         )
 
@@ -239,10 +237,7 @@ def evaluate_monotonic_promotion(
         conditions["min_scenarios"] = True
 
     # Condition 1: Overall score improvement
-    overall_improved = (
-        candidate.overall_score
-        > baseline.overall_score + epsilon_min
-    )
+    overall_improved = candidate.overall_score > baseline.overall_score + epsilon_min
     conditions["overall_improvement"] = overall_improved
     if not overall_improved:
         failures.append(
@@ -257,15 +252,11 @@ def evaluate_monotonic_promotion(
     conditions["geom_non_regression"] = geom_ok
     if not geom_ok:
         failures.append(
-            f"Condition 2 failed: GeomScore "
-            f"{candidate.geom_score:.4f} < "
-            f"{baseline.geom_score:.4f}"
+            f"Condition 2 failed: GeomScore {candidate.geom_score:.4f} < {baseline.geom_score:.4f}"
         )
 
     # Condition 3: Temporal score non-regression
-    temporal_ok = (
-        candidate.temporal_score >= baseline.temporal_score
-    )
+    temporal_ok = candidate.temporal_score >= baseline.temporal_score
     conditions["temporal_non_regression"] = temporal_ok
     if not temporal_ok:
         failures.append(
@@ -275,9 +266,7 @@ def evaluate_monotonic_promotion(
         )
 
     # Condition 4: Zero per-scenario regression
-    baseline_by_id = {
-        s.scenario_id: s for s in baseline_scenarios
-    }
+    baseline_by_id = {s.scenario_id: s for s in baseline_scenarios}
     per_scenario_ok = True
 
     for cs in candidate_scenarios:
@@ -312,8 +301,7 @@ def evaluate_monotonic_promotion(
     if not per_scenario_ok:
         regressed_ids = [q.scenario_id for q in quarantine]
         failures.append(
-            f"Condition 4 failed: {len(quarantine)} scenario(s) "
-            f"regressed: {regressed_ids}"
+            f"Condition 4 failed: {len(quarantine)} scenario(s) regressed: {regressed_ids}"
         )
 
     promoted = len(failures) == 0
@@ -328,8 +316,7 @@ def evaluate_monotonic_promotion(
 
     if not promoted and raise_on_reject:
         raise QualityGateError(
-            "Monotonic promotion gate failed: "
-            + "; ".join(failures),
+            "Monotonic promotion gate failed: " + "; ".join(failures),
             agent_fix_hint=(
                 "Review the quarantine manifest for regressed "
                 "scenarios. Retrain LoRA with adjusted data "
@@ -360,9 +347,7 @@ def write_quarantine_manifest(
         "promoted": result.promoted,
         "lora_sha256": result.lora_sha256,
         "failures": result.failures,
-        "quarantine": [
-            q.model_dump() for q in result.quarantine
-        ],
+        "quarantine": [q.model_dump() for q in result.quarantine],
     }
     output_path.write_text(
         json.dumps(data, indent=2, default=str),

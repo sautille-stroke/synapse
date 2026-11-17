@@ -68,8 +68,10 @@ def test_prepare_benchmark_assets_external_target_dir(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(SCRIPT_PATH),
-        "--tier", "starter_dev",
-        "--target-dir", str(external_target),
+        "--tier",
+        "starter_dev",
+        "--target-dir",
+        str(external_target),
         "--allow-synthetic-smoke",
         "--json",
     ]
@@ -103,7 +105,8 @@ def test_vbench_16_dimensions_completeness(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(SCRIPT_PATH),
-        "--target-dir", str(target_dir),
+        "--target-dir",
+        str(target_dir),
         "--allow-synthetic-smoke",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -151,8 +154,10 @@ def test_tier_aliases_normalization(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(SCRIPT_PATH),
-        "--tier", "starter",
-        "--target-dir", str(target_dir),
+        "--tier",
+        "starter",
+        "--target-dir",
+        str(target_dir),
         "--allow-synthetic-smoke",
         "--json",
     ]
@@ -172,8 +177,10 @@ def test_fail_closed_without_synthetic_smoke(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(SCRIPT_PATH),
-        "--source-root", str(empty_source),
-        "--target-dir", str(target_dir),
+        "--source-root",
+        str(empty_source),
+        "--target-dir",
+        str(target_dir),
         "--json",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -195,14 +202,17 @@ def test_repo_manifest_never_modified_by_default(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(SCRIPT_PATH),
-        "--target-dir", str(target_dir),
+        "--target-dir",
+        str(target_dir),
         "--allow-synthetic-smoke",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0
 
     mtime_after = REPO_MANIFEST.stat().st_mtime
-    assert mtime_before == mtime_after, "Default run must NOT touch data/manifests/benchmark_assets_manifest.json"
+    assert mtime_before == mtime_after, (
+        "Default run must NOT touch data/manifests/benchmark_assets_manifest.json"
+    )
 
 
 def _create_mock_hf_file(target_root: Path, pkg_name: str, filename: str, content: bytes) -> Path:

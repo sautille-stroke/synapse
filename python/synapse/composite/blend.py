@@ -93,7 +93,8 @@ def _box_filter(src: np.ndarray, radius: int) -> np.ndarray:
     r = radius
 
     def _cumsum_mean_1d(
-        a: np.ndarray, axis: int,
+        a: np.ndarray,
+        axis: int,
     ) -> np.ndarray:
         """Compute local mean along *axis* using cumsum."""
         n = a.shape[axis]
@@ -104,7 +105,7 @@ def _box_filter(src: np.ndarray, radius: int) -> np.ndarray:
 
         # For each position i, window is [max(0,i-r) .. min(n-1,i+r)].
         idx = np.arange(n)
-        lo = np.clip(idx - r, 0, n)      # inclusive start
+        lo = np.clip(idx - r, 0, n)  # inclusive start
         hi = np.clip(idx + r + 1, 0, n)  # exclusive end
         counts = (hi - lo).astype(np.float64)
 
@@ -154,9 +155,7 @@ def _guided_filter_box(
     src = np.asarray(src, dtype=np.float64)
 
     if guide.ndim != 2:
-        raise ValueError(
-            f"guide must be [H, W], got shape {guide.shape}"
-        )
+        raise ValueError(f"guide must be [H, W], got shape {guide.shape}")
     if src.ndim == 2:
         src = src[..., np.newaxis]
         squeeze = True
@@ -168,7 +167,8 @@ def _guided_filter_box(
     mean_I = _box_filter(guide, radius)
     mean_p = _box_filter(src, radius)
     mean_Ip = _box_filter(
-        guide[..., np.newaxis] * src, radius,
+        guide[..., np.newaxis] * src,
+        radius,
     )
     mean_II = _box_filter(guide * guide, radius)
 
@@ -277,9 +277,7 @@ def border_ring_lab_match(
         # Apply only within the inner band (gradually blending into
         # the mask interior to avoid a secondary seam).
         # Full affine: x' = (x - inner_mean) * scale + outer_mean
-        result_lab[inner_band, ch] = (
-            (inner_lab[:, ch] - inner_mean) * scale + outer_mean
-        )
+        result_lab[inner_band, ch] = (inner_lab[:, ch] - inner_mean) * scale + outer_mean
 
     # Convert back: LAB → linear → sRGB.
     # Inverse of rgb_to_cielab is not provided in aces_color, so we
@@ -341,9 +339,9 @@ def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:
 
     delta = 6.0 / 29.0
 
-    x = np.where(fx > delta, fx ** 3, 3.0 * delta ** 2 * (fx - 4.0 / 29.0))
-    y = np.where(fy > delta, fy ** 3, 3.0 * delta ** 2 * (fy - 4.0 / 29.0))
-    z = np.where(fz > delta, fz ** 3, 3.0 * delta ** 2 * (fz - 4.0 / 29.0))
+    x = np.where(fx > delta, fx**3, 3.0 * delta**2 * (fx - 4.0 / 29.0))
+    y = np.where(fy > delta, fy**3, 3.0 * delta**2 * (fy - 4.0 / 29.0))
+    z = np.where(fz > delta, fz**3, 3.0 * delta**2 * (fz - 4.0 / 29.0))
 
     x *= Xn
     y *= Yn
@@ -352,11 +350,14 @@ def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:
     xyz = np.stack([x, y, z], axis=-1)
 
     # XYZ → linear sRGB  (inverse of _M_SRGB_TO_XYZ)
-    M_XYZ_TO_SRGB = np.array([
-        [3.2404542, -1.5371385, -0.4985314],
-        [-0.9692660, 1.8760108, 0.0415560],
-        [0.0556434, -0.2040259, 1.0572252],
-    ], dtype=np.float64)
+    M_XYZ_TO_SRGB = np.array(
+        [
+            [3.2404542, -1.5371385, -0.4985314],
+            [-0.9692660, 1.8760108, 0.0415560],
+            [0.0556434, -0.2040259, 1.0572252],
+        ],
+        dtype=np.float64,
+    )
 
     linear_rgb = xyz @ M_XYZ_TO_SRGB.T
     linear_rgb = np.clip(linear_rgb, 0.0, None)
@@ -478,12 +479,7 @@ def _forward_warp_bilinear(
     w10 = (wx1 * wy0)[..., np.newaxis]
     w11 = (wx1 * wy1)[..., np.newaxis]
 
-    warped = (
-        w00 * src[y0, x0]
-        + w01 * src[y1, x0]
-        + w10 * src[y0, x1]
-        + w11 * src[y1, x1]
-    )
+    warped = w00 * src[y0, x0] + w01 * src[y1, x0] + w10 * src[y0, x1] + w11 * src[y1, x1]
 
     if np.issubdtype(img.dtype, np.integer):
         return np.asarray(np.clip(warped, 0.0, 255.0).astype(img.dtype))
@@ -565,9 +561,7 @@ def composite_surgical_sequence(
                 warped_prev: np.ndarray
                 if motion_vectors is not None:
                     mv = motion_vectors[t].astype(np.float64)  # (H, W, 2) dx, dy
-                    flow_mag = float(np.mean(
-                        np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)
-                    ))
+                    flow_mag = float(np.mean(np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)))
                     # Adaptive alpha: large motion -> trust current frame (effective_alpha -> 1.0) to eliminate ghosting
                     if flow_mag > 15.0:
                         effective_alpha = min(
@@ -577,7 +571,8 @@ def composite_surgical_sequence(
 
                     # Forward bilinear warp
                     warped_prev = _forward_warp_bilinear(
-                        prev_boundary, mv,
+                        prev_boundary,
+                        mv,
                     )
                 else:
                     warped_prev = prev_boundary
@@ -588,8 +583,7 @@ def composite_surgical_sequence(
                 band_3d = boundary_band[..., np.newaxis]
                 smoothed = np.where(
                     band_3d,
-                    effective_alpha * blended_f
-                    + (1.0 - effective_alpha) * prev_f,
+                    effective_alpha * blended_f + (1.0 - effective_alpha) * prev_f,
                     blended_f,
                 )
                 blended = np.rint(np.clip(smoothed, 0.0, 255.0)).astype(np.uint8)
@@ -640,30 +634,23 @@ def composite_optical_increments(
         Composited ``[T, H, W, 3]`` uint8 sRGB sequence.
     """
     if video_frames_srgb.ndim != 4 or video_frames_srgb.shape[-1] != 3:
-        raise ValueError(
-            f"video_frames_srgb must be [T,H,W,3], got {video_frames_srgb.shape}"
-        )
+        raise ValueError(f"video_frames_srgb must be [T,H,W,3], got {video_frames_srgb.shape}")
     if cryptomatte_ids.ndim != 3:
-        raise ValueError(
-            f"cryptomatte_ids must be [T,H,W], got {cryptomatte_ids.shape}"
-        )
+        raise ValueError(f"cryptomatte_ids must be [T,H,W], got {cryptomatte_ids.shape}")
     t_count, h, w, _ = video_frames_srgb.shape
     if cryptomatte_ids.shape != (t_count, h, w):
         raise ValueError(
-            f"cryptomatte_ids shape {cryptomatte_ids.shape} != "
-            f"expected ({t_count}, {h}, {w})"
+            f"cryptomatte_ids shape {cryptomatte_ids.shape} != expected ({t_count}, {h}, {w})"
         )
     if contact_shadow_map is not None and contact_shadow_map.shape != (t_count, h, w):
         raise ValueError(
-            f"contact_shadow_map shape {contact_shadow_map.shape} != "
-            f"expected ({t_count}, {h}, {w})"
+            f"contact_shadow_map shape {contact_shadow_map.shape} != expected ({t_count}, {h}, {w})"
         )
     if caustics_map is not None:
         expected_caustics = (t_count, h, w, 3)
         if caustics_map.shape != expected_caustics:
             raise ValueError(
-                f"caustics_map shape {caustics_map.shape} != "
-                f"expected {expected_caustics}"
+                f"caustics_map shape {caustics_map.shape} != expected {expected_caustics}"
             )
     result = np.empty_like(video_frames_srgb)
 
@@ -692,7 +679,9 @@ def composite_optical_increments(
             # Apply guided filter to the shadow map for boundary alignment
             if guided_filter_r > 0:
                 shadow = _guided_filter_box(
-                    guide, shadow[..., np.newaxis], guided_filter_r,
+                    guide,
+                    shadow[..., np.newaxis],
+                    guided_filter_r,
                 )[..., 0]
                 shadow = np.clip(shadow, 0.01, 1.0)
             frame_acescg = frame_acescg * shadow[..., np.newaxis]
@@ -704,7 +693,9 @@ def composite_optical_increments(
             # Apply guided filter to the caustics layer for boundary alignment
             if guided_filter_r > 0:
                 caustics_acescg = _guided_filter_box(
-                    guide, caustics_acescg, guided_filter_r,
+                    guide,
+                    caustics_acescg,
+                    guided_filter_r,
                 )
             frame_acescg = frame_acescg + caustics_acescg
 

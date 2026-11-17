@@ -56,13 +56,20 @@ def _harris_corners(
     # Pad to handle borders
     padded = np.pad(gray, 1, mode="reflect")
     ix = (
-        -padded[:-2, :-2] + padded[:-2, 2:]
-        - 2 * padded[1:-1, :-2] + 2 * padded[1:-1, 2:]
-        - padded[2:, :-2] + padded[2:, 2:]
+        -padded[:-2, :-2]
+        + padded[:-2, 2:]
+        - 2 * padded[1:-1, :-2]
+        + 2 * padded[1:-1, 2:]
+        - padded[2:, :-2]
+        + padded[2:, 2:]
     )
     iy = (
-        -padded[:-2, :-2] - 2 * padded[:-2, 1:-1] - padded[:-2, 2:]
-        + padded[2:, :-2] + 2 * padded[2:, 1:-1] + padded[2:, 2:]
+        -padded[:-2, :-2]
+        - 2 * padded[:-2, 1:-1]
+        - padded[:-2, 2:]
+        + padded[2:, :-2]
+        + 2 * padded[2:, 1:-1]
+        + padded[2:, 2:]
     )
 
     ix2 = ix * ix
@@ -80,9 +87,9 @@ def _harris_corners(
     s_ixy = np.zeros_like(ixy)
     for dy in range(block_size):
         for dx in range(block_size):
-            s_ix2 += padded_ix2[dy: dy + h, dx: dx + w]
-            s_iy2 += padded_iy2[dy: dy + h, dx: dx + w]
-            s_ixy += padded_ixy[dy: dy + h, dx: dx + w]
+            s_ix2 += padded_ix2[dy : dy + h, dx : dx + w]
+            s_iy2 += padded_iy2[dy : dy + h, dx : dx + w]
+            s_ixy += padded_ixy[dy : dy + h, dx : dx + w]
 
     # Harris response: det(M) - k * trace(M)^2
     det = s_ix2 * s_iy2 - s_ixy * s_ixy
@@ -98,7 +105,7 @@ def _harris_corners(
 
     # Flatten and pick top N
     flat = response.ravel()
-    indices = np.argpartition(flat, -min(num_points * 4, len(flat) - 1))[-num_points * 4:]
+    indices = np.argpartition(flat, -min(num_points * 4, len(flat) - 1))[-num_points * 4 :]
     indices = indices[np.argsort(flat[indices])[::-1]]
 
     # Non-maximum suppression with minimum distance
@@ -165,10 +172,10 @@ def _lucas_kanade_track(
                 break
             nh, nw = ph // 2, pw // 2
             down = (
-                pyr[-1][:nh * 2:2, :nw * 2:2]
-                + pyr[-1][1:nh * 2:2, :nw * 2:2]
-                + pyr[-1][:nh * 2:2, 1:nw * 2:2]
-                + pyr[-1][1:nh * 2:2, 1:nw * 2:2]
+                pyr[-1][: nh * 2 : 2, : nw * 2 : 2]
+                + pyr[-1][1 : nh * 2 : 2, : nw * 2 : 2]
+                + pyr[-1][: nh * 2 : 2, 1 : nw * 2 : 2]
+                + pyr[-1][1 : nh * 2 : 2, 1 : nw * 2 : 2]
             ) * 0.25
             pyr.append(down)
         return pyr
@@ -183,7 +190,7 @@ def _lucas_kanade_track(
     flow = np.zeros((n_pts, 2), dtype=np.float32)
 
     for level in range(actual_levels - 1, -1, -1):
-        scale = 2.0 ** level
+        scale = 2.0**level
         p_img = pyr_prev[level]
         c_img = pyr_curr[level]
         lh, lw = p_img.shape
@@ -339,7 +346,11 @@ def solve_point_tracks(
             continue
 
         new_pts, status = _lucas_kanade_track(
-            prev_gray, curr_gray, tracks[t - 1], win_size=11, num_levels=3,
+            prev_gray,
+            curr_gray,
+            tracks[t - 1],
+            win_size=11,
+            num_levels=3,
         )
 
         # Update active mask — once lost, stay lost
@@ -354,11 +365,14 @@ def solve_point_tracks(
 
 def _build_intrinsics_matrix(intrinsics: dict[str, float]) -> np.ndarray:
     """Build 3x3 camera intrinsics matrix K from parameter dict."""
-    K = np.array([
-        [intrinsics["fx"], 0.0, intrinsics["cx"]],
-        [0.0, intrinsics["fy"], intrinsics["cy"]],
-        [0.0, 0.0, 1.0],
-    ], dtype=np.float64)
+    K = np.array(
+        [
+            [intrinsics["fx"], 0.0, intrinsics["cx"]],
+            [0.0, intrinsics["fy"], intrinsics["cy"]],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
     return K
 
 
@@ -378,15 +392,18 @@ def _solve_fundamental_matrix_8point(pts1: np.ndarray, pts2: np.ndarray) -> np.n
     def _normalize(pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         mean = np.mean(pts, axis=0)
         centered = pts - mean
-        avg_dist = float(np.mean(np.sqrt(np.sum(centered ** 2, axis=1))))
+        avg_dist = float(np.mean(np.sqrt(np.sum(centered**2, axis=1))))
         if avg_dist < 1e-10:
             avg_dist = 1.0
         s = math.sqrt(2.0) / avg_dist
-        T = np.array([
-            [s, 0, -s * mean[0]],
-            [0, s, -s * mean[1]],
-            [0, 0, 1],
-        ], dtype=np.float64)
+        T = np.array(
+            [
+                [s, 0, -s * mean[0]],
+                [0, s, -s * mean[1]],
+                [0, 0, 1],
+            ],
+            dtype=np.float64,
+        )
         pts_h = np.column_stack([pts, np.ones(len(pts))])
         norm_pts = (T @ pts_h.T).T[:, :2]
         return norm_pts, T
@@ -478,11 +495,14 @@ def _essential_to_rotation_translation(
     if np.linalg.det(Vt) < 0:
         Vt[-1, :] *= -1
 
-    W = np.array([
-        [0, -1, 0],
-        [1, 0, 0],
-        [0, 0, 1],
-    ], dtype=np.float64)
+    W = np.array(
+        [
+            [0, -1, 0],
+            [1, 0, 0],
+            [0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
 
     # Four possible solutions
     candidates = [
@@ -589,13 +609,15 @@ def solve_camera_trajectory(
 
     mat4_0 = np.eye(4, dtype=np.float64)
     cam_pos_0 = np.zeros(3, dtype=np.float64)
-    extrinsics_list.append(CameraExtrinsics(
-        frame=0,
-        transform=mat4_0,
-        position=cam_pos_0,
-        rotation_matrix=np.eye(3, dtype=np.float64),
-        yaw_rad=0.0,
-    ))
+    extrinsics_list.append(
+        CameraExtrinsics(
+            frame=0,
+            transform=mat4_0,
+            position=cam_pos_0,
+            rotation_matrix=np.eye(3, dtype=np.float64),
+            yaw_rad=0.0,
+        )
+    )
 
     # Track incremental relative pose between consecutive frames
     for t in range(1, num_frames):
@@ -603,10 +625,7 @@ def solve_camera_trajectory(
         pts_curr = tracks_2d[t].astype(np.float64)
 
         # Filter out NaN/Inf points
-        valid = (
-            np.isfinite(pts_prev).all(axis=1)
-            & np.isfinite(pts_curr).all(axis=1)
-        )
+        valid = np.isfinite(pts_prev).all(axis=1) & np.isfinite(pts_curr).all(axis=1)
         pts_prev_v = pts_prev[valid]
         pts_curr_v = pts_curr[valid]
 
@@ -619,7 +638,10 @@ def solve_camera_trajectory(
 
             # Decompose essential matrix
             R_rel, t_rel = _essential_to_rotation_translation(
-                E, pts_prev_v, pts_curr_v, K,
+                E,
+                pts_prev_v,
+                pts_curr_v,
+                K,
             )
         else:
             # Not enough points — assume identity relative pose
@@ -642,13 +664,15 @@ def solve_camera_trajectory(
         cam_z_world = R_accum.T @ np.array([0.0, 0.0, 1.0])
         yaw = math.atan2(cam_z_world[0], cam_z_world[2])
 
-        extrinsics_list.append(CameraExtrinsics(
-            frame=t,
-            transform=mat4,
-            position=cam_pos,
-            rotation_matrix=R_accum.copy(),
-            yaw_rad=yaw,
-        ))
+        extrinsics_list.append(
+            CameraExtrinsics(
+                frame=t,
+                transform=mat4,
+                position=cam_pos,
+                rotation_matrix=R_accum.copy(),
+                yaw_rad=yaw,
+            )
+        )
 
     # Compute real 3D reprojection error in pixels
     reproj_errors: list[float] = []
@@ -681,7 +705,9 @@ def solve_camera_trajectory(
                     if p_cam2[2] > 0.01:
                         u_proj = fx * p_cam2[0] / p_cam2[2] + cx
                         v_proj = fy * p_cam2[1] / p_cam2[2] + cy
-                        err = float(math.hypot(u_proj - pts_curr[idx, 0], v_proj - pts_curr[idx, 1]))
+                        err = float(
+                            math.hypot(u_proj - pts_curr[idx, 0], v_proj - pts_curr[idx, 1])
+                        )
                         if err < 50.0:  # inlier error bounds
                             errs.append(err)
             if errs:

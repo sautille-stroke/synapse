@@ -200,9 +200,7 @@ class LocalRefinementPipeline:
         self,
         frames_acescg: np.ndarray,
         rois_per_frame: list[list[RefinementROI]],
-        candidates_per_roi: (
-            list[list[list[np.ndarray]]] | None
-        ) = None,
+        candidates_per_roi: (list[list[list[np.ndarray]]] | None) = None,
         fusion_method: FusionMethod = FusionMethod.LAPLACIAN_FREQUENCY,
         hard_negatives_path: str | None = None,
         elapsed_seconds_override: float | None = None,
@@ -276,10 +274,9 @@ class LocalRefinementPipeline:
                     )
 
                     # Use TiledBypassExecutor to skip healthy tiles
-                    defective_rois, _bypass_count = (
-                        self.tiled_executor.extract_and_filter(
-                            frames_acescg, [roi_smoothed],
-                        )
+                    defective_rois, _bypass_count = self.tiled_executor.extract_and_filter(
+                        frames_acescg,
+                        [roi_smoothed],
                     )
                     if not defective_rois:
                         # All tiles healthy — bypass refinement
@@ -298,7 +295,8 @@ class LocalRefinementPipeline:
 
                 # Fuse candidates
                 fused = self.fusion.fuse(
-                    cands, method=fusion_method,
+                    cands,
+                    method=fusion_method,
                 )
                 total_fused += 1
 
@@ -309,15 +307,9 @@ class LocalRefinementPipeline:
                     quality_score=roi.confidence,
                     frame_index=t,
                     bbox_xyxy=(
-                        smoothed_bbox.copy()
-                        if smoothed_bbox is not None
-                        else roi.bbox_xyxy.copy()
+                        smoothed_bbox.copy() if smoothed_bbox is not None else roi.bbox_xyxy.copy()
                     ),
-                    smoothed_bbox=(
-                        smoothed_bbox.copy()
-                        if smoothed_bbox is not None
-                        else None
-                    ),
+                    smoothed_bbox=(smoothed_bbox.copy() if smoothed_bbox is not None else None),
                     bypassed=is_bypassed,
                 )
                 frame_refs.append(ref)
@@ -326,7 +318,8 @@ class LocalRefinementPipeline:
 
         # Stitch
         result_frames, stitch_report = self.stitcher.stitch_sequence(
-            frames_acescg, refinements,
+            frames_acescg,
+            refinements,
         )
 
         elapsed = (
@@ -349,9 +342,16 @@ class LocalRefinementPipeline:
         if t_count > 1:
             diffs = []
             for t_idx in range(1, t_count):
-                diffs.append(float(np.mean(np.abs(
-                    result_frames[t_idx].astype(np.float64) - result_frames[t_idx - 1].astype(np.float64)
-                ))))
+                diffs.append(
+                    float(
+                        np.mean(
+                            np.abs(
+                                result_frames[t_idx].astype(np.float64)
+                                - result_frames[t_idx - 1].astype(np.float64)
+                            )
+                        )
+                    )
+                )
             temporal_warp_err = float(np.mean(diffs))
 
         # --- PR-45 fix #3 & #4: Consume GateVerdict and propagate
@@ -379,22 +379,22 @@ class LocalRefinementPipeline:
         if not verdict.passed:
             for t in range(t_count):
                 for ref in refinements[t]:
-                    hard_negatives.append({
-                        "frame_index": t,
-                        "region": ref.region.name,
-                        "failure_reasons": verdict.failure_reasons,
-                        "metrics": {
-                            "border_psnr_db": stitch_report.mean_border_psnr_db,
-                            "border_ciede2000": stitch_report.mean_border_ciede2000,
-                        },
-                    })
+                    hard_negatives.append(
+                        {
+                            "frame_index": t,
+                            "region": ref.region.name,
+                            "failure_reasons": verdict.failure_reasons,
+                            "metrics": {
+                                "border_psnr_db": stitch_report.mean_border_psnr_db,
+                                "border_ciede2000": stitch_report.mean_border_ciede2000,
+                            },
+                        }
+                    )
             if self.strict:
                 raise QualityGateError(
-                    f"Refinement quality gates failed: "
-                    f"{', '.join(verdict.failure_reasons)}",
+                    f"Refinement quality gates failed: {', '.join(verdict.failure_reasons)}",
                     agent_fix_hint=(
-                        "Retry with adjusted thresholds or fall back "
-                        "to original frames."
+                        "Retry with adjusted thresholds or fall back to original frames."
                     ),
                     details={"verdict": verdict.metrics},
                 )

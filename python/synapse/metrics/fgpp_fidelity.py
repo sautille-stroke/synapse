@@ -87,7 +87,7 @@ def scale_invariant_depth_error(
 
     d = np.log(p) - np.log(g)
     n = d.size
-    variance = np.mean(d ** 2) - (np.sum(d) ** 2) / (n * n)
+    variance = np.mean(d**2) - (np.sum(d) ** 2) / (n * n)
     side = np.sqrt(np.maximum(variance, 0.0))
     return float(side)
 
@@ -151,7 +151,7 @@ def flow_endpoint_error_px(
     g = np.asarray(gt_flow, dtype=np.float64)
 
     diff = p - g
-    epe = np.sqrt(np.maximum(np.sum(diff ** 2, axis=-1), 0.0))  # [H, W]
+    epe = np.sqrt(np.maximum(np.sum(diff**2, axis=-1), 0.0))  # [H, W]
 
     if valid_mask is not None:
         m = np.asarray(valid_mask, dtype=bool)

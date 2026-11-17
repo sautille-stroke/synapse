@@ -31,18 +31,19 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
         raise AssetNotFoundError(
             f"Mesh file not found: {mesh_path}",
             agent_fix_hint=(
-                f"Ensure '{mesh_path}' exists and is a valid "
-                ".obj / .glb / .ply mesh file."
+                f"Ensure '{mesh_path}' exists and is a valid .obj / .glb / .ply mesh file."
             ),
         )
     try:
         import trimesh
+
         mesh_obj: Any = trimesh.load(str(mesh_path), force="mesh")
         vertices = np.asarray(mesh_obj.vertices, dtype=np.float64)
         faces = np.asarray(mesh_obj.faces, dtype=np.int64)
     except ImportError:
         if mesh_path.suffix.lower() == ".obj":
             from synapse.bench.model_loader import load_mesh
+
             loaded = load_mesh(str(mesh_path), normalize=False)
             vertices = np.asarray(loaded.vertices, dtype=np.float64)
             faces = np.asarray(loaded.faces, dtype=np.int64)
@@ -56,7 +57,8 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
     raw_backend = str(getattr(args, "backend", "native"))
     backend: Literal["native", "python"] = "python" if raw_backend == "python" else "native"
     result = validate_mesh_geometry(
-        vertices, faces,
+        vertices,
+        faces,
         require_watertight=bool(getattr(args, "require_watertight", False)),
         backend=backend,
     )
@@ -86,7 +88,8 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
         report_file = Path(report_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
         report_file.write_text(
-            json.dumps(result_dict, indent=2, default=str), encoding="utf-8",
+            json.dumps(result_dict, indent=2, default=str),
+            encoding="utf-8",
         )
         if not args.json:
             print(f"  Report: {report_file}")
@@ -150,7 +153,9 @@ def _cmd_inspect_evaluate(args: argparse.Namespace) -> dict[str, Any]:
     json_mode = bool(getattr(args, "json", False))
     ref_raw = getattr(args, "reference_dir", None)
     eval_backend_raw = str(getattr(args, "backend", "native"))
-    eval_backend: Literal["native", "python"] = "python" if eval_backend_raw == "python" else "native"
+    eval_backend: Literal["native", "python"] = (
+        "python" if eval_backend_raw == "python" else "native"
+    )
     data = evaluate_3d_models_directory(
         input_dir=Path(args.input_dir),
         output_dir=Path(args.output_dir),
@@ -215,6 +220,7 @@ def _cmd_inspect_export_rl_data(args: argparse.Namespace) -> dict[str, Any]:
 # Subparser registration
 # -------------------------------------------------------------------
 
+
 def register_inspect_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
     json_parent: argparse.ArgumentParser | None = None,
@@ -224,13 +230,20 @@ def register_inspect_subparser(
     p = subparsers.add_parser("inspect", help="3D asset inspection and refinement", parents=parents)
     sub = p.add_subparsers(dest="inspect_command")
 
-    m = sub.add_parser("mesh", help="Run Tier 0 geometric topology gate on a mesh file", parents=parents)
+    m = sub.add_parser(
+        "mesh", help="Run Tier 0 geometric topology gate on a mesh file", parents=parents
+    )
     m.add_argument("mesh_path", help="Path to mesh file (.obj, .glb, .ply)")
     m.add_argument("--report", default=None, help="Output JSON report file path")
-    m.add_argument("--backend", default="native", choices=["native", "python"],
-                    help="Backend for geometry checks (default: native)")
-    m.add_argument("--require-watertight", action="store_true",
-                    help="Require mesh to be watertight (closed)")
+    m.add_argument(
+        "--backend",
+        default="native",
+        choices=["native", "python"],
+        help="Backend for geometry checks (default: native)",
+    )
+    m.add_argument(
+        "--require-watertight", action="store_true", help="Require mesh to be watertight (closed)"
+    )
 
     a = sub.add_parser("align", help="Align reference image to mesh", parents=parents)
     a.add_argument("--mesh", default="", help="Path to mesh file")
@@ -241,37 +254,64 @@ def register_inspect_subparser(
     ev.add_argument("--asset-name", default="Unknown", help="Human-readable asset name")
     ev.add_argument("--mock", action="store_true", help="Enable MockJevTransport for testing")
     ev.add_argument(
-        "--image-uris", nargs="*", default=[],
+        "--image-uris",
+        nargs="*",
+        default=[],
         help="URIs/paths to rendered images for the Visual Jev critic",
     )
 
-    evl = sub.add_parser("evaluate",
-                          help="Batch-evaluate 3D models and generate HTML/JSON reports",
-                          parents=parents)
-    evl.add_argument("--input-dir", required=True,
-                      help="Directory containing .obj/.glb/.ply model files")
-    evl.add_argument("--output-dir", required=True,
-                      help="Output directory for eval_report.html and eval_results.json")
-    evl.add_argument("--reference-dir", default=None,
-                      help="Optional directory with reference meshes")
-    evl.add_argument("--profile", "--gate-profile", dest="profile",
-                      default="TRACK_A_ASSET",
-                      help="Gate profile (TRACK_A_ASSET, TRACK_B_VIDEO, RSI_PROMOTION)")
-    evl.add_argument("--resolution", type=int, default=256,
-                      help="Multi-view render resolution (default: 256)")
-    evl.add_argument("--num-views", "--views", dest="num_views", type=int, default=8,
-                      help="Number of multi-view orbit screenshots (default: 8)")
-    evl.add_argument("--backend", default="native", choices=["native", "python"],
-                      help="Geometry gate backend (default: native)")
+    evl = sub.add_parser(
+        "evaluate", help="Batch-evaluate 3D models and generate HTML/JSON reports", parents=parents
+    )
+    evl.add_argument(
+        "--input-dir", required=True, help="Directory containing .obj/.glb/.ply model files"
+    )
+    evl.add_argument(
+        "--output-dir",
+        required=True,
+        help="Output directory for eval_report.html and eval_results.json",
+    )
+    evl.add_argument(
+        "--reference-dir", default=None, help="Optional directory with reference meshes"
+    )
+    evl.add_argument(
+        "--profile",
+        "--gate-profile",
+        dest="profile",
+        default="TRACK_A_ASSET",
+        help="Gate profile (TRACK_A_ASSET, TRACK_B_VIDEO, RSI_PROMOTION)",
+    )
+    evl.add_argument(
+        "--resolution", type=int, default=256, help="Multi-view render resolution (default: 256)"
+    )
+    evl.add_argument(
+        "--num-views",
+        "--views",
+        dest="num_views",
+        type=int,
+        default=8,
+        help="Number of multi-view orbit screenshots (default: 8)",
+    )
+    evl.add_argument(
+        "--backend",
+        default="native",
+        choices=["native", "python"],
+        help="Geometry gate backend (default: native)",
+    )
 
-    r = sub.add_parser("refine", help="Run targeted refinement from InspectionReport", parents=parents)
+    r = sub.add_parser(
+        "refine", help="Run targeted refinement from InspectionReport", parents=parents
+    )
     r.add_argument("--report", default=None, help="Path to InspectionReport JSON file")
 
-    rl = sub.add_parser("export-rl-data", help="Export RL flywheel training data (DPO/PRM)", parents=parents)
+    rl = sub.add_parser(
+        "export-rl-data", help="Export RL flywheel training data (DPO/PRM)", parents=parents
+    )
     rl.add_argument("--log-dir", required=True, help="Path to intent group log directory")
     rl.add_argument("--output", required=True, help="Output JSONL file path")
-    rl.add_argument("--format", default="dpo", choices=["dpo", "prm"],
-                     help="Export format (default: dpo)")
+    rl.add_argument(
+        "--format", default="dpo", choices=["dpo", "prm"], help="Export format (default: dpo)"
+    )
     return cast(argparse.ArgumentParser, p)
 
 
@@ -300,7 +340,10 @@ def dispatch_inspect(
     if insp_cmd == "evaluate":
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_inspect_evaluate, parsed, json_mode, trace_ctx,
+            _cmd_inspect_evaluate,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
 
     handler = _INSPECT_HANDLERS.get(insp_cmd)  # type: ignore[arg-type]
@@ -309,8 +352,7 @@ def dispatch_inspect(
 
     if json_mode:
         err = SynapseError(
-            "Missing inspect sub-command "
-            "(mesh|align|eval|evaluate|refine|export-rl-data)",
+            "Missing inspect sub-command (mesh|align|eval|evaluate|refine|export-rl-data)",
             ExitCode.CONTRACT_ERROR,
             "Use 'synapse inspect <sub-command> --help'.",
         )

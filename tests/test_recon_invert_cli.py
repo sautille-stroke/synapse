@@ -59,10 +59,15 @@ def _make_parallax_video(num_frames: int = 4, h: int = 64, w: int = 64) -> np.nd
 def test_recon_invert_video_cli_json() -> None:
     """synapse recon invert-video --json without --video returns AssetNotFoundError(20)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        exit_code = main_synapse([
-            "--json", "recon", "invert-video",
-            "--output", tmpdir,
-        ])
+        exit_code = main_synapse(
+            [
+                "--json",
+                "recon",
+                "invert-video",
+                "--output",
+                tmpdir,
+            ]
+        )
     # M13 strict contracts: missing video input → exit_code 20
     assert exit_code == 20
 
@@ -75,12 +80,19 @@ def test_recon_invert_video_cli_with_video() -> None:
         video_path = Path(tmpdir) / "test_video.npy"
         np.save(str(video_path), video)
 
-        exit_code = main_synapse([
-            "--json", "recon", "invert-video",
-            "--video", str(video_path),
-            "--output", str(Path(tmpdir) / "output"),
-            "--target-faces", "500",
-        ])
+        exit_code = main_synapse(
+            [
+                "--json",
+                "recon",
+                "invert-video",
+                "--video",
+                str(video_path),
+                "--output",
+                str(Path(tmpdir) / "output"),
+                "--target-faces",
+                "500",
+            ]
+        )
     assert exit_code == 0
 
 
@@ -142,9 +154,13 @@ def test_recon_invert_video_no_video_exit_code_and_hint() -> None:
     """synapse recon invert-video --json without --video returns exit 20 with agent_fix_hint."""
     captured = io.StringIO()
     with patch("sys.stdout", captured):
-        exit_code = main_synapse([
-            "--json", "recon", "invert-video",
-        ])
+        exit_code = main_synapse(
+            [
+                "--json",
+                "recon",
+                "invert-video",
+            ]
+        )
     assert exit_code == 20
     output = json.loads(captured.getvalue().strip())
     assert output["status"] == "error"
@@ -156,9 +172,13 @@ def test_recon_closed_loop_no_video_returns_error() -> None:
     """synapse recon closed-loop --json without --video returns non-zero with agent_fix_hint."""
     captured = io.StringIO()
     with patch("sys.stdout", captured):
-        exit_code = main_synapse([
-            "--json", "recon", "closed-loop",
-        ])
+        exit_code = main_synapse(
+            [
+                "--json",
+                "recon",
+                "closed-loop",
+            ]
+        )
     assert exit_code != 0
     output = json.loads(captured.getvalue().strip())
     assert output["status"] == "error"
@@ -170,10 +190,15 @@ def test_recon_closed_loop_nonexistent_video_returns_error() -> None:
     """synapse recon closed-loop --json with bad --video path returns exit 20."""
     captured = io.StringIO()
     with patch("sys.stdout", captured):
-        exit_code = main_synapse([
-            "--json", "recon", "closed-loop",
-            "--video", "/nonexistent/video.npy",
-        ])
+        exit_code = main_synapse(
+            [
+                "--json",
+                "recon",
+                "closed-loop",
+                "--video",
+                "/nonexistent/video.npy",
+            ]
+        )
     assert exit_code == 20
     output = json.loads(captured.getvalue().strip())
     assert output["status"] == "error"

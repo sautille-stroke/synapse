@@ -84,7 +84,9 @@ class LoRAPatchHook:
         if mask is not None:
             if not isinstance(mask, torch.Tensor):
                 _cached_mask = torch.tensor(
-                    mask, dtype=target_dtype, device=target_device,
+                    mask,
+                    dtype=target_dtype,
+                    device=target_device,
                 )
             else:
                 _cached_mask = mask.to(device=target_device, dtype=target_dtype)
@@ -133,7 +135,9 @@ class LoRAPatchHook:
                                 m_5d, (tau, h16, w16)
                             ).reshape(1, expected_l, 1)
                             reg = torch.ones(
-                                (1, n_reg, 1), dtype=m.dtype, device=m.device,
+                                (1, n_reg, 1),
+                                dtype=m.dtype,
+                                device=m.device,
                             )
                             m = torch.cat([reg, m_p], dim=1)
 

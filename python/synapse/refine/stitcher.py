@@ -141,14 +141,14 @@ class ScalpelStitcher:
                 #    full-frame canvas at the correct position.
                 # -------------------------------------------------------
                 fg_full, fg_mask_bool = _inverse_affine_paste(
-                    patch, h, w,
+                    patch,
+                    h,
+                    w,
                 )
 
                 # Clamp fg_mask_bool to ROI bounding box with margin
                 target_bbox = (
-                    patch.smoothed_bbox
-                    if patch.smoothed_bbox is not None
-                    else patch.bbox_xyxy
+                    patch.smoothed_bbox if patch.smoothed_bbox is not None else patch.bbox_xyxy
                 )
                 bbox = np.asarray(target_bbox, dtype=np.intp)
                 x1 = max(int(bbox[0]) - ring, 0)
@@ -166,9 +166,7 @@ class ScalpelStitcher:
                 # -------------------------------------------------------
                 # 2. Surgical mask — motion-adaptive feathered alpha.
                 # -------------------------------------------------------
-                mv_frame = (
-                    motion_vectors[t] if motion_vectors is not None else None
-                )
+                mv_frame = motion_vectors[t] if motion_vectors is not None else None
                 surgical_alpha = generate_surgical_mask(
                     mask_3d_new=fg_mask_bool,
                     mask_sam2_old=None,
@@ -189,7 +187,9 @@ class ScalpelStitcher:
 
                 roi_fg_mask = fg_mask_bool & roi_clamp_mask
                 matched_srgb = border_ring_lab_match(
-                    fg_srgb, bg_srgb, roi_fg_mask,
+                    fg_srgb,
+                    bg_srgb,
+                    roi_fg_mask,
                     ring_width_px=ring,
                 )
                 matched_acescg = _srgb_to_acescg_f32(matched_srgb)
@@ -204,7 +204,9 @@ class ScalpelStitcher:
                 #    and in surrounding areas.
                 # -------------------------------------------------------
                 blended_acescg = _laplacian_pyramid_blend_linear(
-                    matched_acescg, bg_frame, surgical_alpha,
+                    matched_acescg,
+                    bg_frame,
+                    surgical_alpha,
                     num_levels=4,
                 )
 
@@ -219,10 +221,14 @@ class ScalpelStitcher:
                 frame_boundary_band = frame_boundary_band | border_mask
                 if np.any(border_mask):
                     psnr_val = _border_psnr(
-                        result[t], frames_acescg[t], border_mask,
+                        result[t],
+                        frames_acescg[t],
+                        border_mask,
                     )
                     ciede_val = _border_ciede2000(
-                        result[t], frames_acescg[t], border_mask,
+                        result[t],
+                        frames_acescg[t],
+                        border_mask,
                     )
                     psnr_accum += psnr_val
                     ciede_accum += ciede_val
@@ -254,12 +260,8 @@ class ScalpelStitcher:
         report = StitchReport(
             num_frames=t_count,
             num_patches_applied=total_patches,
-            mean_border_psnr_db=(
-                psnr_accum / measured if measured > 0 else 0.0
-            ),
-            mean_border_ciede2000=(
-                ciede_accum / measured if measured > 0 else 0.0
-            ),
+            mean_border_psnr_db=(psnr_accum / measured if measured > 0 else 0.0),
+            mean_border_ciede2000=(ciede_accum / measured if measured > 0 else 0.0),
         )
 
         return result, report
@@ -292,10 +294,13 @@ def _compute_inverse_affine_from_bbox(
     sy = bh / max(float(patch_h), 1.0)
     # [sx  0  tx]
     # [0  sy  ty]
-    return np.array([
-        [sx, 0.0, x1],
-        [0.0, sy, y1],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [sx, 0.0, x1],
+            [0.0, sy, y1],
+        ],
+        dtype=np.float64,
+    )
 
 
 def _inverse_affine_paste(
@@ -323,7 +328,10 @@ def _inverse_affine_paste(
     # Try cv2.warpAffine for sub-pixel accuracy; fall back to pure
     # NumPy bilinear sampling when cv2 is unavailable.
     fg_full, fg_mask = _warp_affine_bilinear(
-        refined, M, frame_h, frame_w,
+        refined,
+        M,
+        frame_h,
+        frame_w,
     )
     return fg_full, fg_mask
 
@@ -361,7 +369,9 @@ def _warp_affine_bilinear(
         M_inv = np.linalg.inv(M_3x3)[:2, :]
 
         dst = cv2.warpAffine(
-            src, M_inv.astype(np.float32), (dst_w, dst_h),
+            src,
+            M_inv.astype(np.float32),
+            (dst_w, dst_h),
             flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(0.0, 0.0, 0.0),
@@ -369,7 +379,9 @@ def _warp_affine_bilinear(
         # Build coverage mask: warp a ones image the same way.
         ones_src = np.ones(src.shape[:2], dtype=np.float32)
         mask_f = cv2.warpAffine(
-            ones_src, M_inv.astype(np.float32), (dst_w, dst_h),
+            ones_src,
+            M_inv.astype(np.float32),
+            (dst_w, dst_h),
             flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=0.0,
@@ -397,9 +409,11 @@ def _warp_affine_numpy(
     # Build destination grid.
     yy, xx = np.mgrid[:dst_h, :dst_w]
     dst_coords = np.stack(
-        [xx.ravel().astype(np.float64),
-         yy.ravel().astype(np.float64),
-         np.ones(dst_h * dst_w, dtype=np.float64)],
+        [
+            xx.ravel().astype(np.float64),
+            yy.ravel().astype(np.float64),
+            np.ones(dst_h * dst_w, dtype=np.float64),
+        ],
         axis=0,
     )  # (3, N)
     src_coords = M_inv @ dst_coords  # (3, N)
@@ -530,10 +544,7 @@ def _border_psnr(
     border_mask: np.ndarray,
 ) -> float:
     """Compute PSNR at the border ring between result and source."""
-    diff = (
-        result_frame.astype(np.float64)
-        - source_frame.astype(np.float64)
-    )
+    diff = result_frame.astype(np.float64) - source_frame.astype(np.float64)
     mse = float(np.mean(diff[border_mask] ** 2))
     if mse <= 1e-10:
         return 100.0
@@ -543,7 +554,7 @@ def _border_psnr(
         float(np.max(np.abs(source_frame[border_mask]))),
         1.0,
     )
-    return float(min(10.0 * np.log10(peak ** 2 / mse), 100.0))
+    return float(min(10.0 * np.log10(peak**2 / mse), 100.0))
 
 
 def _border_ciede2000(
@@ -660,8 +671,7 @@ def _temporal_ema_blend(
         )
 
     # EMA blend.
-    blended = (
-        effective_alpha * current.astype(np.float64)
-        + (1.0 - effective_alpha) * warped_prev.astype(np.float64)
-    )
+    blended = effective_alpha * current.astype(np.float64) + (
+        1.0 - effective_alpha
+    ) * warped_prev.astype(np.float64)
     return blended.astype(np.float32)

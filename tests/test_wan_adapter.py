@@ -43,12 +43,16 @@ def _make_camera(
     """Create a minimal CameraParams with optional view_matrix override."""
     vm = view_matrix if view_matrix is not None else np.eye(4, dtype=np.float64)
     return CameraParams(
-        fx=100.0, fy=100.0,
-        cx=w / 2.0, cy=h / 2.0,
-        width=w, height=h,
+        fx=100.0,
+        fy=100.0,
+        cx=w / 2.0,
+        cy=h / 2.0,
+        width=w,
+        height=h,
         view_matrix=vm,
         world_matrix=np.linalg.inv(vm),
-        z_near=0.1, z_far=100.0,
+        z_near=0.1,
+        z_far=100.0,
     )
 
 
@@ -70,13 +74,15 @@ def _make_fgpp_sequence(
         mag = np.where(mag < 1e-6, 1.0, mag)
         wn = wn / mag
         radiance = rng.uniform(0.0, 2.0, (h, w, 3)).astype(np.float16)
-        frames.append(FGPPFrame(
-            camera=cam,
-            depth=depth,
-            world_normal=wn,
-            direct_radiance=radiance,
-            frame_index=i,
-        ))
+        frames.append(
+            FGPPFrame(
+                camera=cam,
+                depth=depth,
+                world_normal=wn,
+                direct_radiance=radiance,
+                frame_index=i,
+            )
+        )
     return FGPPSequence(frames=frames, fps=24.0, scene_id="test")
 
 
@@ -159,7 +165,9 @@ class TestWorldToCameraNormal:
         result_mag = np.linalg.norm(result, axis=-1)
 
         np.testing.assert_allclose(
-            result_mag, 1.0, atol=1e-3,
+            result_mag,
+            1.0,
+            atol=1e-3,
             err_msg="Rotated normals should have unit magnitude",
         )
 
@@ -186,7 +194,9 @@ class TestWanPrepareConditions:
         seq = _make_fgpp_sequence(n_frames=4, h=8, w=8)
         adapter = WanAdapter()
         config = VideoGenerationConfig(
-            num_frames=4, width=8, height=8,
+            num_frames=4,
+            width=8,
+            height=8,
         )
         payload = adapter.prepare_conditions(seq, config)
 
@@ -220,7 +230,9 @@ class TestWanPrepareConditions:
         normals_thw3 = np.transpose(normals, (1, 2, 3, 0))
         mag = np.linalg.norm(normals_thw3, axis=-1)
         np.testing.assert_allclose(
-            mag, 1.0, atol=1e-2,
+            mag,
+            1.0,
+            atol=1e-2,
             err_msg="Camera-space normals should be unit length",
         )
 
@@ -285,7 +297,8 @@ class TestWanGenerate:
             config: VideoGenerationConfig,
         ) -> np.ndarray:
             return rng.randint(
-                0, 256,
+                0,
+                256,
                 (config.num_frames, config.height, config.width, 3),
                 dtype=np.uint8,
             )
@@ -295,8 +308,10 @@ class TestWanGenerate:
 
         seq = _make_fgpp_sequence(n_frames=4, h=16, w=16)
         config = VideoGenerationConfig(
-            seed=123, fps=30.0,
-            width=16, height=16,
+            seed=123,
+            fps=30.0,
+            width=16,
+            height=16,
             num_frames=4,
         )
         payload = adapter.prepare_conditions(seq, config)
@@ -343,7 +358,9 @@ class TestBackendTransport:
 
         backend = LocalCallableBackend(pipeline_fn=my_fn)
         config = VideoGenerationConfig(
-            num_frames=2, width=4, height=4,
+            num_frames=2,
+            width=4,
+            height=4,
         )
         result = backend.submit(PreparedConditionPayload(), config)
 
@@ -485,4 +502,3 @@ class TestWanSlidingWindowAndGuards:
 
         assert "flow_meta" in captured_extra
         assert "occlusion_mask" in captured_extra["flow_meta"]
-

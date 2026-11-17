@@ -117,7 +117,8 @@ def intent_log_dir(tmp_path: Path) -> Path:
             "prompt_context": "Fix mesh crumple defect",
         }
         (log_dir / f"auto_{i:03d}.json").write_text(
-            json.dumps(intent), encoding="utf-8",
+            json.dumps(intent),
+            encoding="utf-8",
         )
 
     # Undo-triggered intents (2)
@@ -142,7 +143,8 @@ def intent_log_dir(tmp_path: Path) -> Path:
             "prompt_context": "Fix texture stretch defect",
         }
         (log_dir / f"undo_{i:03d}.json").write_text(
-            json.dumps(intent), encoding="utf-8",
+            json.dumps(intent),
+            encoding="utf-8",
         )
 
     return log_dir
@@ -178,7 +180,8 @@ class TestTargetedRefinement:
     """Tests for run_targeted_refinement."""
 
     def test_clean_report_no_fixes(
-        self, clean_report: dict[str, Any],
+        self,
+        clean_report: dict[str, Any],
     ) -> None:
         """Clean report produces no fixes and passes gate."""
         result = run_targeted_refinement(report=clean_report)
@@ -188,7 +191,8 @@ class TestTargetedRefinement:
         assert result["gate_result"]["passed"] is True
 
     def test_defective_report_routes_actions(
-        self, defective_report: dict[str, Any],
+        self,
+        defective_report: dict[str, Any],
     ) -> None:
         """Defects are correctly routed to actions."""
         result = run_targeted_refinement(
@@ -213,7 +217,8 @@ class TestTargetedRefinement:
         assert actions[2]["status"] == "requires_hitl"
 
     def test_require_manifold_check_without_fn_raises_40(
-        self, clean_report: dict[str, Any],
+        self,
+        clean_report: dict[str, Any],
     ) -> None:
         """require_manifold_check=True without manifold_check_fn raises 40."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -224,7 +229,8 @@ class TestTargetedRefinement:
         assert int(exc_info.value.exit_code) == 40
 
     def test_auto_fix_callback(
-        self, defective_report: dict[str, Any],
+        self,
+        defective_report: dict[str, Any],
     ) -> None:
         """Auto-fix callback is invoked for fixable defects."""
         fix_calls: list[tuple[Any, ...]] = []
@@ -243,9 +249,11 @@ class TestTargetedRefinement:
         assert result["fixed_count"] == 2
 
     def test_auto_fix_failure_escalates_to_hitl(
-        self, defective_report: dict[str, Any],
+        self,
+        defective_report: dict[str, Any],
     ) -> None:
         """Failed auto-fix increments hitl count."""
+
         def failing_fix(defect: dict[str, Any], action: str) -> dict[str, Any]:
             raise RuntimeError("Fix engine crashed")
 
@@ -257,7 +265,8 @@ class TestTargetedRefinement:
         assert result["hitl_count"] == 3
 
     def test_manifold_check_passes(
-        self, clean_report: dict[str, Any],
+        self,
+        clean_report: dict[str, Any],
     ) -> None:
         """Passing manifold check keeps gate green."""
         result = run_targeted_refinement(
@@ -271,7 +280,8 @@ class TestTargetedRefinement:
         assert result["gate_result"]["passed"] is True
 
     def test_manifold_check_fails_volume(
-        self, clean_report: dict[str, Any],
+        self,
+        clean_report: dict[str, Any],
     ) -> None:
         """Volume breathing exceeding threshold raises error."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -287,7 +297,8 @@ class TestTargetedRefinement:
         assert "volume_breathing_pct" in str(exc_info.value)
 
     def test_manifold_check_fails_non_manifold(
-        self, clean_report: dict[str, Any],
+        self,
+        clean_report: dict[str, Any],
     ) -> None:
         """Non-manifold edges trigger gate failure."""
         with pytest.raises(QualityGateError):
@@ -338,7 +349,9 @@ class TestDPOExport:
     """Tests for DPO format export."""
 
     def test_dpo_export_correct_pair_count(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """DPO export produces exactly 2 pairs for 2 undos."""
         out = tmp_path / "dpo.jsonl"
@@ -352,7 +365,9 @@ class TestDPOExport:
         assert out.exists()
 
     def test_dpo_records_structure(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """Each DPO record has required fields."""
         out = tmp_path / "dpo.jsonl"
@@ -373,7 +388,9 @@ class TestDPOExport:
             assert rec["asset_id"] == "asset_A"
 
     def test_dpo_rejected_is_undone_state(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """DPO rejected points to the undone state URI."""
         out = tmp_path / "dpo.jsonl"
@@ -388,7 +405,9 @@ class TestDPOExport:
             assert "bad_auto_" in rec["rejected"]
 
     def test_dpo_chosen_is_passing_state(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """DPO chosen points to a state that passed gate."""
         out = tmp_path / "dpo.jsonl"
@@ -403,7 +422,8 @@ class TestDPOExport:
             assert "final_auto_" in rec["chosen"]
 
     def test_dpo_no_undo_no_pairs(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """No undo-triggered intents means zero DPO pairs."""
         log_dir = tmp_path / "no_undo_logs"
@@ -420,7 +440,8 @@ class TestDPOExport:
             "prompt_context": "All good",
         }
         (log_dir / "clean.json").write_text(
-            json.dumps(intent), encoding="utf-8",
+            json.dumps(intent),
+            encoding="utf-8",
         )
 
         out = tmp_path / "dpo.jsonl"
@@ -441,7 +462,9 @@ class TestPRMExport:
     """Tests for PRM format export."""
 
     def test_prm_export_step_count(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """PRM export produces one record per step."""
         out = tmp_path / "prm.jsonl"
@@ -455,7 +478,9 @@ class TestPRMExport:
         assert result["record_count"] == 5
 
     def test_prm_record_fields(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """Each PRM record has required fields."""
         out = tmp_path / "prm.jsonl"
@@ -473,7 +498,9 @@ class TestPRMExport:
             assert rec["label"] in ("+", "-")
 
     def test_prm_negative_labels(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """Undo-triggered steps have negative labels."""
         out = tmp_path / "prm.jsonl"
@@ -483,10 +510,7 @@ class TestPRMExport:
             format="prm",
         )
         lines = out.read_text(encoding="utf-8").strip().split("\n")
-        neg_count = sum(
-            1 for line in lines
-            if json.loads(line)["label"] == "-"
-        )
+        neg_count = sum(1 for line in lines if json.loads(line)["label"] == "-")
         assert neg_count == 2  # 2 undo-triggered intents
 
 
@@ -499,7 +523,8 @@ class TestPreloadedGroups:
     """Tests with pre-loaded IntentGroup objects."""
 
     def test_dpo_with_preloaded_groups(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """DPO export works with pre-loaded groups."""
         groups = [
@@ -542,7 +567,8 @@ class TestPreloadedGroups:
         assert rec["rejected"] == "bad"
 
     def test_manifold_violating_never_chosen(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Final state that failed gate is never in chosen."""
         groups = [
@@ -576,7 +602,8 @@ class TestPreloadedGroups:
         assert result["record_count"] == 0
 
     def test_dpo_does_not_cross_pair_different_initial_states(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Intents with different initial_state_uri on the same asset do not cross-pair."""
         groups = [
@@ -620,6 +647,7 @@ class TestInspectCLI:
     def test_inspect_help(self) -> None:
         """synapse inspect --help does not crash."""
         from synapse.cli import main_synapse
+
         with pytest.raises(SystemExit) as exc:
             main_synapse(["inspect", "--help"])
         assert exc.value.code == 0
@@ -634,12 +662,18 @@ class TestInspectCLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "inspect", "eval",
-                "--asset-id", "test_001",
-                "--asset-name", "Test Asset",
-                "--mock",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "inspect",
+                    "eval",
+                    "--asset-id",
+                    "test_001",
+                    "--asset-name",
+                    "Test Asset",
+                    "--mock",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -649,7 +683,9 @@ class TestInspectCLI:
         assert parsed["status"] == "ok"
 
     def test_inspect_export_rl_data_json(
-        self, intent_log_dir: Path, tmp_path: Path,
+        self,
+        intent_log_dir: Path,
+        tmp_path: Path,
     ) -> None:
         """synapse inspect export-rl-data --json works."""
         import io
@@ -661,12 +697,19 @@ class TestInspectCLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "inspect", "export-rl-data",
-                "--log-dir", str(intent_log_dir),
-                "--output", str(out),
-                "--format", "dpo",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "inspect",
+                    "export-rl-data",
+                    "--log-dir",
+                    str(intent_log_dir),
+                    "--output",
+                    str(out),
+                    "--format",
+                    "dpo",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -686,11 +729,17 @@ class TestInspectCLI:
         old = sys.stdout
         sys.stdout = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "inspect", "align",
-                "--mesh", "m.glb",
-                "--image", "i.png",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "inspect",
+                    "align",
+                    "--mesh",
+                    "m.glb",
+                    "--image",
+                    "i.png",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -706,9 +755,13 @@ class TestInspectCLI:
         old = sys.stdout
         sys.stdout = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "inspect", "refine",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "inspect",
+                    "refine",
+                ]
+            )
         finally:
             sys.stdout = old
 

@@ -94,10 +94,7 @@ class ReconPipeline:
             initializer = MultiViewInitializer()
             active_mesh = initializer.reconstruct(
                 frames=frames,
-                cameras=[
-                    ext
-                    for ext in (camera_traj.extrinsics if camera_traj else [])
-                ],
+                cameras=[ext for ext in (camera_traj.extrinsics if camera_traj else [])],
             )
         else:
             active_mesh = initial_mesh
@@ -135,19 +132,11 @@ class ReconPipeline:
 
             kinematics = MocapKinematics(
                 frame_count=num_frames,
-                joint_positions=solved_skel.get(
-                    "joint_positions", np.zeros((0, 0, 3))
-                ),
+                joint_positions=solved_skel.get("joint_positions", np.zeros((0, 0, 3))),
                 foot_contacts=contacts,
-                raw_foot_slip_cm_s=skel_telemetry.get(
-                    "raw_foot_sliding_cm_per_sec", 0.0
-                ),
-                clamped_foot_slip_cm_s=skel_telemetry.get(
-                    "clamped_foot_sliding_cm_per_sec", 0.0
-                ),
-                max_foot_slip_cm_s=skel_telemetry.get(
-                    "max_foot_slip_cm_per_sec", 0.0
-                ),
+                raw_foot_slip_cm_s=skel_telemetry.get("raw_foot_sliding_cm_per_sec", 0.0),
+                clamped_foot_slip_cm_s=skel_telemetry.get("clamped_foot_sliding_cm_per_sec", 0.0),
+                max_foot_slip_cm_s=skel_telemetry.get("max_foot_slip_cm_per_sec", 0.0),
             )
         else:
             # No skeleton template — skip kinematics entirely instead of
@@ -177,7 +166,8 @@ class ReconPipeline:
             "is_manifold": is_manifold,
             "is_quad_dominant": final_mesh.is_quad_dominant,
             "kinematics": (
-                kinematics.to_telemetry() if kinematics is not None
+                kinematics.to_telemetry()
+                if kinematics is not None
                 else {"kinematics_status": "skipped_no_skeleton"}
             ),
             "albedo_delta_e_residual": delight_result.delta_e_residual,

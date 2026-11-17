@@ -62,8 +62,7 @@ class TestMockJevTransport:
         )
         lp = transport.query_logprobs(
             ["img.png"],
-            "Does this show anatomical distortion? "
-            "Answer Yes or No.",
+            "Does this show anatomical distortion? Answer Yes or No.",
         )
         # Should match and return high Yes
         assert lp["Yes"] > lp["No"]
@@ -89,7 +88,8 @@ class TestCalibratedProbability:
     def test_equal_logits(self) -> None:
         """Equal logits produce probability 0.5."""
         critic = VisualJevCritic(
-            MockJevTransport(), calibration_temperature=1.0,
+            MockJevTransport(),
+            calibration_temperature=1.0,
         )
         p = critic.calibrated_probability(-1.0, -1.0)
         assert p == pytest.approx(0.5, abs=1e-10)
@@ -97,7 +97,8 @@ class TestCalibratedProbability:
     def test_high_yes(self) -> None:
         """Much higher yes logit → probability close to 1."""
         critic = VisualJevCritic(
-            MockJevTransport(), calibration_temperature=1.0,
+            MockJevTransport(),
+            calibration_temperature=1.0,
         )
         p = critic.calibrated_probability(0.0, -10.0)
         assert p > 0.99
@@ -105,7 +106,8 @@ class TestCalibratedProbability:
     def test_high_no(self) -> None:
         """Much higher no logit → probability close to 0."""
         critic = VisualJevCritic(
-            MockJevTransport(), calibration_temperature=1.0,
+            MockJevTransport(),
+            calibration_temperature=1.0,
         )
         p = critic.calibrated_probability(-10.0, 0.0)
         assert p < 0.01
@@ -114,18 +116,22 @@ class TestCalibratedProbability:
         """Higher temperature moves probability toward 0.5."""
         transport = MockJevTransport()
         critic_cold = VisualJevCritic(
-            transport, calibration_temperature=0.5,
+            transport,
+            calibration_temperature=0.5,
         )
         critic_hot = VisualJevCritic(
-            transport, calibration_temperature=3.0,
+            transport,
+            calibration_temperature=3.0,
         )
 
         z_yes, z_no = -0.5, -1.5
         p_cold = critic_cold.calibrated_probability(
-            z_yes, z_no,
+            z_yes,
+            z_no,
         )
         p_hot = critic_hot.calibrated_probability(
-            z_yes, z_no,
+            z_yes,
+            z_no,
         )
 
         # Cold temperature → more extreme (further from 0.5)
@@ -135,7 +141,8 @@ class TestCalibratedProbability:
     def test_symmetry(self) -> None:
         """Swapping yes/no logits gives 1 - p."""
         critic = VisualJevCritic(
-            MockJevTransport(), calibration_temperature=1.5,
+            MockJevTransport(),
+            calibration_temperature=1.5,
         )
         p1 = critic.calibrated_probability(-0.3, -1.7)
         p2 = critic.calibrated_probability(-1.7, -0.3)
@@ -161,44 +168,68 @@ class TestRouteAction:
     def test_auto_remesh_medium_crumple(self) -> None:
         """Medium mesh_crumple → auto_remesh."""
         c = self._critic()
-        assert c._route_action(
-            "mesh_crumple", 0.5,
-        ) == "auto_remesh"
+        assert (
+            c._route_action(
+                "mesh_crumple",
+                0.5,
+            )
+            == "auto_remesh"
+        )
 
     def test_auto_remesh_floating_debris(self) -> None:
         """Medium floating_debris → auto_remesh."""
         c = self._critic()
-        assert c._route_action(
-            "floating_debris", 0.4,
-        ) == "auto_remesh"
+        assert (
+            c._route_action(
+                "floating_debris",
+                0.4,
+            )
+            == "auto_remesh"
+        )
 
     def test_auto_inpaint_texture_stretch(self) -> None:
         """Medium texture_stretch → auto_inpaint_texture."""
         c = self._critic()
-        assert c._route_action(
-            "texture_stretch", 0.5,
-        ) == "auto_inpaint_texture"
+        assert (
+            c._route_action(
+                "texture_stretch",
+                0.5,
+            )
+            == "auto_inpaint_texture"
+        )
 
     def test_auto_inpaint_seam_tearing(self) -> None:
         """Medium seam_tearing → auto_inpaint_texture."""
         c = self._critic()
-        assert c._route_action(
-            "seam_tearing", 0.5,
-        ) == "auto_inpaint_texture"
+        assert (
+            c._route_action(
+                "seam_tearing",
+                0.5,
+            )
+            == "auto_inpaint_texture"
+        )
 
     def test_hitl_high_severity(self) -> None:
         """High severity of any type → manual_hitl."""
         c = self._critic()
-        assert c._route_action(
-            "mesh_crumple", 0.8,
-        ) == "manual_hitl"
+        assert (
+            c._route_action(
+                "mesh_crumple",
+                0.8,
+            )
+            == "manual_hitl"
+        )
 
     def test_hitl_medium_anatomical(self) -> None:
         """Medium anatomical_distortion → manual_hitl."""
         c = self._critic()
-        assert c._route_action(
-            "anatomical_distortion", 0.5,
-        ) == "manual_hitl"
+        assert (
+            c._route_action(
+                "anatomical_distortion",
+                0.5,
+            )
+            == "manual_hitl"
+        )
 
 
 # -------------------------------------------------------------------
@@ -214,7 +245,9 @@ class TestVisualJevCriticEvaluate:
         transport = MockJevTransport()
         critic = VisualJevCritic(transport)
         report = critic.evaluate(
-            "asset_001", "Clean Model", ["img.png"],
+            "asset_001",
+            "Clean Model",
+            ["img.png"],
         )
 
         # Default severity ~0.05 calibrates to ~0.12 (< 0.3)
@@ -237,16 +270,16 @@ class TestVisualJevCriticEvaluate:
         )
         critic = VisualJevCritic(transport)
         report = critic.evaluate(
-            "asset_002", "Defective Model", ["img.png"],
+            "asset_002",
+            "Defective Model",
+            ["img.png"],
         )
 
         categories = [d.category for d in report.defects]
         assert "mesh_crumple" in categories
         assert "texture_stretch" in categories
         # Both should have significant severity
-        named_defects = {
-            d.category: d for d in report.defects
-        }
+        named_defects = {d.category: d for d in report.defects}
         assert named_defects["mesh_crumple"].severity > 0.5
         assert named_defects["texture_stretch"].severity > 0.5
 
@@ -259,14 +292,13 @@ class TestVisualJevCriticEvaluate:
         )
         critic = VisualJevCritic(transport)
         report = critic.evaluate(
-            "asset_003", "Distorted", ["img.png"],
+            "asset_003",
+            "Distorted",
+            ["img.png"],
         )
 
         assert report.requires_hitl is True
-        anat = [
-            d for d in report.defects
-            if d.category == "anatomical_distortion"
-        ]
+        anat = [d for d in report.defects if d.category == "anatomical_distortion"]
         assert len(anat) == 1
         assert anat[0].severity > 0.8
         assert anat[0].suggested_action == "manual_hitl"
@@ -280,7 +312,9 @@ class TestVisualJevCriticEvaluate:
 
         with pytest.raises(BackendUnavailableError) as exc_info:
             critic.evaluate(
-                "asset_err", "Fail", ["img.png"],
+                "asset_err",
+                "Fail",
+                ["img.png"],
             )
 
         assert int(exc_info.value.exit_code) == 30
@@ -314,7 +348,9 @@ class TestVisualJevCriticEvaluate:
 
         class EmptyTransport:
             def query_logprobs(
-                self, image_uris: list[str], prompt: str,
+                self,
+                image_uris: list[str],
+                prompt: str,
             ) -> dict[str, float]:
                 return {"Maybe": -0.5}
 
@@ -328,7 +364,9 @@ class TestVisualJevCriticEvaluate:
 
         class WhitespaceTransport:
             def query_logprobs(
-                self, image_uris: list[str], prompt: str,
+                self,
+                image_uris: list[str],
+                prompt: str,
             ) -> dict[str, float]:
                 return {" yes ": -3.0, " NO\n": -0.05}
 

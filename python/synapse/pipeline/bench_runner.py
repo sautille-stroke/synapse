@@ -158,7 +158,12 @@ class BenchPipelineRunner:
         t_total_start = time.perf_counter()
         try:
             report = self._run_scenario_inner(
-                scenario_name, seed, resolution, report, t_total_start, num_frames=num_frames,
+                scenario_name,
+                seed,
+                resolution,
+                report,
+                t_total_start,
+                num_frames=num_frames,
             )
         except Exception as exc:
             report.error = str(exc)
@@ -192,7 +197,9 @@ class BenchPipelineRunner:
         # --- Phase 2: Generate FGPP conditions -------------------------
         t0 = time.perf_counter()
 
-        actual_num_frames = num_frames if num_frames is not None else scenario.camera_params.get("num_frames", 97)
+        actual_num_frames = (
+            num_frames if num_frames is not None else scenario.camera_params.get("num_frames", 97)
+        )
         cameras = generate_cameras(
             scenario,
             num_frames=actual_num_frames,
@@ -227,11 +234,14 @@ class BenchPipelineRunner:
         elif "key_light_elevation_deg" in scenario.conditions:
             elev = np.radians(float(scenario.conditions["key_light_elevation_deg"]))
             azim = np.radians(float(scenario.conditions.get("key_light_azimuth_deg", 45.0)))
-            ld = np.array([
-                np.cos(elev) * np.sin(azim),
-                np.sin(elev),
-                np.cos(elev) * np.cos(azim),
-            ], dtype=np.float64)
+            ld = np.array(
+                [
+                    np.cos(elev) * np.sin(azim),
+                    np.sin(elev),
+                    np.cos(elev) * np.cos(azim),
+                ],
+                dtype=np.float64,
+            )
             norm = np.linalg.norm(ld)
             if norm > 1e-8:
                 ld = ld / norm
@@ -246,12 +256,18 @@ class BenchPipelineRunner:
             if temp <= 66:
                 r_c = 255.0
                 g_c = max(0.0, min(255.0, 99.4708025861 * np.log(temp) - 161.1195681661))
-                b_c = 0.0 if temp <= 19 else max(0.0, min(255.0, 138.5177312231 * np.log(temp - 10) - 305.0447927307))
+                b_c = (
+                    0.0
+                    if temp <= 19
+                    else max(0.0, min(255.0, 138.5177312231 * np.log(temp - 10) - 305.0447927307))
+                )
             else:
                 r_c = max(0.0, min(255.0, 329.698727446 * ((temp - 60) ** -0.1332047592)))
                 g_c = max(0.0, min(255.0, 288.1221695283 * ((temp - 60) ** -0.0755148492)))
                 b_c = 255.0
-            rasterizer_kwargs["light_color"] = np.array([r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64)
+            rasterizer_kwargs["light_color"] = np.array(
+                [r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64
+            )
 
         ambient_val = rasterizer_kwargs.get("ambient", 0.1)
         light_dir_val = tuple(rasterizer_kwargs.get("light_dir", (0.0, 1.0, 0.0)))
@@ -270,7 +286,8 @@ class BenchPipelineRunner:
             curr_verts = _deform_vertices(mesh.vertices, i, len(cameras), scenario.tier)
             curr_normals = (
                 _compute_vertex_normals(curr_verts, mesh.faces)
-                if scenario.tier in ("T2", "T3") or getattr(scenario.tier, "value", "") in ("T2", "T3")
+                if scenario.tier in ("T2", "T3")
+                or getattr(scenario.tier, "value", "") in ("T2", "T3")
                 else mesh.normals
             )
             frame = rasterizer.render(
@@ -323,9 +340,7 @@ class BenchPipelineRunner:
 
         # --- Phase 4: Compute metrics ----------------------------------
         t0 = time.perf_counter()
-        metrics = _compute_metrics(
-            fgpp_frames, video_result, mesh=mesh, tier=scenario.tier
-        )
+        metrics = _compute_metrics(fgpp_frames, video_result, mesh=mesh, tier=scenario.tier)
         report.metrics = metrics
         report.timings["metrics_ms"] = _elapsed_ms(t0)
 
@@ -357,7 +372,9 @@ class BenchPipelineRunner:
                 applicable_keys.add("normal_angular_error_deg")
             if "psnr_db" in metrics or "ciede2000" in metrics:
                 applicable_keys.update({"border_ring_ciede2000", "light_dir_error_deg"})
-            tier_str = scenario.tier.value if hasattr(scenario.tier, "value") else str(scenario.tier)
+            tier_str = (
+                scenario.tier.value if hasattr(scenario.tier, "value") else str(scenario.tier)
+            )
             if tier_str in ("T1", "T2", "T3"):
                 applicable_keys.update({"foot_sliding_cm", "bone_length_drift_pct"})
 
@@ -407,6 +424,7 @@ class BenchPipelineRunner:
         """
         if scenarios is None:
             from synapse.bench.scenario import list_scenarios
+
             all_scenarios = list_scenarios()
             scenarios = [s.id for s in all_scenarios]
 
@@ -545,9 +563,7 @@ def evaluate_bundle(
         gt_n = gt_normals[0] if gt_normals.ndim == 4 else gt_normals
         p_n = pred_normals[0] if pred_normals.ndim == 4 else pred_normals
         if p_n.shape == gt_n.shape:
-            metrics["normal_angular_error_deg"] = float(
-                normal_angular_error_deg(p_n, gt_n)
-            )
+            metrics["normal_angular_error_deg"] = float(normal_angular_error_deg(p_n, gt_n))
 
     if gt_mask is not None and gen_frames is not None:
         from synapse.metrics.fgpp_fidelity import silhouette_iou
@@ -560,7 +576,8 @@ def evaluate_bundle(
             gt_m_bool = gt_m.astype(bool)
             if pred_mask.shape == gt_m_bool.shape:
                 metrics["silhouette_iou"] = silhouette_iou(
-                    pred_mask, gt_m_bool,
+                    pred_mask,
+                    gt_m_bool,
                 )
 
     # --- Gate evaluation ----------------------------------------------
@@ -767,6 +784,7 @@ def _compute_metrics(
     # --- Style / light direction estimation (real computation) ---
     try:
         from synapse.style import extract_style_optical
+
         style_desc = extract_style_optical(gen_float)
         if hasattr(style_desc, "color_temp_kelvin"):
             metrics["style_color_temp"] = float(style_desc.color_temp_kelvin)
@@ -829,6 +847,7 @@ def _load_array_dir(dir_path: Path) -> np.ndarray | None:
         for p in png_files:
             try:
                 from PIL import Image  # lazy import
+
                 img = Image.open(str(p)).convert("RGB")
                 frames.append(np.asarray(img, dtype=np.uint8))
             except ImportError:

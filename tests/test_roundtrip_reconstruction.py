@@ -72,8 +72,11 @@ def _make_ring_cameras(
 
         cameras.append(
             CameraExtrinsics(
-                frame=i, transform=T, position=pos,
-                rotation_matrix=R, yaw_rad=theta,
+                frame=i,
+                transform=T,
+                position=pos,
+                rotation_matrix=R,
+                yaw_rad=theta,
             )
         )
     return cameras
@@ -196,16 +199,14 @@ def _make_sphere_depth_maps(
 
         for py in range(h):
             for px in range(w):
-                d_cam = np.array(
-                    [(px - cx) / fx, (py - cy) / fy, 1.0], dtype=np.float64
-                )
+                d_cam = np.array([(px - cx) / fx, (py - cy) / fy, 1.0], dtype=np.float64)
                 d_cam /= np.linalg.norm(d_cam)
                 d_world = R_inv @ d_cam
                 o_world = t_inv
 
                 a = np.dot(d_world, d_world)
                 b = 2.0 * np.dot(o_world, d_world)
-                c = np.dot(o_world, o_world) - sphere_radius ** 2
+                c = np.dot(o_world, o_world) - sphere_radius**2
                 disc = b * b - 4.0 * a * c
                 if disc >= 0:
                     sqrt_disc = math.sqrt(disc)
@@ -269,9 +270,7 @@ def clean_recon() -> np.ndarray:
     pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
     res = pipe.run(frames, initial_mesh=init_mesh)
     assert res.mesh is not None
-    return sample_mesh_surface(
-        res.mesh.vertices, res.mesh.faces, num_samples=8192, seed=42
-    )
+    return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=8192, seed=42)
 
 
 @pytest.fixture(scope="module")
@@ -347,7 +346,9 @@ def clean_image_metrics() -> dict[str, float]:
     pattern = 0.5 + 0.25 * np.sin(2.0 * math.pi * 4.0 * x / w) * np.cos(2.0 * math.pi * 4.0 * y / h)
     checker = (((x // 4) + (y // 4)) % 2).astype(np.float32)
     tex = pattern * 0.7 + checker * 0.3
-    ref = np.stack([tex, np.roll(tex, 2, axis=0), np.roll(tex, 2, axis=1)], axis=-1).astype(np.float32)
+    ref = np.stack([tex, np.roll(tex, 2, axis=0), np.roll(tex, 2, axis=1)], axis=-1).astype(
+        np.float32
+    )
 
     rng = np.random.RandomState(42)
     rendered = np.clip(ref + rng.normal(0, 0.01, ref.shape).astype(np.float32), 0.0, 1.0)
@@ -366,24 +367,23 @@ class TestRoundtripGoldenPipelinePassesGate:
     """Clean data must pass quality gates: CD ≤ 0.010, PSNR ≥ 26.0, SSIM ≥ 0.88."""
 
     def test_chamfer_distance_within_threshold(self, clean_cd: float) -> None:
-        assert clean_cd <= 0.010, (
-            f"Clean CD {clean_cd:.6f} m exceeds threshold 0.010 m."
-        )
+        assert clean_cd <= 0.010, f"Clean CD {clean_cd:.6f} m exceeds threshold 0.010 m."
 
     def test_reconstruction_point_count(self, clean_recon: np.ndarray) -> None:
         assert len(clean_recon) > 100, (
-            f"Clean reconstruction has only {len(clean_recon)} points — "
-            f"likely degenerate."
+            f"Clean reconstruction has only {len(clean_recon)} points — likely degenerate."
         )
 
     def test_psnr_above_floor(
-        self, clean_image_metrics: dict[str, float],
+        self,
+        clean_image_metrics: dict[str, float],
     ) -> None:
         p = clean_image_metrics["psnr"]
         assert p >= 26.0, f"Clean PSNR {p:.2f} dB < 26.0 dB threshold"
 
     def test_ssim_above_floor(
-        self, clean_image_metrics: dict[str, float],
+        self,
+        clean_image_metrics: dict[str, float],
     ) -> None:
         s = clean_image_metrics["ssim"]
         assert s >= 0.88, f"Clean SSIM {s:.4f} < 0.88 threshold"
@@ -393,7 +393,9 @@ class TestRoundtripCorruptedInputFailsGate:
     """All 3 defect types must produce a worse (higher) Chamfer Distance."""
 
     def test_defect_a_cd_exceeds_clean(
-        self, clean_cd: float, corrupted_cd_a: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_a: float,
     ) -> None:
         assert corrupted_cd_a > clean_cd, (
             f"Defect A CD {corrupted_cd_a:.6f} ≤ clean CD {clean_cd:.6f}. "
@@ -401,7 +403,9 @@ class TestRoundtripCorruptedInputFailsGate:
         )
 
     def test_defect_b_cd_exceeds_clean(
-        self, clean_cd: float, corrupted_cd_b: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_b: float,
     ) -> None:
         assert corrupted_cd_b > clean_cd, (
             f"Defect B CD {corrupted_cd_b:.6f} ≤ clean CD {clean_cd:.6f}. "
@@ -409,7 +413,9 @@ class TestRoundtripCorruptedInputFailsGate:
         )
 
     def test_defect_c_cd_exceeds_clean(
-        self, clean_cd: float, corrupted_cd_c: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_c: float,
     ) -> None:
         assert corrupted_cd_c > clean_cd, (
             f"Defect C CD {corrupted_cd_c:.6f} ≤ clean CD {clean_cd:.6f}. "
@@ -426,7 +432,9 @@ class TestDifferentialSensitivityRatio:
     """
 
     def test_defect_a_ratio(
-        self, clean_cd: float, corrupted_cd_a: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_a: float,
     ) -> None:
         ratio = corrupted_cd_a / max(clean_cd, 1e-6)
         assert ratio >= 3.0, (
@@ -435,7 +443,9 @@ class TestDifferentialSensitivityRatio:
         )
 
     def test_defect_b_ratio(
-        self, clean_cd: float, corrupted_cd_b: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_b: float,
     ) -> None:
         ratio = corrupted_cd_b / max(clean_cd, 1e-6)
         assert ratio >= 3.0, (
@@ -444,7 +454,9 @@ class TestDifferentialSensitivityRatio:
         )
 
     def test_defect_c_ratio(
-        self, clean_cd: float, corrupted_cd_c: float,
+        self,
+        clean_cd: float,
+        corrupted_cd_c: float,
     ) -> None:
         ratio = corrupted_cd_c / max(clean_cd, 1e-6)
         assert ratio >= 3.0, (
@@ -457,7 +469,8 @@ class TestDelightMultiviewAlbedo:
     """Verify the new ``delight_multiview_albedo`` function."""
 
     def test_delight_produces_valid_result(
-        self, clean_frames: np.ndarray,
+        self,
+        clean_frames: np.ndarray,
     ) -> None:
         cameras = _make_ring_cameras(n_views=12)
         verts, faces = _make_sphere_mesh(subdivisions=2, radius=0.5)
@@ -484,18 +497,24 @@ class TestSurfaceSamplingAndChamfer:
     def test_sample_mesh_surface_area_weighted(self) -> None:
         # Triangle 1: large [0,0,0], [10,0,0], [0,10,0] -> area = 50.0
         # Triangle 2: tiny [20,0,0], [20.1,0,0], [20,0.1,0] -> area = 0.005
-        vertices = np.array([
-            [0.0, 0.0, 0.0],
-            [10.0, 0.0, 0.0],
-            [0.0, 10.0, 0.0],
-            [20.0, 0.0, 0.0],
-            [20.1, 0.0, 0.0],
-            [20.0, 0.1, 0.0],
-        ], dtype=np.float64)
-        faces = np.array([
-            [0, 1, 2],
-            [3, 4, 5],
-        ], dtype=np.int64)
+        vertices = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [0.0, 10.0, 0.0],
+                [20.0, 0.0, 0.0],
+                [20.1, 0.0, 0.0],
+                [20.0, 0.1, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        faces = np.array(
+            [
+                [0, 1, 2],
+                [3, 4, 5],
+            ],
+            dtype=np.int64,
+        )
 
         samples = sample_mesh_surface(vertices, faces, num_samples=2000, seed=42)
         assert samples.shape == (2000, 3)

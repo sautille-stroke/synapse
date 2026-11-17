@@ -23,6 +23,7 @@ from synapse.inspect.schemas import CameraPose
 # Fibonacci sphere camera generation
 # ------------------------------------------------------------------
 
+
 def generate_fibonacci_sphere_cameras(
     n_cameras: int = 48,
     radius_scale: float = 2.0,
@@ -72,11 +73,13 @@ def generate_fibonacci_sphere_cameras(
         # Store as column-major 3x3 (9 floats)
         rot_list = rot.T.flatten().tolist()
 
-        cameras.append(CameraPose(
-            position=position,
-            rotation=rot_list,
-            fov_deg=fov_deg,
-        ))
+        cameras.append(
+            CameraPose(
+                position=position,
+                rotation=rot_list,
+                fov_deg=fov_deg,
+            )
+        )
 
     return cameras
 
@@ -84,6 +87,7 @@ def generate_fibonacci_sphere_cameras(
 # ------------------------------------------------------------------
 # Silhouette rendering & IoU
 # ------------------------------------------------------------------
+
 
 def compute_silhouette(
     vertices: np.ndarray,
@@ -167,12 +171,8 @@ def compute_silhouette(
 
         for py in range(min_y, max_y + 1):
             for px in range(min_x, max_x + 1):
-                w0 = (
-                    (y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)
-                ) * inv_denom
-                w1 = (
-                    (y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)
-                ) * inv_denom
+                w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) * inv_denom
+                w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) * inv_denom
                 w2 = 1.0 - w0 - w1
 
                 if w0 < 0 or w1 < 0 or w2 < 0:
@@ -223,6 +223,7 @@ def compute_silhouette_iou(
 # ------------------------------------------------------------------
 # Coarse-to-fine alignment
 # ------------------------------------------------------------------
+
 
 def align_reference_image_to_mesh(
     reference_silhouette: np.ndarray,
@@ -290,9 +291,7 @@ def align_reference_image_to_mesh(
 
     coarse_scores.sort(key=lambda x: x[0], reverse=True)
     top_k = min(3, len(coarse_scores))
-    candidates = [
-        coarse_cameras[coarse_scores[i][1]] for i in range(top_k)
-    ]
+    candidates = [coarse_cameras[coarse_scores[i][1]] for i in range(top_k)]
 
     # Stage 1B: refine each candidate
     best_iou = -1.0
@@ -317,12 +316,17 @@ def align_reference_image_to_mesh(
                     np.array([x, y, z], dtype=np.float64),
                     np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
-                ).T.flatten().tolist(),
+                )
+                .T.flatten()
+                .tolist(),
                 fov_deg=fov,
                 resolution=(res, res),
             )
             sil = compute_silhouette(
-                vertices, faces, trial_pose, resolution=res,
+                vertices,
+                faces,
+                trial_pose,
+                resolution=res,
             )
             return -compute_silhouette_iou(ref, sil)
 
@@ -351,7 +355,9 @@ def align_reference_image_to_mesh(
                     np.array([bx, by, bz], dtype=np.float64),
                     np.zeros(3, dtype=np.float64),
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
-                ).T.flatten().tolist(),
+                )
+                .T.flatten()
+                .tolist(),
                 fov_deg=cam_fov,
                 resolution=(res, res),
             )
@@ -377,6 +383,7 @@ def align_reference_image_to_mesh(
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
+
 
 def _look_at_rotation(
     eye: np.ndarray,
@@ -411,11 +418,14 @@ def _look_at_rotation(
     cam_up = cam_up / np.linalg.norm(cam_up)
 
     # Row-major: right, up, -forward
-    rot = np.array([
-        right,
-        cam_up,
-        -forward,
-    ], dtype=np.float64)
+    rot = np.array(
+        [
+            right,
+            cam_up,
+            -forward,
+        ],
+        dtype=np.float64,
+    )
 
     return rot
 
@@ -487,11 +497,14 @@ def _view_matrix_to_camera_pose(
 def _quat_to_matrix(q: list[float]) -> np.ndarray:
     """Convert quaternion ``[x, y, z, w]`` to 3x3 rotation matrix."""
     x, y, z, w = q
-    return np.array([
-        [1 - 2*(y*y + z*z), 2*(x*y - z*w), 2*(x*z + y*w)],
-        [2*(x*y + z*w), 1 - 2*(x*x + z*z), 2*(y*z - x*w)],
-        [2*(x*z - y*w), 2*(y*z + x*w), 1 - 2*(x*x + y*y)],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
 
 
 def _build_projection(

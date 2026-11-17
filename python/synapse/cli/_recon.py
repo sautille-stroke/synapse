@@ -33,8 +33,7 @@ def _cmd_recon_invert_video(
         raise AssetNotFoundError(
             f"Video frames file not found: {video_path_raw!r}",
             agent_fix_hint=(
-                "Provide '--video <path>' pointing to a valid .npy "
-                "file of shape (T, H, W, 3)."
+                "Provide '--video <path>' pointing to a valid .npy file of shape (T, H, W, 3)."
             ),
         )
 
@@ -177,7 +176,8 @@ def _cmd_recon_closed_loop(
     diag = result.to_dict()
     diag_path = output_dir / "closed_loop_diagnostics.json"
     diag_path.write_text(
-        json.dumps(diag, indent=2, default=str), encoding="utf-8",
+        json.dumps(diag, indent=2, default=str),
+        encoding="utf-8",
     )
 
     output_info: dict[str, Any] = {
@@ -219,19 +219,25 @@ def register_recon_subparser(
         parents=parents,
     )
     recon_invert.add_argument(
-        "--video", default=None,
+        "--video",
+        default=None,
         help="Path to video frames .npy file (T, H, W, 3)",
     )
     recon_invert.add_argument(
-        "--fgpp-dir", default=None,
+        "--fgpp-dir",
+        default=None,
         help="Optional FGPP directory for re-ingestion",
     )
     recon_invert.add_argument(
-        "--output", "-o", default="./output/recon",
+        "--output",
+        "-o",
+        default="./output/recon",
         help="Output directory for reconstruction results",
     )
     recon_invert.add_argument(
-        "--target-faces", type=int, default=1500,
+        "--target-faces",
+        type=int,
+        default=1500,
         help="Target face count for quad mesh (default: 1500)",
     )
 
@@ -241,27 +247,36 @@ def register_recon_subparser(
         parents=parents,
     )
     recon_closed_loop.add_argument(
-        "--video", default=None,
+        "--video",
+        default=None,
         help="Path to video frames .npy file (T, H, W, 3) float32",
     )
     recon_closed_loop.add_argument(
-        "--normals", default=None,
+        "--normals",
+        default=None,
         help="Path to surface normals .npy file (T, H, W, 3) float32",
     )
     recon_closed_loop.add_argument(
-        "--uv-maps", default=None,
+        "--uv-maps",
+        default=None,
         help="Path to UV maps .npy file (T, H, W, 2) float32",
     )
     recon_closed_loop.add_argument(
-        "--output", "-o", default="./output/closed-loop",
+        "--output",
+        "-o",
+        default="./output/closed-loop",
         help="Output directory for closed-loop results",
     )
     recon_closed_loop.add_argument(
-        "--max-iterations", type=int, default=5,
+        "--max-iterations",
+        type=int,
+        default=5,
         help="Max inverse optimisation iterations (default: 5)",
     )
     recon_closed_loop.add_argument(
-        "--n-preroll", type=int, default=0,
+        "--n-preroll",
+        type=int,
+        default=0,
         choices=[0, 4, 8],
         help="Number of preroll frames (default: 0)",
     )
@@ -278,22 +293,24 @@ def dispatch_recon(
     recon_cmd = getattr(parsed, "recon_command", None)
     if recon_cmd == "invert-video":
         return _run_with_json_mode(
-            _cmd_recon_invert_video, parsed,
-            json_mode, trace_ctx,
+            _cmd_recon_invert_video,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif recon_cmd == "closed-loop":
         return _run_with_json_mode(
-            _cmd_recon_closed_loop, parsed,
-            json_mode, trace_ctx,
+            _cmd_recon_closed_loop,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         if json_mode:
             err = SynapseError(
-                "Missing recon sub-command "
-                "(invert-video|closed-loop)",
+                "Missing recon sub-command (invert-video|closed-loop)",
                 ExitCode.CONTRACT_ERROR,
-                "Use 'synapse recon invert-video --help' or "
-                "'synapse recon closed-loop --help'.",
+                "Use 'synapse recon invert-video --help' or 'synapse recon closed-loop --help'.",
             )
             json.dump(
                 err.to_json_dict(trace_ctx.trace_id),

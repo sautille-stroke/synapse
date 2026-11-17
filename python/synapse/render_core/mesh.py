@@ -116,7 +116,9 @@ def load_obj(path: str | Path) -> MeshData:
                     if face_t:
                         face_uvs.append([face_t[0], face_t[i], face_t[i + 1]])
 
-    verts_arr = np.array(vertices, dtype=np.float32) if vertices else np.zeros((0, 3), dtype=np.float32)
+    verts_arr = (
+        np.array(vertices, dtype=np.float32) if vertices else np.zeros((0, 3), dtype=np.float32)
+    )
     faces_arr = np.array(faces, dtype=np.int32) if faces else np.zeros((0, 3), dtype=np.int32)
 
     # Build per-vertex normals

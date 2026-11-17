@@ -168,10 +168,10 @@ def _normalize_profile_name(profile: str) -> GateProfileName:
     norm = profile.strip().lower()
     if norm not in _PROFILES:
         valid = ", ".join(sorted(_PROFILES.keys()))
-        raise ValueError(
-            f"Unknown gate profile {profile!r}. Valid profiles: {valid}."
-        )
+        raise ValueError(f"Unknown gate profile {profile!r}. Valid profiles: {valid}.")
     return norm
+
+
 def get_profile_thresholds(profile: GateProfileName | str) -> dict[str, float]:
     """Return a copy of the threshold table for *profile*."""
     norm = _normalize_profile_name(profile)
@@ -179,6 +179,7 @@ def get_profile_thresholds(profile: GateProfileName | str) -> dict[str, float]:
 
 
 # ── Data classes ─────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class GateViolation:
@@ -201,6 +202,7 @@ class GateVerdict:
 
 
 # ── Evaluation entry-point ───────────────────────────────────────────
+
 
 def evaluate_metrics_gate(
     measured: dict[str, float],
@@ -236,9 +238,7 @@ def evaluate_metrics_gate(
             canonical = METRIC_ALIASES[name]
             # Only override if the canonical was not explicitly set by the
             # user's scenario_overrides
-            if canonical not in thresholds or (
-                scenario_overrides and name in scenario_overrides
-            ):
+            if canonical not in thresholds or (scenario_overrides and name in scenario_overrides):
                 resolved_thresholds[canonical] = thresh
         else:
             # Check reverse: is this a canonical name with an alias?

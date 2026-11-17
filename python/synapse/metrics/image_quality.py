@@ -32,9 +32,7 @@ def _to_float_images(
     p_raw = np.asarray(pred)
     g_raw = np.asarray(gt)
     if p_raw.shape != g_raw.shape:
-        raise ValueError(
-            f"Shape mismatch between pred {p_raw.shape} and gt {g_raw.shape}."
-        )
+        raise ValueError(f"Shape mismatch between pred {p_raw.shape} and gt {g_raw.shape}.")
 
     eff_range = float(data_range)
     # Normalise each image independently by its own dtype
@@ -61,9 +59,7 @@ def _expand_mask(mask: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
         return np.broadcast_to(m[..., np.newaxis], target_shape)
     if len(target_shape) == 4 and m.ndim == 2 and m.shape == target_shape[1:3]:
         return np.broadcast_to(m[np.newaxis, ..., np.newaxis], target_shape)
-    raise ValueError(
-        f"Mask shape {m.shape} is incompatible with image shape {target_shape}."
-    )
+    raise ValueError(f"Mask shape {m.shape} is incompatible with image shape {target_shape}.")
 
 
 def psnr_db(
@@ -97,10 +93,10 @@ def psnr_db(
             return 100.0
         mse = float(np.mean(diff_sq))
 
-    if mse <= 1e-10 * (eff_range ** 2):
+    if mse <= 1e-10 * (eff_range**2):
         return 100.0
 
-    return float(min(10.0 * math.log10((eff_range ** 2) / mse), 100.0))
+    return float(min(10.0 * math.log10((eff_range**2) / mse), 100.0))
 
 
 # Public alias for psnr_db
@@ -110,7 +106,7 @@ psnr = psnr_db
 def _gaussian_kernel_1d(win_size: int = 11, sigma: float = 1.5) -> np.ndarray:
     """Create a normalised 1-D Gaussian kernel."""
     coords = np.arange(win_size, dtype=np.float64) - (win_size - 1) / 2.0
-    kernel = np.exp(-(coords ** 2) / (2.0 * sigma * sigma))
+    kernel = np.exp(-(coords**2) / (2.0 * sigma * sigma))
     kernel /= np.sum(kernel)
     return kernel
 
@@ -129,7 +125,9 @@ def _convolve_separable_2d(img: np.ndarray, kernel_1d: np.ndarray) -> np.ndarray
         out_h += w * padded_h[..., i : i + img.shape[-3], :, :]
 
     # Convolve along W (axis -2)
-    padded_w = np.pad(out_h, [(0, 0)] * (img.ndim - 3) + [(0, 0), (pad, pad), (0, 0)], mode="reflect")
+    padded_w = np.pad(
+        out_h, [(0, 0)] * (img.ndim - 3) + [(0, 0), (pad, pad), (0, 0)], mode="reflect"
+    )
     out_hw = np.zeros_like(img, dtype=np.float64)
     for i, w in enumerate(kernel_1d):
         out_hw += w * padded_w[..., :, i : i + img.shape[-2], :]
@@ -241,9 +239,7 @@ def ciede2000(
 
     p, g, _ = _to_float_images(pred, gt, data_range=1.0)
     if p.ndim not in (3, 4) or p.shape[-1] != 3:
-        raise ValueError(
-            f"ciede2000 expects shape [H, W, 3] or [T, H, W, 3], got {p.shape}."
-        )
+        raise ValueError(f"ciede2000 expects shape [H, W, 3] or [T, H, W, 3], got {p.shape}.")
     if p.size == 0:
         return 0.0
 
@@ -257,9 +253,7 @@ def ciede2000(
         lin_p = p_clamped
         lin_g = g_clamped
     else:
-        raise ValueError(
-            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
-        )
+        raise ValueError(f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'.")
 
     lab_p = rgb_to_cielab(lin_p)
     lab_g = rgb_to_cielab(lin_g)
@@ -285,7 +279,8 @@ def _downsample_2x(img4: np.ndarray) -> np.ndarray:
         return img4
     cropped = img4[:, :h2, :w2, :]
     return np.asarray(
-        0.25 * (
+        0.25
+        * (
             cropped[:, 0::2, 0::2, :]
             + cropped[:, 1::2, 0::2, :]
             + cropped[:, 0::2, 1::2, :]
@@ -416,10 +411,7 @@ def lpips(
                 gy_err = float(np.sum(diff_y_sq[mask_y])) / vy if vy > 0 else 0.0
                 grad_dist = 0.25 * (gx_err + gy_err)
             else:
-                grad_dist = 0.25 * (
-                    float(np.mean(diff_x_sq))
-                    + float(np.mean(diff_y_sq))
-                )
+                grad_dist = 0.25 * (float(np.mean(diff_x_sq)) + float(np.mean(diff_y_sq)))
             scale_score = 0.4 * l1_val + 0.6 * grad_dist
         else:
             scale_score = l1_val

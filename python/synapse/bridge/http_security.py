@@ -16,11 +16,13 @@ _BLOCKED_NETWORKS = (
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("fe80::/10"),
 )
-_BLOCKED_HOSTNAMES = frozenset({
-    "169.254.169.254",
-    "metadata.google.internal",
-    "instance-data",
-})
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "169.254.169.254",
+        "metadata.google.internal",
+        "instance-data",
+    }
+)
 
 
 def validate_safe_url(url: str) -> str:

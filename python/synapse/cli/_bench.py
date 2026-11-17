@@ -24,22 +24,21 @@ def _cmd_bench_list(args: argparse.Namespace) -> dict[str, Any]:
 
     items = []
     for s in scenarios:
-        items.append({
-            "id": s.id,
-            "tier": s.tier.value,
-            "description": s.description,
-            "tags": s.tags,
-        })
+        items.append(
+            {
+                "id": s.id,
+                "tier": s.tier.value,
+                "description": s.description,
+                "tags": s.tags,
+            }
+        )
 
     if not args.json:
         if not items:
             print("No scenarios found.")
         else:
             for item in items:
-                print(
-                    f"  [{item['tier']}] {item['id']}: "
-                    f"{item['description']}"
-                )
+                print(f"  [{item['tier']}] {item['id']}: {item['description']}")
 
     return {"scenarios": items, "count": len(items)}
 
@@ -66,14 +65,17 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
 
     if getattr(args, "all", False) or not getattr(args, "scenario", None):
         reports = runner.run_all(
-            seed=seed, resolution=resolution,
-        )
-    else:
-        reports = [runner.run_scenario(
-            scenario_name=args.scenario,
             seed=seed,
             resolution=resolution,
-        )]
+        )
+    else:
+        reports = [
+            runner.run_scenario(
+                scenario_name=args.scenario,
+                seed=seed,
+                resolution=resolution,
+            )
+        ]
 
     items = [r.to_dict() for r in reports]
 
@@ -89,15 +91,14 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
         if not export_path.is_dir():
             raise AssetNotFoundError(
                 f"Cannot create export bundle directory: {export_path}",
-                agent_fix_hint=(
-                    f"Ensure '{export_dir}' is a valid writable directory path."
-                ),
+                agent_fix_hint=(f"Ensure '{export_dir}' is a valid writable directory path."),
             )
         for r in reports:
             # Resolve source model from scenario asset, not from export dir
             source_model: Path | None = None
             try:
                 from synapse.bench.scenario import load_scenario
+
                 sc = load_scenario(r.scenario_name)
                 if hasattr(sc, "asset") and hasattr(sc.asset, "path"):
                     candidate = Path(sc.asset.path)
@@ -116,16 +117,12 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
         for r in reports:
             status = "OK" if r.error is None else "FAIL"
             print(
-                f"  [{status}] {r.scenario_name}: "
-                f"{len(r.metrics)} metrics, "
-                f"{r.num_frames} frames"
+                f"  [{status}] {r.scenario_name}: {len(r.metrics)} metrics, {r.num_frames} frames"
             )
             if r.error:
                 print(f"    Error: {r.error}")
             if r.gate_verdict is not None:
-                verdict = (
-                    "PASS" if r.gate_verdict.passed else "FAIL"
-                )
+                verdict = "PASS" if r.gate_verdict.passed else "FAIL"
                 print(f"    Gate: {verdict}")
 
     if gate_profile:
@@ -161,8 +158,7 @@ def _cmd_bench_evaluate(args: argparse.Namespace) -> dict[str, Any]:
         raise AssetNotFoundError(
             f"Bundle directory does not exist: {bundle_dir}",
             agent_fix_hint=(
-                f"Ensure '{bundle_dir}' exists and contains "
-                "frames/, fgpp/, and metadata.json."
+                f"Ensure '{bundle_dir}' exists and contains frames/, fgpp/, and metadata.json."
             ),
         )
 
@@ -212,9 +208,7 @@ def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     height = scenario.height
 
     output_arg = getattr(args, "output_dir", None) or getattr(args, "output", None)
-    output_dir = Path(output_arg) if output_arg else Path(
-        f"./data/bench_export/{scenario.id}"
-    )
+    output_dir = Path(output_arg) if output_arg else Path(f"./data/bench_export/{scenario.id}")
 
     cameras = generate_cameras(
         scenario,
@@ -266,7 +260,9 @@ def register_bench_subparsers(
     parents = [json_parent] if json_parent is not None else []
 
     list_parser = subparsers.add_parser(
-        "list", help="List available scenarios", parents=parents,
+        "list",
+        help="List available scenarios",
+        parents=parents,
     )
     list_parser.add_argument(
         "--tier",
@@ -281,43 +277,60 @@ def register_bench_subparsers(
         parents=parents,
     )
     export_parser.add_argument(
-        "--scenario", required=True, help="Scenario ID",
+        "--scenario",
+        required=True,
+        help="Scenario ID",
     )
     export_parser.add_argument(
-        "--output-dir", "--output", dest="output_dir", default=None,
+        "--output-dir",
+        "--output",
+        dest="output_dir",
+        default=None,
         help="Output directory",
     )
     export_parser.add_argument(
-        "--frames", type=int, default=None,
+        "--frames",
+        type=int,
+        default=None,
         help="Number of frames to render",
     )
 
     run_parser = subparsers.add_parser(
-        "run", help="Run benchmark scenario(s) through an adapter",
+        "run",
+        help="Run benchmark scenario(s) through an adapter",
         parents=parents,
     )
     run_parser.add_argument(
-        "--scenario", default=None,
+        "--scenario",
+        default=None,
         help="Scenario ID to run",
     )
     run_parser.add_argument(
-        "--all", action="store_true", default=False,
+        "--all",
+        action="store_true",
+        default=False,
         help="Run all available scenarios",
     )
     run_parser.add_argument(
-        "--adapter", default="mock",
+        "--adapter",
+        default="mock",
         help="Adapter ID (default: mock)",
     )
     run_parser.add_argument(
-        "--profile", default=None,
+        "--profile",
+        default=None,
         help="Quality gate profile name",
     )
     run_parser.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="RNG seed (default: 42)",
     )
     run_parser.add_argument(
-        "--resolution", type=int, default=512,
+        "--resolution",
+        type=int,
+        default=512,
         help="Square resolution (default: 512)",
     )
     run_parser.add_argument(
@@ -333,15 +346,19 @@ def register_bench_subparsers(
         parents=parents,
     )
     eval_parser.add_argument(
-        "--bundle", required=True,
+        "--bundle",
+        required=True,
         help="Path to InspectionBundle directory",
     )
     eval_parser.add_argument(
-        "--profile", default="track_b_video",
+        "--profile",
+        default="track_b_video",
         help="Quality gate profile (default: track_b_video)",
     )
     eval_parser.add_argument(
-        "--strict", action="store_true", default=False,
+        "--strict",
+        action="store_true",
+        default=False,
         help="Fail closed with exit code 40 if quality gate fails",
     )
 
@@ -371,25 +388,38 @@ def dispatch_bench(
     if cmd == "list":
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_bench_list, parsed, json_mode, trace_ctx,
+            _cmd_bench_list,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif cmd == "export-fgpp":
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_bench_export_fgpp, parsed, json_mode, trace_ctx,
+            _cmd_bench_export_fgpp,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif cmd == "run":
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_bench_run, parsed, json_mode, trace_ctx,
+            _cmd_bench_run,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif cmd == "evaluate":
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_bench_evaluate, parsed, json_mode, trace_ctx,
+            _cmd_bench_evaluate,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         from synapse.errors import ExitCode, SynapseError
+
         err = SynapseError(
             "Missing bench sub-command (list|export-fgpp|run|evaluate)",
             ExitCode.CONTRACT_ERROR,

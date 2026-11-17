@@ -36,8 +36,7 @@ def load_procedural(name: str, **kwargs: object) -> MeshData:
         mesh_type = ProceduralMeshType(name.lower())
     except ValueError as exc:
         raise ValueError(
-            f"Unknown procedural mesh '{name}'. "
-            f"Available: {[m.value for m in ProceduralMeshType]}"
+            f"Unknown procedural mesh '{name}'. Available: {[m.value for m in ProceduralMeshType]}"
         ) from exc
 
     pmesh = generate_procedural_mesh(mesh_type, **kwargs)
@@ -113,6 +112,7 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
     if normalize:
         mesh = mesh.normalize()
     return mesh
+
 
 # NOTE: Import-time side effect removed.  Callers who need to register
 # load_mesh as the default mesh loader should do so explicitly:

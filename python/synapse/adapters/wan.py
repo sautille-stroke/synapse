@@ -48,7 +48,8 @@ _RADIANCE_NORM_MAX: float = 12.0
 """Maximum output of ``soft_knee_inverse_tonemap`` (strictly < 12)."""
 
 _BACKGROUND_NORMAL: np.ndarray = np.array(
-    [0.0, 0.0, 1.0], dtype=np.float32,
+    [0.0, 0.0, 1.0],
+    dtype=np.float32,
 )
 """Default normal for background pixels (zero-magnitude world normals)."""
 
@@ -150,39 +151,35 @@ class FoundaryHttpTransport(WanBackendTransport):
         if payload.control_tensor is not None:
             buf = io.BytesIO()
             np.save(buf, payload.control_tensor)
-            control_tensor_b64 = base64.b64encode(
-                buf.getvalue()
-            ).decode("ascii")
+            control_tensor_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
         # Serialize keyframe images as base64 list
         keyframe_images_b64: list[str] = []
         for kf in payload.keyframe_images:
             buf = io.BytesIO()
             np.save(buf, kf)
-            keyframe_images_b64.append(
-                base64.b64encode(buf.getvalue()).decode("ascii")
-            )
+            keyframe_images_b64.append(base64.b64encode(buf.getvalue()).decode("ascii"))
 
-        body = json.dumps({
-            "text_prompt": payload.text_prompt,
-            "negative_prompt": payload.negative_prompt,
-            "control_tensor": control_tensor_b64,
-            "keyframe_images": keyframe_images_b64,
-            "seed": config.seed,
-            "fps": config.fps,
-            "width": config.width,
-            "height": config.height,
-            "guidance_scale": config.guidance_scale,
-            "num_inference_steps": config.num_inference_steps,
-            "num_frames": config.num_frames,
-            "extra": {**config.extra, **payload.extra},
-        }).encode("utf-8")
+        body = json.dumps(
+            {
+                "text_prompt": payload.text_prompt,
+                "negative_prompt": payload.negative_prompt,
+                "control_tensor": control_tensor_b64,
+                "keyframe_images": keyframe_images_b64,
+                "seed": config.seed,
+                "fps": config.fps,
+                "width": config.width,
+                "height": config.height,
+                "guidance_scale": config.guidance_scale,
+                "num_inference_steps": config.num_inference_steps,
+                "num_frames": config.num_frames,
+                "extra": {**config.extra, **payload.extra},
+            }
+        ).encode("utf-8")
 
         # Forward upstream traceparent or generate a new one
         traceparent = (
-            self._upstream_traceparent
-            if self._upstream_traceparent
-            else _generate_traceparent()
+            self._upstream_traceparent if self._upstream_traceparent else _generate_traceparent()
         )
 
         req = urllib.request.Request(
@@ -196,9 +193,7 @@ class FoundaryHttpTransport(WanBackendTransport):
         )
 
         try:
-            with safe_urlopen(
-                req, timeout=self.timeout_s
-            ) as resp:
+            with safe_urlopen(req, timeout=self.timeout_s) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
                 if isinstance(resp_data, dict) and resp_data.get("status") == "error":
                     raise BackendUnavailableError(
@@ -206,13 +201,13 @@ class FoundaryHttpTransport(WanBackendTransport):
                         agent_fix_hint="Check foundary container logs and GPU health.",
                     )
                 frames = np.array(
-                    resp_data["frames"], dtype=np.uint8,
+                    resp_data["frames"],
+                    dtype=np.uint8,
                 )
                 return frames
         except urllib.error.URLError as exc:
             raise BackendUnavailableError(
-                f"Cannot reach Wan 2.1 endpoint at "
-                f"{self.endpoint_url}: {exc}",
+                f"Cannot reach Wan 2.1 endpoint at {self.endpoint_url}: {exc}",
                 agent_fix_hint=(
                     "Ensure the foundary container is running and "
                     "accessible. Restart with: "
@@ -221,12 +216,8 @@ class FoundaryHttpTransport(WanBackendTransport):
             ) from exc
         except (TimeoutError, http.client.HTTPException, json.JSONDecodeError) as exc:
             raise BackendUnavailableError(
-                f"Error or timeout ({self.timeout_s}s) contacting "
-                f"{self.endpoint_url}: {exc}",
-                agent_fix_hint=(
-                    "Increase timeout_s or check GPU load on the "
-                    "foundary node."
-                ),
+                f"Error or timeout ({self.timeout_s}s) contacting {self.endpoint_url}: {exc}",
+                agent_fix_hint=("Increase timeout_s or check GPU load on the foundary node."),
             ) from exc
 
     def is_available(self) -> bool:
@@ -243,9 +234,7 @@ class FoundaryHttpTransport(WanBackendTransport):
             return False
 
         parsed = urllib.parse.urlparse(self.endpoint_url)
-        health_url = urllib.parse.urlunparse(
-            (parsed.scheme, parsed.netloc, "/healthz", "", "", "")
-        )
+        health_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "/healthz", "", "", ""))
         for url in (health_url, self.endpoint_url):
             try:
                 with safe_urlopen(url, timeout=5.0) as resp:
@@ -403,7 +392,9 @@ def _encode_depth(
 
     depth_raw_f64 = depth_raw.astype(np.float64)
     depth_norm_f64 = linear_to_log_normalized_depth(
-        depth_raw_f64, z_near_m=z_near, z_far_m=z_far,
+        depth_raw_f64,
+        z_near_m=z_near,
+        z_far_m=z_far,
     )
     depth_norm_f32 = depth_norm_f64.astype(np.float32)
     return depth_norm_f64, depth_norm_f32
@@ -443,12 +434,11 @@ class WanAdapter(VideoModelAdapter):
         test_synthetic: bool = False,
     ) -> None:
         self._backend = backend
-        self._gamma_flow_bias = float(
-            np.clip(gamma_flow_bias, 0.0, _FLOW_BIAS_GAMMA_MAX)
-        )
+        self._gamma_flow_bias = float(np.clip(gamma_flow_bias, 0.0, _FLOW_BIAS_GAMMA_MAX))
         self._lora_manager: Any | None = None
         if lora_manifests is not None:
             from synapse.adapters.lora.manager import MultiLoRAManager  # lazy
+
             self._lora_manager = MultiLoRAManager(
                 lora_bundles=lora_manifests,
                 test_synthetic=test_synthetic,
@@ -516,7 +506,9 @@ class WanAdapter(VideoModelAdapter):
         for frame in fgpp_sequence.frames:
             # 1. Depth — log-normalised, preserving float64 precision
             depth_norm_f64, depth_norm = _encode_depth(
-                frame.depth, frame.camera.z_near, frame.camera.z_far,
+                frame.depth,
+                frame.camera.z_near,
+                frame.camera.z_far,
             )
 
             # 2. Normals — world → camera
@@ -525,7 +517,8 @@ class WanAdapter(VideoModelAdapter):
             else:
                 wn = np.zeros((h, w, 3), dtype=np.float32)
             cam_normals = _world_normal_to_camera(
-                wn, frame.camera.view_matrix,
+                wn,
+                frame.camera.view_matrix,
             )
 
             # 3. Radiance — soft-knee inverse tonemap + normalise
@@ -536,12 +529,16 @@ class WanAdapter(VideoModelAdapter):
             rad_tonemapped = soft_knee_inverse_tonemap(rad)
             # Normalise to [0, 1] (max output is < 12.0)
             rad_norm = np.clip(
-                rad_tonemapped / _RADIANCE_NORM_MAX, 0.0, 1.0,
+                rad_tonemapped / _RADIANCE_NORM_MAX,
+                0.0,
+                1.0,
             ).astype(np.float32)
 
             # 4. Stack into [C, H, W]
             control = _build_control_tensor(
-                depth_norm, cam_normals, rad_norm,
+                depth_norm,
+                cam_normals,
+                rad_norm,
             )
             per_frame_tensors.append(control)
 
@@ -552,12 +549,14 @@ class WanAdapter(VideoModelAdapter):
         # Stack into [T, C, H, W] then transpose to [C, T, H, W]
         stacked = np.stack(per_frame_tensors, axis=0)  # [T, C, H, W]
         condition_tensor = np.transpose(
-            stacked, (1, 0, 2, 3),
+            stacked,
+            (1, 0, 2, 3),
         )  # [C, T, H, W]
 
         # 48-frame physical anchor indexing (RFC 0044 §3.2)
         physical_anchor_indices = [
-            i for i, f in enumerate(fgpp_sequence.frames)
+            i
+            for i, f in enumerate(fgpp_sequence.frames)
             if i % 48 == 0 or getattr(f, "is_physical_anchor", False)
         ]
 
@@ -573,7 +572,8 @@ class WanAdapter(VideoModelAdapter):
         cryptomatte_id_tensor: np.ndarray | None = None
         if len(cryptomatte_maps) == n_frames:
             cryptomatte_id_tensor = np.stack(
-                cryptomatte_maps, axis=0,
+                cryptomatte_maps,
+                axis=0,
             )  # [T, H, W]
 
         return PreparedConditionPayload(
@@ -608,7 +608,9 @@ class WanAdapter(VideoModelAdapter):
 
         # 1. Depth (float64 calculation -> float32 tensor)
         depth_norm_f64, depth_norm = _encode_depth(
-            frame.depth, frame.camera.z_near, frame.camera.z_far,
+            frame.depth,
+            frame.camera.z_near,
+            frame.camera.z_far,
         )
 
         # 2. Camera Normals
@@ -625,7 +627,9 @@ class WanAdapter(VideoModelAdapter):
             rad = np.zeros((h, w, 3), dtype=np.float64)
         rad_tonemapped = soft_knee_inverse_tonemap(rad)
         rad_norm = np.clip(
-            rad_tonemapped / _RADIANCE_NORM_MAX, 0.0, 1.0,
+            rad_tonemapped / _RADIANCE_NORM_MAX,
+            0.0,
+            1.0,
         ).astype(np.float32)
 
         return _build_control_tensor(depth_norm, cam_normals, rad_norm)
@@ -738,12 +742,8 @@ class WanAdapter(VideoModelAdapter):
                 if target_ids_extra is not None:
                     target_entity_ids = set(target_ids_extra)
                 else:
-                    target_entity_ids = {
-                        int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0
-                    }
-                self._lora_manager.build_spatial_lora_masks(
-                    cryptomatte_ids, target_entity_ids
-                )
+                    target_entity_ids = {int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0}
+                self._lora_manager.build_spatial_lora_masks(cryptomatte_ids, target_entity_ids)
                 self._lora_manager.apply_merged_weights(model)
                 _lora_applied = True
 
@@ -790,9 +790,7 @@ class WanAdapter(VideoModelAdapter):
                         def __init__(self, f_list: list[Any]) -> None:
                             self.frames = f_list
 
-                    scheduled_windows = scheduler.schedule(
-                        _SeqWrapper(fgpp_frames or [])
-                    )
+                    scheduled_windows = scheduler.schedule(_SeqWrapper(fgpp_frames or []))
 
                     if len(scheduled_windows) > 1:
                         accumulated_frames: np.ndarray | None = None
@@ -824,7 +822,9 @@ class WanAdapter(VideoModelAdapter):
                             )
                             sub_payload = PreparedConditionPayload(
                                 control_tensor=sub_control,
-                                keyframe_images=list(prev_window_tail[-3:]) if prev_window_tail else [],
+                                keyframe_images=list(prev_window_tail[-3:])
+                                if prev_window_tail
+                                else [],
                                 text_prompt=conditions_to_use.text_prompt,
                                 negative_prompt=conditions_to_use.negative_prompt,
                                 cryptomatte_id=sub_crypt,
@@ -839,9 +839,13 @@ class WanAdapter(VideoModelAdapter):
                             if accumulated_frames is None:
                                 accumulated_frames = sub_result
                             else:
-                                actual_overlap = min(overlap, len(accumulated_frames), len(sub_result))
+                                actual_overlap = min(
+                                    overlap, len(accumulated_frames), len(sub_result)
+                                )
                                 if actual_overlap > 0:
-                                    prev_tail = accumulated_frames[-actual_overlap:].astype(np.float32)
+                                    prev_tail = accumulated_frames[-actual_overlap:].astype(
+                                        np.float32
+                                    )
                                     curr_head = sub_result[:actual_overlap].astype(np.float32)
                                     fused = fuse_overlapping_latents(
                                         prev_tail,
@@ -859,7 +863,8 @@ class WanAdapter(VideoModelAdapter):
                                     )
                                 else:
                                     accumulated_frames = np.concatenate(
-                                        [accumulated_frames, sub_result], axis=0,
+                                        [accumulated_frames, sub_result],
+                                        axis=0,
                                     )
 
                         raw_frames = (

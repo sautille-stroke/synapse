@@ -168,7 +168,9 @@ def test_colab_runner_real_gpu_no_cuda_raises_exit_30(tmp_path: Path) -> None:
                 mode="real-gpu",
             )
         assert exc_info.value.exit_code == 30
-        assert "CUDA GPU required" in str(exc_info.value) or "real-gpu mode requested" in str(exc_info.value)
+        assert "CUDA GPU required" in str(exc_info.value) or "real-gpu mode requested" in str(
+            exc_info.value
+        )
         assert exc_info.value.agent_fix_hint != ""
 
 
@@ -188,8 +190,12 @@ def test_colab_runner_real_gpu_missing_weights_raises_exit_30(tmp_path: Path) ->
 
     with (
         mock.patch("scripts.colab_runner.detect_gpu_profile", return_value=fake_profile),
-        mock.patch("scripts.colab_runner.import_fgpp", side_effect=[dummy_seq_b, dummy_seq_a, dummy_seq_b]),
-        mock.patch.dict("sys.modules", {"accelerate": mock.MagicMock(), "diffusers": mock.MagicMock()}),
+        mock.patch(
+            "scripts.colab_runner.import_fgpp", side_effect=[dummy_seq_b, dummy_seq_a, dummy_seq_b]
+        ),
+        mock.patch.dict(
+            "sys.modules", {"accelerate": mock.MagicMock(), "diffusers": mock.MagicMock()}
+        ),
         mock.patch("pathlib.Path.exists", return_value=False),
     ):
         with pytest.raises(BackendUnavailableError) as exc_info:
@@ -235,7 +241,9 @@ def test_colab_runner_e3_frame_floor_contract(tmp_path: Path) -> None:
     short_seq = _make_dummy_sequence(17, "short_sequence")
     dummy_seq_a = _make_dummy_sequence(17, "caelum_17f")
 
-    with mock.patch("scripts.colab_runner.import_fgpp", side_effect=[short_seq, dummy_seq_a, short_seq]):
+    with mock.patch(
+        "scripts.colab_runner.import_fgpp", side_effect=[short_seq, dummy_seq_a, short_seq]
+    ):
         with pytest.raises(ValueError, match="at least 97 frames"):
             run_colab_suite(
                 dataset_dir=tmp_path / "datasets",

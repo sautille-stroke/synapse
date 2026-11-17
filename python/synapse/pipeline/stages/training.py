@@ -64,8 +64,7 @@ def handle_lora_preencode(
         raise AssetNotFoundError(
             f"No .npy sample files found in {dataset_dir}",
             agent_fix_hint=(
-                "Ensure dataset_dir contains .npy video frame files "
-                "of shape (T, H, W, 3) uint8."
+                "Ensure dataset_dir contains .npy video frame files of shape (T, H, W, 3) uint8."
             ),
         )
 
@@ -109,8 +108,7 @@ def handle_lora_train(
             "lora_train stage requires 'train_config' dict with "
             "explicit 'category' field in manifest.params.",
             agent_fix_hint=(
-                "Provide train_config={'category': 'style', ...} "
-                "in bundle_manifest.json params."
+                "Provide train_config={'category': 'style', ...} in bundle_manifest.json params."
             ),
         )
     try:
@@ -125,8 +123,7 @@ def handle_lora_train(
         "Stage 'lora_train' end-to-end backbone loop is not yet "
         "wired; refusing to emit silent success.",
         agent_fix_hint=(
-            "Use StatelessLoRATrainer API directly with an injected "
-            "torch.nn.Module in Python."
+            "Use StatelessLoRATrainer API directly with an injected torch.nn.Module in Python."
         ),
         details={"validated_config": config.model_dump()},
     )

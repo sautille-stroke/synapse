@@ -45,13 +45,9 @@ class CameraParams:
     sensor_height_mm: float = 20.25
 
     # Extrinsics — 4×4 world-to-camera matrix (row-major)
-    view_matrix: np.ndarray = field(
-        default_factory=lambda: np.eye(4, dtype=np.float64)
-    )
+    view_matrix: np.ndarray = field(default_factory=lambda: np.eye(4, dtype=np.float64))
     # 4×4 camera-to-world matrix (row-major)
-    world_matrix: np.ndarray = field(
-        default_factory=lambda: np.eye(4, dtype=np.float64)
-    )
+    world_matrix: np.ndarray = field(default_factory=lambda: np.eye(4, dtype=np.float64))
 
     # Depth range (metres)
     z_near: float = 0.1
@@ -243,26 +239,22 @@ class FGPPSequence:
         frame_records = []
         for f in self.frames:
             # Column-major: transpose the row-major 4×4 then flatten
-            view_col = (
-                np.asarray(f.camera.view_matrix, dtype=np.float64)
-                .T.reshape(-1)
-                .tolist()
-            )
+            view_col = np.asarray(f.camera.view_matrix, dtype=np.float64).T.reshape(-1).tolist()
             proj_col = (
-                np.asarray(f.camera.projection_matrix(), dtype=np.float64)
-                .T.reshape(-1)
-                .tolist()
+                np.asarray(f.camera.projection_matrix(), dtype=np.float64).T.reshape(-1).tolist()
             )
-            frame_records.append({
-                "frame_index": f.frame_index,
-                "timestamp_sec": f.frame_index / max(self.fps, 1e-6),
-                "is_physical_anchor": is_physical_anchor_frame(f.frame_index),
-                "fov_y_deg": f.camera.fov_degrees,
-                "view_matrix_col_major": view_col,
-                "proj_matrix_col_major": proj_col,
-                "camera": f.camera.to_dict(),
-                "channels": f.available_channels(),
-            })
+            frame_records.append(
+                {
+                    "frame_index": f.frame_index,
+                    "timestamp_sec": f.frame_index / max(self.fps, 1e-6),
+                    "is_physical_anchor": is_physical_anchor_frame(f.frame_index),
+                    "fov_y_deg": f.camera.fov_degrees,
+                    "view_matrix_col_major": view_col,
+                    "proj_matrix_col_major": proj_col,
+                    "camera": f.camera.to_dict(),
+                    "channels": f.available_channels(),
+                }
+            )
 
         metadata = {
             "schema_version": FGPP_SCHEMA_VERSION,
@@ -412,9 +404,7 @@ class FGPPSequence:
 
             frame = FGPPFrame(
                 camera=cam,
-                depth=np.zeros(
-                    (cam.height or 1, cam.width or 1), dtype=np.float32
-                ),
+                depth=np.zeros((cam.height or 1, cam.width or 1), dtype=np.float32),
                 frame_index=fr.get("frame_index", 0),
             )
             frames.append(frame)

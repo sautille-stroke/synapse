@@ -196,7 +196,7 @@ class MemoryForecaster:
 
         # Activation memory: N × H × W × C × dtype / 1 GiB
         act_bytes = num_frames * height * width * channels * dtype_bytes
-        act_gb = act_bytes / (1024 ** 3)
+        act_gb = act_bytes / (1024**3)
 
         # Spatiotemporal attention tokens.
         # Wan 2.1 VAE: 4× temporal compression (causal, so +1),
@@ -212,7 +212,7 @@ class MemoryForecaster:
         if num_layers is None:
             num_layers = 40 if "14b" in model_variant else 30
         kv_bytes = 2 * total_tokens * head_dim * num_heads * num_layers * dtype_bytes
-        kv_gb = kv_bytes / (1024 ** 3)
+        kv_gb = kv_bytes / (1024**3)
 
         raw_peak = weight_gb + act_gb + kv_gb
         peak_gb = raw_peak * _OVERHEAD_FACTOR

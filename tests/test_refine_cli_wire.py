@@ -53,9 +53,20 @@ def test_refine_anatomical_cli_with_video_success() -> None:
         np.save(video_path, np.full((2, 64, 64, 3), 0.5, dtype=np.float32))
         # Create minimal ROI metadata
         import json as _json
+
         roi_meta_path.write_text(_json.dumps({"regions": [], "asset_id": "test"}))
 
-        rc = main_synapse(["--json", "refine", "anatomical", "--video", str(video_path), "--roi-meta", str(roi_meta_path)])
+        rc = main_synapse(
+            [
+                "--json",
+                "refine",
+                "anatomical",
+                "--video",
+                str(video_path),
+                "--roi-meta",
+                str(roi_meta_path),
+            ]
+        )
         assert rc == 0
 
 
@@ -146,17 +157,22 @@ def test_refine_session_command_ir_roundtrip() -> None:
         session_id="ir-test",
         command_ir_records=ir_records,  # type: ignore[arg-type]
     )
-    serialised = json.dumps({
-        "schema_version": session.schema_version,
-        "session_id": session.session_id,
-        "command_ir_records": session.command_ir_records,
-    })
+    serialised = json.dumps(
+        {
+            "schema_version": session.schema_version,
+            "session_id": session.session_id,
+            "command_ir_records": session.command_ir_records,
+        }
+    )
     restored = json.loads(serialised)
     assert len(restored["command_ir_records"]) == 5
     types = [r["type"] for r in restored["command_ir_records"]]
     assert types == [
-        "SCULPT_MOVE", "SCULPT_SMOOTH", "PAINT_STROKE",
-        "RETOPOLOGY_EDGE_LOOP", "UV_UNWRAP",
+        "SCULPT_MOVE",
+        "SCULPT_SMOOTH",
+        "PAINT_STROKE",
+        "RETOPOLOGY_EDGE_LOOP",
+        "UV_UNWRAP",
     ]
 
 
@@ -210,7 +226,8 @@ def test_pipeline_run_synthetic() -> None:
     )
 
     frames = np.random.default_rng(42).random(
-        (4, 64, 64, 3), dtype=np.float32,
+        (4, 64, 64, 3),
+        dtype=np.float32,
     )
 
     rois_per_frame: list[list[RefinementROI]] = []

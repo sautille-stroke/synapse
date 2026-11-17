@@ -58,11 +58,7 @@ class PreferencePair(BaseModel):
 
     @model_validator(mode="after")
     def _validate_distinct_uris(self) -> PreferencePair:
-        if (
-            self.chosen_uri
-            and self.rejected_uri
-            and self.chosen_uri == self.rejected_uri
-        ):
+        if self.chosen_uri and self.rejected_uri and self.chosen_uri == self.rejected_uri:
             raise ValueError(
                 f"PreferencePair '{self.pair_id}' has identical "
                 f"chosen_uri and rejected_uri ({self.chosen_uri!r})."
@@ -79,11 +75,7 @@ class PreferencePair(BaseModel):
         is_golden: bool = False,
     ) -> PreferencePair:
         """Convert a ``DPORecord`` (or dict) from ``flywheel_exporter`` into ``PreferencePair``."""
-        data = (
-            record.model_dump()
-            if hasattr(record, "model_dump")
-            else dict(record)
-        )
+        data = record.model_dump() if hasattr(record, "model_dump") else dict(record)
         pair_id = str(
             data.get("pair_id")
             or data.get("source_intent_id")
@@ -92,15 +84,9 @@ class PreferencePair(BaseModel):
         return cls(
             pair_id=pair_id,
             prompt=str(data.get("prompt", "")),
-            chosen_uri=str(
-                data.get("chosen_uri") or data.get("chosen", "")
-            ),
-            rejected_uri=str(
-                data.get("rejected_uri") or data.get("rejected", "")
-            ),
-            condition_key=str(
-                data.get("condition_key") or data.get("state_before", "")
-            ),
+            chosen_uri=str(data.get("chosen_uri") or data.get("chosen", "")),
+            rejected_uri=str(data.get("rejected_uri") or data.get("rejected", "")),
+            condition_key=str(data.get("condition_key") or data.get("state_before", "")),
             asset_id=str(data.get("asset_id", "")),
             source_intent_id=str(data.get("source_intent_id", "")),
             source="golden" if is_golden else source,
@@ -236,9 +222,7 @@ class PreferenceDatasetBuilder:
                 ),
             )
 
-        all_non_golden = self._deduplicate(
-            self._self_pairs + self._human_pairs
-        )
+        all_non_golden = self._deduplicate(self._self_pairs + self._human_pairs)
         n_non_golden = len(all_non_golden)
         n_golden = len(golden_unique)
 
@@ -270,11 +254,7 @@ class PreferenceDatasetBuilder:
                 ),
             )
 
-        needed = math.ceil(
-            self._min_ratio
-            * n_non_golden
-            / max(1.0 - self._min_ratio, 0.01)
-        )
+        needed = math.ceil(self._min_ratio * n_non_golden / max(1.0 - self._min_ratio, 0.01))
         needed = max(needed, 1)
 
         required_factor = math.ceil(needed / n_golden)
@@ -324,9 +304,7 @@ class PreferenceDatasetBuilder:
 
         with open(output_path, "w", encoding="utf-8") as f:
             for p in pairs:
-                f.write(
-                    json.dumps(p.model_dump(), default=str) + "\n"
-                )
+                f.write(json.dumps(p.model_dump(), default=str) + "\n")
 
         return {
             "total": total,

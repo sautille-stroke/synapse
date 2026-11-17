@@ -114,8 +114,16 @@ class KalmanBBoxTracker:
         self._x = np.zeros(self._DIM_STATE, dtype=np.float64)
         # Covariance: larger uncertainty for position/size than velocities.
         p_diag = np.array(
-            [100.0, 100.0, 100.0, 100.0,   # cx, cy, w, h
-             10.0,  10.0,  10.0,  10.0],    # velocities
+            [
+                100.0,
+                100.0,
+                100.0,
+                100.0,  # cx, cy, w, h
+                10.0,
+                10.0,
+                10.0,
+                10.0,
+            ],  # velocities
             dtype=np.float64,
         )
         self._P = np.diag(p_diag)
@@ -165,9 +173,7 @@ def compute_affine_align(
     src_h = y2 - y1
 
     if src_w <= 0 or src_h <= 0:
-        raise ValueError(
-            f"Invalid bbox with non-positive dimensions: w={src_w}, h={src_h}"
-        )
+        raise ValueError(f"Invalid bbox with non-positive dimensions: w={src_w}, h={src_h}")
 
     sx = float(target_size) / src_w
     sy = float(target_size) / src_h

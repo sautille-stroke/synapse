@@ -246,10 +246,7 @@ def evaluate_hitl_circuit_breaker(
     if elapsed_seconds <= max_seconds:
         return
 
-    msg = (
-        f"HITL circuit breaker: {elapsed_seconds:.1f}s > "
-        f"{max_seconds:.1f}s limit for {domain}"
-    )
+    msg = f"HITL circuit breaker: {elapsed_seconds:.1f}s > {max_seconds:.1f}s limit for {domain}"
 
     if domain == "video_shot":
         raise CircuitBreakerError(
@@ -267,4 +264,3 @@ def evaluate_hitl_circuit_breaker(
                 "procedural material. Skip manual refinement."
             ),
         )
-

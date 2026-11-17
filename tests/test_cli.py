@@ -85,12 +85,14 @@ def _make_fgpp_dir(
 
     frames = []
     for i in range(num_frames):
-        frames.append({
-            "frame_index": i,
-            "timestamp_sec": i / 24.0,
-            "is_physical_anchor": i % 48 == 0,
-            "channels": ["depth"],
-        })
+        frames.append(
+            {
+                "frame_index": i,
+                "timestamp_sec": i / 24.0,
+                "is_physical_anchor": i % 48 == 0,
+                "channels": ["depth"],
+            }
+        )
 
     metadata: dict[str, Any] = {
         "schema_version": schema_version,
@@ -106,7 +108,8 @@ def _make_fgpp_dir(
     }
 
     (fgpp_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8",
+        json.dumps(metadata, indent=2),
+        encoding="utf-8",
     )
     return fgpp_dir
 
@@ -132,9 +135,7 @@ class TestExitCodes:
         assert code == 0
 
     def test_fgpp_validate_missing_dir_exits_20(self) -> None:
-        code, out, err = _capture_main_synapse(
-            ["fgpp", "validate", "/nonexistent/path/xyz"]
-        )
+        code, out, err = _capture_main_synapse(["fgpp", "validate", "/nonexistent/path/xyz"])
         assert code == ExitCode.RESOURCE_MISSING
 
     def test_fgpp_validate_json_mode(self) -> None:
@@ -174,9 +175,7 @@ class TestJsonOutput:
 
     def test_json_error_has_fix_hint(self) -> None:
         """Error JSON must include agent_fix_hint field."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "validate", "/no/such/dir"]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "validate", "/no/such/dir"])
         assert code != 0
         data = json.loads(out)
         assert "agent_fix_hint" in data
@@ -205,9 +204,7 @@ class TestFgppCommands:
 
     def test_fgpp_validate_valid_dir(self, tmp_path: Path) -> None:
         fgpp_dir = _make_fgpp_dir(tmp_path)
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "validate", str(fgpp_dir)]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "validate", str(fgpp_dir)])
         assert code == 0
         data = json.loads(out)
         assert data["valid"] is True
@@ -215,15 +212,14 @@ class TestFgppCommands:
 
     def test_fgpp_validate_schema_mismatch(self, tmp_path: Path) -> None:
         fgpp_dir = _make_fgpp_dir(tmp_path, schema_version="fgpp.v999")
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "validate", str(fgpp_dir)]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "validate", str(fgpp_dir)])
         assert code == ExitCode.CONTRACT_ERROR
         data = json.loads(out)
         assert data["error_type"] == "ContractValidationError"
 
     def test_fgpp_validate_frame_count_mismatch(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         fgpp_dir = _make_fgpp_dir(tmp_path, num_frames=3)
         # Tamper with the header to create a mismatch
@@ -232,27 +228,22 @@ class TestFgppCommands:
         raw["num_frames"] = 99
         raw["total_frames"] = 99
         meta_path.write_text(
-            json.dumps(raw, indent=2), encoding="utf-8",
+            json.dumps(raw, indent=2),
+            encoding="utf-8",
         )
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "validate", str(fgpp_dir)]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "validate", str(fgpp_dir)])
         assert code == ExitCode.CONTRACT_ERROR
 
     def test_fgpp_inspect_valid_dir(self, tmp_path: Path) -> None:
         fgpp_dir = _make_fgpp_dir(tmp_path, num_frames=5)
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "inspect", str(fgpp_dir)]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "inspect", str(fgpp_dir)])
         assert code == 0
         data = json.loads(out)
         assert data["num_frames"] == 5
         assert data["scene_id"] == "test_scene"
 
     def test_fgpp_inspect_missing_dir(self) -> None:
-        code, out, err = _capture_main_synapse(
-            ["--json", "fgpp", "inspect", "/no/such/fgpp"]
-        )
+        code, out, err = _capture_main_synapse(["--json", "fgpp", "inspect", "/no/such/fgpp"])
         assert code == ExitCode.RESOURCE_MISSING
 
 
@@ -329,7 +320,9 @@ class TestTraceContext:
 
     def test_to_traceparent_roundtrip(self) -> None:
         ctx = TraceContext(
-            trace_id="a" * 32, span_id="b" * 16, trace_flags="01",
+            trace_id="a" * 32,
+            span_id="b" * 16,
+            trace_flags="01",
         )
         tp = ctx.to_traceparent()
         assert tp == f"00-{'a' * 32}-{'b' * 16}-01"
@@ -347,7 +340,8 @@ class TestTraceContext:
 
     def test_headers_no_tracestate_when_empty(self) -> None:
         ctx = TraceContext(
-            trace_id="a" * 32, span_id="b" * 16,
+            trace_id="a" * 32,
+            span_id="b" * 16,
         )
         ctx.tracestate = ""
         headers = ctx.to_headers()
@@ -364,7 +358,9 @@ class TestMemoryForecaster:
 
     def test_small_model_low_res(self) -> None:
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=5, height=256, width=256,
+            num_frames=5,
+            height=256,
+            width=256,
             model_variant="wan2.1_1.3b",
         )
         assert isinstance(forecast, MemoryForecast)
@@ -374,7 +370,9 @@ class TestMemoryForecaster:
 
     def test_14b_model_high_res_many_frames(self) -> None:
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=97, height=1024, width=1024,
+            num_frames=97,
+            height=1024,
+            width=1024,
             model_variant="wan2.1_14b",
         )
         assert forecast.peak_gb > 28.0  # At least weights
@@ -382,14 +380,18 @@ class TestMemoryForecaster:
 
     def test_reject_oom_on_extreme_input(self) -> None:
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=500, height=4096, width=4096,
+            num_frames=500,
+            height=4096,
+            width=4096,
             model_variant="wan2.1_14b",
         )
         assert forecast.fallback_level == FallbackLevel.REJECT_OOM
 
     def test_unknown_model_uses_defaults(self) -> None:
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=5, height=256, width=256,
+            num_frames=5,
+            height=256,
+            width=256,
             model_variant="unknown_model_xyz",
         )
         # Should not crash — uses default weight size
@@ -397,7 +399,9 @@ class TestMemoryForecaster:
 
     def test_breakdown_has_expected_keys(self) -> None:
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=5, height=512, width=512,
+            num_frames=5,
+            height=512,
+            width=512,
         )
         assert "weights_gb" in forecast.breakdown
         assert "activations_gb" in forecast.breakdown
@@ -457,9 +461,7 @@ class TestReconInvertVideo:
 
     def test_invert_video_missing_video_exits_20(self) -> None:
         """Without --video, recon invert-video must exit with code 20."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "recon", "invert-video"]
-        )
+        code, out, err = _capture_main_synapse(["--json", "recon", "invert-video"])
         assert code == ExitCode.RESOURCE_MISSING
         data = json.loads(out)
         assert data["exit_code"] == ExitCode.RESOURCE_MISSING
@@ -469,8 +471,11 @@ class TestReconInvertVideo:
         """With --video pointing to nonexistent file, exit code 20."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "recon", "invert-video",
-                "--video", "/no/such/video.npy",
+                "--json",
+                "recon",
+                "invert-video",
+                "--video",
+                "/no/such/video.npy",
             ]
         )
         assert code == ExitCode.RESOURCE_MISSING
@@ -486,9 +491,7 @@ class TestRsiGatePromote:
 
     def test_gate_promote_without_args_exits_10(self) -> None:
         """Without --baseline-overall / --candidate-overall, exit 10."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "rsi", "gate-promote"]
-        )
+        code, out, err = _capture_main_synapse(["--json", "rsi", "gate-promote"])
         assert code == ExitCode.CONTRACT_ERROR
         data = json.loads(out)
         assert data["exit_code"] == ExitCode.CONTRACT_ERROR
@@ -499,8 +502,11 @@ class TestRsiGatePromote:
         """With only --baseline-overall, exit 10."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.7",
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--baseline-overall",
+                "0.7",
             ]
         )
         assert code == ExitCode.CONTRACT_ERROR
@@ -509,9 +515,13 @@ class TestRsiGatePromote:
         """With only overall scores and no geom/temporal, exit 10 (broadcast forbidden)."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.5",
-                "--candidate-overall", "0.8",
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--baseline-overall",
+                "0.5",
+                "--candidate-overall",
+                "0.8",
             ]
         )
         assert code == ExitCode.CONTRACT_ERROR
@@ -523,13 +533,21 @@ class TestRsiGatePromote:
         """With independent 3-axis args provided, gate-promote should succeed."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.5",
-                "--baseline-geom", "0.5",
-                "--baseline-temporal", "0.5",
-                "--candidate-overall", "0.8",
-                "--candidate-geom", "0.8",
-                "--candidate-temporal", "0.8",
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--baseline-overall",
+                "0.5",
+                "--baseline-geom",
+                "0.5",
+                "--baseline-temporal",
+                "0.5",
+                "--candidate-overall",
+                "0.8",
+                "--candidate-geom",
+                "0.8",
+                "--candidate-temporal",
+                "0.8",
             ]
         )
         assert code == 0
@@ -551,12 +569,16 @@ class TestAntiSilentFailureCLI:
     def test_recon_closed_loop_missing_normals_exits_20(self, tmp_path: Path) -> None:
         """synapse recon closed-loop without --normals → exit_code=20."""
         import numpy as np
+
         video_file = tmp_path / "frames.npy"
         np.save(str(video_file), np.zeros((2, 32, 32, 3), dtype=np.float32))
         code, out, err = _capture_main_synapse(
             [
-                "--json", "recon", "closed-loop",
-                "--video", str(video_file),
+                "--json",
+                "recon",
+                "closed-loop",
+                "--video",
+                str(video_file),
             ]
         )
         assert code == ExitCode.RESOURCE_MISSING
@@ -567,12 +589,16 @@ class TestAntiSilentFailureCLI:
     def test_refine_anatomical_missing_roi_meta_exits_20(self, tmp_path: Path) -> None:
         """synapse refine anatomical without --roi-meta → exit_code=20."""
         import numpy as np
+
         video_file = tmp_path / "video.npy"
         np.save(str(video_file), np.zeros((2, 32, 32, 3), dtype=np.float32))
         code, out, err = _capture_main_synapse(
             [
-                "--json", "refine", "anatomical",
-                "--video", str(video_file),
+                "--json",
+                "refine",
+                "anatomical",
+                "--video",
+                str(video_file),
             ]
         )
         assert code == ExitCode.RESOURCE_MISSING
@@ -584,8 +610,11 @@ class TestAntiSilentFailureCLI:
         """synapse inspect eval in non-mock mode forbids silent mock injection → exit_code=50."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "inspect", "eval",
-                "--asset-id", "test_asset",
+                "--json",
+                "inspect",
+                "eval",
+                "--asset-id",
+                "test_asset",
             ]
         )
         assert code == ExitCode.NOT_IMPLEMENTED
@@ -596,8 +625,11 @@ class TestAntiSilentFailureCLI:
         """synapse inspect eval --mock succeeds → exit_code=0."""
         code, out, err = _capture_main_synapse(
             [
-                "--json", "inspect", "eval",
-                "--asset-id", "test_asset",
+                "--json",
+                "inspect",
+                "eval",
+                "--asset-id",
+                "test_asset",
                 "--mock",
             ]
         )
@@ -639,16 +671,12 @@ class TestCliView:
         assert "output_path" in data
         assert Path(data["output_path"]).is_file()
 
-    def test_view_serve_local_json_rejected_with_exit_code_10(
-        self, tmp_path: Path
-    ) -> None:
+    def test_view_serve_local_json_rejected_with_exit_code_10(self, tmp_path: Path) -> None:
         """Combining --serve-local with --json must be rejected with exit code 10."""
         manifest = {"dataset_id": "cli_mutex_test", "frames": []}
         (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-        code, out, err = _capture_main_synapse(
-            ["--json", "view", str(tmp_path), "--serve-local"]
-        )
+        code, out, err = _capture_main_synapse(["--json", "view", str(tmp_path), "--serve-local"])
         assert code == ExitCode.CONTRACT_ERROR
         data = json.loads(out)
         assert data["exit_code"] == ExitCode.CONTRACT_ERROR
@@ -658,9 +686,7 @@ class TestCliView:
 
     def test_view_missing_dataset_exits_20(self, tmp_path: Path) -> None:
         """synapse view with nonexistent directory exits with code 20."""
-        code, out, err = _capture_main_synapse(
-            ["--json", "view", str(tmp_path / "nonexistent")]
-        )
+        code, out, err = _capture_main_synapse(["--json", "view", str(tmp_path / "nonexistent")])
         assert code == ExitCode.RESOURCE_MISSING
         data = json.loads(out)
         assert data["exit_code"] == ExitCode.RESOURCE_MISSING
@@ -720,24 +746,33 @@ class TestBenchGateFailure:
             resolution=(64, 64),
         )
 
-        with patch(
-            "synapse.pipeline.bench_runner.BenchPipelineRunner",
-        ) as mock_runner_cls, patch(
-            "synapse.adapters.create_adapter",
-        ), patch(
-            "synapse.adapters.MockVideoAdapter",
+        with (
+            patch(
+                "synapse.pipeline.bench_runner.BenchPipelineRunner",
+            ) as mock_runner_cls,
+            patch(
+                "synapse.adapters.create_adapter",
+            ),
+            patch(
+                "synapse.adapters.MockVideoAdapter",
+            ),
         ):
             mock_runner = MagicMock()
             mock_runner.run_all.return_value = [fake_report]
             mock_runner_cls.return_value = mock_runner
 
-            code, out, err = _capture_main_bench([
-                "--json", "run", "--all", "--profile", "track_b_video",
-            ])
+            code, out, err = _capture_main_bench(
+                [
+                    "--json",
+                    "run",
+                    "--all",
+                    "--profile",
+                    "track_b_video",
+                ]
+            )
 
         assert code == 40, (
-            f"Expected exit_code=40 for gate failure, got {code}. "
-            f"stdout={out!r}, stderr={err!r}"
+            f"Expected exit_code=40 for gate failure, got {code}. stdout={out!r}, stderr={err!r}"
         )
         payload = json.loads(out)
         assert payload["exit_code"] == 40
@@ -767,22 +802,31 @@ class TestBenchGateFailure:
             resolution=(64, 64),
         )
 
-        with patch(
-            "synapse.pipeline.bench_runner.BenchPipelineRunner",
-        ) as mock_runner_cls, patch(
-            "synapse.adapters.create_adapter",
-        ), patch(
-            "synapse.adapters.MockVideoAdapter",
+        with (
+            patch(
+                "synapse.pipeline.bench_runner.BenchPipelineRunner",
+            ) as mock_runner_cls,
+            patch(
+                "synapse.adapters.create_adapter",
+            ),
+            patch(
+                "synapse.adapters.MockVideoAdapter",
+            ),
         ):
             mock_runner = MagicMock()
             mock_runner.run_all.return_value = [fake_report]
             mock_runner_cls.return_value = mock_runner
 
-            code, out, err = _capture_main_bench([
-                "--json", "run", "--all", "--profile", "track_b_video",
-            ])
+            code, out, err = _capture_main_bench(
+                [
+                    "--json",
+                    "run",
+                    "--all",
+                    "--profile",
+                    "track_b_video",
+                ]
+            )
 
         assert code == 0, (
-            f"Expected exit_code=0 for gate pass, got {code}. "
-            f"stdout={out!r}, stderr={err!r}"
+            f"Expected exit_code=0 for gate pass, got {code}. stdout={out!r}, stderr={err!r}"
         )

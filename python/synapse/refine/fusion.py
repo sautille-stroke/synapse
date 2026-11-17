@@ -32,7 +32,6 @@ from synapse.render_core.pyramid import (
 # ---------------------------------------------------------------------------
 
 
-
 def _sobel_gradient_magnitude(img: np.ndarray) -> np.ndarray:
     """Per-pixel gradient magnitude via Sobel operator.
 
@@ -50,7 +49,7 @@ def _sobel_gradient_magnitude(img: np.ndarray) -> np.ndarray:
     gy = np.zeros_like(img)
     gy[1:-1, :, :] = img[2:, :, :] - img[:-2, :, :]
 
-    mag = np.sqrt(gx ** 2 + gy ** 2)
+    mag = np.sqrt(gx**2 + gy**2)
     return np.asarray(mag.mean(axis=-1))
 
 
@@ -241,10 +240,7 @@ def _fuse_poisson_gradient(
     for _ in range(n_iterations):
         padded = np.pad(result, ((1, 1), (1, 1), (0, 0)), mode="reflect")
         neighbour_sum = (
-            padded[:-2, 1:-1, :]
-            + padded[2:, 1:-1, :]
-            + padded[1:-1, :-2, :]
-            + padded[1:-1, 2:, :]
+            padded[:-2, 1:-1, :] + padded[2:, 1:-1, :] + padded[1:-1, :-2, :] + padded[1:-1, 2:, :]
         )
         result = (neighbour_sum - div) / 4.0
 
@@ -313,9 +309,7 @@ class MultiModelRefineFusion:
             raise ValueError("candidates must be non-empty")
 
         # Ensure float32
-        candidates = [
-            np.asarray(c, dtype=np.float32) for c in candidates
-        ]
+        candidates = [np.asarray(c, dtype=np.float32) for c in candidates]
 
         # Single candidate passthrough
         if len(candidates) == 1:
@@ -325,10 +319,7 @@ class MultiModelRefineFusion:
         ref_shape = candidates[0].shape
         for i, c in enumerate(candidates):
             if c.shape != ref_shape:
-                raise ValueError(
-                    f"Candidate {i} shape {c.shape} != "
-                    f"reference shape {ref_shape}"
-                )
+                raise ValueError(f"Candidate {i} shape {c.shape} != reference shape {ref_shape}")
 
         # Normalise weights
         n = len(candidates)
@@ -337,9 +328,7 @@ class MultiModelRefineFusion:
         else:
             w = np.asarray(weights, dtype=np.float32).ravel()
             if len(w) != n:
-                raise ValueError(
-                    f"weights length {len(w)} != candidates count {n}"
-                )
+                raise ValueError(f"weights length {len(w)} != candidates count {n}")
             w_sum = float(np.sum(w))
             if w_sum > 0:
                 w = w / w_sum

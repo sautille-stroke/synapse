@@ -101,11 +101,14 @@ def _fallback_linear_to_srgb(linear: np.ndarray) -> np.ndarray:
 
 # sRGB linear (D65) → ACEScg (AP1, D60) — combined Bradford CAT matrix.
 # Values aligned 1:1 with @aether//color kSrgbToAcesCg (color_space.cc:190-194).
-_M_SRGB_TO_ACESCG: np.ndarray = np.array([
-    [0.6131178, 0.3395234, 0.0473588],
-    [0.0701942, 0.9163545, 0.0134513],
-    [0.0206155, 0.1095697, 0.8698148],
-], dtype=np.float64)
+_M_SRGB_TO_ACESCG: np.ndarray = np.array(
+    [
+        [0.6131178, 0.3395234, 0.0473588],
+        [0.0701942, 0.9163545, 0.0134513],
+        [0.0206155, 0.1095697, 0.8698148],
+    ],
+    dtype=np.float64,
+)
 
 _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
 
@@ -166,19 +169,22 @@ def _fallback_soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
 
 # --- CIE Lab and CIEDE2000 -----------------------------------------
 
-_M_SRGB_TO_XYZ: np.ndarray = np.array([
-    [0.4124564, 0.3575761, 0.1804375],
-    [0.2126729, 0.7151522, 0.0721750],
-    [0.0193339, 0.1191920, 0.9503041],
-], dtype=np.float64)
+_M_SRGB_TO_XYZ: np.ndarray = np.array(
+    [
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041],
+    ],
+    dtype=np.float64,
+)
 
 _D65_X: float = 0.95047
 _D65_Y: float = 1.00000
 _D65_Z: float = 1.08883
 
 _LAB_DELTA: float = 6.0 / 29.0
-_LAB_DELTA_SQ: float = _LAB_DELTA ** 2
-_LAB_DELTA_CU: float = _LAB_DELTA ** 3
+_LAB_DELTA_SQ: float = _LAB_DELTA**2
+_LAB_DELTA_CU: float = _LAB_DELTA**3
 
 
 def _lab_f(t: np.ndarray) -> np.ndarray:
@@ -216,19 +222,19 @@ def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarra
     L1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
     L2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
 
-    C1_ab = np.sqrt(a1 ** 2 + b1 ** 2)
-    C2_ab = np.sqrt(a2 ** 2 + b2 ** 2)
+    C1_ab = np.sqrt(a1**2 + b1**2)
+    C2_ab = np.sqrt(a2**2 + b2**2)
     C_ab_mean = (C1_ab + C2_ab) / 2.0
 
-    C_ab_mean_7 = C_ab_mean ** 7
-    _25_7 = 25.0 ** 7
+    C_ab_mean_7 = C_ab_mean**7
+    _25_7 = 25.0**7
     G = 0.5 * (1.0 - np.sqrt(C_ab_mean_7 / (C_ab_mean_7 + _25_7)))
 
     a1_prime = a1 * (1.0 + G)
     a2_prime = a2 * (1.0 + G)
 
-    C1_prime = np.sqrt(a1_prime ** 2 + b1 ** 2)
-    C2_prime = np.sqrt(a2_prime ** 2 + b2 ** 2)
+    C1_prime = np.sqrt(a1_prime**2 + b1**2)
+    C2_prime = np.sqrt(a2_prime**2 + b2**2)
 
     h1_prime = np.degrees(np.arctan2(b1, a1_prime)) % 360.0
     h2_prime = np.degrees(np.arctan2(b2, a2_prime)) % 360.0
@@ -290,21 +296,16 @@ def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarra
     S_C = 1.0 + 0.045 * C_prime_mean
     S_H = 1.0 + 0.015 * C_prime_mean * T
 
-    C_prime_mean_7 = C_prime_mean ** 7
+    C_prime_mean_7 = C_prime_mean**7
     R_C = 2.0 * np.sqrt(C_prime_mean_7 / (C_prime_mean_7 + _25_7))
-    d_theta = 30.0 * np.exp(-((h_prime_mean - 275.0) / 25.0) ** 2)
+    d_theta = 30.0 * np.exp(-(((h_prime_mean - 275.0) / 25.0) ** 2))
     R_T = -np.sin(np.radians(2.0 * d_theta)) * R_C
 
     term_L = dL_prime / S_L
     term_C = dC_prime / S_C
     term_H = dH_prime / S_H
 
-    dE = np.sqrt(
-        term_L ** 2
-        + term_C ** 2
-        + term_H ** 2
-        + R_T * term_C * term_H
-    )
+    dE = np.sqrt(term_L**2 + term_C**2 + term_H**2 + R_T * term_C * term_H)
     return np.asarray(dE)
 
 

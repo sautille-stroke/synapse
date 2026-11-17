@@ -44,7 +44,11 @@ class LoRATrainConfig(BaseModel):
     """
 
     category: Literal[
-        "style", "identity", "control", "whitebox", "motion",
+        "style",
+        "identity",
+        "control",
+        "whitebox",
+        "motion",
     ]
     rank: int = Field(default=8, ge=1, le=64)
     alpha: float = Field(default=1.0, gt=0.0)
@@ -63,9 +67,7 @@ class LoRATrainConfig(BaseModel):
     @classmethod
     def _rank_power_of_two(cls, v: int) -> int:
         if v & (v - 1) != 0:
-            raise ValueError(
-                f"rank must be a power of 2, got {v}"
-            )
+            raise ValueError(f"rank must be a power of 2, got {v}")
         return v
 
 
@@ -125,9 +127,7 @@ def _get_lora_linear_class() -> type:
             if not self.lora_enabled:
                 return base
             x_f32 = x.to(dtype=torch.float32)
-            lora_out = (
-                x_f32 @ self.lora_A.T @ self.lora_B.T
-            ) * (self.alpha / self.rank)
+            lora_out = (x_f32 @ self.lora_A.T @ self.lora_B.T) * (self.alpha / self.rank)
             return base + lora_out.to(dtype=base.dtype)
 
     _lora_linear_cls = LoRALinear
@@ -138,9 +138,7 @@ def _get_lora_linear_class() -> type:
 def _disable_lora_adapters(module: Any) -> Iterator[None]:
     """Context manager that temporarily disables LoRA adapters for reference forward pass."""
     LoRALinear = _get_lora_linear_class()
-    lora_modules = [
-        m for m in module.modules() if isinstance(m, LoRALinear)
-    ]
+    lora_modules = [m for m in module.modules() if isinstance(m, LoRALinear)]
     prev_states = [bool(getattr(m, "lora_enabled", True)) for m in lora_modules]
     try:
         for m in lora_modules:
@@ -227,16 +225,13 @@ class StatelessLoRATrainer:
                 param.requires_grad = False
 
         total = sum(p.numel() for p in module.parameters())
-        trainable = sum(
-            p.numel() for p in module.parameters() if p.requires_grad
-        )
+        trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
         ratio = trainable / max(total, 1)
 
         max_ratio = self._config.max_trainable_ratio
         if max_ratio is not None and ratio > max_ratio:
             raise RuntimeError(
-                f"Trainable ratio {ratio:.4f} exceeds max_trainable_ratio "
-                f"{max_ratio:.4f}."
+                f"Trainable ratio {ratio:.4f} exceeds max_trainable_ratio {max_ratio:.4f}."
             )
 
         return {
@@ -322,9 +317,7 @@ class StatelessLoRATrainer:
 
         if self._config.max_trainable_ratio is not None:
             total = sum(p.numel() for p in module.parameters())
-            trainable = sum(
-                p.numel() for p in module.parameters() if p.requires_grad
-            )
+            trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
             ratio = trainable / max(total, 1)
             if ratio > self._config.max_trainable_ratio:
                 raise RuntimeError(
@@ -343,28 +336,19 @@ class StatelessLoRATrainer:
         for name, param in module.named_parameters():
             if not param.requires_grad:
                 continue
-            if any(
-                tok in name.lower()
-                for tok in ("temp", "temporal", "motion", "time")
-            ):
+            if any(tok in name.lower() for tok in ("temp", "temporal", "motion", "time")):
                 temporal_params.append(param)
             else:
                 spatial_params.append(param)
 
         if not spatial_params and not temporal_params:
-            raise RuntimeError(
-                "No trainable parameters. Call inject_lora() first."
-            )
+            raise RuntimeError("No trainable parameters. Call inject_lora() first.")
 
         param_groups: list[dict[str, Any]] = []
         if spatial_params:
-            param_groups.append(
-                {"params": spatial_params, "lr": self._config.lr_spatial}
-            )
+            param_groups.append({"params": spatial_params, "lr": self._config.lr_spatial})
         if temporal_params:
-            param_groups.append(
-                {"params": temporal_params, "lr": self._config.lr_temporal}
-            )
+            param_groups.append({"params": temporal_params, "lr": self._config.lr_temporal})
         return torch.optim.AdamW(param_groups)
 
     def flush_gradients(self, module: Any) -> None:
@@ -372,9 +356,7 @@ class StatelessLoRATrainer:
         accum = max(1, self._config.grad_accum_steps)
         if self._micro_step % accum != 0:
             if self._optimizer is not None:
-                trainable_params = [
-                    p for p in module.parameters() if p.requires_grad
-                ]
+                trainable_params = [p for p in module.parameters() if p.requires_grad]
                 if trainable_params:
                     import torch
 
@@ -423,18 +405,12 @@ class StatelessLoRATrainer:
         # Mixed precision context
         device_type = "cuda" if torch.cuda.is_available() else "cpu"
         autocast_enabled = (
-            self._config.mixed_precision in ("fp16", "bf16")
-            and device_type == "cuda"
+            self._config.mixed_precision in ("fp16", "bf16") and device_type == "cuda"
         )
-        amp_dtype = (
-            torch.float16 if self._config.mixed_precision == "fp16" else torch.bfloat16
-        )
+        amp_dtype = torch.float16 if self._config.mixed_precision == "fp16" else torch.bfloat16
 
         # GradScaler for fp16 to prevent gradient underflow
-        use_scaler = (
-            autocast_enabled
-            and self._config.mixed_precision == "fp16"
-        )
+        use_scaler = autocast_enabled and self._config.mixed_precision == "fp16"
         if use_scaler and not hasattr(self, "_grad_scaler"):
             self._grad_scaler = torch.amp.GradScaler()  # type: ignore[attr-defined]
 
@@ -443,14 +419,14 @@ class StatelessLoRATrainer:
             if hasattr(v, "to") and hasattr(v, "device"):
                 batch[k] = v.to(device=next(module.parameters()).device)
 
-        with torch.autocast(
-            device_type=device_type, dtype=amp_dtype, enabled=autocast_enabled
-        ):
+        with torch.autocast(device_type=device_type, dtype=amp_dtype, enabled=autocast_enabled):
             if self._config.loss_mode == "sft":
                 raw_loss = self._sft_step(module, batch)
             else:
                 raw_loss = self._dpo_step(
-                    module, batch, beta=self._config.dpo_beta,
+                    module,
+                    batch,
+                    beta=self._config.dpo_beta,
                 )
 
         scaled_loss = raw_loss / float(accum)
@@ -462,9 +438,7 @@ class StatelessLoRATrainer:
 
         if self._micro_step % accum == 0:
             # Gradient clipping for training stability
-            trainable_params = [
-                p for p in module.parameters() if p.requires_grad
-            ]
+            trainable_params = [p for p in module.parameters() if p.requires_grad]
             if use_scaler:
                 self._grad_scaler.unscale_(self._optimizer)
                 torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
@@ -554,20 +528,11 @@ class StatelessLoRATrainer:
             for param_name in sig.parameters:
                 if param_name in ("t", "timestep", "timesteps") and "t" in batch:
                     kwargs[param_name] = batch["t"]
-                elif (
-                    param_name in ("prompt", "caption", "text_embeddings")
-                    and "prompt" in batch
-                ):
+                elif param_name in ("prompt", "caption", "text_embeddings") and "prompt" in batch:
                     kwargs[param_name] = batch["prompt"]
-                elif (
-                    param_name in ("fgpp_cond", "cond", "conditions")
-                    and "fgpp_cond" in batch
-                ):
+                elif param_name in ("fgpp_cond", "cond", "conditions") and "fgpp_cond" in batch:
                     kwargs[param_name] = batch["fgpp_cond"]
-                elif (
-                    param_name in ("fgpp_cond", "cond", "conditions")
-                    and "conditions" in batch
-                ):
+                elif param_name in ("fgpp_cond", "cond", "conditions") and "conditions" in batch:
                     kwargs[param_name] = batch["conditions"]
             return module(x, **kwargs)
         except (ValueError, TypeError):
@@ -612,9 +577,7 @@ class StatelessLoRATrainer:
         # Wire optional NormalReconstructionLoss
         if self._config.normal_loss_weight > 0.0:
             norm_key = (
-                "normal_gt"
-                if "normal_gt" in batch
-                else ("normal" if "normal" in batch else None)
+                "normal_gt" if "normal_gt" in batch else ("normal" if "normal" in batch else None)
             )
             if norm_key is not None:
                 mask = batch.get("mask")
@@ -657,7 +620,8 @@ class StatelessLoRATrainer:
                 depth = fgpp_np[..., 0]  # [T, H, W]
                 depth_ds = depth[:, ::8, ::8]  # downsample 8x
                 batch["depth"] = torch.as_tensor(
-                    depth_ds, dtype=torch.float32,
+                    depth_ds,
+                    dtype=torch.float32,
                 ).unsqueeze(0)  # [1, T, H//8, W//8]
             if "normal" not in batch:
                 normal = fgpp_np[..., 4:7]  # [T, H, W, 3]
@@ -673,7 +637,8 @@ class StatelessLoRATrainer:
                 depth = fgpp_np[0]  # [T, H, W]
                 depth_ds = depth[:, ::8, ::8]
                 batch["depth"] = torch.as_tensor(
-                    depth_ds, dtype=torch.float32,
+                    depth_ds,
+                    dtype=torch.float32,
                 ).unsqueeze(0)
             if "normal" not in batch:
                 normal = fgpp_np[1:4]  # [3, T, H, W]
@@ -720,6 +685,4 @@ class StatelessLoRATrainer:
             if was_training:
                 module.train()
 
-        return self._dpo_loss(
-            v_theta_w, v_theta_l, v_ref_w, v_ref_l, target_w, target_l
-        )
+        return self._dpo_loss(v_theta_w, v_theta_l, v_ref_w, v_ref_l, target_w, target_l)

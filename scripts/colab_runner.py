@@ -211,7 +211,9 @@ def finalize_job_workspace(
         scorecard = "\n".join(conclusion_lines)
         if "## 4. 关键指标与结论 (Results & Scorecard)" in content:
             parts = content.split("## 4. 关键指标与结论 (Results & Scorecard)")
-            new_content = parts[0] + "## 4. 关键指标与结论 (Results & Scorecard)\n" + scorecard + "\n"
+            new_content = (
+                parts[0] + "## 4. 关键指标与结论 (Results & Scorecard)\n" + scorecard + "\n"
+            )
             readme_path.write_text(new_content, encoding="utf-8")
 
 
@@ -428,12 +430,8 @@ def run_colab_suite(
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
     # --- Load datasets ---
-    seq_b = import_fgpp(
-        dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False
-    )
-    seq_a = import_fgpp(
-        dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False
-    )
+    seq_b = import_fgpp(dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False)
+    seq_a = import_fgpp(dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False)
     assert isinstance(seq_b, FGPPSequence)
     assert isinstance(seq_a, FGPPSequence)
 

@@ -37,10 +37,7 @@ def _cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
     if not json_mode:
         print("[Synapse] Dataset Generator")
         print(f"   Model:      {cfg.model_name}")
-        print(
-            f"   Trajectory: {cfg.trajectory_type} "
-            f"({cfg.num_frames} frames @ {cfg.fps} fps)"
-        )
+        print(f"   Trajectory: {cfg.trajectory_type} ({cfg.num_frames} frames @ {cfg.fps} fps)")
         print(f"   Resolution: {cfg.width}x{cfg.height}")
         print(f"   Output:     {Path(cfg.output_dir).resolve()}")
 
@@ -70,9 +67,11 @@ def _get_dev_launch_viewer() -> Any:
     """Helper to lazily load dev preview launch_viewer without importing TCPServer into core SDK."""
     try:
         from scripts.dev_preview_viewer import launch_viewer
+
         return launch_viewer
     except ImportError:
         import importlib.util
+
         script_path = Path(__file__).resolve().parents[3] / "scripts" / "dev_preview_viewer.py"
         if script_path.is_file():
             spec = importlib.util.spec_from_file_location("dev_preview_viewer", script_path)
@@ -81,6 +80,7 @@ def _get_dev_launch_viewer() -> Any:
                 spec.loader.exec_module(mod)
                 return mod.launch_viewer
         from synapse.errors import BackendUnavailableError
+
         raise BackendUnavailableError(
             "Local HTTP preview server is not available (dev_preview_viewer script missing).",
             agent_fix_hint="Use static HTML export (default) or ensure scripts/dev_preview_viewer.py exists.",
@@ -94,50 +94,68 @@ def main_data_gen(args: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="synapse-data-gen",
-        description=(
-            "Generate multi-angle video & FGPP ground-truth dataset "
-            "from 3D models."
-        ),
+        description=("Generate multi-angle video & FGPP ground-truth dataset from 3D models."),
     )
     parser.add_argument(
-        "--model", "-m", default="damaged_helmet",
+        "--model",
+        "-m",
+        default="damaged_helmet",
         help=f"Model name or file path. Built-in: {list_builtin_models()}",
     )
     parser.add_argument(
-        "--trajectory", "-t", default="orbit",
+        "--trajectory",
+        "-t",
+        default="orbit",
         choices=["orbit", "spiral", "hemisphere", "dolly", "arc"],
         help="Camera trajectory type (default: orbit)",
     )
     parser.add_argument(
-        "--frames", "-n", type=int, default=60,
+        "--frames",
+        "-n",
+        type=int,
+        default=60,
         help="Number of frames to render (default: 60)",
     )
     parser.add_argument(
-        "--res", "-r", type=int, default=512,
+        "--res",
+        "-r",
+        type=int,
+        default=512,
         help="Resolution width & height in pixels (default: 512)",
     )
     parser.add_argument(
-        "--fps", type=float, default=24.0,
+        "--fps",
+        type=float,
+        default=24.0,
         help="Video frame rate (default: 24.0)",
     )
     parser.add_argument(
-        "--radius", type=float, default=2.4,
+        "--radius",
+        type=float,
+        default=2.4,
         help="Camera orbit distance/radius from origin (default: 2.4)",
     )
     parser.add_argument(
-        "--val-ratio", type=float, default=0.2,
+        "--val-ratio",
+        type=float,
+        default=0.2,
         help="Validation split ratio for held-out views (default: 0.2)",
     )
     parser.add_argument(
-        "--out", "-o", default="./data/datasets/sample",
+        "--out",
+        "-o",
+        default="./data/datasets/sample",
         help="Output dataset directory path",
     )
     parser.add_argument(
-        "--view", action="store_true",
+        "--view",
+        action="store_true",
         help="Immediately launch interactive web viewer after generation",
     )
     parser.add_argument(
-        "--json", action="store_true", default=False,
+        "--json",
+        action="store_true",
+        default=False,
         help="Emit structured JSON output to stdout",
     )
 
@@ -162,27 +180,38 @@ def main_viewer(args: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
-        "dataset", nargs="?", default="./data/datasets/sample",
+        "dataset",
+        nargs="?",
+        default="./data/datasets/sample",
         help="Path to dataset directory (containing manifest.json)",
     )
     parser.add_argument(
-        "--output", "-o", default=None,
+        "--output",
+        "-o",
+        default=None,
         help="Output HTML path for static export (default: <dataset>/viewer.html)",
     )
     parser.add_argument(
-        "--serve-local", action="store_true", default=False,
+        "--serve-local",
+        action="store_true",
+        default=False,
         help="Start local loopback HTTP preview server instead of static HTML export",
     )
     parser.add_argument(
-        "--port", "-p", type=int, default=8765,
+        "--port",
+        "-p",
+        type=int,
+        default=8765,
         help="Local port to serve HTTP viewer (default: 8765)",
     )
     parser.add_argument(
-        "--host", default="127.0.0.1",
+        "--host",
+        default="127.0.0.1",
         help="Loopback host address (default: 127.0.0.1)",
     )
     parser.add_argument(
-        "--no-browser", action="store_true",
+        "--no-browser",
+        action="store_true",
         help="Do not auto-open default web browser",
     )
 
@@ -278,12 +307,15 @@ def register_generate_subparser(
     """Register ``generate`` and ``view`` subcommands."""
     parents = [json_parent] if json_parent is not None else []
     gen_parser = subparsers.add_parser(
-        "generate", help="Generate multi-angle video & FGPP datasets",
+        "generate",
+        help="Generate multi-angle video & FGPP datasets",
         parents=parents,
     )
     gen_parser.add_argument("--model", "-m", default="damaged_helmet")
     gen_parser.add_argument(
-        "--trajectory", "-t", default="orbit",
+        "--trajectory",
+        "-t",
+        default="orbit",
         choices=["orbit", "spiral", "hemisphere", "dolly", "arc"],
     )
     gen_parser.add_argument("--frames", "-n", type=int, default=60)
@@ -292,39 +324,50 @@ def register_generate_subparser(
     gen_parser.add_argument("--radius", type=float, default=2.4)
     gen_parser.add_argument("--val-ratio", type=float, default=0.2)
     gen_parser.add_argument(
-        "--out", "-o", default="./data/datasets/sample",
+        "--out",
+        "-o",
+        default="./data/datasets/sample",
     )
 
     view_parser = subparsers.add_parser(
         "view",
-        help="View dataset (default: static HTML export; "
-             "--serve-local: loopback preview)",
+        help="View dataset (default: static HTML export; --serve-local: loopback preview)",
         parents=parents,
     )
     view_parser.add_argument(
-        "dataset", nargs="?", default="./data/datasets/sample",
+        "dataset",
+        nargs="?",
+        default="./data/datasets/sample",
         help="Path to dataset directory (containing manifest.json)",
     )
     view_parser.add_argument(
-        "--output", "-o", default=None,
-        help="Output HTML path for static export "
-             "(default: <dataset>/viewer.html)",
+        "--output",
+        "-o",
+        default=None,
+        help="Output HTML path for static export (default: <dataset>/viewer.html)",
     )
     view_parser.add_argument(
-        "--serve-local", action="store_true", default=False,
-        help="Start local loopback HTTP preview server "
-             "instead of static HTML export",
+        "--serve-local",
+        action="store_true",
+        default=False,
+        help="Start local loopback HTTP preview server instead of static HTML export",
     )
     view_parser.add_argument(
-        "--port", "-p", type=int, default=8765,
+        "--port",
+        "-p",
+        type=int,
+        default=8765,
         help="Port for preview server (default: 8765)",
     )
     view_parser.add_argument(
-        "--host", default="127.0.0.1",
+        "--host",
+        default="127.0.0.1",
         help="Loopback host address (default: 127.0.0.1)",
     )
     view_parser.add_argument(
-        "--no-browser", action="store_true", default=False,
+        "--no-browser",
+        action="store_true",
+        default=False,
         help="Do not auto-open web browser in --serve-local mode",
     )
 
@@ -337,7 +380,10 @@ def dispatch_generate(
     """Dispatch ``synapse generate``."""
     parsed.json = json_mode
     return _run_with_json_mode(
-        _cmd_generate, parsed, json_mode, trace_ctx,
+        _cmd_generate,
+        parsed,
+        json_mode,
+        trace_ctx,
     )
 
 
@@ -349,5 +395,8 @@ def dispatch_view(
     """Dispatch ``synapse view``."""
     parsed.json = json_mode
     return _run_with_json_mode(
-        _cmd_view, parsed, json_mode, trace_ctx,
+        _cmd_view,
+        parsed,
+        json_mode,
+        trace_ctx,
     )

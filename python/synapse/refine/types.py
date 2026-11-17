@@ -93,9 +93,7 @@ class RefinementResult:
     fusion_method: FusionMethod
     quality_score: float = 0.0  # [0, 1] quality assessment
     frame_index: int = 0
-    bbox_xyxy: np.ndarray = field(
-        default_factory=lambda: np.zeros(4, dtype=np.float32)
-    )
+    bbox_xyxy: np.ndarray = field(default_factory=lambda: np.zeros(4, dtype=np.float32))
     inverse_affine_2x3: np.ndarray | None = None
     smoothed_bbox: np.ndarray | None = None
     bypassed: bool = False

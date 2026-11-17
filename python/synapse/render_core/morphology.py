@@ -159,7 +159,9 @@ def exact_euclidean_distance_transform(mask: np.ndarray) -> np.ndarray:
     """
     mask_b = np.asarray(mask, dtype=bool)
     if mask_b.ndim != 2:
-        raise ValueError(f"exact_euclidean_distance_transform requires 2D array, got {mask_b.shape}")
+        raise ValueError(
+            f"exact_euclidean_distance_transform requires 2D array, got {mask_b.shape}"
+        )
 
     h, w = mask_b.shape
     if not np.any(mask_b):
@@ -188,4 +190,3 @@ def exact_euclidean_distance_transform(mask: np.ndarray) -> np.ndarray:
         d2[r, :] = _edt_1d_parabolas(col_dists[r, :])
 
     return np.sqrt(np.clip(d2, 0.0, None)).astype(np.float32)
-

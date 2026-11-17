@@ -98,8 +98,7 @@ class MultiLoRAManager:
                 f"expected {manifest.adapter_sha256}, "
                 f"got {actual_sha}",
                 agent_fix_hint=(
-                    "Re-download the adapter file or update the "
-                    "manifest SHA-256 hash."
+                    "Re-download the adapter file or update the manifest SHA-256 hash."
                 ),
                 details={
                     "adapter_path": path,
@@ -110,6 +109,7 @@ class MultiLoRAManager:
 
         # Lazy import safetensors
         from safetensors.torch import load_file
+
         state_dict = load_file(path)
         self._loaded_state_dicts[path] = state_dict
         return state_dict
@@ -142,7 +142,10 @@ class MultiLoRAManager:
                     continue
 
                 delta = self._compute_delta(
-                    submodule, manifest, scale, module_name=name,
+                    submodule,
+                    manifest,
+                    scale,
+                    module_name=name,
                 )
                 delta_np = delta.detach().cpu().float().numpy()
                 if name not in layer_deltas:
@@ -161,7 +164,8 @@ class MultiLoRAManager:
                 for i in range(n_deltas):
                     for j in range(i + 1, n_deltas):
                         deltas[j] = self.orthogonalize_conflicting_loras(
-                            deltas[i], deltas[j],
+                            deltas[i],
+                            deltas[j],
                         )
 
             combined = sum(deltas[1:], deltas[0])
@@ -218,7 +222,10 @@ class MultiLoRAManager:
                     )
 
                 delta = self._compute_delta(
-                    submodule, manifest, scale, module_name=name,
+                    submodule,
+                    manifest,
+                    scale,
+                    module_name=name,
                 )
                 submodule.weight.data.add_(delta)
 
@@ -251,9 +258,7 @@ class MultiLoRAManager:
                     agent_fix_hint="Original weight was corrupted.",
                 )
 
-            max_err = (
-                (submodule.weight.data - original_w).abs().max().item()
-            )
+            max_err = (submodule.weight.data - original_w).abs().max().item()
             if max_err > 1e-7:
                 raise RuntimeError(
                     f"Weight restoration error {max_err:.2e} exceeds "
@@ -288,12 +293,8 @@ class MultiLoRAManager:
             m_fg: np.ndarray | None = None
             if cryptomatte_ids is not None:
                 if target_entity_ids is None or len(target_entity_ids) == 0:
-                    target_entity_ids = {
-                        int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0
-                    }
-                m_fg = self.build_spatial_lora_masks(
-                    cryptomatte_ids, target_entity_ids
-                )
+                    target_entity_ids = {int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0}
+                m_fg = self.build_spatial_lora_masks(cryptomatte_ids, target_entity_ids)
 
             # Collect deltas per submodule name across all bundles
             layer_deltas: dict[str, list[tuple[LoRAManifest, np.ndarray, Any]]] = {}
@@ -307,7 +308,10 @@ class MultiLoRAManager:
                         continue
 
                     delta = self._compute_delta(
-                        submodule, manifest, scale, module_name=name,
+                        submodule,
+                        manifest,
+                        scale,
+                        module_name=name,
                     )
                     delta_np = delta.detach().cpu().float().numpy()
                     if name not in layer_deltas:
@@ -320,13 +324,8 @@ class MultiLoRAManager:
                     deltas = [b[1] for b in bundle_list]
                     for i in range(len(deltas)):
                         for j in range(i + 1, len(deltas)):
-                            deltas[j] = self.orthogonalize_conflicting_loras(
-                                deltas[i], deltas[j]
-                            )
-                    bundle_list = [
-                        (b[0], deltas[idx], b[2])
-                        for idx, b in enumerate(bundle_list)
-                    ]
+                            deltas[j] = self.orthogonalize_conflicting_loras(deltas[i], deltas[j])
+                    bundle_list = [(b[0], deltas[idx], b[2]) for idx, b in enumerate(bundle_list)]
 
                 for manifest, delta_np, submodule in bundle_list:
                     # Select category-specific mask
@@ -380,15 +379,15 @@ class MultiLoRAManager:
         try:
             from scipy import stats  # lazy
 
-            cropped = cryptomatte_ids[:, :h_ds * spatial_block, :w_ds * spatial_block]
+            cropped = cryptomatte_ids[:, : h_ds * spatial_block, : w_ds * spatial_block]
             blocks = (
                 cropped.reshape(t, h_ds, spatial_block, w_ds, spatial_block)
                 .transpose(0, 1, 3, 2, 4)
                 .reshape(t, h_ds, w_ds, spatial_block * spatial_block)
             )
-            dominant = np.asarray(
-                stats.mode(blocks, axis=-1, keepdims=False).mode
-            ).reshape(t, h_ds, w_ds)
+            dominant = np.asarray(stats.mode(blocks, axis=-1, keepdims=False).mode).reshape(
+                t, h_ds, w_ds
+            )
             return np.isin(dominant, list(target_entity_ids))
         except ImportError:
             mask = np.zeros((t, h_ds, w_ds), dtype=bool)
@@ -401,7 +400,8 @@ class MultiLoRAManager:
                             xi * spatial_block : (xi + 1) * spatial_block,
                         ]
                         unique, counts = np.unique(
-                            block.ravel(), return_counts=True,
+                            block.ravel(),
+                            return_counts=True,
                         )
                         dominant_val = unique[np.argmax(counts)]
                         mask[ti, yi, xi] = int(dominant_val) in target_entity_ids
@@ -451,9 +451,7 @@ class MultiLoRAManager:
         residual_coeff = np.dot(a_flat, b_orth) / denom
         b_orth = b_orth - residual_coeff * a_flat
 
-        return np.asarray(
-            b_orth.reshape(lora_b_delta.shape).astype(lora_b_delta.dtype)
-        )
+        return np.asarray(b_orth.reshape(lora_b_delta.shape).astype(lora_b_delta.dtype))
 
     # -- internals -----------------------------------------------------------
 
@@ -495,18 +493,34 @@ class MultiLoRAManager:
             gen.manual_seed(hash(manifest.name) & 0x7FFFFFFF)
 
             # A: [rank, in_features], B: [out_features, rank]
-            a_mat = torch.randn(
-                rank, in_features, generator=gen, dtype=torch.float32,
-            ) * 0.01
-            b_mat = torch.randn(
-                out_features, rank, generator=gen, dtype=torch.float32,
-            ) * 0.01
+            a_mat = (
+                torch.randn(
+                    rank,
+                    in_features,
+                    generator=gen,
+                    dtype=torch.float32,
+                )
+                * 0.01
+            )
+            b_mat = (
+                torch.randn(
+                    out_features,
+                    rank,
+                    generator=gen,
+                    dtype=torch.float32,
+                )
+                * 0.01
+            )
         else:
             state_dict = self.load_lora(manifest)
 
             # Find matching A and B tensors in the state dict
             a_mat, b_mat = _extract_lora_ab(
-                state_dict, in_features, out_features, rank, module_name=module_name,
+                state_dict,
+                in_features,
+                out_features,
+                rank,
+                module_name=module_name,
             )
 
         effective_scale = scale * (manifest.alpha / manifest.rank)

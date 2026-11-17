@@ -100,9 +100,7 @@ class TestAcesColor:
         # Right derivative
         d_right = (y[2] - y[1]) / eps
         # C1 continuity: left and right derivatives should match
-        assert abs(d_left - d_right) < 1e-3, (
-            f"Left deriv: {d_left}, Right deriv: {d_right}"
-        )
+        assert abs(d_left - d_right) < 1e-3, f"Left deriv: {d_left}, Right deriv: {d_right}"
 
     def test_soft_knee_no_nan(self) -> None:
         """No NaN/Inf for any finite input (including negatives)."""
@@ -217,11 +215,14 @@ class TestStyleExtractor:
         # Ground truth light direction: azimuth 45°, elevation 30°
         az = math.radians(45.0)
         el = math.radians(30.0)
-        light_dir_gt = np.array([
-            math.cos(el) * math.cos(az),
-            math.sin(el),
-            math.cos(el) * math.sin(az),
-        ], dtype=np.float64)
+        light_dir_gt = np.array(
+            [
+                math.cos(el) * math.cos(az),
+                math.sin(el),
+                math.cos(el) * math.sin(az),
+            ],
+            dtype=np.float64,
+        )
         light_dir_gt /= np.linalg.norm(light_dir_gt)
 
         # Create synthetic FGPP data
@@ -233,14 +234,17 @@ class TestStyleExtractor:
 
         for t in range(T):
             cam = CameraParams(
-                fx=32.0, fy=32.0, cx=16.0, cy=16.0,
-                width=W, height=H,
+                fx=32.0,
+                fy=32.0,
+                cx=16.0,
+                cy=16.0,
+                width=W,
+                height=H,
             )
 
             # Random normals on the hemisphere
             normals = rng.standard_normal((H, W, 3)).astype(np.float16)
-            norms = np.linalg.norm(normals.astype(np.float64), axis=-1,
-                                   keepdims=True)
+            norms = np.linalg.norm(normals.astype(np.float64), axis=-1, keepdims=True)
             norms = np.clip(norms, 1e-6, None)
             normals = (normals.astype(np.float64) / norms).astype(np.float16)
 
@@ -254,13 +258,15 @@ class TestStyleExtractor:
                 n_f64[..., 0] * light_dir_gt[0]
                 + n_f64[..., 1] * light_dir_gt[1]
                 + n_f64[..., 2] * light_dir_gt[2],
-                0.0, 1.0,
+                0.0,
+                1.0,
             )
             bc_f64 = base_color.astype(np.float64)
             radiance = bc_f64 * (ambient + ndotl[..., np.newaxis])
 
             # Convert to sRGB uint8
             from synapse.style.aces_color import linear_to_srgb
+
             srgb_float = linear_to_srgb(np.clip(radiance, 0, 1))
             srgb_frames[t] = np.clip(srgb_float * 255, 0, 255).astype(
                 np.uint8,
@@ -286,9 +292,7 @@ class TestStyleExtractor:
         recovered /= np.linalg.norm(recovered) + 1e-12
         cos_angle = np.clip(np.dot(recovered, light_dir_gt), -1.0, 1.0)
         angle_deg = math.degrees(math.acos(cos_angle))
-        assert angle_deg < 8.0, (
-            f"Light direction error: {angle_deg:.1f}° (expected < 8°)"
-        )
+        assert angle_deg < 8.0, f"Light direction error: {angle_deg:.1f}° (expected < 8°)"
 
     def test_extract_fgpp_ambient_ratio(self) -> None:
         """Ambient ratio should be in [0, 1]."""
@@ -299,8 +303,12 @@ class TestStyleExtractor:
         frames_list = []
         for t in range(T):
             cam = CameraParams(
-                fx=16.0, fy=16.0, cx=8.0, cy=8.0,
-                width=W, height=H,
+                fx=16.0,
+                fy=16.0,
+                cx=8.0,
+                cy=8.0,
+                width=W,
+                height=H,
             )
             frame = FGPPFrame(
                 camera=cam,
@@ -359,6 +367,7 @@ class TestProfileMapper:
                 content = json.loads(raw)
             except json.JSONDecodeError:
                 import yaml
+
                 content = yaml.safe_load(raw)
             assert content["schema_version"] == "style_profile.v2.0.0"
             assert content["post_process_config"]["exposure_ev"] == 1.5
@@ -402,8 +411,7 @@ class TestSoftKneeMonotonicity:
         # Check that every successive output is greater than the previous
         diffs = np.diff(y)
         assert np.all(diffs > 0), (
-            f"Inverse tonemap is not strictly increasing: "
-            f"min diff = {float(np.min(diffs)):.6e}"
+            f"Inverse tonemap is not strictly increasing: min diff = {float(np.min(diffs)):.6e}"
         )
 
     def test_superlinear_above_knee(self) -> None:
@@ -413,8 +421,7 @@ class TestSoftKneeMonotonicity:
         y = soft_knee_inverse_tonemap(x)
         # Above the knee (0.8), output should be > input
         assert np.all(y[x > 0.8] > x[x > 0.8]), (
-            "Inverse tonemap should produce super-linear recovery "
-            "above the knee threshold"
+            "Inverse tonemap should produce super-linear recovery above the knee threshold"
         )
 
     def test_identity_below_knee(self) -> None:
@@ -438,8 +445,7 @@ class TestSoftKneeMonotonicity:
             f"Left derivative at knee should be ~1.0, got {left_deriv}"
         )
         assert right_deriv > 1.0, (
-            f"Right derivative at knee should be > 1.0 (super-linear), "
-            f"got {right_deriv}"
+            f"Right derivative at knee should be > 1.0 (super-linear), got {right_deriv}"
         )
 
 
@@ -473,9 +479,12 @@ class TestLightDirectionFitting:
         world = np.linalg.inv(view)
 
         cam = CameraParams(
-            fx=W / 2.0, fy=H / 2.0,
-            cx=W / 2.0, cy=H / 2.0,
-            width=W, height=H,
+            fx=W / 2.0,
+            fy=H / 2.0,
+            cx=W / 2.0,
+            cy=H / 2.0,
+            width=W,
+            height=H,
             view_matrix=view,
             world_matrix=world,
         )
@@ -491,7 +500,7 @@ class TestLightDirectionFitting:
             # Uniformly distributed normals on upper hemisphere:
             # Gaussian → normalize → flip Z < 0.
             raw = rng.randn(H, W, 3).astype(np.float64)
-            norms = np.sqrt(np.sum(raw ** 2, axis=-1, keepdims=True))
+            norms = np.sqrt(np.sum(raw**2, axis=-1, keepdims=True))
             normals = raw / np.maximum(norms, 1e-8)
             normals[..., 2] = np.abs(normals[..., 2])
 
@@ -506,6 +515,7 @@ class TestLightDirectionFitting:
 
             # Convert linear → sRGB → uint8
             from synapse.style.aces_color import linear_to_srgb as _l2s
+
             srgb = np.clip(_l2s(np.clip(radiance, 0.0, 1.0)), 0.0, 1.0)
             video_frames[t] = (srgb * 255.0 + 0.5).astype(np.uint8)
 
@@ -517,10 +527,13 @@ class TestLightDirectionFitting:
                 depth=depth,
                 base_color=base_color,
                 world_normal=normals.astype(np.float32),
-                roughness_metallic=np.stack([
-                    np.full((H, W), 0.8, dtype=np.float32),
-                    np.zeros((H, W), dtype=np.float32),
-                ], axis=-1),
+                roughness_metallic=np.stack(
+                    [
+                        np.full((H, W), 0.8, dtype=np.float32),
+                        np.zeros((H, W), dtype=np.float32),
+                    ],
+                    axis=-1,
+                ),
                 cryptomatte_id=cid,
                 motion_vector=np.zeros((H, W, 2), dtype=np.float32),
                 direct_radiance=radiance.astype(np.float32),
@@ -557,8 +570,7 @@ class TestExtractorFloatHDRInput:
         # If incorrectly divided by 255, values become ~0.002
         # and exposure would be very negative
         assert desc.exposure_ev > -10.0, (
-            f"Exposure {desc.exposure_ev} EV suggests float input was "
-            f"erroneously divided by 255"
+            f"Exposure {desc.exposure_ev} EV suggests float input was erroneously divided by 255"
         )
 
     def test_uint8_input_still_works(self) -> None:
@@ -660,7 +672,9 @@ class TestPR96StyleHardening:
         with pytest.raises(pydantic.ValidationError):
             StyleDescriptor(ambient_ratio=-0.1)
 
-    def test_save_style_profile_yaml_raises_backend_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_save_style_profile_yaml_raises_backend_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """save_style_profile_yaml must raise BackendUnavailableError(30) when pyyaml is missing."""
         import builtins
 

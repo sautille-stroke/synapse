@@ -267,40 +267,30 @@ class TestHitlCircuitBreaker:
 
     def test_within_budget_no_trigger(self) -> None:
         """899s is within the 900s budget — returns None."""
-        result = evaluate_hitl_circuit_breaker(
-            elapsed_seconds=899.0, domain="video_shot"
-        )  # type: ignore[func-returns-value]
+        result = evaluate_hitl_circuit_breaker(elapsed_seconds=899.0, domain="video_shot")  # type: ignore[func-returns-value]
         assert result is None
 
     def test_exact_budget_no_trigger(self) -> None:
         """Exactly 900s does NOT trigger the breaker."""
-        result = evaluate_hitl_circuit_breaker(
-            elapsed_seconds=900.0, domain="video_shot"
-        )  # type: ignore[func-returns-value]
+        result = evaluate_hitl_circuit_breaker(elapsed_seconds=900.0, domain="video_shot")  # type: ignore[func-returns-value]
         assert result is None
 
     def test_over_budget_video_raises(self) -> None:
         """900.1s on video_shot triggers CircuitBreakerError."""
         with pytest.raises(CircuitBreakerError) as exc_info:
-            evaluate_hitl_circuit_breaker(
-                elapsed_seconds=900.1, domain="video_shot"
-            )
+            evaluate_hitl_circuit_breaker(elapsed_seconds=900.1, domain="video_shot")
         assert "circuit breaker" in str(exc_info.value).lower()
 
     def test_over_budget_asset_raises(self) -> None:
         """901s on asset_3d triggers CircuitBreakerError."""
         with pytest.raises(CircuitBreakerError) as exc_info:
-            evaluate_hitl_circuit_breaker(
-                elapsed_seconds=901.0, domain="asset_3d"
-            )
+            evaluate_hitl_circuit_breaker(elapsed_seconds=901.0, domain="asset_3d")
         assert "circuit breaker" in str(exc_info.value).lower()
 
     def test_exit_code_is_40(self) -> None:
         """CircuitBreakerError exit_code is 40."""
         with pytest.raises(CircuitBreakerError) as exc_info:
-            evaluate_hitl_circuit_breaker(
-                elapsed_seconds=1000.0, domain="video_shot"
-            )
+            evaluate_hitl_circuit_breaker(elapsed_seconds=1000.0, domain="video_shot")
         assert exc_info.value.exit_code == 40
 
     def test_custom_max_seconds(self) -> None:
@@ -322,17 +312,13 @@ class TestHitlCircuitBreaker:
     def test_video_shot_hint_mentions_fgpp(self) -> None:
         """Video shot fallback hint mentions FGPP."""
         with pytest.raises(CircuitBreakerError) as exc_info:
-            evaluate_hitl_circuit_breaker(
-                elapsed_seconds=1000.0, domain="video_shot"
-            )
+            evaluate_hitl_circuit_breaker(elapsed_seconds=1000.0, domain="video_shot")
         assert "FGPP" in exc_info.value.agent_fix_hint
 
     def test_asset_hint_mentions_decal(self) -> None:
         """Asset 3D fallback hint mentions decal or procedural."""
         with pytest.raises(CircuitBreakerError) as exc_info:
-            evaluate_hitl_circuit_breaker(
-                elapsed_seconds=1000.0, domain="asset_3d"
-            )
+            evaluate_hitl_circuit_breaker(elapsed_seconds=1000.0, domain="asset_3d")
         hint = exc_info.value.agent_fix_hint
         assert "decal" in hint.lower() or "procedural" in hint.lower()
 
@@ -430,7 +416,9 @@ class TestHttpSecurityAndLedger:
             HttpFoundaryTransport(base_url="http://169.254.169.254")
         assert exc_info.value.exit_code == 10
 
-    def test_foundary_error_status_raises_backend_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_foundary_error_status_raises_backend_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from unittest.mock import MagicMock
 
         from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
@@ -439,11 +427,15 @@ class TestHttpSecurityAndLedger:
 
         # Mock safe_urlopen to return an error response
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b'{"status": "error", "error_code": "CUDA_OOM", "error_message": "Out of memory"}'
+        mock_resp.read.return_value = (
+            b'{"status": "error", "error_code": "CUDA_OOM", "error_message": "Out of memory"}'
+        )
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.__exit__.return_value = None
 
-        monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", lambda *args, **kwargs: mock_resp)
+        monkeypatch.setattr(
+            "synapse.bridge.http_security.safe_urlopen", lambda *args, **kwargs: mock_resp
+        )
 
         with pytest.raises(BackendUnavailableError) as exc_info:
             transport.submit(FoundaryRequest(service="trellis", inputs={}))
@@ -463,7 +455,9 @@ class TestHttpSecurityAndLedger:
         assert exc_info.value.exit_code == 10
 
         # NaN elapsed
-        rec_nan = CommandIRRecord(intent_group_id="grp1", intent="fix", elapsed_seconds=float("nan"))
+        rec_nan = CommandIRRecord(
+            intent_group_id="grp1", intent="fix", elapsed_seconds=float("nan")
+        )
         with pytest.raises(ContractValidationError) as exc_info:
             ledger.record_action(rec_nan)
         assert exc_info.value.exit_code == 10

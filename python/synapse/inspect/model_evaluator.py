@@ -75,9 +75,7 @@ def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
 
 GATE_PROFILES: dict[str, dict[str, tuple[float, str]]] = _build_gate_profiles()
 
-MODEL_EXTENSIONS: frozenset[str] = frozenset(
-    {".obj", ".glb", ".ply", ".gltf", ".fbx", ".stl"}
-)
+MODEL_EXTENSIONS: frozenset[str] = frozenset({".obj", ".glb", ".ply", ".gltf", ".fbx", ".stl"})
 
 _VIEW_LABELS_8 = [
     "Front",
@@ -106,11 +104,8 @@ def normalize_eval_profile(profile_name: str) -> str:
     if key not in GATE_PROFILES:
         valid = ", ".join(sorted(GATE_PROFILES.keys()))
         raise ContractValidationError(
-            f"Unknown 3D evaluation gate profile: {profile_name!r}. "
-            f"Valid profiles: {valid}.",
-            agent_fix_hint=(
-                f"Pass a valid '--profile' / '--gate-profile' value ({valid})."
-            ),
+            f"Unknown 3D evaluation gate profile: {profile_name!r}. Valid profiles: {valid}.",
+            agent_fix_hint=(f"Pass a valid '--profile' / '--gate-profile' value ({valid})."),
         )
     return key
 
@@ -121,11 +116,7 @@ def encode_png_rgb(image: np.ndarray) -> bytes:
 
     def _chunk(chunk_type: bytes, data: bytes) -> bytes:
         raw = chunk_type + data
-        return (
-            struct.pack(">I", len(data))
-            + raw
-            + struct.pack(">I", zlib.crc32(raw) & 0xFFFFFFFF)
-        )
+        return struct.pack(">I", len(data)) + raw + struct.pack(">I", zlib.crc32(raw) & 0xFFFFFFFF)
 
     ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
     rows = [b"\x00" + image[y].tobytes() for y in range(h)]
@@ -265,9 +256,7 @@ def _collect_model_files(directory: Path) -> list[Path]:
     if not directory.exists() or not directory.is_dir():
         return []
     return sorted(
-        p
-        for p in directory.rglob("*")
-        if p.is_file() and p.suffix.lower() in MODEL_EXTENSIONS
+        p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in MODEL_EXTENSIONS
     )
 
 
@@ -291,6 +280,7 @@ def _default_load_mesh(p: str) -> Any:
         return mesh.normalize()
     try:
         import trimesh
+
         tm: Any = trimesh.load(p, force="mesh")
         mesh = MeshData(
             name=path.stem,
@@ -386,7 +376,10 @@ def evaluate_single_model(
 
     floating_island_faces = 0
     if geo_res.num_connected_components > 1:
-        if hasattr(geo_res, "floating_island_face_indices") and geo_res.floating_island_face_indices:
+        if (
+            hasattr(geo_res, "floating_island_face_indices")
+            and geo_res.floating_island_face_indices
+        ):
             floating_island_faces = len(geo_res.floating_island_face_indices)
         else:
             floating_island_faces = max(
@@ -406,18 +399,18 @@ def evaluate_single_model(
     }
 
     if log_fn:
-        log_fn(
-            f"  Rendering {num_views} views at {resolution}x{resolution}..."
-        )
+        log_fn(f"  Rendering {num_views} views at {resolution}x{resolution}...")
     try:
         pred_rgb, screenshots, labels = render_orbit_views(
-            verts, faces_arr, norms, resolution, num_views,
+            verts,
+            faces_arr,
+            norms,
+            resolution,
+            num_views,
         )
     except Exception as exc:
         if log_fn:
-            log_fn(
-                f"  Warning: failed to render orbit views for {effective_name}: {exc}"
-            )
+            log_fn(f"  Warning: failed to render orbit views for {effective_name}: {exc}")
         pred_rgb = np.empty((0, resolution, resolution, 3), dtype=np.uint8)
         screenshots, labels = [], []
 
@@ -435,9 +428,7 @@ def evaluate_single_model(
                 reference_mesh.vertices, reference_mesh.faces, num_samples=10000, seed=42
             )
         else:
-            tgt_pts = subsample_point_cloud(
-                reference_mesh.vertices, max_points=10000, seed=42
-            )
+            tgt_pts = subsample_point_cloud(reference_mesh.vertices, max_points=10000, seed=42)
         # Compute in world scale (not normalized screenshot space)
         metrics["chamfer_mm"] = compute_chamfer_distance_mm(src_pts, tgt_pts)
         metrics["f_score_1mm"] = f_score_1mm(src_pts, tgt_pts)
@@ -542,18 +533,13 @@ def evaluate_3d_models_directory(
                         reference_meshes[ref_path.stem] = loaded
                 except Exception as exc:
                     if log_fn:
-                        log_fn(
-                            f"  Warning: failed to load reference mesh {ref_path.name}: {exc}"
-                        )
+                        log_fn(f"  Warning: failed to load reference mesh {ref_path.name}: {exc}")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     results: list[ModelEvalResult] = []
 
     if log_fn:
-        log_fn(
-            f"Evaluating {len(model_files)} models "
-            f"(profile: {canonical_profile})..."
-        )
+        log_fn(f"Evaluating {len(model_files)} models (profile: {canonical_profile})...")
 
     for i, model_path in enumerate(model_files, 1):
         rel_posix = model_path.relative_to(input_dir).as_posix()
@@ -618,9 +604,7 @@ def evaluate_3d_models_directory(
                     "is_watertight": r.topology.is_watertight,
                     "num_vertices": r.topology.num_vertices,
                     "num_faces": r.topology.num_faces,
-                    "num_connected_components": (
-                        r.topology.num_connected_components
-                    ),
+                    "num_connected_components": (r.topology.num_connected_components),
                     "has_degenerate_faces": r.topology.has_degenerate_faces,
                     "num_boundary_edges": r.topology.num_boundary_edges,
                 },
@@ -646,9 +630,7 @@ def evaluate_3d_models_directory(
     )
     if log_fn:
         log_fn(f"JSON results: {json_path}")
-        log_fn(
-            f"Done: {n_pass} passed, {n_fail} failed (exit code {exit_code})"
-        )
+        log_fn(f"Done: {n_pass} passed, {n_fail} failed (exit code {exit_code})")
 
     return json_data
 

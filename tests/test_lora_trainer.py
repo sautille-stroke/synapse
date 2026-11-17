@@ -81,15 +81,12 @@ class TestLatentEdgeAlignmentLoss:
         assert loss == pytest.approx(0.0, abs=1e-10)
 
 
-
-
 class TestNormalReconstructionLoss:
     """Unit tests for normal_reconstruction_loss (HP-04)."""
 
     def test_identical_normals_zero(self) -> None:
         """Identical predicted and GT normals should give ~0 loss."""
-        n = np.array([[[0, 0, 1], [0, 1, 0]], [[1, 0, 0], [0, 0, 1]]],
-                     dtype=np.float64)
+        n = np.array([[[0, 0, 1], [0, 1, 0]], [[1, 0, 0], [0, 0, 1]]], dtype=np.float64)
         loss = normal_reconstruction_loss(n, n)
         assert loss == pytest.approx(0.0, abs=1e-6)
 
@@ -165,6 +162,7 @@ class TestNormalReconstructionLoss:
         loss = normal_reconstruction_loss(n_pred, n_gt, mask=mask)
         assert loss == pytest.approx(0.0, abs=1e-12)
 
+
 class TestDiffusionDPOLoss:
     """Tests for diffusion_dpo_loss."""
 
@@ -173,7 +171,8 @@ class TestDiffusionDPOLoss:
         v = np.array([1.0, 0.0])
         loss = diffusion_dpo_loss(v, v, v, v)
         assert loss == pytest.approx(
-            np.log(2.0), abs=1e-6,
+            np.log(2.0),
+            abs=1e-6,
         )
 
     def test_loss_is_nonnegative(self) -> None:
@@ -194,10 +193,16 @@ class TestDiffusionDPOLoss:
         v_zero = np.array([0.0, 0.0])
 
         loss_a = diffusion_dpo_loss(
-            v_theta, v_zero, v_ref, v_ref,
+            v_theta,
+            v_zero,
+            v_ref,
+            v_ref,
         )
         loss_b = diffusion_dpo_loss(
-            v_zero, v_theta, v_ref, v_ref,
+            v_zero,
+            v_theta,
+            v_ref,
+            v_ref,
         )
         # The two losses should differ
         assert loss_a != pytest.approx(loss_b, abs=1e-3)
@@ -211,24 +216,39 @@ class TestDiffusionDPOLoss:
 
         # Policy == reference -> loss is exactly ln(2)
         loss_init = diffusion_dpo_loss(
-            v_ref_w, v_ref_l, v_ref_w, v_ref_l,
-            beta=10.0, target_w=target_w, target_l=target_l,
+            v_ref_w,
+            v_ref_l,
+            v_ref_w,
+            v_ref_l,
+            beta=10.0,
+            target_w=target_w,
+            target_l=target_l,
         )
         assert loss_init == pytest.approx(np.log(2.0), abs=1e-6)
 
         # Policy improves on chosen (closer to target_w than ref) -> loss < ln(2)
         v_better_w = np.array([0.9, 0.9])
         loss_better = diffusion_dpo_loss(
-            v_better_w, v_ref_l, v_ref_w, v_ref_l,
-            beta=10.0, target_w=target_w, target_l=target_l,
+            v_better_w,
+            v_ref_l,
+            v_ref_w,
+            v_ref_l,
+            beta=10.0,
+            target_w=target_w,
+            target_l=target_l,
         )
         assert loss_better < np.log(2.0)
 
         # Policy degrades on chosen (further from target_w than ref) -> loss > ln(2)
         v_worse_w = np.array([0.0, 0.0])
         loss_worse = diffusion_dpo_loss(
-            v_worse_w, v_ref_l, v_ref_w, v_ref_l,
-            beta=10.0, target_w=target_w, target_l=target_l,
+            v_worse_w,
+            v_ref_l,
+            v_ref_w,
+            v_ref_l,
+            beta=10.0,
+            target_w=target_w,
+            target_l=target_l,
         )
         assert loss_worse > np.log(2.0)
 
@@ -246,7 +266,9 @@ class TestLoRATrainConfig:
         from synapse.training.trainer import LoRATrainConfig
 
         cfg = LoRATrainConfig(
-            category="style", rank=8, alpha=1.0,
+            category="style",
+            rank=8,
+            alpha=1.0,
         )
         assert cfg.rank == 8
         assert cfg.loss_mode == "sft"
@@ -338,7 +360,8 @@ class TestStatelessLoRATrainer:
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
         count = trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
 
         assert count == 2
@@ -365,7 +388,8 @@ class TestStatelessLoRATrainer:
 
         # Pattern matches both linear layers in ffn
         count = trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
         assert count == 2
 
@@ -374,7 +398,8 @@ class TestStatelessLoRATrainer:
         trainer2 = StatelessLoRATrainer(cfg)
         trainer2.freeze_backbone(model2)
         count2 = trainer2.inject_lora(
-            model2, target_patterns=["ffn.0"],
+            model2,
+            target_patterns=["ffn.0"],
         )
         assert count2 == 1
 
@@ -399,7 +424,8 @@ class TestStatelessLoRATrainer:
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
         trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
 
         # Fixed target data for consistent signal
@@ -415,10 +441,7 @@ class TestStatelessLoRATrainer:
         initial = losses[0]
         final = losses[-1]
 
-        assert final < initial * 0.8, (
-            f"Loss did not decrease >20%: "
-            f"{initial:.4f} -> {final:.4f}"
-        )
+        assert final < initial * 0.8, f"Loss did not decrease >20%: {initial:.4f} -> {final:.4f}"
 
     def test_frozen_weights_unchanged(self) -> None:
         """Base weights should be bitwise identical after training."""
@@ -437,12 +460,15 @@ class TestStatelessLoRATrainer:
             orig_weights[name] = param.data.clone()
 
         cfg = LoRATrainConfig(
-            category="identity", rank=4, lr_spatial=1e-3,
+            category="identity",
+            rank=4,
+            lr_spatial=1e-3,
         )
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
         trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
 
         x_1 = torch.randn(4, 64)
@@ -450,7 +476,9 @@ class TestStatelessLoRATrainer:
 
         for step in range(10):
             trainer.train_step(
-                model, {"latent": x_1, "noise": x_0}, step,
+                model,
+                {"latent": x_1, "noise": x_0},
+                step,
             )
 
         # After training, check that the original Linear weights
@@ -461,17 +489,9 @@ class TestStatelessLoRATrainer:
                 orig_w = child.orig.weight.data
                 # Find matching key by looking at shape
                 for key, snap in orig_weights.items():
-                    if (
-                        key.endswith(".weight")
-                        and snap.shape == orig_w.shape
-                    ):
-                        diff = (
-                            orig_w - snap
-                        ).abs().max().item()
-                        assert diff == 0.0, (
-                            f"Base weight {key} changed "
-                            f"by {diff}"
-                        )
+                    if key.endswith(".weight") and snap.shape == orig_w.shape:
+                        diff = (orig_w - snap).abs().max().item()
+                        assert diff == 0.0, f"Base weight {key} changed by {diff}"
                         break
 
     def test_export_checkpoint(self, tmp_path: Any) -> None:
@@ -485,12 +505,14 @@ class TestStatelessLoRATrainer:
 
         model = self._make_toy_model()
         cfg = LoRATrainConfig(
-            category="style", rank=4,
+            category="style",
+            rank=4,
         )
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
         trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
 
         out_path = tmp_path / "lora.safetensors"
@@ -604,9 +626,7 @@ class TestStatelessLoRATrainer:
         )
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
-        trainer.inject_lora(
-            model, target_patterns=["spatial_attn", "temporal_attn"]
-        )
+        trainer.inject_lora(model, target_patterns=["spatial_attn", "temporal_attn"])
 
         x_1 = torch.randn(4, 16)
         x_0 = torch.randn(4, 16)
@@ -645,7 +665,8 @@ class TestStatelessLoRATrainer:
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
         trainer.inject_lora(
-            model, target_patterns=["ffn.0", "ffn.2"],
+            model,
+            target_patterns=["ffn.0", "ffn.2"],
         )
 
         x_1 = torch.randn(4, 64)
@@ -656,7 +677,8 @@ class TestStatelessLoRATrainer:
 
         # Check LoRA parameters have gradients
         lora_params = [
-            (name, p) for name, p in model.named_parameters()
+            (name, p)
+            for name, p in model.named_parameters()
             if p.requires_grad and ("lora_A" in name or "lora_B" in name)
         ]
         assert len(lora_params) > 0, "No LoRA parameters found"
@@ -676,9 +698,7 @@ class TestStatelessLoRATrainer:
                 if child.lora_B.data.abs().max().item() > 0:
                     has_nonzero_lora_b = True
                     break
-        assert has_nonzero_lora_b, (
-            "lora_B remained zero after train_step — backprop did not run"
-        )
+        assert has_nonzero_lora_b, "lora_B remained zero after train_step — backprop did not run"
 
     def test_differentiable_flow_matching_loss_class(self) -> None:
         """PR-77: FlowMatchingLoss class preserves autograd gradient chain."""
@@ -891,7 +911,9 @@ class TestPR117TrainerEnhancements:
         torch.manual_seed(117)
         model = self._make_toy_model()
         cfg = LoRATrainConfig(
-            category="style", rank=4, mixed_precision="fp16",
+            category="style",
+            rank=4,
+            mixed_precision="fp16",
         )
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)

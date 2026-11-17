@@ -38,7 +38,12 @@ def _make_test_sequence(
     frames: list[FGPPFrame] = []
     for i in range(n_frames):
         cam = CameraParams(
-            fx=50.0, fy=50.0, cx=w / 2, cy=h / 2, width=w, height=h,
+            fx=50.0,
+            fy=50.0,
+            cx=w / 2,
+            cy=h / 2,
+            width=w,
+            height=h,
         )
         depth = np.full((h, w), 5.0, dtype=np.float32)
 
@@ -241,12 +246,7 @@ class TestDefectInjection:
 
         # Verify defect metadata is recorded
         assert len(result_defect.metadata["defects_applied"]) == 1
-        assert (
-            result_defect.metadata["defects_applied"][0][
-                "silhouette_shift_px"
-            ]
-            == shift_px
-        )
+        assert result_defect.metadata["defects_applied"][0]["silhouette_shift_px"] == shift_px
 
     def test_flicker_amplitude(self) -> None:
         """Flicker injection must cause frame-to-frame brightness changes."""

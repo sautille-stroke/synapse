@@ -380,8 +380,7 @@ class Conditions:
         for k, v in d.items():
             if k not in _VALID_FACTOR_KEYS:
                 raise ValueError(
-                    f"Unknown condition factor key '{k}'. "
-                    f"Valid keys: {sorted(_VALID_FACTOR_KEYS)}"
+                    f"Unknown condition factor key '{k}'. Valid keys: {sorted(_VALID_FACTOR_KEYS)}"
                 )
             if v not in _VALID_LEVELS:
                 raise ValueError(
@@ -418,9 +417,7 @@ class Conditions:
         """Return the aperture f-stop from F09_dof."""
         if self.F09_dof is None:
             return 0.0
-        level_data = RENDERING_CONDITION_FACTORS["F09_dof"]["levels"].get(
-            self.F09_dof.value, {}
-        )
+        level_data = RENDERING_CONDITION_FACTORS["F09_dof"]["levels"].get(self.F09_dof.value, {})
         return float(level_data.get("aperture", 0.0))
 
     def get_shutter_angle_deg(self) -> float:

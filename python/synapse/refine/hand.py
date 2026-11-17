@@ -210,11 +210,7 @@ class HandRefiner:
                     "model_weights must return RefinementResult",
                 )
 
-        has_real_priors = (
-            priors is not None
-            or depth_map is not None
-            or normal_map is not None
-        )
+        has_real_priors = priors is not None or depth_map is not None or normal_map is not None
 
         if self._strict and not has_real_priors:
             raise ContractValidationError(
@@ -230,7 +226,9 @@ class HandRefiner:
 
         if priors is None:
             priors = self.prepare_hard_priors(
-                roi, depth_map=depth_map, normal_map=normal_map,
+                roi,
+                depth_map=depth_map,
+                normal_map=normal_map,
             )
 
         hand_mask = priors["hand_mask"]
@@ -263,7 +261,7 @@ class HandRefiner:
             # Compute a simple depth-edge weight
             dy = np.diff(log_depth, axis=0, prepend=log_depth[:1, :])
             dx = np.diff(log_depth, axis=1, prepend=log_depth[:, :1])
-            edge = np.sqrt(dx ** 2 + dy ** 2)
+            edge = np.sqrt(dx**2 + dy**2)
             edge_weight = np.clip(edge * 5.0, 0.0, 1.0)[..., np.newaxis]
             # Gently sharpen by boosting local contrast at depth edges
             local_mean = np.mean(refined, axis=-1, keepdims=True)
@@ -274,10 +272,7 @@ class HandRefiner:
         # Normal-guided alignment: when real normals are supplied,
         # apply a subtle surface-normal-weighted correction to reduce
         # flat-shading artefacts at finger tips.
-        if (
-            has_real_priors
-            and cam_normals.shape[:2] == refined.shape[:2]
-        ):
+        if has_real_priors and cam_normals.shape[:2] == refined.shape[:2]:
             # Use the z-component (facing camera) as a proximity weight
             normal_z = cam_normals[..., 2:3].astype(np.float32)
             # Regions facing camera (z ≈ 1.0) get less correction;
@@ -397,19 +392,15 @@ def _label_connected_components(
                 stack = [(y, x)]
                 while stack:
                     cy, cx = stack.pop()
-                    if (
-                        0 <= cy < h
-                        and 0 <= cx < w
-                        and binary[cy, cx] == 1
-                        and labels[cy, cx] == 0
-                    ):
+                    if 0 <= cy < h and 0 <= cx < w and binary[cy, cx] == 1 and labels[cy, cx] == 0:
                         labels[cy, cx] = current_label
-                        stack.extend([
-                            (cy - 1, cx),
-                            (cy + 1, cx),
-                            (cy, cx - 1),
-                            (cy, cx + 1),
-                        ])
+                        stack.extend(
+                            [
+                                (cy - 1, cx),
+                                (cy + 1, cx),
+                                (cy, cx - 1),
+                                (cy, cx + 1),
+                            ]
+                        )
 
     return labels, current_label
-

@@ -188,10 +188,13 @@ class DatasetGenerator:
         val_video_path = out_dir / "video_val.mp4"
 
         video_writer = cv2.VideoWriter(str(video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
-        train_writer = cv2.VideoWriter(str(train_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
+        train_writer = cv2.VideoWriter(
+            str(train_video_path), fourcc, cfg.fps, (cfg.width, cfg.height)
+        )
         val_writer = cv2.VideoWriter(str(val_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
 
         from synapse.errors import BackendUnavailableError
+
         if not video_writer.isOpened() or not train_writer.isOpened() or not val_writer.isOpened():
             raise BackendUnavailableError(
                 "cv2.VideoWriter failed to open video codecs for writing",
@@ -204,17 +207,29 @@ class DatasetGenerator:
                 prev_cam = cameras[i - 1] if i > 0 else cameras[0]
 
                 render_res = self.rasterizer.render(
-                    model.vertices, model.faces, model.normals, cam,
+                    model.vertices,
+                    model.faces,
+                    model.normals,
+                    cam,
                     base_color=model.base_color_factor,
                     roughness=model.roughness_factor,
                     metallic=model.metallic_factor,
                     prev_camera=prev_cam,
                 )
                 # Derive mask and RGB from FGPPFrame channels
-                _mask = (render_res.cryptomatte_id > 0).astype(np.uint8) if render_res.cryptomatte_id is not None else np.zeros(render_res.depth.shape, dtype=np.uint8)
-                _radiance = render_res.direct_radiance.astype(np.float32) if render_res.direct_radiance is not None else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)
-                
+                _mask = (
+                    (render_res.cryptomatte_id > 0).astype(np.uint8)
+                    if render_res.cryptomatte_id is not None
+                    else np.zeros(render_res.depth.shape, dtype=np.uint8)
+                )
+                _radiance = (
+                    render_res.direct_radiance.astype(np.float32)
+                    if render_res.direct_radiance is not None
+                    else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)
+                )
+
                 from synapse.style.aces_color import acescg_to_linear_srgb, linear_to_srgb
+
                 _lin = acescg_to_linear_srgb(_radiance)
                 _srgb = linear_to_srgb(_lin)
                 _rgb = np.clip(np.round(_srgb * 255.0), 0, 255).astype(np.uint8)
@@ -273,14 +288,16 @@ class DatasetGenerator:
 
                 # Manifest record
                 pos = cam.position()
-                frame_records.append({
-                    "frame_index": i,
-                    "split": split_tag,
-                    "rgb_path": f"frames/{rgb_filename}",
-                    "fgpp_path": f"fgpp/{fgpp_filename}",
-                    "camera_position": pos.tolist(),
-                    "camera": cam.to_dict(),
-                })
+                frame_records.append(
+                    {
+                        "frame_index": i,
+                        "split": split_tag,
+                        "rgb_path": f"frames/{rgb_filename}",
+                        "fgpp_path": f"fgpp/{fgpp_filename}",
+                        "camera_position": pos.tolist(),
+                        "camera": cam.to_dict(),
+                    }
+                )
 
                 rgb_frames.append(_rgb)
                 depth_vis_frames.append(depth_rgb)
@@ -309,6 +326,7 @@ class DatasetGenerator:
         )
         try:
             from synapse.fgpp.io import export_fgpp
+
             export_fgpp(fgpp_seq, fgpp_dir)
         except (ImportError, OSError):
             fgpp_seq.save_metadata(fgpp_dir)

@@ -126,16 +126,16 @@ def generate_surgical_mask(
             mean_dy = float((mv_safe[..., 1] * combined).sum() / count)
             mag = math.sqrt(mean_dx * mean_dx + mean_dy * mean_dy)
 
-            kernel_len = int(min(
-                max_motion_kernel,
-                round(mag * motion_scale),
-            ))
+            kernel_len = int(
+                min(
+                    max_motion_kernel,
+                    round(mag * motion_scale),
+                )
+            )
 
             if kernel_len >= 2:
                 angle = math.atan2(mean_dy, mean_dx)
-                se_line = _directional_structuring_element(
-                    angle, kernel_len
-                )
+                se_line = _directional_structuring_element(angle, kernel_len)
                 combined = _binary_dilation(combined, se_line)
 
     # 4. Soft alpha with cosine feathering.
@@ -147,9 +147,7 @@ def generate_surgical_mask(
 
     # Feather zone: outside the hard mask but within feather_width.
     feather_mask = (~combined) & (dist <= feather_width)
-    alpha[feather_mask] = 0.5 * (
-        1.0 + np.cos(np.pi * dist[feather_mask] / feather_width)
-    )
+    alpha[feather_mask] = 0.5 * (1.0 + np.cos(np.pi * dist[feather_mask] / feather_width))
     alpha[~combined & ~feather_mask] = 0.0
     alpha[combined] = 1.0
 

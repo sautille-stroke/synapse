@@ -26,8 +26,9 @@ from synapse.pipeline.bench_runner import (
 # -------------------------------------------------------------------
 
 
-
 pytestmark = pytest.mark.slow
+
+
 class _BrokenAdapter(VideoModelAdapter):
     """Adapter that always raises for error-handling tests."""
 
@@ -57,6 +58,7 @@ class _BrokenAdapter(VideoModelAdapter):
 def _available_scenario_name() -> str:
     """Return the first available scenario name, or skip."""
     from synapse.bench.scenario import list_scenarios
+
     scenarios = list_scenarios()
     if not scenarios:
         pytest.skip("No built-in scenarios available")
@@ -93,19 +95,16 @@ class TestBenchPipelineRunner:
         # Metrics should be present and non-NaN
         assert len(report.metrics) > 0
         for key, val in report.metrics.items():
-            assert isinstance(val, float), (
-                f"Metric {key} is not float: {type(val)}"
-            )
-            assert not np.isnan(val), (
-                f"Metric {key} is NaN"
-            )
+            assert isinstance(val, float), f"Metric {key} is not float: {type(val)}"
+            assert not np.isnan(val), f"Metric {key} is NaN"
 
     def test_run_scenario_with_gate(self) -> None:
         """Run with gate_profile, verify gate_verdict is present."""
         name = _available_scenario_name()
         adapter = MockVideoAdapter()
         runner = BenchPipelineRunner(
-            adapter, gate_profile="track_b_video",
+            adapter,
+            gate_profile="track_b_video",
         )
 
         report = runner.run_scenario(
@@ -121,7 +120,8 @@ class TestBenchPipelineRunner:
         assert report.gate_verdict.profile == "track_b_video"
 
     def test_run_all_scenarios(
-        self, shared_rasterizer_cache: dict[str, Any],
+        self,
+        shared_rasterizer_cache: dict[str, Any],
     ) -> None:
         """Run all built-in scenarios, verify report completeness."""
         from synapse.bench.scenario import list_scenarios
@@ -134,7 +134,9 @@ class TestBenchPipelineRunner:
         runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
 
         reports = runner.run_all(
-            seed=42, resolution=(32, 32), num_frames=4,
+            seed=42,
+            resolution=(32, 32),
+            num_frames=4,
         )
 
         assert len(reports) == len(all_scenarios)
@@ -142,19 +144,16 @@ class TestBenchPipelineRunner:
         actual_names = {r.scenario_name for r in reports}
         assert actual_names == expected_names
         for r in reports:
-            assert r.error is None, (
-                f"Scenario '{r.scenario_name}' failed with error: {r.error}"
-            )
+            assert r.error is None, f"Scenario '{r.scenario_name}' failed with error: {r.error}"
 
     def test_humanoid_53_scenarios_no_error(
-        self, shared_rasterizer_cache: dict[str, Any],
+        self,
+        shared_rasterizer_cache: dict[str, Any],
     ) -> None:
         """Verify all humanoid_53 scenarios run with 0 asset resolution errors."""
         from synapse.bench.scenario import list_scenarios
 
-        humanoid_scenarios = [
-            s.id for s in list_scenarios() if s.asset.id == "humanoid_53"
-        ]
+        humanoid_scenarios = [s.id for s in list_scenarios() if s.asset.id == "humanoid_53"]
         assert len(humanoid_scenarios) >= 6, "Expected at least 6 humanoid_53 scenarios"
 
         adapter = MockVideoAdapter()
@@ -208,12 +207,8 @@ class TestBenchPipelineRunner:
             "total_ms",
         }
         for key in expected_keys:
-            assert key in report.timings, (
-                f"Missing timing key: {key}"
-            )
-            assert report.timings[key] > 0, (
-                f"Timing {key} should be > 0, got {report.timings[key]}"
-            )
+            assert key in report.timings, f"Missing timing key: {key}"
+            assert report.timings[key] > 0, f"Timing {key} should be > 0, got {report.timings[key]}"
 
     def test_error_handling(self) -> None:
         """Broken adapter: verify error is captured, not raised."""
@@ -236,7 +231,8 @@ class TestBenchPipelineRunner:
         name = _available_scenario_name()
         adapter = MockVideoAdapter()
         runner = BenchPipelineRunner(
-            adapter, gate_profile="track_b_video",
+            adapter,
+            gate_profile="track_b_video",
         )
 
         report = runner.run_scenario(
@@ -290,13 +286,18 @@ class TestEvaluateBundle:
         rng = np.random.Generator(np.random.PCG64(42))
         for i in range(5):
             frame = rng.integers(
-                50, 200, size=(32, 32, 3), dtype=np.uint8,
+                50,
+                200,
+                size=(32, 32, 3),
+                dtype=np.uint8,
             )
             np.save(str(frames_dir / f"frame_{i:04d}.npy"), frame)
 
         # Create GT depth [32, 32] float32
         depth = rng.uniform(
-            0.5, 5.0, size=(32, 32),
+            0.5,
+            5.0,
+            size=(32, 32),
         ).astype(np.float32)
         np.save(str(fgpp_dir / "depth.npy"), depth)
 
@@ -316,13 +317,15 @@ class TestEvaluateBundle:
         # Create metadata.json
         meta = {"scene_id": "test", "num_frames": 5}
         (bundle / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         return bundle
 
     def test_evaluate_creates_comparison_json(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Run evaluate_bundle and check comparison.json exists."""
         bundle = self._create_bundle(tmp_path)
@@ -342,19 +345,16 @@ class TestEvaluateBundle:
 
         assert len(result) > 0
         for key, val in result.items():
-            assert isinstance(val, float), (
-                f"Metric {key} is not float: {type(val)}"
-            )
-            assert not np.isnan(val), (
-                f"Metric {key} is NaN"
-            )
+            assert isinstance(val, float), f"Metric {key} is not float: {type(val)}"
+            assert not np.isnan(val), f"Metric {key} is NaN"
 
     def test_evaluate_empty_bundle(self, tmp_path: Path) -> None:
         """Evaluate an empty bundle without crashing."""
         bundle = tmp_path / "empty_bundle"
         bundle.mkdir(parents=True)
         (bundle / "metadata.json").write_text(
-            json.dumps({"scene_id": "empty"}), encoding="utf-8",
+            json.dumps({"scene_id": "empty"}),
+            encoding="utf-8",
         )
 
         result = evaluate_bundle(bundle, profile="track_b_video")
@@ -363,20 +363,24 @@ class TestEvaluateBundle:
         assert "gate_passed" in result
 
     def test_evaluate_with_different_profiles(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Evaluate with different gate profiles."""
         bundle = self._create_bundle(tmp_path)
 
         for profile in [
-            "track_b_video", "track_a_asset", "rsi_promotion",
+            "track_b_video",
+            "track_a_asset",
+            "rsi_promotion",
         ]:
             result = evaluate_bundle(bundle, profile=profile)
             assert isinstance(result, dict)
             assert "gate_passed" in result
 
     def test_evaluate_bundle_array_or_no_truth_value_error(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Verify presence of depth.npy in both locations does not trigger array truth value error.
 

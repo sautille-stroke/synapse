@@ -146,9 +146,7 @@ def test_laplacian_frequency_gradient_preservation(
 
     if ref_total > 0:
         ratio = result_total / ref_total
-        assert ratio >= 0.92, (
-            f"Gradient preservation ratio {ratio:.4f} < 0.92"
-        )
+        assert ratio >= 0.92, f"Gradient preservation ratio {ratio:.4f} < 0.92"
 
 
 # ---------------------------------------------------------------------------
@@ -194,11 +192,9 @@ def test_laplacian_frequency_boundary_delta_e(
     # (very rough, but sufficient for testing boundary smoothness)
     diff = result - ref
     boundary_diff = diff[boundary_mask]
-    delta_e_approx = float(np.sqrt(np.mean(boundary_diff ** 2))) * 100
+    delta_e_approx = float(np.sqrt(np.mean(boundary_diff**2))) * 100
 
-    assert delta_e_approx <= 1.5, (
-        f"Boundary ΔE₀₀ approximation {delta_e_approx:.3f} > 1.5"
-    )
+    assert delta_e_approx <= 1.5, f"Boundary ΔE₀₀ approximation {delta_e_approx:.3f} > 1.5"
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +288,9 @@ def test_uncertainty_fusion_weights_agreement(
 
     # Should be very close to 0.5
     np.testing.assert_allclose(
-        result, 0.5, atol=0.01,
+        result,
+        0.5,
+        atol=0.01,
         err_msg="Uncertainty fusion deviated from agreement value",
     )
 
@@ -313,9 +311,13 @@ def test_latent_timestep_switch_weight_normalization(
     # Two patches: one with strong structure, one with detail
     patch_struct = np.full((H, W, C), 0.4, dtype=np.float32)
     rng = np.random.default_rng(77)
-    patch_detail = patch_struct + rng.standard_normal(
-        (H, W, C),
-    ).astype(np.float32) * 0.1
+    patch_detail = (
+        patch_struct
+        + rng.standard_normal(
+            (H, W, C),
+        ).astype(np.float32)
+        * 0.1
+    )
     patch_detail = np.clip(patch_detail, 0.0, 1.0)
 
     # Asymmetric weights
@@ -339,6 +341,5 @@ def test_latent_timestep_switch_weight_normalization(
     low_bound = min(mean_struct, mean_detail) * 0.3
     high_bound = max(mean_struct, mean_detail) * 2.0
     assert low_bound <= mean_result <= high_bound, (
-        f"Result mean {mean_result:.4f} outside expected range "
-        f"[{low_bound:.4f}, {high_bound:.4f}]"
+        f"Result mean {mean_result:.4f} outside expected range [{low_bound:.4f}, {high_bound:.4f}]"
     )

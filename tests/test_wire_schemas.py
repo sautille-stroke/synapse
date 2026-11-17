@@ -126,9 +126,7 @@ class TestPixelTypeValidation:
         for axis in ("X", "Y", "Z"):
             channel = f"WorldNormal.{axis}"
             allowed = wire_guard._EXPECTED_PIXEL_TYPES[channel]
-            assert allowed == {PixelType.HALF}, (
-                f"{channel}: expected {{HALF}}, got {allowed}"
-            )
+            assert allowed == {PixelType.HALF}, f"{channel}: expected {{HALF}}, got {allowed}"
 
     def test_pixel_type_tampered_world_normal_x_caught(self) -> None:
         """A tampered copy where WorldNormal.X is FLOAT must be caught."""
@@ -233,7 +231,9 @@ class TestJsonSchemas:
         schema = json.loads(path.read_text(encoding="utf-8"))
         assert "pattern" in schema["properties"]["adapter_sha256"]
 
-    @pytest.mark.parametrize("filename", ["inspection.v1.0.schema.json", "inspection.v2.0.schema.json"])
+    @pytest.mark.parametrize(
+        "filename", ["inspection.v1.0.schema.json", "inspection.v2.0.schema.json"]
+    )
     def test_inspection_schema_defect_categories(self, filename: str) -> None:
         """Inspection schema has correct defect categories."""
         path = _SCHEMAS_DIR / filename
@@ -290,9 +290,7 @@ class TestSchemaCatchesMismatches:
 
     def test_invalid_json_caught(self, tmp_path: Path) -> None:
         """Invalid JSON in schema file is caught."""
-        (tmp_path / "job_bundle.v1.0.schema.json").write_text(
-            "{not valid json", encoding="utf-8"
-        )
+        (tmp_path / "job_bundle.v1.0.schema.json").write_text("{not valid json", encoding="utf-8")
         # Create the other 3 as empty to avoid missing-file noise
         for name in _SCHEMA_FILENAMES[1:]:
             (tmp_path / name).write_text("{}", encoding="utf-8")
@@ -319,9 +317,7 @@ class TestSchemaCatchesMismatches:
                 "tracestate": {"type": ["string", "null"]},
             },
         }
-        (tmp_path / "job_bundle.v1.0.schema.json").write_text(
-            json.dumps(schema), encoding="utf-8"
-        )
+        (tmp_path / "job_bundle.v1.0.schema.json").write_text(json.dumps(schema), encoding="utf-8")
         # Stub other files to avoid noise
         for name in _SCHEMA_FILENAMES[1:]:
             (tmp_path / name).write_text("{}", encoding="utf-8")
@@ -370,7 +366,9 @@ class TestCppHeaderExtendedValidation:
         temp_header.write_text(tampered_content, encoding="utf-8")
 
         errors = wire_guard._check_against_header(temp_header)
-        assert any("PixelType::Uint32 value mismatch" in e for e in errors), f"Expected error, got: {errors}"
+        assert any("PixelType::Uint32 value mismatch" in e for e in errors), (
+            f"Expected error, got: {errors}"
+        )
 
     def test_check_against_header_catches_tampered_channel_pixel_type(
         self, aether_header_path: Path, tmp_path: Path
@@ -385,7 +383,9 @@ class TestCppHeaderExtendedValidation:
         temp_header.write_text(tampered_content, encoding="utf-8")
 
         errors = wire_guard._check_against_header(temp_header)
-        assert any("Cryptomatte.ID" in e and "PixelType mismatch" in e for e in errors), f"Expected error, got: {errors}"
+        assert any("Cryptomatte.ID" in e and "PixelType mismatch" in e for e in errors), (
+            f"Expected error, got: {errors}"
+        )
 
     def test_check_against_header_catches_tampered_spatial_filtering(
         self, aether_header_path: Path, tmp_path: Path
@@ -400,7 +400,9 @@ class TestCppHeaderExtendedValidation:
         temp_header.write_text(tampered_content, encoding="utf-8")
 
         errors = wire_guard._check_against_header(temp_header)
-        assert any("Cryptomatte.ID" in e and "allow_spatial_filtering mismatch" in e for e in errors), f"Expected error, got: {errors}"
+        assert any(
+            "Cryptomatte.ID" in e and "allow_spatial_filtering mismatch" in e for e in errors
+        ), f"Expected error, got: {errors}"
 
     def test_check_json_schemas_catches_model_version_mismatch(self) -> None:
         """_check_json_schemas detects when instantiated Python model default version disagrees with schema."""

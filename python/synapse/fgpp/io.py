@@ -272,7 +272,9 @@ def _read_exr_frame(
                             UserWarning,
                             stacklevel=2,
                         )
-                        arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
+                        arr = (
+                            np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
+                        )
                     else:
                         arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w)
                     components.append(arr)
@@ -398,9 +400,7 @@ def import_fgpp(
             )
         )
 
-    return FGPPSequence(
-        frames=frames, fps=meta_seq.fps, scene_id=meta_seq.scene_id
-    )
+    return FGPPSequence(frames=frames, fps=meta_seq.fps, scene_id=meta_seq.scene_id)
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +536,7 @@ def resize_fgpp_frame(
     # Try to import cv2 for quality resize of float channels
     try:
         import cv2
+
         _has_cv2 = True
     except ImportError:
         _has_cv2 = False

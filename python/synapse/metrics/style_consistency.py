@@ -72,9 +72,7 @@ def border_ring_ciede2000(
         lab_comp = rgb_to_cielab(comp)
         lab_bg = rgb_to_cielab(bg)
     else:
-        raise ValueError(
-            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
-        )
+        raise ValueError(f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'.")
 
     de = ciede2000_delta_e(lab_comp, lab_bg)  # [H, W]
     return float(np.mean(de[ring]))
