@@ -314,7 +314,7 @@ def _verify_e4_real_gpu(
     try:
         from synapse.training import LoRATrainConfig, StatelessLoRATrainer
 
-        train_cfg = LoRATrainConfig(rank=16, alpha=16.0)
+        train_cfg = LoRATrainConfig(category="style", rank=16, alpha=16.0)
         trainer = StatelessLoRATrainer(train_cfg)
         toy_module = torch.nn.Linear(64, 64).to(device)
         trainer.inject_lora(toy_module, target_patterns=["weight"])
