@@ -76,6 +76,16 @@ function resolveShmFilePath(shmName) {
     return shmName;
   }
   const cleanName = shmName.replace(/^\/+/, '');
+
+  // Windows: check temp directory first (--shm-file writes here)
+  if (process.platform === 'win32') {
+    const winTmpPath = path.join(os.tmpdir(), cleanName);
+    if (fs.existsSync(winTmpPath)) {
+      return winTmpPath;
+    }
+    return winTmpPath;
+  }
+
   // Linux: /dev/shm is standard POSIX SHM backing store.
   const devShmPath = path.join('/dev/shm', cleanName);
   if (fs.existsSync(devShmPath)) {
@@ -148,6 +158,10 @@ class ShmFrameReader extends EventEmitter {
     this._lastFrameReady = 0;
     this._headerBuf = Buffer.alloc(HEADER_SIZE);
     this._headerBuf2 = Buffer.alloc(HEADER_SIZE);
+    // Pre-allocated pixel buffers for zero-copy frame reuse.
+    // Only reallocated when frame dimensions change.
+    this._pixelBuf = null;
+    this._pixelBufSize = 0;
   }
 
   /**
@@ -211,7 +225,12 @@ class ShmFrameReader extends EventEmitter {
         const slot = header1.writeIdx % header1.bufferCount;
         const pixelOffset = HEADER_SIZE + slot * frameBytes;
 
-        const pixels = Buffer.allocUnsafe(frameBytes);
+        // Reuse pixel buffer if size matches, otherwise reallocate
+        if (!this._pixelBuf || this._pixelBufSize !== frameBytes) {
+          this._pixelBuf = Buffer.allocUnsafe(frameBytes);
+          this._pixelBufSize = frameBytes;
+        }
+        const pixels = this._pixelBuf;
         const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
         if (pixRead < frameBytes) {
           return null;

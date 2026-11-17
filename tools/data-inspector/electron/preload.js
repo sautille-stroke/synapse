@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('inspectorAPI', {
   nativeSendCommand: (cmd) =>
     ipcRenderer.invoke('native-send-command', cmd),
 
+  // Safe screenshot export via main process dialog (never raw path from renderer).
+  exportScreenshot: () => ipcRenderer.invoke('export-screenshot'),
+
   // Event listeners (main -> renderer push). Returns an unsubscribe function.
   onNativeFrame: (cb) =>
     subscribeChannel('native-frame', (header, pixels) => cb(header, pixels)),
