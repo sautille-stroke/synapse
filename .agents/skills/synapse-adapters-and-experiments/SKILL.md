@@ -14,16 +14,15 @@ description: >-
 
 ### 1. 7 通道控制张量构建 (`WanAdapter.prepare_conditions`)
 `WanAdapter` 将 `FGPPSequence` 转换为形状为 **`[7, T, H, W]`** (`float32`) 的空间控制张量 `payload.control_tensor`：
-- **Channel 0**：对数归一化线性深度 $d_{\log} = \frac{\ln(\text{clip}(z, z_{\text{near}}, z_{\text{far}}) / z_{\text{near}})}{\ln(z_{\text{far}} / z_{\text{near}})} \in [0, 1]$
-- **Channels 1–3**：世界空间单位法线 $(n_x, n_y, n_z)$（源自 `FGPPFrame.world_normal`，即 FGPP `WorldNormal.XYZ`）
-- **Channels 4–5**：归一化帧间运动向量 $(v_x, v_y)$
-- **Channel 6**：前后帧重投影遮挡掩码（Disocclusion Mask）
+- **Channel 0**：对数归一化线性深度 $d_{\log} = \frac{\ln(\text{clip}(z, z_{\text{near}}, z_{\text{far}}) / z_{\text{near}})}{\ln(z_{\text{far}} / z_{\text{near}})} \in [0, 1]$（源自 `CameraLinearDepth.Z`）
+- **Channels 1–3**：相机空间单位法线 $(n_x, n_y, n_z) \in [-1, 1]$（源自 `WorldNormal.XYZ` 经当前帧 `view_matrix[:3, :3]` 旋转得到，背景无几何区域置为 `[0, 0, 1]`）
+- **Channels 4–6**：ACEScg 软拐点逆色调映射直接光照辐射度 $L_{\text{dir}} \in [0, 1]$（源自 `DirectRadiance.RGB` 经 `soft_knee_inverse_tonemap` 归一化）
 
 **E1 消融实验四档配置**：
-- `E1-A`：仅 RGB 关键帧（全零控制通道 `[]`）
-- `E1-B`：RGB + Log-Depth（激活通道 `[0]`）
-- `E1-C`：RGB + Log-Depth + Normal（激活通道 `[0, 1, 2, 3]`）
-- `E1-D`：完整 7 通道 FGPP 控制（激活通道 `[0, 1, 2, 3, 4, 5, 6]`）
+- `E1-A` (`E1-A_rgb_only`)：仅 RGB 关键帧（全零控制通道 `[]`）
+- `E1-B` (`E1-B_rgb_depth`)：RGB + 对数深度（激活通道 `[0]`）
+- `E1-C` (`E1-C_rgb_depth_normal`)：RGB + 对数深度 + 相机法线（激活通道 `[0, 1, 2, 3]`）
+- `E1-D` (`E1-D_full_7ch`)：完整 7 通道 FGPP 控制（激活通道 `[0, 1, 2, 3, 4, 5, 6]`，包含 ACEScg 直接光照）
 
 ### 2. 长时序因果滑窗与切镜重锚定 (`synapse.adapters.scheduler`)
 - **窗口划分 (`CausalWindowPlan`)**：默认 `window_frames=97`（$\tau=25$ 潜空间步）、`stride_frames=64`（$\Delta\tau=16$）、`overlap_frames=33`（$\tau_{\text{overlap}}=9$）；对于窗口 $k \ge 1$，自动注入前序 3 帧 `[stride*k - 3 .. stride*k - 1]` 作为 3D 因果 VAE 暖启动前缀。
@@ -76,7 +75,7 @@ python scripts/colab_runner.py --check-env
 python scripts/colab_runner.py \
   --bundle /content/synapse_colab_bundle_v1.tar.gz \
   --dataset-dir /content/datasets/synapse \
-  --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all/checkpoints \
+  --job-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all \
   --exp all
 ```
 

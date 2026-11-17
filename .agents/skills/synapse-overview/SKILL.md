@@ -14,11 +14,11 @@ description: >-
 
 | 协同方向 | 目标仓库 | 职责边界与交互契约 |
 | :--- | :--- | :--- |
-| **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style`) | Layer 0 C++20 定义 `FGPP` 15 标量 EXR 通道布局（`34 B/px`）、`metadata.json` (`fgpp.v1.0`) 与 `StyleProfile` (`2.0.0`)；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死。 |
+| **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp` 已落地，`@aether//style` 规划中) | Layer 0 C++20 已落地 `@aether//fgpp`（15 标量 EXR 通道与 `fgpp.v1.0` `metadata.json`）；`@aether//style` 尚在规划中（当前 `StyleProfile` Schema 由 `synapse.style` 镜像维护）；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死。 |
 | **实时光栅 FGPP 生产端 (Track B)** | `fulgur` (`//engine/fgpp_export`) | 导出 15 通道 OpenEXR 序列 + `metadata.json`；当开启 `--export-fgpp` 时，`SampleApp` 自动挂载 `PickingPass` (`Editor_PickingEntityId`, `R32_UINT`) 生成非零 `Cryptomatte.ID`。 |
-| **离线光追 FGPP + 真值生产端 (Track A)** | `caelum-core` (`caelum.camera.fgpp_exporter`) | 将路径追踪 `AOVBuffer` 与 `Camera` 导出为 15 通道 `frame_XXXXXX.exr` (`render_track = "offline_pathtraced"`) + 配对路径追踪 `beauty_XXXXXX.exr` Ground Truth。 |
+| **离线光追 FGPP + 真值生产端 (Track A)** | `caelum-core` (`caelum.camera.fgpp_exporter`) | 基于 C++20/CUDA 离线路径追踪引擎，将 `AOVBuffer` 与 `Camera` 导出为 15 通道 `frame_XXXXXX.exr` (`render_track = "offline_pathtraced"`) + 配对路径追踪 `beauty_XXXXXX.exr` Ground Truth；在无卡/CI 纯 CPU 环境由 `prepare_datasets.py` 软光栅生成 `synthetic_track_a_reference` 回退。 |
 | **全仓自包含原生算法与逆向重建核** | `synapse` (`csrc/geometry/` + `synapse.recon`) | 现代 C++20 原生几何算子（Bazel 委托 `@aether//geo` / `@aether//math`，含 `scripts/build_native.py` 纯 C++ 编译分发）与 Python Ground Truth Oracle（`synapse.recon.geometry`）100% 双轨互验；实现 2-流形/水密闭合校验、简并面剔除、共面 2D SAT + Möller–Trumbore 自穿插检测、4D 点追踪、6-DoF 运镜解算、足底防滑零位移 IK 与本征去光照（RFC 0060）。 |
-| **跨仓 FFI 与 DCC 精修委托** | `synapse.bridge` (`vg_bridge`, `foundary_client`, `hitl`) | 通过薄桥接层按需调用 `foundary`（TRELLIS/SAM2）或 `vg-core` 生产级重拓扑；内建 `MockVgBackend` 保证脱离外部 C++ 库时全套测试与门禁 100% 跑通；实现 15 分钟 HITL 熔断状态机。 |
+| **跨仓 FFI 与 DCC 精修委托** | `synapse.bridge` (`vg_bridge`, `foundary_client`, `hitl`) | 通过薄桥接层按需调用 `foundary`（`HttpFoundaryTransport` 对接 TRELLIS/SAM2）或通过 `SynapseReconBackend` 执行自包含原生几何逆向与重拓扑；内建 `MockVgBackend` 保证脱离外部环境时全套测试与门禁 100% 跑通；通过 `PersistentHitlLedger` 维护 15 分钟（900s）HITL 熔断账本。 |
 | **分布式调度与上层创作工坊** | `render-farm` / `foundary` / `grand-studio` | 服务端由 Go 承载；`synapse` 仅作为纯算法 SDK 与单次执行即退出的无状态 CLI Worker（遵循 Server-side Zero-Python 铁律）。 |
 
 ---
@@ -32,7 +32,7 @@ description: >-
 | `synapse.cli` | `_app`, `_bench`, `_fgpp`, `_generate`, `_inspect`, `_lora`, `_recon`, `_refine`, `_rsi`, `_worker`, `common` | 模块化解耦 CLI 领域分发核（11 个轻量模块），遵循确定性退出状态码与机器可读 `--json` 信封。 |
 | `synapse.recon` | `ReconPipeline`, `check_manifold`, `check_watertight`, `solve_camera_trajectory`, `solve_zero_slip_ik`, `delight` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK 与本征去光照。 |
 | `synapse.refine` | `RefinementROI`, `roi_tracker`, `tiled_executor`, `hand`, `face`, `MultiModelRefineFusion`, `ScalpelStitcher`, `LocalRefinementPipeline` | 局部解剖智能修正与多模型手术刀融合（RFC 0061）：MANO 手部先验、Canonical 肖像面部 ID 保持、5 大模型融合算子、512x512 瓦片与光流 Warp 手术刀逆向缝合。 |
-| `synapse.bridge` | `VgBackend`, `MockVgBackend`, `NativeVgBackend`, `FoundaryClient`, `HITLSession` | 跨库/跨容器薄桥接层，含 15 分钟（900s）HITL 熔断状态机与无外部依赖 Mock 回退。 |
+| `synapse.bridge` | `VgBackend`, `MockVgBackend`, `SynapseReconBackend`, `FoundaryTransport`, `HttpFoundaryTransport`, `PersistentHitlLedger` | 跨库/跨容器薄桥接层，含 15 分钟（900s）HITL 熔断账本（`PersistentHitlLedger`）与无外部依赖 Mock 回退。 |
 | `synapse.fgpp` | `FGPPFrame`, `FGPPSequence`, `CameraParams`, `export_fgpp`, `import_fgpp`, `sanitize_fgpp_frame`, `resize_fgpp_frame`, `validate_whitebox_coarseness_floor` | 15 通道 OpenEXR 读写、通道净化、分辨率缩放、PyTorch 张量桥接与白模底线门禁（$\ge 1500$ 顶点 + 铰接四肢）。 |
 | `synapse.adapters` | `WanAdapter`, `MockVideoAdapter`, `KlingAdapter`, `SeedanceAdapter`, `VeoAdapter`, `ConditionScheduler`, `CausalWindowPlan`, `DiscontinuityDetector`, `fuse_overlapping_latents` | 视频生成模型适配器、7 通道控制张量构建（`[7, T, H, W]`）、$W=97, S=64, \Delta=33$ 因果滑窗调度、潜空间保方差 Sigmoid 融合与切镜 $\kappa$ 重锚定。 |
 | `synapse.adapters.lora` | `LoRAManifest`, `MultiLoRAManager`, `LoRAPatchHook`, `patch_wan_adapter_with_lora` | `synapse.lora.v1.0` 安全清单（强制 `.safetensors` + SHA256 + 模块白名单）、Gram-Schmidt 正交化与 `Cryptomatte.ID` 空域注意力掩码门控。 |
@@ -44,7 +44,7 @@ description: >-
 | `synapse.pipeline` | `BenchPipelineRunner`, `JobBundleWorker`, `stages` (`inspect`, `rsi`, `training`) | 无状态单步容器执行核、离线评测串联器与解耦的 Stage 适配器。 |
 | `synapse.bench` | `list_scenarios`, `load_scenario`, `SoftwareRasterizer`, `generate_humanoid_proxy`, `export_inspection_bundle` | `Synapse-Bench` 30 个标准评测场景（T1–T5 五大 Tier）、纯 NumPy 软光栅真值生成器与 HTML 诊断报告。 |
 | `synapse.metrics` | `psnr_db`, `ssim`, `ciede2000`, `lpips`, `temporal_warp_error`, `flicker_score`, `chamfer_mm`, `f_score_1mm`, `evaluate_metrics_gate` | 图像画质（`image_quality.py`）、色度风格、时序一致性与 3D 几何往返全维度量化评测指标及三级门禁档位（含 `METRIC_ALIASES`）。 |
-| `tools/data-inspector` | Electron + React + Three.js + Native C++ SHM | 训练数据分片、15 通道 EXR 与 3D 质检包可视化检查器（基于 `@aether//pal:shm`）。 |
+| `tools/data-inspector` | Electron 33 + React + Three.js + Native C++20 SHM | 训练数据分片、15 通道 EXR 与 3D 质检包桌面端可视化检查器；原生 C++ 层（`native/`，基于 `@aether//pal:shm` 或跨平台 `--shm-file` 映射与 ARM64 Seqlock 栅栏）通过 Bazel 测试，Node 端通过 `test-bundle-loading.js` SHM 端到端校验。 |
 
 ---
 
@@ -53,7 +53,7 @@ description: >-
 | 环境节点 | 角色定位 | 标准执行命令 |
 | :--- | :--- | :--- |
 | **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (Tier-1 <= 30s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -n auto -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy python/synapse && /root/venv-synapse/bin/python tools/wire_guard.py --check && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd csrc/geometry && bazel test //... --config=linux)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py` |
-| **Google Colab / win-dev (P1 GPU)** | **重型视频大模型 (Wan 2.1) 推理与 LoRA 微调实验**<br>详见 `workenv/google-colab/` 一站式环境套件（含 `setup_colab.sh`、`models.json`、`io_spec.md` 及 Notebook），使用 `ubuntu24` 导出的 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `bash workenv/google-colab/setup_colab.sh && python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all/checkpoints --exp all` |
+| **Google Colab / win-dev (P1 GPU)** | **重型视频大模型 (Wan 2.1) 推理与 LoRA 微调实验**<br>详见 `workenv/google-colab/` 一站式环境套件（含 `setup_colab.sh`、`models.json`、`io_spec.md` 及 Notebook），使用 `ubuntu24` 导出的 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `bash workenv/google-colab/setup_colab.sh && python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --job-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all --exp all` |
 | **macOS 本地开发机** | **代码主控与 Git Worktree 管理**<br>严禁在本地拉起视频大模型或跑全量重型套件 | `pytest tests/test_bench.py -k "test_scenario_create" -v` |
 
 ---

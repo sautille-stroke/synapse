@@ -395,6 +395,11 @@ flowchart LR
 | **Wave 30** | `PR-121` (`opt`/`build_native`/$O(d)$) ∥ (`PR-122` → `PR-123`) ∥ `PR-124` (`Bench`/`Eval`/RSI) ∥ `PR-125` (`Datasets`/`Colab`/`Assets`) | **M31 收官**：Bazel `--config=opt`、GLB 防堆越界、ARM64 Seqlock 与 macOS/Win 三端 SHM、`Bench` 去假常数与 RSI 防绕过、`prepare_datasets` 免 `SIGSEGV` 与真 GPU Colab |
 | **Wave 31** | (`PR-126` ∥ `PR-127` ∥ `PR-128`) → `PR-129` | **Horizon 8 终局封板**：单进程快测 `<= 20s` / 并行慢测 `<= 45s`、真重构 `clean_recon`、Skills/Colab 对齐、跨仓黄金契约联调套件与 12 项反作弊硬门禁全绿封板 `v3.6` |
 
+> [!NOTE]
+> **波次排程与依赖管理说明**：
+> 1. **波次与 PR 编号说明**：Wave 24–27 对应 Horizon 7（M25–M28，涵盖 PR-93 ~ PR-110；PR-92 与 PR-111 分别在 Horizon 6 与 Horizon 7 规划中吸收合并至相邻 PR，无逻辑遗漏）；Wave 28–31 对应 Horizon 8（M29–M32，涵盖 PR-112 ~ PR-129）。
+> 2. **`uv.lock` 纳管策略**：本仓依赖版本统一由 `pyproject.toml` 标准声明，保持跨平台（Linux x86_64 / ARM64, macOS, Windows）灵活性；本地开发若使用 `uv` 产生的 `uv.lock` 属于本地临时文件，不纳入 Git 强锁版本追踪，以避免与下游生态（`foundary` 容器、Colab 预装环境）产生版本锁定冲突。
+
 ---
 
 ## 4. 全量 129-PR 落地追踪与“防静默失败三问”验收总表

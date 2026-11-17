@@ -33,7 +33,7 @@
 
 | 环境节点 | 连接方式 | 角色定位与使用规范 |
 | :--- | :--- | :--- |
-| **Ubuntu 云端主力机 (`ubuntu24`)** | `ssh ubuntu24` | **P0 首选全量测试与 CI 验证环境**。全套 `pytest`、`mypy`、`ruff`、OpenEXR 读写压测及 `MockVideoAdapter` 端到端回归**默认全部在 `ubuntu24` 上执行** |
+| **Ubuntu 云端主力机 (`ubuntu24`)** | `ssh ubuntu24` | **P0 首选全量测试与 CI 验证环境**。全套 `pytest`（1,397 用例：1,263 fast + 134 slow）、`mypy`、`ruff`、OpenEXR 读写压测及 `MockVideoAdapter` 端到端回归**默认全部在 `ubuntu24` 上执行**。<br>• **Bazel 共享缓存**：使用 `/var/cache/bazel`（`startup --output_user_root=/var/cache/bazel`），禁止各自在 `~/.cache` 重复构建；<br>• **磁盘配额守卫**：构建与压测前预检 `df -h /`，确保存储余量 $\ge 11\sim 12\text{ GB}$；<br>• **Worktree 与 aether 依赖**：原生 C++ 构建依赖同级 `../aether`，在隔离 worktree 操作时需保证同级符号链接就绪，严禁在仓内创建嵌套工作区。 |
 | **Windows GPU 节点 (`win-dev`)** / **`foundary` 容器** | `ssh win-dev` / 算力集群 | **GPU 专有验证环境**。仅在验证真实 `Wan 2.1` / `SAM2` CUDA 推理或跨平台引擎（`fulgur`/`caelum-core`）联调时调用 |
 | **macOS 本地开发机** | 本机 (`/Volumes/work/dervgen/synapse`) | **主控代码与文档编辑环境**。仅限单文件极速轻量语法/单测冒烟，**严禁在本地 Mac 拉起数十 GB 视频大模型或跑全量重型基准套件** |
 
@@ -46,7 +46,7 @@ ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts
 # 完整环境规范见 workenv/google-colab/README.md 及 architecture/google-colab-and-drive-standards.md
 bash workenv/google-colab/setup_colab.sh
 # 运行全量 E1–E4 实验（含 Wan 空间控制、ACEScg 风格、97f 因果滑窗调度与切镜重锚定、Multi-LoRA）
-python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --checkpoint-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4/checkpoints --exp all
+python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --job-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4 --exp all
 
 # 本地极轻量单点冒烟（仅限纯 CPU 毫秒级单测）
 pytest tests/test_bench.py -k "test_scenario_create" -v
@@ -69,6 +69,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
      - `40`：触发 HITL 15 分钟超时工程熔断或质量门禁未达标；
      - `50`：命令或 Stage 尚未实现（严禁未实现桩代码以 `0` 退出）；
    - 报错 JSON 必须包含 `"agent_fix_hint"` 字段，给出可直接执行的修复动作建议。
+5. **`uv.lock` 本地解耦策略**：本仓依赖版本统一由 `pyproject.toml` 标准声明，保持跨平台（Linux x86_64 / ARM64, macOS, Windows）灵活性；本地开发若使用 `uv` 产生的 `uv.lock` 属于本地临时文件，不纳入 Git 强锁版本追踪，以避免与下游生态（`foundary` 容器、Colab 预装环境）产生版本锁定冲突。
 
 ---
 
