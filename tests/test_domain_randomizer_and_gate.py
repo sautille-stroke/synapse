@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
 from synapse.bench.domain_randomizer import (
     FACTOR_KEYS,

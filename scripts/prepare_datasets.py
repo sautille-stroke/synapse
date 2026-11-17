@@ -44,11 +44,9 @@ def _export_software_rasterizer_fallback(
 
     Provenance is honestly marked as ``software_rasterizer_fallback``.
     """
-    from synapse.bench.rasterizer import SoftwareRasterizer
     from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
     from synapse.fgpp.io import export_fgpp
 
-    rasterizer = SoftwareRasterizer(width=width, height=height)
     frames: list[FGPPFrame] = []
     # Generate a simple rotating camera around origin
     for i in range(num_frames):

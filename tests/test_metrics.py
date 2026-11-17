@@ -270,8 +270,8 @@ class TestTemporal:
 
     def test_compute_fvd_from_videos_proxy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """compute_fvd_from_videos with allow_statistical_proxy returns FVDResult."""
-        from synapse.metrics import compute_fvd_from_videos
         import synapse.metrics.temporal as temporal_mod
+        from synapse.metrics import compute_fvd_from_videos
 
         monkeypatch.setattr(temporal_mod, "_build_r3d18_extractor", lambda **kwargs: None)
 

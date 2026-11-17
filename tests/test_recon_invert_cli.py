@@ -41,7 +41,7 @@ def _make_parallax_video(num_frames: int = 4, h: int = 64, w: int = 64) -> np.nd
         t = -R @ cam_pos
         img = np.full((h, w, 3), 20, dtype=np.uint8)
         pts_cam = (R @ pts.T).T + t
-        for p, c in zip(pts_cam, colors):
+        for p, c in zip(pts_cam, colors, strict=False):
             if p[2] > 0.1:
                 u = int(cx + fx * p[0] / p[2])
                 v = int(cy + fy * p[1] / p[2])
