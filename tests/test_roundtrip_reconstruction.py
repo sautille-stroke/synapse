@@ -35,6 +35,8 @@ from synapse.metrics.roundtrip import (
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # Synthetic data generators
 # ---------------------------------------------------------------------------

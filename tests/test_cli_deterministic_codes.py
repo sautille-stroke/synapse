@@ -413,6 +413,7 @@ class TestCliJsonHardening:
         payload = json.loads(out)
         assert payload["exit_code"] in (0, 20)
 
+    @pytest.mark.slow
     def test_bench_export_fgpp_generates_exr(self, tmp_path: Path) -> None:
         """'synapse bench export-fgpp' should write valid 15-channel EXR files."""
         out_dir = tmp_path / "bench_export"
@@ -431,6 +432,7 @@ class TestCliJsonHardening:
         assert (out_dir / "frame_000000.exr").is_file()
         assert (out_dir / "frame_000001.exr").is_file()
 
+    @pytest.mark.slow
     def test_fgpp_inspect_export_vis(self, tmp_path: Path) -> None:
         """'synapse fgpp inspect --export-vis' should render visualization images."""
         out_dir = tmp_path / "bench_export_vis"

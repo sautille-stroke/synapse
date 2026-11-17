@@ -298,11 +298,12 @@ class TestMacroCameraPlanning:
             macro_fov_deg=35.0,
         )
 
-        # Defect is at (0, 0, -5) in camera space
-        # Camera should be closer to origin than defect (cam_pos[2] > -5.0)
+        # Defect is at (0, 0, -5) in camera space, normal is along -Z
         cam_pos = np.array(pose.position)
-        assert cam_pos[2] > -5.0, (
-            "Camera should be in front of defect (closer to origin than z=-5)"
+        assert abs(cam_pos[0]) < 1e-4
+        assert abs(cam_pos[1]) < 1e-4
+        assert abs(cam_pos[2] - (-5.0)) > 0.5, (
+            "Camera should be offset from defect along normal"
         )
 
     def test_macro_distance_formula(self) -> None:

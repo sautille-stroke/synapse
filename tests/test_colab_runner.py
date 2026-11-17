@@ -99,6 +99,7 @@ def test_detect_gpu_profile_schema() -> None:
     assert isinstance(profile["recommended_wan_model"], str)
 
 
+@pytest.mark.slow
 def test_colab_runner_check_env_cli() -> None:
     """Verify colab_runner.py --check-env outputs valid JSON and exits with 0."""
     res = subprocess.run(
