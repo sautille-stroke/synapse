@@ -231,6 +231,8 @@ class TestWanAdapterLoRAGenerate:
         mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
 
+
+
     def test_wan_adapter_generate_skips_lora_without_model(self) -> None:
         """When ``model`` is None, LoRA methods must NOT be called."""
         manifests = _make_lora_manifests()
@@ -256,3 +258,56 @@ class TestWanAdapterLoRAGenerate:
         mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
         mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
+
+    def test_wan_adapter_manage_spatial_hooks_category_routing(self) -> None:
+        """PR-116: identity LoRA routes to M_fg and style LoRA routes to ~M_fg."""
+        torch = pytest.importorskip("torch")
+        from synapse.adapters.lora.manager import MultiLoRAManager
+        from synapse.adapters.lora.manifest import LoRAManifest
+
+        class ToyModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.spatial = torch.nn.Linear(8, 8, bias=False)
+                self.cross = torch.nn.Linear(8, 8, bias=False)
+
+        model = ToyModel()
+
+        id_manifest = LoRAManifest(
+            name="char-id",
+            category="identity",
+            rank=4,
+            alpha=4.0,
+            adapter_path="id.safetensors",
+            adapter_sha256="a" * 64,
+            target_modules=["spatial"],
+        )
+        style_manifest = LoRAManifest(
+            name="art-style",
+            category="style",
+            rank=4,
+            alpha=4.0,
+            adapter_path="style.safetensors",
+            adapter_sha256="b" * 64,
+            target_modules=["cross"],
+        )
+
+        manager = MultiLoRAManager(
+            lora_bundles=[(id_manifest, 1.0), (style_manifest, 1.0)],
+            test_synthetic=True,
+        )
+
+        crypt = np.array([
+            [[1, 0], [0, 1]],
+            [[1, 1], [0, 0]],
+        ], dtype=np.uint32)  # [T=2, H=2, W=2]
+
+        with manager.manage_spatial_hooks(model, cryptomatte_ids=crypt, target_entity_ids={1}):
+            assert len(model.spatial._forward_hooks) > 0
+            assert len(model.cross._forward_hooks) > 0
+
+        # Exited context cleanly: hooks must be detached
+        assert len(model.spatial._forward_hooks) == 0
+        assert len(model.cross._forward_hooks) == 0
+
+

@@ -44,16 +44,23 @@ def handle_anatomical_refine(
 
     params = dict(manifest.params)
 
+    from synapse.bridge.hitl import PersistentHitlLedger
+    from synapse.errors import evaluate_hitl_circuit_breaker
+
     max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
     elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
-    if elapsed_seconds > max_elapsed_seconds:
-        from synapse.errors import evaluate_hitl_circuit_breaker
+    ledger_path = params.get("hitl_ledger_path")
+    ledger = PersistentHitlLedger(ledger_path)
+    group_id = str(params.get("intent_group_id") or manifest.job_id or "default")
+    accumulated = ledger.get_accumulated_elapsed(group_id)
+    total_elapsed = accumulated + elapsed_seconds
 
-        evaluate_hitl_circuit_breaker(
-            elapsed_seconds,
-            domain="video_shot",
-            max_seconds=max_elapsed_seconds,
-        )
+    # Unconditionally evaluate circuit breaker
+    evaluate_hitl_circuit_breaker(
+        total_elapsed,
+        domain="video_shot",
+        max_seconds=max_elapsed_seconds,
+    )
 
     # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")

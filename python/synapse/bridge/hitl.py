@@ -15,6 +15,7 @@ domain-specific fallback recommendation.
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from typing import Any, Literal
 
 from synapse.errors import (
     CircuitBreakerError,
+    ContractValidationError,
     evaluate_hitl_circuit_breaker,
 )
 
@@ -128,7 +130,7 @@ class PersistentHitlLedger:
         if ledger_path is None:
             ledger_path = os.environ.get(
                 "SYNAPSE_HITL_LEDGER_PATH",
-                str(Path(tempfile.gettempdir()) / "synapse_hitl_ledger.json"),
+                str(Path.home() / ".cache" / "synapse" / "hitl_ledger.json"),
             )
         self.ledger_path = Path(ledger_path)
 
@@ -151,6 +153,15 @@ class PersistentHitlLedger:
                 data = {}
         return data, f
 
+    def _unlock(self, lock_handle: Any) -> None:
+        """Release lock without writing data."""
+        try:
+            import fcntl
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError):
+            pass
+        lock_handle.close()
+
     def _unlock_and_write(self, data: dict[str, Any], lock_handle: Any) -> None:
         """Write state via atomic replace and release lock."""
         try:
@@ -163,12 +174,7 @@ class PersistentHitlLedger:
                 json.dump(data, tf, indent=2)
             os.replace(tmp_path, self.ledger_path)
         finally:
-            try:
-                import fcntl
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
-            lock_handle.close()
+            self._unlock(lock_handle)
 
     def record_action(
         self,
@@ -177,10 +183,17 @@ class PersistentHitlLedger:
         domain: Literal["video_shot", "asset_3d"] = "video_shot",
     ) -> float:
         """Record a CommandIR action and verify circuit breaker timeout."""
+        elapsed = float(record.elapsed_seconds)
+        if not math.isfinite(elapsed) or elapsed < 0.0:
+            raise ContractValidationError(
+                f"Invalid elapsed_seconds: {record.elapsed_seconds}. Must be finite and non-negative.",
+                agent_fix_hint="Ensure elapsed_seconds >= 0.0 and is finite.",
+            )
+
         data, handle = self._lock_and_read()
         group_id = record.intent_group_id
         entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
-        entry["elapsed_seconds"] += float(record.elapsed_seconds)
+        entry["elapsed_seconds"] += elapsed
         entry["records"].append({
             "intent": record.intent,
             "elapsed_seconds": record.elapsed_seconds,
@@ -199,4 +212,4 @@ class PersistentHitlLedger:
         try:
             return float(data.get(group_id, {}).get("elapsed_seconds", 0.0))
         finally:
-            self._unlock_and_write(data, handle)
+            self._unlock(handle)

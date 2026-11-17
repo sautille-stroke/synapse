@@ -9,6 +9,8 @@ Tests cover:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from synapse.adapters.base import (
@@ -541,3 +543,64 @@ class TestDegenerateOutputValidation:
         conditions = adapter.prepare_conditions(seq, config)
         result = adapter.generate(conditions, config)
         assert result.frames_srgb_u8.shape == (8, 16, 16, 3)
+
+    def test_http_cloud_transport_rejects_ssrf(self) -> None:
+        """HttpCloudTransport rejects unsafe URLs."""
+        from synapse.adapters.cloud import HttpCloudTransport
+        from synapse.errors import ContractValidationError
+
+        with pytest.raises(ContractValidationError):
+            HttpCloudTransport("runway", "token", endpoint_url="file:///etc/passwd")
+
+        with pytest.raises(ContractValidationError):
+            HttpCloudTransport("runway", "token", endpoint_url="http://169.254.169.254/meta")
+
+    def test_http_cloud_transport_submit_segment_serializes_payload(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PR-116: submit_segment serializes anchors in b64, text_prompt, and guides."""
+        import base64
+        import json
+        from unittest.mock import MagicMock
+
+        from synapse.adapters.cloud import DegradedSegment, HttpCloudTransport
+
+        transport = HttpCloudTransport("runway", "test_tok", endpoint_url="http://localhost:9000/gen")
+
+        seg = DegradedSegment(
+            start_frame=0,
+            end_frame=3,
+            first_anchor_png=b"\x89PNG\r\n\x1a\nfirst",
+            last_anchor_png=b"\x89PNG\r\n\x1a\nlast",
+            camera_trajectory=np.eye(4)[np.newaxis, ...],
+            camera_motion_enum="PAN_LEFT",
+            motion_intensity=2.0,
+            depth_guide=np.ones((4, 8, 8), dtype=np.float32),
+            normal_edge_guide=np.zeros((4, 8, 8), dtype=np.float32),
+        )
+        cfg = VideoGenerationConfig(
+            seed=42, width=8, height=8, num_frames=4,
+            extra={"text_prompt": "a beautiful forest"},
+        )
+
+        captured_body: dict[str, Any] = {}
+
+        def mock_open(req: Any, timeout: float = 30.0) -> Any:
+            nonlocal captured_body
+            captured_body = json.loads(req.data.decode("utf-8"))
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"frames": np.zeros((4, 8, 8, 3), dtype=np.uint8).tolist()}).encode("utf-8")
+            resp.__enter__.return_value = resp
+            resp.__exit__.return_value = None
+            return resp
+
+        monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", mock_open)
+
+        out = transport.submit_segment(seg, cfg)
+        assert out.shape == (4, 8, 8, 3)
+        assert captured_body["first_anchor_png"] == base64.b64encode(b"\x89PNG\r\n\x1a\nfirst").decode("ascii")
+        assert captured_body["last_anchor_png"] == base64.b64encode(b"\x89PNG\r\n\x1a\nlast").decode("ascii")
+        assert captured_body["text_prompt"] == "a beautiful forest"
+        assert captured_body["depth_guide"] is not None
+        assert captured_body["normal_edge_guide"] is not None
+

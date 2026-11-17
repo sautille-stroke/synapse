@@ -47,7 +47,12 @@ def get_recon_backend(mock: bool = False) -> VgBackend:
             return _RECON_BACKEND_FACTORY(mock=mock)
         except TypeError:
             return _RECON_BACKEND_FACTORY()
-    return MockVgBackend()
+    from synapse.errors import BackendUnavailableError
+
+    raise BackendUnavailableError(
+        "No production 3D reconstruction backend registered. Import 'synapse.recon' or enable mock mode.",
+        agent_fix_hint="Import synapse.recon or pass mock=True to use MockVgBackend.",
+    )
 
 
 __all__ = [
@@ -98,7 +103,12 @@ def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBack
     if _RECON_BACKEND_FACTORY is not None:
         return _RECON_BACKEND_FACTORY()
 
-    return MockVgBackend()
+    from synapse.errors import BackendUnavailableError
+
+    raise BackendUnavailableError(
+        "No production 3D reconstruction backend registered. Import 'synapse.recon' or enable mock mode.",
+        agent_fix_hint="Import synapse.recon or pass mock=True to use MockVgBackend.",
+    )
 
 
 # -----------------------------------------------------------------------

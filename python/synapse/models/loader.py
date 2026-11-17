@@ -11,20 +11,22 @@ import numpy as np
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.models.asset import ModelAsset
 
+
 # Potential locations where sample/benchmark models reside
-_MODELS_ENV = os.environ.get("SYNAPSE_MODELS_DIR")
-_ASSET_SEARCH_PATHS: list[Path] = [
-    *([Path(_MODELS_ENV)] if _MODELS_ENV else []),
-    Path(__file__).resolve().parents[3] / "data" / "models",
-    Path("../fulgur/assets/models"),
-]
+def _get_asset_search_paths() -> list[Path]:
+    models_env = os.environ.get("SYNAPSE_MODELS_DIR")
+    return [
+        *([Path(models_env)] if models_env else []),
+        Path(__file__).resolve().parents[3] / "data" / "models",
+        Path("../fulgur/assets/models"),
+    ]
 
 
 def _find_asset_file(filename: str) -> Path | None:
     """Search for an asset filename in standard locations."""
     if not filename or not filename.strip():
         return None
-    for base in _ASSET_SEARCH_PATHS:
+    for base in _get_asset_search_paths():
         if not str(base) or not base.exists():
             continue
         p = base / filename
@@ -227,7 +229,15 @@ def load_model(
             )
 
     # Load via trimesh
-    import trimesh  # lazy: heavy native dependency
+    try:
+        import trimesh  # lazy: heavy native dependency
+    except ImportError as exc:
+        from synapse.errors import BackendUnavailableError
+
+        raise BackendUnavailableError(
+            f"trimesh is required to load 3D mesh files: {exc}",
+            agent_fix_hint="Install trimesh via 'pip install trimesh'",
+        ) from exc
 
     loaded = trimesh.load(str(path))
     if isinstance(loaded, trimesh.Scene):

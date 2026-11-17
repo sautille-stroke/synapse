@@ -228,33 +228,41 @@ class MockVideoAdapter(VideoModelAdapter):
         """
         rng = np.random.Generator(np.random.PCG64(config.seed))
 
-        # Determine output dimensions
+        # Determine output dimensions — config.num_frames is authoritative
+        n_frames = config.num_frames
         if conditions.base_color is not None:
-            n_frames, h, w, _ = conditions.base_color.shape
+            h, w = conditions.base_color.shape[1], conditions.base_color.shape[2]
         elif conditions.depth is not None:
-            n_frames, h, w = conditions.depth.shape
+            h, w = conditions.depth.shape[1], conditions.depth.shape[2]
         else:
-            n_frames = config.num_frames
             h, w = config.height, config.width
 
         # --- Step 1-2: Lambertian diffuse shading --------------------------
         frames_linear = np.zeros((n_frames, h, w, 3), dtype=np.float32)
 
         if conditions.world_normal is not None:
-            normals = conditions.world_normal  # [T, H, W, 3]
+            available_t = conditions.world_normal.shape[0]
+            slice_t = min(n_frames, available_t)
+            normals = conditions.world_normal[:slice_t]  # [T, H, W, 3]
             # Lambertian N·L clamped to [0, 1]
             ndotl = np.einsum("thwc,c->thw", normals, _FIXED_LIGHT_DIR)
             ndotl = np.clip(ndotl, 0.0, 1.0)
             # Ambient + diffuse
             shading = 0.15 + 0.85 * ndotl  # [T, H, W]
-            frames_linear = shading[..., np.newaxis] * np.ones(
+            frames_linear[:slice_t] = shading[..., np.newaxis] * np.ones(
                 (1, 1, 1, 3), dtype=np.float32
             )
+            if slice_t < n_frames and slice_t > 0:
+                frames_linear[slice_t:] = frames_linear[slice_t - 1 : slice_t]
         else:
             frames_linear[:] = 0.5
 
         if conditions.base_color is not None:
-            frames_linear *= conditions.base_color
+            available_t = conditions.base_color.shape[0]
+            slice_t = min(n_frames, available_t)
+            frames_linear[:slice_t] *= conditions.base_color[:slice_t]
+            if slice_t < n_frames and slice_t > 0:
+                frames_linear[slice_t:] *= conditions.base_color[slice_t - 1 : slice_t]
 
         # --- Step 3: Film grain noise --------------------------------------
         grain = rng.normal(

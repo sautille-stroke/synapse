@@ -36,7 +36,12 @@ class LoRAPatchHook:
         self._delta = lora_delta
         self._handle: Any | None = None
 
-    def attach(self, module: Any, mask: Any | None = None) -> None:
+    def attach(
+        self,
+        module: Any,
+        mask: Any | None = None,
+        module_name: str = "",
+    ) -> None:
         """Register a forward hook on *module*.
 
         The delta tensor is dynamically cast to the target module's
@@ -48,6 +53,8 @@ class LoRAPatchHook:
             mask: Optional spatial mask tensor broadcastable to the
                 module output.  Values in ``[0, 1]`` scale the LoRA
                 contribution per token.
+            module_name: Name of the module within the model hierarchy,
+                used to skip text cross-attention layers.
         """
         import torch  # lazy
 
@@ -65,6 +72,23 @@ class LoRAPatchHook:
         target_device = module.weight.device
         delta = delta.to(device=target_device, dtype=target_dtype)
 
+        # Skip spatial masking for text cross-attention layers (e.g. cross_attn.to_k/to_v)
+        # where token dimensions reflect text sequences rather than video spatial tokens.
+        if mask is not None and any(
+            sub in module_name for sub in ("cross_attn.to_k", "cross_attn.to_v")
+        ):
+            mask = None
+
+        # Pre-cache mask to target device and dtype once at attach time
+        _cached_mask: Any | None = None
+        if mask is not None:
+            if not isinstance(mask, torch.Tensor):
+                _cached_mask = torch.tensor(
+                    mask, dtype=target_dtype, device=target_device,
+                )
+            else:
+                _cached_mask = mask.to(device=target_device, dtype=target_dtype)
+
         # Capture the cast delta in the closure
         _delta_cast = delta
 
@@ -81,18 +105,38 @@ class LoRAPatchHook:
             lora_contrib = inp_cast @ _delta_cast.T
             # Cast contribution back to output dtype
             lora_contrib = lora_contrib.to(dtype=output.dtype)
-            if mask is not None:
-                m = mask
-                if not isinstance(m, torch.Tensor):
-                    m = torch.tensor(
-                        m, dtype=output.dtype, device=output.device,
-                    )
-                else:
-                    m = m.to(dtype=output.dtype, device=output.device)
 
+            if _cached_mask is not None:
+                m = _cached_mask
                 # Robust 3D DiT token reshaping [B, L, D]
                 if lora_contrib.dim() == 3:
                     b_dim, l_dim, _ = lora_contrib.shape
+                    # Check if m is a 3D video-space mask [T, Hm, Wm]
+                    if m.dim() == 3:
+                        t_m, h_m, w_m = m.shape
+                        tau = (t_m - 1) // 4 + 1
+                        h16 = max(h_m // 2 if (h_m > 1 and h_m % 2 == 0) else h_m, 1)
+                        w16 = max(w_m // 2 if (w_m > 1 and w_m % 2 == 0) else w_m, 1)
+                        expected_l = tau * h16 * w16
+                        if expected_l == l_dim:
+                            m_5d = m.unsqueeze(0).unsqueeze(0)
+                            m = torch.nn.functional.adaptive_avg_pool3d(
+                                m_5d, (tau, h16, w16)
+                            ).reshape(1, l_dim, 1)
+                        elif t_m * h_m * w_m == l_dim:
+                            m = m.reshape(1, l_dim, 1)
+                        elif l_dim > expected_l:
+                            # Register tokens present in front of visual tokens
+                            n_reg = l_dim - expected_l
+                            m_5d = m.unsqueeze(0).unsqueeze(0)
+                            m_p = torch.nn.functional.adaptive_avg_pool3d(
+                                m_5d, (tau, h16, w16)
+                            ).reshape(1, expected_l, 1)
+                            reg = torch.ones(
+                                (1, n_reg, 1), dtype=m.dtype, device=m.device,
+                            )
+                            m = torch.cat([reg, m_p], dim=1)
+
                     if m.dim() == 1 and m.shape[0] == l_dim:
                         m = m.unsqueeze(0).unsqueeze(-1)
                     elif m.dim() == 2 and (m.shape == (b_dim, l_dim) or m.shape == (1, l_dim)):
@@ -101,6 +145,8 @@ class LoRAPatchHook:
                         m = m.reshape(b_dim, l_dim, 1)
                     elif m.dim() >= 3 and m.numel() == l_dim:
                         m = m.reshape(1, l_dim, 1)
+                    elif m.dim() == 3 and m.shape[1] == l_dim and m.shape[2] == 1:
+                        pass
                     else:
                         while m.dim() < lora_contrib.dim():
                             m = m.unsqueeze(-1)
