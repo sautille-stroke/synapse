@@ -36,11 +36,13 @@ struct InspectorConfig {
   std::string bundlePath;           ///< Path to the InspectionBundle dir.
   std::string rhiBackend = "null";  ///< "vulkan", "metal", "d3d12", "null".
   std::string shmName = std::string(kDefaultShmName);
+  std::string shmFilePath;          ///< Path for file-backed SHM mapping.
   uint32_t width = 1280;
   uint32_t height = 720;
   uint32_t maxFrames = 0;           ///< 0 = continuous loop; >0 = exit after N frames.
   bool headless = true;             ///< Run without a visible window.
   bool keepShm = false;             ///< Keep SHM segment after exit (for CLI/test verification).
+  bool useShmFile = false;          ///< Use file-backed SHM instead of POSIX shm_open.
 };
 
 struct StdinQueueState;
@@ -110,6 +112,12 @@ class InspectorApp {
   float m_panX = 0.0f;
   float m_panY = 0.0f;
 
+  // AOV overlay from loaded .exr file.
+  std::vector<float> m_exrAovData;
+  uint32_t m_exrAovWidth = 0;
+  uint32_t m_exrAovHeight = 0;
+  bool m_hasExrAov = false;
+
   std::shared_ptr<StdinQueueState> m_stdinState;
   std::thread m_stdinThread;
 
@@ -117,6 +125,7 @@ class InspectorApp {
   void initDefaultMesh();
   bool loadObjMesh(std::string_view objPath);
   bool loadGlbMesh(std::string_view glbPath);
+  bool loadExrAov(const std::string& path);
   bool pollStdinCommands();
 };
 

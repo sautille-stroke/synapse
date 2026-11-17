@@ -22,6 +22,10 @@
 #include <string_view>
 #include <vector>
 
+#ifdef SYNAPSE_HAS_TINYEXR
+#include "tinyexr.h"
+#endif
+
 namespace synapse::inspector {
 
 namespace {
@@ -139,6 +143,11 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
           loadedVerts.push_back(x);
           loadedVerts.push_back(y);
           loadedVerts.push_back(z);
+        } else {
+          // Keep non-finite vertex placeholder at (0,0,0) to preserve index stability.
+          loadedVerts.push_back(0.0f);
+          loadedVerts.push_back(0.0f);
+          loadedVerts.push_back(0.0f);
         }
       }
     } else if (line[0] == 'f' && line[1] == ' ') {
@@ -256,6 +265,13 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
   const std::streamsize fileSize = ifs.tellg();
   if (fileSize < 12) return false;
 
+  // GLB file size limit: reject files exceeding 256 MiB to prevent heap overflow.
+  constexpr size_t kMaxGlbSize = 256u * 1024u * 1024u;  // 256 MiB
+  if (static_cast<size_t>(fileSize) > kMaxGlbSize) {
+    std::cerr << "[inspector] GLB file exceeds 256 MiB limit: " << pathStr << "\n";
+    return false;
+  }
+
   ifs.seekg(0, std::ios::beg);
   std::vector<uint8_t> buffer(static_cast<size_t>(fileSize));
   if (!ifs.read(reinterpret_cast<char*>(buffer.data()), fileSize)) {
@@ -322,63 +338,118 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
     for (size_t p = 0; p < prims.size(); ++p) {
       const auto prim = prims[p];
       if (!prim.isObject()) continue;
+
+      // Validate primitive mode: only TRIANGLES (4) is supported.
+      const int64_t rawMode = prim["mode"].getIntOr(4);
+      if (rawMode != 4) continue;
+
       const auto attrs = prim["attributes"];
       if (!attrs.isObject() || !attrs.hasKey("POSITION")) continue;
 
-      const uint32_t posAccIdx = static_cast<uint32_t>(attrs["POSITION"].getIntOr(-1));
+      const int64_t rawPosAccIdx = attrs["POSITION"].getIntOr(-1);
+      if (rawPosAccIdx < 0) continue;
+      const uint32_t posAccIdx = static_cast<uint32_t>(rawPosAccIdx);
       if (posAccIdx >= accessors.size()) continue;
 
       const auto posAcc = accessors[posAccIdx];
       if (!posAcc.isObject()) continue;
 
-      const uint32_t posCount = static_cast<uint32_t>(posAcc["count"].getIntOr(0));
-      const uint32_t posCompType = static_cast<uint32_t>(posAcc["componentType"].getIntOr(0));
-      const uint32_t posViewIdx = static_cast<uint32_t>(posAcc["bufferView"].getIntOr(-1));
-      const uint32_t posAccOffset = static_cast<uint32_t>(posAcc["byteOffset"].getIntOr(0));
+      // Validate accessor type: POSITION must be VEC3.
+      const std::string_view posType = posAcc["type"].getStringOr("");
+      if (posType != "VEC3") continue;
+
+      // Signed int64_t pre-validation for all accessor numeric fields.
+      const int64_t rawPosCount = posAcc["count"].getIntOr(0);
+      const int64_t rawPosCompType = posAcc["componentType"].getIntOr(0);
+      const int64_t rawPosViewIdx = posAcc["bufferView"].getIntOr(-1);
+      const int64_t rawPosAccOffset = posAcc["byteOffset"].getIntOr(0);
+
+      if (rawPosCount <= 0 || rawPosCompType < 0 || rawPosViewIdx < 0 || rawPosAccOffset < 0) continue;
+
+      const uint32_t posCount = static_cast<uint32_t>(rawPosCount);
+      const uint32_t posCompType = static_cast<uint32_t>(rawPosCompType);
+      const uint32_t posViewIdx = static_cast<uint32_t>(rawPosViewIdx);
+      const size_t posAccOffset = static_cast<size_t>(rawPosAccOffset);
 
       // POSITION must be FLOAT (5126)
-      if (posCompType != 5126u || posCount == 0 || posViewIdx >= bufferViews.size()) continue;
+      if (posCompType != 5126u || posViewIdx >= bufferViews.size()) continue;
 
       const auto posView = bufferViews[posViewIdx];
       if (!posView.isObject()) continue;
 
-      const size_t posViewOffset = static_cast<size_t>(posView["byteOffset"].getIntOr(0));
+      const int64_t rawPosViewOffset = posView["byteOffset"].getIntOr(0);
+      const int64_t rawPosViewByteLength = posView["byteLength"].getIntOr(0);
+      if (rawPosViewOffset < 0 || rawPosViewByteLength < 0) continue;
+
+      const size_t posViewOffset = static_cast<size_t>(rawPosViewOffset);
       const size_t posByteOffset = posViewOffset + posAccOffset;
       const size_t posByteLength = static_cast<size_t>(posCount) * 3u * sizeof(float);
 
       if (binChunk.empty() || posByteOffset + posByteLength > binChunk.size()) continue;
 
-      const uint32_t baseVertex = static_cast<uint32_t>(loadedVerts.size() / 3);
-      const float* vertData = reinterpret_cast<const float*>(binChunk.data() + posByteOffset);
+      // Parse byteStride for interleaved vertex buffers (0 means tightly packed).
+      const int64_t rawByteStride = posView["byteStride"].getIntOr(0);
+      const size_t byteStride = (rawByteStride > 0) ? static_cast<size_t>(rawByteStride) : (3u * sizeof(float));
+      if (byteStride < 3u * sizeof(float)) continue;  // stride too small for VEC3
 
+      const uint32_t baseVertex = static_cast<uint32_t>(loadedVerts.size() / 3);
+
+      // Use std::memcpy instead of reinterpret_cast to avoid alignment UB on ARM64.
       bool vertsOk = true;
-      for (size_t i = 0; i < posCount * 3; ++i) {
-        if (!std::isfinite(vertData[i])) {
+      for (size_t vi = 0; vi < posCount; ++vi) {
+        const size_t srcOffset = posByteOffset + vi * byteStride;
+        if (srcOffset + 3u * sizeof(float) > binChunk.size()) {
           vertsOk = false;
           break;
         }
+        float vx, vy, vz;
+        std::memcpy(&vx, binChunk.data() + srcOffset + 0, sizeof(float));
+        std::memcpy(&vy, binChunk.data() + srcOffset + sizeof(float), sizeof(float));
+        std::memcpy(&vz, binChunk.data() + srcOffset + 2 * sizeof(float), sizeof(float));
+        if (!std::isfinite(vx) || !std::isfinite(vy) || !std::isfinite(vz)) {
+          vertsOk = false;
+          break;
+        }
+        loadedVerts.push_back(vx);
+        loadedVerts.push_back(vy);
+        loadedVerts.push_back(vz);
       }
-      if (!vertsOk) continue;
-
-      loadedVerts.insert(loadedVerts.end(), vertData, vertData + posCount * 3);
+      if (!vertsOk) {
+        // Rollback partial vertex data for this primitive.
+        loadedVerts.resize(static_cast<size_t>(baseVertex) * 3u);
+        continue;
+      }
 
       // Load indices if present
       if (prim.hasKey("indices")) {
-        const uint32_t idxAccIdx = static_cast<uint32_t>(prim["indices"].getIntOr(-1));
+        const int64_t rawIdxAccIdx = prim["indices"].getIntOr(-1);
+        if (rawIdxAccIdx < 0) continue;
+        const uint32_t idxAccIdx = static_cast<uint32_t>(rawIdxAccIdx);
         if (idxAccIdx < accessors.size()) {
           const auto idxAcc = accessors[idxAccIdx];
-          const uint32_t idxCount = static_cast<uint32_t>(idxAcc["count"].getIntOr(0));
-          const uint32_t idxCompType = static_cast<uint32_t>(idxAcc["componentType"].getIntOr(0));
-          const uint32_t idxViewIdx = static_cast<uint32_t>(idxAcc["bufferView"].getIntOr(-1));
-          const uint32_t idxAccOffset = static_cast<uint32_t>(idxAcc["byteOffset"].getIntOr(0));
+
+          // Signed pre-validation for index accessor fields.
+          const int64_t rawIdxCount = idxAcc["count"].getIntOr(0);
+          const int64_t rawIdxCompType = idxAcc["componentType"].getIntOr(0);
+          const int64_t rawIdxViewIdx = idxAcc["bufferView"].getIntOr(-1);
+          const int64_t rawIdxAccOffset = idxAcc["byteOffset"].getIntOr(0);
+
+          if (rawIdxCount <= 0 || rawIdxCompType < 0 || rawIdxViewIdx < 0 || rawIdxAccOffset < 0) continue;
+
+          const uint32_t idxCount = static_cast<uint32_t>(rawIdxCount);
+          const uint32_t idxCompType = static_cast<uint32_t>(rawIdxCompType);
+          const uint32_t idxViewIdx = static_cast<uint32_t>(rawIdxViewIdx);
+          const size_t idxAccOffset = static_cast<size_t>(rawIdxAccOffset);
 
           if (idxViewIdx < bufferViews.size()) {
             const auto idxView = bufferViews[idxViewIdx];
-            const size_t idxViewOffset = static_cast<size_t>(idxView["byteOffset"].getIntOr(0));
+            const int64_t rawIdxViewOffset = idxView["byteOffset"].getIntOr(0);
+            if (rawIdxViewOffset < 0) continue;
+            const size_t idxViewOffset = static_cast<size_t>(rawIdxViewOffset);
             const size_t idxByteOffset = idxViewOffset + idxAccOffset;
 
             if (idxCompType == 5121u && idxByteOffset + idxCount <= binChunk.size()) {
-              // UNSIGNED_BYTE
+              // UNSIGNED_BYTE — no alignment concern
               const uint8_t* idxData = binChunk.data() + idxByteOffset;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
@@ -388,23 +459,29 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
                 }
               }
             } else if (idxCompType == 5123u && idxByteOffset + idxCount * 2 <= binChunk.size()) {
-              // UNSIGNED_SHORT
-              const uint16_t* idxData = reinterpret_cast<const uint16_t*>(binChunk.data() + idxByteOffset);
+              // UNSIGNED_SHORT — use memcpy to avoid alignment UB on ARM64
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
-                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
-                  loadedFaces.push_back(baseVertex + idxData[i]);
-                  loadedFaces.push_back(baseVertex + idxData[i + 1]);
-                  loadedFaces.push_back(baseVertex + idxData[i + 2]);
+                uint16_t idx0, idx1, idx2;
+                std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 2, sizeof(uint16_t));
+                std::memcpy(&idx1, binChunk.data() + idxByteOffset + (i + 1) * 2, sizeof(uint16_t));
+                std::memcpy(&idx2, binChunk.data() + idxByteOffset + (i + 2) * 2, sizeof(uint16_t));
+                if (idx0 < posCount && idx1 < posCount && idx2 < posCount) {
+                  loadedFaces.push_back(baseVertex + idx0);
+                  loadedFaces.push_back(baseVertex + idx1);
+                  loadedFaces.push_back(baseVertex + idx2);
                 }
               }
             } else if (idxCompType == 5125u && idxByteOffset + idxCount * 4 <= binChunk.size()) {
-              // UNSIGNED_INT
-              const uint32_t* idxData = reinterpret_cast<const uint32_t*>(binChunk.data() + idxByteOffset);
+              // UNSIGNED_INT — use memcpy to avoid alignment UB on ARM64
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
-                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
-                  loadedFaces.push_back(baseVertex + idxData[i]);
-                  loadedFaces.push_back(baseVertex + idxData[i + 1]);
-                  loadedFaces.push_back(baseVertex + idxData[i + 2]);
+                uint32_t idx0, idx1, idx2;
+                std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 4, sizeof(uint32_t));
+                std::memcpy(&idx1, binChunk.data() + idxByteOffset + (i + 1) * 4, sizeof(uint32_t));
+                std::memcpy(&idx2, binChunk.data() + idxByteOffset + (i + 2) * 4, sizeof(uint32_t));
+                if (idx0 < posCount && idx1 < posCount && idx2 < posCount) {
+                  loadedFaces.push_back(baseVertex + idx0);
+                  loadedFaces.push_back(baseVertex + idx1);
+                  loadedFaces.push_back(baseVertex + idx2);
                 }
               }
             }
@@ -490,6 +567,43 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
   return true;
 }
 
+bool InspectorApp::loadExrAov(const std::string& path) {
+#ifdef SYNAPSE_HAS_TINYEXR
+  float* out = nullptr;
+  int width = 0, height = 0;
+  const char* err = nullptr;
+  int ret = LoadEXR(&out, &width, &height, path.c_str(), &err);
+  if (ret != TINYEXR_SUCCESS) {
+    if (err) {
+      std::cerr << "[inspector] EXR load error: " << err << "\n";
+      FreeEXRErrorMessage(err);
+    }
+    return false;
+  }
+
+  if (width <= 0 || height <= 0 || !out) {
+    if (out) free(out);
+    return false;
+  }
+
+  const size_t pixelCount = static_cast<size_t>(width) * height;
+  m_exrAovData.assign(out, out + pixelCount * 4);  // RGBA float
+  m_exrAovWidth = static_cast<uint32_t>(width);
+  m_exrAovHeight = static_cast<uint32_t>(height);
+  m_hasExrAov = true;
+  free(out);
+
+  std::cerr << "[inspector] Loaded EXR AOV: " << path
+            << " (" << width << "x" << height << ")\n";
+  return true;
+#else
+  std::cerr << "[inspector] EXR loading not available (tinyexr not linked): "
+            << path << "\n";
+  (void)path;
+  return false;
+#endif
+}
+
 bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
   if (bundlePath.empty()) return false;
 
@@ -546,6 +660,10 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
       if (loadObjMesh(resolved.string())) {
         std::cerr << "[inspector] Loaded OBJ mesh: " << resolved.string() << "\n";
       }
+    } else if (ext == ".exr") {
+      if (loadExrAov(resolved.string())) {
+        std::cerr << "[inspector] Loaded EXR AOV: " << resolved.string() << "\n";
+      }
     }
   };
 
@@ -580,15 +698,28 @@ bool InspectorApp::init() {
     }
   }
 
-  if (!m_shm.open(m_config.shmName, m_config.width, m_config.height,
-                  !m_config.keepShm)) {
-    std::cerr << "[inspector] Failed to open SHM region: " << m_config.shmName << "\n";
-    return false;
+  // Open SHM: file-backed or POSIX shm_open depending on config.
+  bool shmOk = false;
+  if (m_config.useShmFile && !m_config.shmFilePath.empty()) {
+    shmOk = m_shm.openFile(m_config.shmFilePath, m_config.width, m_config.height);
+    if (!shmOk) {
+      std::cerr << "[inspector] Failed to open file-backed SHM: " << m_config.shmFilePath << "\n";
+      return false;
+    }
+    std::cerr << "[inspector] File-backed SHM opened: " << m_config.shmFilePath << " ("
+              << m_config.width << "x" << m_config.height << ", "
+              << m_shm.totalSize() << " bytes)\n";
+  } else {
+    shmOk = m_shm.open(m_config.shmName, m_config.width, m_config.height,
+                        !m_config.keepShm);
+    if (!shmOk) {
+      std::cerr << "[inspector] Failed to open SHM region: " << m_config.shmName << "\n";
+      return false;
+    }
+    std::cerr << "[inspector] SHM opened: " << m_config.shmName << " ("
+              << m_config.width << "x" << m_config.height << ", "
+              << m_shm.totalSize() << " bytes)\n";
   }
-
-  std::cerr << "[inspector] SHM opened: " << m_config.shmName << " ("
-            << m_config.width << "x" << m_config.height << ", "
-            << m_shm.totalSize() << " bytes)\n";
   std::cerr << "[inspector] RHI backend: " << m_config.rhiBackend
             << " (diagnostic SHM rasterizer)\n";
   std::cerr << "[inspector] Headless: "
@@ -793,9 +924,7 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
 
     outSx = cx + (xc / zc) * fovScale;
     outSy = cy_screen - (yc / zc) * fovScale;
-    return std::isfinite(outSx) && std::isfinite(outSy) &&
-           outSx >= 0.0f && outSx < static_cast<float>(w) &&
-           outSy >= 0.0f && outSy < static_cast<float>(h);
+    return std::isfinite(outSx) && std::isfinite(outSy);  // Let the rasterizer AABB clipping handle culling
   };
 
   // Bresenham's 2D line drawer
@@ -974,7 +1103,12 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
               const float bary0 = w0 * invArea;
               const float bary1 = w1 * invArea;
               const float bary2 = w2 * invArea;
-              const float fragZ = bary0 * sz0 + bary1 * sz1 + bary2 * sz2;
+              // Perspective-correct depth interpolation using 1/z
+              const float invZ0 = 1.0f / sz0;
+              const float invZ1 = 1.0f / sz1;
+              const float invZ2 = 1.0f / sz2;
+              const float interpInvZ = bary0 * invZ0 + bary1 * invZ1 + bary2 * invZ2;
+              const float fragZ = (interpInvZ > 1e-7f) ? (1.0f / interpInvZ) : sz0;
 
               const size_t pixIdx = static_cast<size_t>(y) * w + static_cast<size_t>(x);
               if (fragZ < m_zBuffer[pixIdx]) {
@@ -1125,10 +1259,43 @@ bool InspectorApp::pollStdinCommands() {
       pending.swap(m_stdinState->lines);
     }
   }
+
+  // Handle line continuation: join lines ending with backslash.
+  std::vector<std::string> joined;
+  std::string partial;
   for (const auto& line : pending) {
+    if (!line.empty() && line.back() == '\\') {
+      partial += line.substr(0, line.size() - 1);
+    } else {
+      partial += line;
+      joined.push_back(std::move(partial));
+      partial.clear();
+    }
+  }
+  if (!partial.empty()) {
+    joined.push_back(std::move(partial));
+  }
+
+  // Limit camera event queue: if more than 32 camera commands queued, keep only the last 32.
+  constexpr size_t kMaxCameraQueueSize = 32u;
+  size_t cameraCount = 0;
+  for (const auto& line : joined) {
+    if (line.find("\"camera\"") != std::string::npos) {
+      ++cameraCount;
+    }
+  }
+  bool skipOldCamera = cameraCount > kMaxCameraQueueSize;
+  size_t cameraSkipped = 0;
+  const size_t cameraToSkip = skipOldCamera ? (cameraCount - kMaxCameraQueueSize) : 0;
+
+  for (const auto& line : joined) {
+    if (skipOldCamera && line.find("\"camera\"") != std::string::npos && cameraSkipped < cameraToSkip) {
+      ++cameraSkipped;
+      continue;
+    }
     handleCommand(line);
   }
-  return !pending.empty();
+  return !joined.empty();
 }
 
 }  // namespace synapse::inspector
