@@ -12,6 +12,7 @@ All detection kernels are pure NumPy (vectorised, no pixel loops).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -189,12 +190,13 @@ def _detect_temporal_flicker(
         hot_ratio = float(hot_mask.sum()) / max(bmean.size, 1)
         severity = float(np.clip(hot_ratio * max_mean / threshold, 0.0, 1.0))
 
-        # Bounding box of hot blocks in pixel space.
+        # Bounding box of hot blocks in pixel space, clamped to frame.
+        h, w = frame_b.shape
         ys, xs = np.nonzero(hot_mask)
-        x1 = int(np.min(xs)) * _BLOCK_SIZE
-        y1 = int(np.min(ys)) * _BLOCK_SIZE
-        x2 = (int(np.max(xs)) + 1) * _BLOCK_SIZE
-        y2 = (int(np.max(ys)) + 1) * _BLOCK_SIZE
+        x1 = min(int(np.min(xs)) * _BLOCK_SIZE, w)
+        y1 = min(int(np.min(ys)) * _BLOCK_SIZE, h)
+        x2 = min((int(np.max(xs)) + 1) * _BLOCK_SIZE, w)
+        y2 = min((int(np.max(ys)) + 1) * _BLOCK_SIZE, h)
 
         defects.append(VideoDefectRegion(
             defect_type="temporal_flicker",
@@ -300,8 +302,19 @@ def _detect_ground_violation(
         # Camera looks down -Z: z_cam = -z
         # Top of image (yy = 0) is +Y_cam: y_cam = -((yy + 0.5) - cy) * z / fy
         # Right of image (xx = W-1) is +X_cam: x_cam = ((xx + 0.5) - cx) * z / fx
-        fx = max(float(cam.fx), 1e-6)
-        fy = max(float(cam.fy), 1e-6)
+        # Derive focal length from fov_degrees if intrinsics are missing.
+        if cam.fx > 0:
+            fx = float(cam.fx)
+        elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
+            fx = float(w) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
+        else:
+            fx = max(float(cam.fx), 1e-6)
+        if cam.fy > 0:
+            fy = float(cam.fy)
+        elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
+            fy = float(h) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
+        else:
+            fy = max(float(cam.fy), 1e-6)
         x_cam = ((xx.astype(np.float64) + 0.5) - cam.cx) * z / fx
         y_cam = -((yy.astype(np.float64) + 0.5) - cam.cy) * z / fy
         z_cam = -z

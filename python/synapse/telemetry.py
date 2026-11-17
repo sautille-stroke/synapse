@@ -198,10 +198,12 @@ class MemoryForecaster:
         act_bytes = num_frames * height * width * channels * dtype_bytes
         act_gb = act_bytes / (1024 ** 3)
 
-        # Spatiotemporal attention tokens (VAE 4× temporal, 8× spatial)
-        temporal_tokens = max(num_frames // 4, 1)
-        spatial_h = max(height // 8, 1)
-        spatial_w = max(width // 8, 1)
+        # Spatiotemporal attention tokens.
+        # Wan 2.1 VAE: 4× temporal compression (causal, so +1),
+        # 16× spatial compression (two stages of 4× + 4×).
+        temporal_tokens = max((num_frames - 1) // 4 + 1, 1)
+        spatial_h = max(height // 16, 1)
+        spatial_w = max(width // 16, 1)
         total_tokens = temporal_tokens * spatial_h * spatial_w
 
         # KV cache across all layers: 2 (K+V) × tokens × head_dim × num_heads × num_layers × dtype

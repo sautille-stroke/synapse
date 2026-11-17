@@ -194,9 +194,13 @@ def _solve_half_cosine_light_irls(
         mad = float(np.median(np.abs(residual - med_res)))
         scale = 1.4826 * mad + 1e-6
 
-        u = np.abs(residual - med_res) / scale
+        # Huber residual centered at 0.0 (not median) for symmetric
+        # treatment of backlit faces.
+        u = np.abs(residual) / scale
         huber_w = np.where(u <= 1.345, 1.0, 1.345 / np.maximum(u, 1e-6))
-        facing_w = np.where(dot_nl < -0.05, 0.1, 1.0)
+        # Zero out normal Jacobian for backlit faces (dot_nl <= 0)
+        # so they cannot steer the light direction estimate.
+        facing_w = np.where(dot_nl <= 0.0, 0.0, 1.0)
         w = np.clip(huber_w * facing_w, 1e-4, 1.0)
 
         w_sqrt = np.sqrt(w)[:, np.newaxis]

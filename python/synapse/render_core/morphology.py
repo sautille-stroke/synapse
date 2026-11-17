@@ -88,7 +88,7 @@ def binary_erosion(mask: np.ndarray, se: np.ndarray) -> np.ndarray:
     sh, sw = se.shape
     ph, pw = sh // 2, sw // 2
     H, W = mask.shape
-    padded = np.pad(mask.astype(bool), ((ph, ph), (pw, pw)), mode="constant", constant_values=True)
+    padded = np.pad(mask.astype(bool), ((ph, ph), (pw, pw)), mode="constant", constant_values=False)
     result = np.ones((H, W), dtype=bool)
     ys, xs = np.nonzero(se)
     for sy, sx in zip(ys, xs, strict=False):

@@ -80,34 +80,32 @@ _SRGB_A: float = 0.055
 
 def _fallback_srgb_to_linear(srgb: np.ndarray) -> np.ndarray:
     s = np.asarray(srgb, dtype=np.float64)
-    s_clipped = np.clip(s, 0.0, None)
-    low = s_clipped / _SRGB_LINEAR_SLOPE
-    high = np.power(np.clip((s_clipped + _SRGB_A) / (1.0 + _SRGB_A), 0.0, None), _SRGB_GAMMA)
-    return np.where(s <= _SRGB_THRESHOLD, low, high)
+    s_abs = np.abs(s)
+    sign = np.sign(s)
+    low = s_abs / _SRGB_LINEAR_SLOPE
+    high = np.power(np.clip((s_abs + _SRGB_A) / (1.0 + _SRGB_A), 0.0, None), _SRGB_GAMMA)
+    return sign * np.where(s_abs <= _SRGB_THRESHOLD, low, high)
 
 
 def _fallback_linear_to_srgb(linear: np.ndarray) -> np.ndarray:
     lin = np.asarray(linear, dtype=np.float64)
-    lin_clipped = np.clip(lin, 0.0, None)
+    lin_abs = np.abs(lin)
+    sign = np.sign(lin)
     threshold_linear = _SRGB_THRESHOLD / _SRGB_LINEAR_SLOPE
-    low = lin_clipped * _SRGB_LINEAR_SLOPE
-    high = (1.0 + _SRGB_A) * np.power(lin_clipped, 1.0 / _SRGB_GAMMA) - _SRGB_A
-    return np.where(lin_clipped <= threshold_linear, low, high)
+    low = lin_abs * _SRGB_LINEAR_SLOPE
+    high = (1.0 + _SRGB_A) * np.power(lin_abs, 1.0 / _SRGB_GAMMA) - _SRGB_A
+    return sign * np.where(lin_abs <= threshold_linear, low, high)
 
 
 # --- Linear sRGB ↔ ACEScg (Bradford D65→D60 AP1) ------------------
 
-# Unnormalized Rec.709 D65 to ACEScg D60 matrix
-_M_SRGB_TO_ACESCG_RAW: np.ndarray = np.array([
-    [0.6131324, 0.3395380, 0.0474166],
-    [0.0701243, 0.9163940, 0.0134853],
-    [0.0206155, 0.1095698, 0.8697794],
+# sRGB linear (D65) → ACEScg (AP1, D60) — combined Bradford CAT matrix.
+# Values aligned 1:1 with @aether//color kSrgbToAcesCg (color_space.cc:190-194).
+_M_SRGB_TO_ACESCG: np.ndarray = np.array([
+    [0.6131178, 0.3395234, 0.0473588],
+    [0.0701942, 0.9163545, 0.0134513],
+    [0.0206155, 0.1095697, 0.8698148],
 ], dtype=np.float64)
-
-# Row-normalize to enforce exact D65 white point preservation: M @ [1, 1, 1] == [1, 1, 1]
-_M_SRGB_TO_ACESCG: np.ndarray = (
-    _M_SRGB_TO_ACESCG_RAW / _M_SRGB_TO_ACESCG_RAW.sum(axis=1, keepdims=True)
-)
 
 _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
 

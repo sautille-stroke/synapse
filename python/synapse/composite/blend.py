@@ -319,8 +319,7 @@ def border_ring_lab_match(
         )
 
     if is_uint8:
-        output_f = np.clip(output_f * 255.0, 0.0, 255.0)
-        return np.asarray(output_f.astype(np.uint8))
+        return np.asarray(np.rint(np.clip(output_f * 255.0, 0.0, 255.0)).astype(np.uint8))
     return np.asarray(np.clip(output_f, 0.0, 1.0).astype(src_dtype))
 
 
@@ -431,7 +430,7 @@ def laplacian_pyramid_blend(
     result = np.clip(result, 0.0, 1.0)
 
     if is_uint8:
-        return np.asarray((result * 255.0).astype(np.uint8))
+        return np.asarray(np.rint(np.clip(result * 255.0, 0.0, 255.0)).astype(np.uint8))
     return np.asarray(result.astype(src_dtype))
 
 
@@ -565,7 +564,7 @@ def composite_surgical_sequence(
                 # Forward-warp the previous frame by motion vectors
                 warped_prev: np.ndarray
                 if motion_vectors is not None:
-                    mv = motion_vectors[t]  # (H, W, 2) dx, dy
+                    mv = motion_vectors[t].astype(np.float64)  # (H, W, 2) dx, dy
                     flow_mag = float(np.mean(
                         np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)
                     ))
@@ -593,7 +592,7 @@ def composite_surgical_sequence(
                     + (1.0 - effective_alpha) * prev_f,
                     blended_f,
                 )
-                blended = np.clip(smoothed, 0.0, 255.0).astype(np.uint8)
+                blended = np.rint(np.clip(smoothed, 0.0, 255.0)).astype(np.uint8)
 
         result[t] = blended
         prev_boundary = blended.copy()
@@ -640,7 +639,32 @@ def composite_optical_increments(
     Returns:
         Composited ``[T, H, W, 3]`` uint8 sRGB sequence.
     """
+    if video_frames_srgb.ndim != 4 or video_frames_srgb.shape[-1] != 3:
+        raise ValueError(
+            f"video_frames_srgb must be [T,H,W,3], got {video_frames_srgb.shape}"
+        )
+    if cryptomatte_ids.ndim != 3:
+        raise ValueError(
+            f"cryptomatte_ids must be [T,H,W], got {cryptomatte_ids.shape}"
+        )
     t_count, h, w, _ = video_frames_srgb.shape
+    if cryptomatte_ids.shape != (t_count, h, w):
+        raise ValueError(
+            f"cryptomatte_ids shape {cryptomatte_ids.shape} != "
+            f"expected ({t_count}, {h}, {w})"
+        )
+    if contact_shadow_map is not None and contact_shadow_map.shape != (t_count, h, w):
+        raise ValueError(
+            f"contact_shadow_map shape {contact_shadow_map.shape} != "
+            f"expected ({t_count}, {h}, {w})"
+        )
+    if caustics_map is not None:
+        expected_caustics = (t_count, h, w, 3)
+        if caustics_map.shape != expected_caustics:
+            raise ValueError(
+                f"caustics_map shape {caustics_map.shape} != "
+                f"expected {expected_caustics}"
+            )
     result = np.empty_like(video_frames_srgb)
 
     for t in range(t_count):
@@ -691,7 +715,7 @@ def composite_optical_increments(
         frame_srgb_out = linear_to_srgb(frame_tonemapped)
         frame_srgb_out = np.clip(frame_srgb_out, 0.0, 1.0)
 
-        result[t] = (frame_srgb_out * 255.0).astype(np.uint8)
+        result[t] = np.rint(np.clip(frame_srgb_out * 255.0, 0.0, 255.0)).astype(np.uint8)
 
     return result
 
