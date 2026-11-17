@@ -19,8 +19,6 @@ from synapse.training.feature_store import (
 # ── DomainRandomizer tests ────────────────────────────────────────
 
 
-
-pytestmark = pytest.mark.slow
 class TestDomainRandomizer:
     """Tests for the 11-factor domain randomizer."""
 

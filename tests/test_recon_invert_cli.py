@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +18,38 @@ from synapse.pipeline.bundle_worker import (
     JobBundleWorker,
     get_registered_stages,
 )
+
+
+def _make_parallax_video(num_frames: int = 4, h: int = 64, w: int = 64) -> np.ndarray:
+    """Generate multi-view video frames of a 3D object with genuine angular parallax."""
+    rng = np.random.default_rng(42)
+    N = 400
+    pts = rng.uniform(-0.35, 0.35, (N, 3))
+    colors = rng.integers(150, 255, (N, 3), dtype=np.uint8)
+    frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
+    fx = fy = float(w)
+    cx, cy = w / 2.0, h / 2.0
+    for i in range(num_frames):
+        theta = math.radians(-20.0 + i * (40.0 / (num_frames - 1)))
+        cam_pos = np.array([2.0 * math.sin(theta), 0.0, 2.0 * math.cos(theta)])
+        z_axis = -cam_pos / np.linalg.norm(cam_pos)
+        up = np.array([0.0, 1.0, 0.0])
+        x_axis = np.cross(up, z_axis)
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        R = np.stack([x_axis, y_axis, z_axis], axis=0)
+        t = -R @ cam_pos
+        img = np.full((h, w, 3), 20, dtype=np.uint8)
+        pts_cam = (R @ pts.T).T + t
+        for p, c in zip(pts_cam, colors):
+            if p[2] > 0.1:
+                u = int(cx + fx * p[0] / p[2])
+                v = int(cy + fy * p[1] / p[2])
+                if 1 <= u < w - 2 and 1 <= v < h - 2:
+                    img[v - 1 : v + 2, u - 1 : u + 2] = c
+        frames[i] = img
+    return frames
+
 
 # ---------------------------------------------------------------------------
 # Tests: CLI synapse recon invert-video
@@ -36,25 +69,18 @@ def test_recon_invert_video_cli_json() -> None:
 
 @pytest.mark.slow
 def test_recon_invert_video_cli_with_video() -> None:
-    """synapse recon invert-video works with actual video .npy file.
-
-    Synthetic frames cannot produce real angular separation, so we patch
-    the minimum threshold to 0.0° for this unit test.
-    """
+    """synapse recon invert-video works with actual video .npy file with real parallax."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create a small video array with varying content
-        rng = np.random.default_rng(42)
-        video = rng.integers(100, 200, (4, 64, 64, 3), dtype=np.uint8)
+        video = _make_parallax_video(4, 64, 64)
         video_path = Path(tmpdir) / "test_video.npy"
         np.save(str(video_path), video)
 
-        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
-            exit_code = main_synapse([
-                "--json", "recon", "invert-video",
-                "--video", str(video_path),
-                "--output", str(Path(tmpdir) / "output"),
-                "--target-faces", "500",
-            ])
+        exit_code = main_synapse([
+            "--json", "recon", "invert-video",
+            "--video", str(video_path),
+            "--output", str(Path(tmpdir) / "output"),
+            "--target-faces", "500",
+        ])
     assert exit_code == 0
 
 
@@ -77,11 +103,9 @@ def test_video_to_3d_invert_stage_registered() -> None:
 
 @pytest.mark.slow
 def test_video_to_3d_invert_stage_execution() -> None:
-    """video_to_3d_invert stage executes with valid video_frames input."""
+    """video_to_3d_invert stage executes with valid video_frames input with real parallax."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create valid video frames as .npy file
-        rng = np.random.default_rng(42)
-        video = rng.integers(100, 200, (4, 64, 64, 3), dtype=np.uint8)
+        video = _make_parallax_video(4, 64, 64)
         video_path = Path(tmpdir) / "frames.npy"
         np.save(str(video_path), video)
 
@@ -103,11 +127,10 @@ def test_video_to_3d_invert_stage_execution() -> None:
             },
         )
         worker = JobBundleWorker()
-        with patch("synapse.recon.multiview._MIN_ANGULAR_SPAN_DEG", 0.0):
-            result = worker.execute(manifest)
+        result = worker.execute(manifest)
 
     assert result.exit_code == 0
-    assert result.status in ("success", "fallback")
+    assert result.status == "success"
 
 
 # ---------------------------------------------------------------------------

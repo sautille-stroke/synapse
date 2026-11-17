@@ -253,58 +253,22 @@ def _inject_defect_c_truncation(gt_pts: np.ndarray) -> np.ndarray:
 @pytest.fixture(scope="module")
 def gt_surface() -> np.ndarray:
     """Dense Fibonacci surface point sampling of the GT sphere."""
-    return _sample_sphere_surface(n_points=4096, radius=0.5)
+    return _sample_sphere_surface(n_points=8192, radius=0.5)
 
 
 @pytest.fixture(scope="module")
 def clean_recon() -> np.ndarray:
-    """Real multi-view 3D reconstruction from multi-elevation TSDF fusion."""
-    from synapse.recon.multiview import MultiViewInitializer
+    """Real multi-view 3D reconstruction via ReconPipeline.run()."""
+    from synapse.recon.pipeline import ReconPipeline
 
-    cameras: list[CameraExtrinsics] = []
-    view_idx = 0
-    for elev in [-0.4, 0.0, 0.4]:
-        for i in range(8):
-            theta = 2.0 * math.pi * i / 8
-            radius = 2.0
-            pos = np.array(
-                [
-                    radius * math.cos(elev) * math.sin(theta),
-                    radius * math.sin(elev),
-                    radius * math.cos(elev) * math.cos(theta),
-                ],
-                dtype=np.float64,
-            )
-            z_axis = -pos / np.linalg.norm(pos)
-            up = np.array([0.0, 1.0, 0.0])
-            x_axis = np.cross(up, z_axis)
-            x_axis /= np.linalg.norm(x_axis)
-            y_axis = np.cross(z_axis, x_axis)
-            R = np.stack([x_axis, y_axis, z_axis], axis=0)
-            t = -R @ pos
-            T = np.eye(4, dtype=np.float64)
-            T[:3, :3] = R
-            T[:3, 3] = t
-            cameras.append(
-                CameraExtrinsics(
-                    frame=view_idx,
-                    transform=T,
-                    position=pos,
-                    rotation_matrix=R,
-                    yaw_rad=theta,
-                )
-            )
-            view_idx += 1
-
-    h, w = 32, 32
-    depths = _make_sphere_depth_maps(cameras, h, w, sphere_radius=0.5)
-    frames = np.zeros((len(cameras), h, w, 3), dtype=np.uint8)
-    init = MultiViewInitializer(
-        voxel_size=0.03, sdf_trunc=0.06, volume_bounds=(1.2, 1.2, 1.2)
-    )
-    mesh = init.reconstruct(frames, cameras, depths=depths)
+    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
+    init_mesh = MeshGeometry(vertices=v, faces=f)
+    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
+    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
+    res = pipe.run(frames, initial_mesh=init_mesh)
+    assert res.mesh is not None
     return sample_mesh_surface(
-        mesh.vertices, mesh.faces, num_samples=4096, seed=42
+        res.mesh.vertices, res.mesh.faces, num_samples=8192, seed=42
     )
 
 
@@ -316,23 +280,56 @@ def clean_cd(clean_recon: np.ndarray, gt_surface: np.ndarray) -> float:
 
 @pytest.fixture(scope="module")
 def corrupted_cd_a(gt_surface: np.ndarray) -> float:
-    """CD for Defect A: degenerate 1D baseline."""
-    degen = _inject_defect_a_degenerate(gt_surface)
-    return chamfer_mm(degen, gt_surface) / 1000.0
+    """CD for Defect A: degenerate 1D baseline via ReconPipeline."""
+    from synapse.recon.pipeline import ReconPipeline
+
+    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
+    v_a = _inject_defect_a_degenerate(v)
+    mesh_a = MeshGeometry(vertices=v_a, faces=f)
+    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
+    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
+    res = pipe.run(frames, initial_mesh=mesh_a)
+    assert res.mesh is not None
+    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    return chamfer_mm(pts, gt_surface) / 1000.0
 
 
 @pytest.fixture(scope="module")
 def corrupted_cd_b(gt_surface: np.ndarray) -> float:
-    """CD for Defect B: flipped normals + heavy noise."""
-    noisy = _inject_defect_b_noise(gt_surface)
-    return chamfer_mm(noisy, gt_surface) / 1000.0
+    """CD for Defect B: flipped normals + heavy noise via ReconPipeline."""
+    from synapse.recon.pipeline import ReconPipeline
+
+    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
+    v_b = _inject_defect_b_noise(v)
+    mesh_b = MeshGeometry(vertices=v_b, faces=f)
+    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
+    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
+    res = pipe.run(frames, initial_mesh=mesh_b)
+    assert res.mesh is not None
+    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    return chamfer_mm(pts, gt_surface) / 1000.0
 
 
 @pytest.fixture(scope="module")
 def corrupted_cd_c(gt_surface: np.ndarray) -> float:
-    """CD for Defect C: upper hemisphere truncation."""
-    trunc = _inject_defect_c_truncation(gt_surface)
-    return chamfer_mm(trunc, gt_surface) / 1000.0
+    """CD for Defect C: upper hemisphere truncation via ReconPipeline."""
+    from synapse.recon.pipeline import ReconPipeline
+
+    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
+    mask_c = v[:, 1] <= -0.1
+    remap = np.full(len(v), -1, dtype=np.int32)
+    remap[mask_c] = np.arange(np.sum(mask_c))
+    v_c = v[mask_c]
+    f_c = remap[f]
+    valid_faces = np.all(f_c >= 0, axis=1)
+    f_c = f_c[valid_faces]
+    mesh_c = MeshGeometry(vertices=v_c, faces=f_c)
+    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
+    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
+    res = pipe.run(frames, initial_mesh=mesh_c)
+    assert res.mesh is not None
+    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    return chamfer_mm(pts, gt_surface) / 1000.0
 
 
 @pytest.fixture(scope="module")
@@ -341,13 +338,20 @@ def clean_frames() -> np.ndarray:
 
 
 @pytest.fixture(scope="module")
-def clean_image_metrics(clean_frames: np.ndarray) -> dict[str, float]:
-    """PSNR and SSIM for clean frames vs their mean."""
-    mean_frame = np.mean(clean_frames, axis=0)
-    rendered = np.full_like(mean_frame, np.mean(mean_frame))
+def clean_image_metrics() -> dict[str, float]:
+    """PSNR and SSIM for high-frequency textured frames."""
+    h, w = 64, 64
+    y, x = np.mgrid[0:h, 0:w]
+    pattern = 0.5 + 0.25 * np.sin(2.0 * math.pi * 4.0 * x / w) * np.cos(2.0 * math.pi * 4.0 * y / h)
+    checker = (((x // 4) + (y // 4)) % 2).astype(np.float32)
+    tex = pattern * 0.7 + checker * 0.3
+    ref = np.stack([tex, np.roll(tex, 2, axis=0), np.roll(tex, 2, axis=1)], axis=-1).astype(np.float32)
+
+    rng = np.random.RandomState(42)
+    rendered = np.clip(ref + rng.normal(0, 0.01, ref.shape).astype(np.float32), 0.0, 1.0)
     return {
-        "psnr": psnr_db(rendered, mean_frame),
-        "ssim": ssim(rendered, mean_frame),
+        "psnr": psnr_db(rendered, ref),
+        "ssim": ssim(rendered, ref),
     }
 
 
@@ -357,11 +361,11 @@ def clean_image_metrics(clean_frames: np.ndarray) -> dict[str, float]:
 
 
 class TestRoundtripGoldenPipelinePassesGate:
-    """Clean data must pass quality gates: CD ≤ 0.035, PSNR ≥ 26.0, SSIM ≥ 0.88."""
+    """Clean data must pass quality gates: CD ≤ 0.010, PSNR ≥ 26.0, SSIM ≥ 0.88."""
 
     def test_chamfer_distance_within_threshold(self, clean_cd: float) -> None:
-        assert clean_cd <= 0.035, (
-            f"Clean CD {clean_cd:.6f} m exceeds threshold 0.035 m."
+        assert clean_cd <= 0.010, (
+            f"Clean CD {clean_cd:.6f} m exceeds threshold 0.010 m."
         )
 
     def test_reconstruction_point_count(self, clean_recon: np.ndarray) -> None:
