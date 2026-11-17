@@ -27,6 +27,7 @@ const {
   ShmFrameReader,
   parseShmHeader,
   validateShmName,
+  resolveShmFilePath,
   INSPECTOR_SHM_MAGIC,
   INSPECTOR_SHM_VERSION,
   HEADER_SIZE,
@@ -403,6 +404,13 @@ test('validateNativeCommand enforces command whitelist and schemas', () => {
   // Disallowed / malformed commands.
   assert.strictEqual(validateNativeCommand(null).ok, false);
   assert.strictEqual(validateNativeCommand({ type: 'exec_shell', cmd: 'rm -rf /' }).ok, false);
+  // PR-123: export_screenshot removed from renderer-accessible whitelist;
+  // screenshots are now handled via main-process IPC with dialog.showSaveDialog.
+  assert.strictEqual(
+    validateNativeCommand({ type: 'export_screenshot', path: '/tmp/x.ppm' }).ok,
+    false,
+    'export_screenshot must be rejected by validateNativeCommand (moved to main-process IPC)',
+  );
   assert.strictEqual(validateNativeCommand({ type: 'camera', action: 'fly', dx: 1, dy: 1 }).ok, false);
   assert.strictEqual(validateNativeCommand({ type: 'camera', action: 'orbit', dx: NaN, dy: 0 }).ok, false);
   assert.strictEqual(validateNativeCommand({ type: 'set_debug_view', mode: 'xray' }).ok, false);
@@ -551,87 +559,84 @@ test('BundleManager rejects symlink escaping bundle root directory', () => {
   }
 });
 
-// ── Section 8: End-to-end native binary (conditional) ────────────
+// ── Section 8: End-to-end native binary ────────────────────────
 
 const inspectorRoot = path.resolve(__dirname, '..');
 const procMgr = new InspectorProcessManager(inspectorRoot);
 const nativeBin = procMgr._resolveBinaryPath();
 
-if (nativeBin) {
-  test('end-to-end native C++ binary renders into @aether//pal SHM and handles stdin commands', () => {
-    const shmName = `/inspector-e2e-${process.pid}`;
-    const shotPath = path.join(os.tmpdir(), `inspector-shot-${process.pid}.ppm`);
-    const commands = [
-      JSON.stringify({ type: 'load_bundle', path: MINIMAL_BUNDLE }),
-      JSON.stringify({ type: 'camera', action: 'orbit', dx: 25.0, dy: 10.0 }),
-      JSON.stringify({ type: 'set_debug_view', mode: 'normal' }),
-      JSON.stringify({ type: 'export_screenshot', path: shotPath }),
-    ].join('\n') + '\n';
-
-    const run = spawnSync(
-      nativeBin,
-      [
-        '--headless',
-        '--rhi=null',
-        '--width=32',
-        '--height=32',
-        '--frames=4',
-        `--shm-name=${shmName}`,
-        '--keep-shm',
-        `--bundle=${MINIMAL_BUNDLE}`,
-      ],
-      {
-        input: commands,
-        encoding: 'utf8',
-        timeout: 10000,
-      },
+// PR-123: Make native binary e2e test mandatory — if the binary is not built,
+// fail with a clear error rather than silently skipping.
+test('end-to-end native C++ binary renders into @aether//pal SHM and handles stdin commands', () => {
+  if (!nativeBin) {
+    throw new Error(
+      'Native inspector binary not found. Build it first with: ' +
+      'bazel build //tools/data-inspector/native:inspector_app'
     );
+  }
+  const shmName = `/inspector-e2e-${process.pid}`;
+  const commands = [
+    JSON.stringify({ type: 'load_bundle', path: MINIMAL_BUNDLE }),
+    JSON.stringify({ type: 'camera', action: 'orbit', dx: 25.0, dy: 10.0 }),
+    JSON.stringify({ type: 'set_debug_view', mode: 'normal' }),
+  ].join('\n') + '\n';
 
-    assert.strictEqual(run.status, 0, `Native binary exited with ${run.status}: ${run.stderr}`);
-    const outMessages = run.stdout.trim().split('\n').filter(Boolean).map((l) => {
-      try { return JSON.parse(l); } catch (_) { return {}; }
-    });
-    const acks = outMessages.filter((m) => m.type === 'ack');
-    assert.ok(
-      acks.some((a) => a.command === 'load_bundle' && a.ok === true),
-      `Missing load_bundle ack. STDOUT was:\n${run.stdout}\nSTDERR was:\n${run.stderr}`,
-    );
-    assert.ok(acks.some((a) => a.command === 'camera' && a.ok === true));
-    assert.ok(acks.some((a) => a.command === 'set_debug_view' && a.ok === true));
-    assert.ok(outMessages.some((m) => m.type === 'frame_ready'));
+  const run = spawnSync(
+    nativeBin,
+    [
+      '--headless',
+      '--rhi=null',
+      '--width=32',
+      '--height=32',
+      '--frames=4',
+      `--shm-name=${shmName}`,
+      '--keep-shm',
+      `--bundle=${MINIMAL_BUNDLE}`,
+    ],
+    {
+      input: commands,
+      encoding: 'utf8',
+      timeout: 10000,
+    },
+  );
 
-    const reader = new ShmFrameReader(shmName);
-    try {
-      const frame = reader.pollOnce();
-      assert.ok(frame, 'ShmFrameReader must read rendered frame from native SHM');
-      assert.strictEqual(frame.header.width, 32);
-      assert.strictEqual(frame.header.height, 32);
-      assert.ok(frame.header.frameReady >= 1);
-      assert.strictEqual(frame.header.debugView, 2); // kNormal = 2
-      assert.strictEqual(frame.pixels.length, 32 * 32 * 4);
-
-      // Verify non-black pixels.
-      let nonZeroSum = 0;
-      for (let i = 0; i < frame.pixels.length; i += 4) {
-        nonZeroSum += frame.pixels[i] + frame.pixels[i + 1] + frame.pixels[i + 2];
-      }
-      assert.ok(nonZeroSum > 0, 'Rendered SHM frame must contain non-zero RGB pixels');
-
-      // Verify exported PPM screenshot.
-      assert.ok(fs.existsSync(shotPath), 'export_screenshot should write PPM file');
-      const ppmData = fs.readFileSync(shotPath);
-      assert.ok(ppmData.subarray(0, 3).toString('ascii') === 'P6\n');
-      assert.ok(ppmData.length > 32 * 32 * 3);
-    } finally {
-      reader.close();
-      try {
-        const targetPath = resolveShmFilePath(shmName);
-        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
-      } catch (_) { /* ignore */ }
-      fs.rmSync(shotPath, { force: true });
-    }
+  assert.strictEqual(run.status, 0, `Native binary exited with ${run.status}: ${run.stderr}`);
+  const outMessages = run.stdout.trim().split('\n').filter(Boolean).map((l) => {
+    try { return JSON.parse(l); } catch (_) { return {}; }
   });
-}
+  const acks = outMessages.filter((m) => m.type === 'ack');
+  assert.ok(
+    acks.some((a) => a.command === 'load_bundle' && a.ok === true),
+    `Missing load_bundle ack. STDOUT was:\n${run.stdout}\nSTDERR was:\n${run.stderr}`,
+  );
+  assert.ok(acks.some((a) => a.command === 'camera' && a.ok === true));
+  assert.ok(acks.some((a) => a.command === 'set_debug_view' && a.ok === true));
+  assert.ok(outMessages.some((m) => m.type === 'frame_ready'));
+
+  const reader = new ShmFrameReader(shmName);
+  try {
+    const frame = reader.pollOnce();
+    assert.ok(frame, 'ShmFrameReader must read rendered frame from native SHM');
+    assert.strictEqual(frame.header.width, 32);
+    assert.strictEqual(frame.header.height, 32);
+    assert.ok(frame.header.frameReady >= 1);
+    assert.strictEqual(frame.header.debugView, 2); // kNormal = 2
+    assert.strictEqual(frame.pixels.length, 32 * 32 * 4);
+
+    // Verify non-black pixels.
+    let nonZeroSum = 0;
+    for (let i = 0; i < frame.pixels.length; i += 4) {
+      nonZeroSum += frame.pixels[i] + frame.pixels[i + 1] + frame.pixels[i + 2];
+    }
+    assert.ok(nonZeroSum > 0, 'Rendered SHM frame must contain non-zero RGB pixels');
+  } finally {
+    reader.close();
+    try {
+      const targetPath = resolveShmFilePath(shmName);
+      if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+    } catch (_) { /* ignore */ }
+  }
+});
 
 // ─── Summary ─────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

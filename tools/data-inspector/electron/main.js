@@ -6,6 +6,7 @@
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const url = require('url');
 const { InspectorProcessManager, validateNativeCommand } = require('./native-process');
 const { BundleManager } = require('./bundle-manager');
 
@@ -43,15 +44,15 @@ function createWindow() {
     show: true,
   });
 
-  const appIndexFileUrl = `file://${path.resolve(inspectorRoot, 'renderer', 'index.html').replace(/\\/g, '/')}`;
+  const appIndexFileUrl = url.pathToFileURL(path.resolve(inspectorRoot, 'renderer', 'index.html')).href;
   mainWindow.loadFile(path.join(inspectorRoot, 'renderer', 'index.html'));
 
   // ─── Security: strictly prevent navigation away from local app ────
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const rendererPrefix = `file://${path.resolve(inspectorRoot, 'renderer').replace(/\\/g, '/')}/`;
-    if (url !== appIndexFileUrl && !url.startsWith(rendererPrefix)) {
+  mainWindow.webContents.on('will-navigate', (event, navUrl) => {
+    const rendererPrefix = url.pathToFileURL(path.resolve(inspectorRoot, 'renderer')).href + '/';
+    if (navUrl !== appIndexFileUrl && !navUrl.startsWith(rendererPrefix)) {
       event.preventDefault();
-      console.warn('[security] Blocked navigation to:', url);
+      console.warn('[security] Blocked navigation to:', navUrl);
     }
   });
 
@@ -129,6 +130,29 @@ ipcMain.handle('save-screenshot-dialog', async () => {
   });
   if (result.canceled || !result.filePath) return null;
   return result.filePath;
+});
+
+
+ipcMain.handle('export-screenshot', async () => {
+  if (!mainWindow) return { ok: false, error: 'No window' };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Viewport Screenshot',
+    defaultPath: 'viewport_screenshot.ppm',
+    filters: [
+      { name: 'PPM Image', extensions: ['ppm'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
+  // Write the screenshot via native process stdin (safe: path comes from
+  // main-process dialog, not from the renderer).
+  if (nativeProc._proc && nativeProc._proc.stdin && !nativeProc._proc.stdin.destroyed) {
+    try {
+      const cmd = JSON.stringify({ type: 'export_screenshot', path: result.filePath });
+      nativeProc._proc.stdin.write(cmd + '\n');
+    } catch (_) { /* ignore write errors */ }
+  }
+  return { ok: true, path: result.filePath };
 });
 
 ipcMain.handle('load-bundle', async (_event, bundlePath) => {

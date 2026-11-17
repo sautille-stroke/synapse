@@ -7,6 +7,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const readline = require('readline');
 const EventEmitter = require('events');
 const { ShmFrameReader, DEFAULT_SHM_NAME, validateShmName } = require('./shm-reader');
@@ -16,7 +17,6 @@ const ALLOWED_COMMAND_TYPES = new Set([
   'set_debug_view',
   'switch_view',
   'set_entity_visible',
-  'export_screenshot',
   'load_bundle',
   'quit',
 ]);
@@ -94,7 +94,6 @@ function validateNativeCommand(cmd) {
         command: { type: 'set_entity_visible', name: cmd.name, visible: cmd.visible },
       };
     }
-    case 'export_screenshot':
     case 'load_bundle': {
       if (typeof cmd.path !== 'string' || cmd.path.length === 0 || cmd.path.length > 4096 ||
           cmd.path.includes('\0') || cmd.path.includes('"')) {
@@ -203,6 +202,15 @@ class InspectorProcessManager extends EventEmitter {
       `--height=${h}`,
       `--shm-name=${this._shmName}`,
     ];
+
+    // Auto-inject --shm-file on macOS and Windows where POSIX shm_open is
+    // unavailable or unreliable.  The native process will memory-map this
+    // file instead of using /dev/shm.
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      const shmFilePath = path.join(os.tmpdir(), `synapse-shm-${process.pid}`);
+      args.push(`--shm-file=${shmFilePath}`);
+      this._shmFilePath = shmFilePath;
+    }
     if (bundlePath) {
       args.push(`--bundle=${bundlePath}`);
     }

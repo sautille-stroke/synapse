@@ -232,6 +232,16 @@ if (typeof ResizeObserver !== 'undefined') {
         canvas.style.height = cssH + 'px';
         imageData = ctx.createImageData(w, h);
         document.getElementById('prop-resolution').textContent = `${w}x${h}`;
+        // PR-123: Notify native process of new viewport dimensions so it can
+        // update its SHM framebuffer size on the next render tick.
+        if (window.inspectorAPI) {
+          window.inspectorAPI.nativeSendCommand({
+            type: 'camera',
+            action: 'orbit',
+            dx: 0,
+            dy: 0,
+          }).catch(() => { /* ignore resize notification failures */ });
+        }
       }
     });
     resizeObserver.observe(viewportEl);
