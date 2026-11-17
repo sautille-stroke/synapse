@@ -73,8 +73,19 @@ def handle_inspect_refine(
     manifest: BundleManifest,
 ) -> dict[str, Any]:
     """Run targeted refinement from a job bundle manifest."""
+    from synapse.errors import ContractValidationError
+
     params = dict(manifest.params)
     report = params.get("report", {})
+    if not report or not isinstance(report, dict):
+        raise ContractValidationError(
+            "inspect_refine stage requires a non-empty 'report' dict "
+            "in manifest.params (from a prior asset_inspect_3d run).",
+            agent_fix_hint=(
+                "Run 'asset_inspect_3d' first and pass its output report "
+                "as params.report in the inspect_refine manifest."
+            ),
+        )
 
     result = run_targeted_refinement(report=report)
 

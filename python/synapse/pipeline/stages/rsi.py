@@ -18,10 +18,22 @@ def handle_rsi_dual_verify(
     manifest: BundleManifest,
 ) -> dict[str, Any]:
     """Run dual verification from a job bundle manifest."""
+    from synapse.errors import ContractValidationError
+
     params = dict(manifest.params)
     sample_id = str(params.get("sample_id", "unknown"))
     physics = params.get("physics_metrics", {})
     prm_score = float(params.get("prm_score", 0.5))
+
+    if not physics or not isinstance(physics, dict):
+        raise ContractValidationError(
+            "rsi_dual_verify stage requires non-empty 'physics_metrics' "
+            "dict in manifest.params.",
+            agent_fix_hint=(
+                "Provide physics_metrics with at least 'foot_slip_cm_s', "
+                "'penetration_mm', and 'joint_torque_nm' values."
+            ),
+        )
 
     engine = DualVerifierEngine()
     verdict = engine.verify(

@@ -212,7 +212,15 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
         vis_dir.mkdir(parents=True, exist_ok=True)
         seq = import_fgpp(fgpp_dir, lazy=False)
         if not isinstance(seq, FGPPSequence):
-            raise ContractValidationError("Expected FGPPSequence")
+            raise ContractValidationError(
+                "Expected FGPPSequence from import_fgpp(lazy=False), "
+                f"got {type(seq).__name__}",
+                agent_fix_hint=(
+                    "Ensure the FGPP directory contains valid metadata.json "
+                    "and frame_*.exr files. Re-export with fulgur or "
+                    "synapse-bench if corrupted."
+                ),
+            )
         exported_count = 0
         for frame in seq.frames:
             stem = f"frame_{frame.frame_index:06d}"

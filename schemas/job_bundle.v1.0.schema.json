@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://synapse.dervgen.dev/schemas/job_bundle.v1.0.schema.json",
   "title": "Synapse JobBundle Manifest v1.0",
-  "description": "RFC 0039 Job Bundle manifest describing a single stateless stage execution. Mirrors python/synapse/pipeline/bundle_worker.py::BundleManifest.",
+  "description": "RFC 0039 Job Bundle manifest describing a single stateless stage execution. Mirrors python/synapse/pipeline/bundle_worker.py::BundleManifest. Also accepts the render-farm/grand-studio upstream wire format via BundleManifest.from_rfc0039_job_bundle().",
   "type": "object",
   "required": ["schema_version", "job_id", "stage"],
   "additionalProperties": false,
@@ -20,7 +20,7 @@
     "stage": {
       "type": "string",
       "minLength": 1,
-      "description": "Registered stage name to execute (e.g. 'fgpp_validate', 'neural_video_generate')."
+      "description": "Registered stage name to execute (e.g. 'fgpp_validate', 'neural_video_generate', 'delight_albedo')."
     },
     "inputs": {
       "type": "object",

@@ -161,9 +161,21 @@ def _cmd_rsi_gate_promote(
         base_p = Path(baseline_report_raw)
         cand_p = Path(candidate_report_raw)
         if not base_p.is_file():
-            raise AssetNotFoundError(f"Baseline report file not found: {baseline_report_raw!r}")
+            raise AssetNotFoundError(
+                f"Baseline report file not found: {baseline_report_raw!r}",
+                agent_fix_hint=(
+                    f"Ensure '{baseline_report_raw}' exists and is a valid "
+                    "BenchReport JSON file."
+                ),
+            )
         if not cand_p.is_file():
-            raise AssetNotFoundError(f"Candidate report file not found: {candidate_report_raw!r}")
+            raise AssetNotFoundError(
+                f"Candidate report file not found: {candidate_report_raw!r}",
+                agent_fix_hint=(
+                    f"Ensure '{candidate_report_raw}' exists and is a valid "
+                    "BenchReport JSON file."
+                ),
+            )
         baseline = BenchReport.model_validate_json(base_p.read_text(encoding="utf-8"))
         candidate = BenchReport.model_validate_json(cand_p.read_text(encoding="utf-8"))
     else:
