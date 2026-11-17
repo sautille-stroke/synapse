@@ -426,6 +426,15 @@ def quad_remesh(
                 edge_midpoint_map[edge_key] = mid_idx
             return edge_midpoint_map[edge_key]
 
+        # Collect all edges touched by unpaired triangles so we can detect
+        # T-junction exposure on adjacent quad faces.
+        subdivided_edges: set[tuple[int, int]] = set()
+        for tri in unpaired_triangles:
+            a, b, c = tri[0], tri[1], tri[2]
+            subdivided_edges.add((min(a, b), max(a, b)))
+            subdivided_edges.add((min(b, c), max(b, c)))
+            subdivided_edges.add((min(c, a), max(c, a)))
+
         for tri in unpaired_triangles:
             a, b, c = tri[0], tri[1], tri[2]
             idx_mid_ab = _get_midpoint(a, b)
@@ -441,10 +450,38 @@ def quad_remesh(
             subdivided_quads.append([b, idx_mid_bc, idx_centroid, idx_mid_ab])
             subdivided_quads.append([c, idx_mid_ca, idx_centroid, idx_mid_bc])
 
+        # Also subdivide any quad that shares an edge with an unpaired triangle
+        # (one-step Catmull-Clark quad subdivision) to prevent T-junctions.
+        safe_quads: list[list[int]] = []
+        for quad in quad_faces:
+            q0, q1, q2, q3 = quad[0], quad[1], quad[2], quad[3]
+            edges = [
+                (min(q0, q1), max(q0, q1)),
+                (min(q1, q2), max(q1, q2)),
+                (min(q2, q3), max(q2, q3)),
+                (min(q3, q0), max(q3, q0)),
+            ]
+            shared = any(e in subdivided_edges for e in edges)
+            if shared:
+                # Subdivide quad into 4 sub-quads via edge midpoints + face centre
+                m01 = _get_midpoint(q0, q1)
+                m12 = _get_midpoint(q1, q2)
+                m23 = _get_midpoint(q2, q3)
+                m30 = _get_midpoint(q3, q0)
+                face_centre = (v[q0] + v[q1] + v[q2] + v[q3]) * 0.25
+                fc_idx = vert_offset + len(extra_verts)
+                extra_verts.append(face_centre)
+                subdivided_quads.append([q0, m01, fc_idx, m30])
+                subdivided_quads.append([q1, m12, fc_idx, m01])
+                subdivided_quads.append([q2, m23, fc_idx, m12])
+                subdivided_quads.append([q3, m30, fc_idx, m23])
+            else:
+                safe_quads.append(quad)
+
         if extra_verts:
             v = np.vstack([v, np.array(extra_verts, dtype=np.float32)])
 
-        all_quads = quad_faces + subdivided_quads
+        all_quads = safe_quads + subdivided_quads
         new_faces = np.array(all_quads, dtype=np.int32)
     else:
         new_faces = f
@@ -718,9 +755,12 @@ def check_self_intersections(
     num_cells = max(min(int(round(len(valid_ids) ** (1.0 / 3.0))), 256), 4)
     cell_size = extent / num_cells
 
+    _MAX_CELLS_PER_FACE = 512  # prevent memory explosion for large faces
+
     grid: dict[tuple[int, int, int], list[int]] = defaultdict(list)
     for fi_np in valid_ids:
         fi = int(fi_np)
+        _cell_count = 0
         lo = np.clip(
             np.floor((tri_min[fi] - global_min) / cell_size).astype(int),
             0,
@@ -735,6 +775,17 @@ def check_self_intersections(
             for iy in range(int(lo[1]), int(hi[1]) + 1):
                 for iz in range(int(lo[2]), int(hi[2]) + 1):
                     grid[(ix, iy, iz)].append(fi)
+                    # Cap per-face cell count to prevent memory explosion
+                    # from large faces spanning the entire grid.
+                    _cell_count += 1
+                    if _cell_count > _MAX_CELLS_PER_FACE:
+                        break
+                else:
+                    continue
+                break
+            else:
+                continue
+            break
 
     # ------------------------------------------------------------------
     # Narrow phase

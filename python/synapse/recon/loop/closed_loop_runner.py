@@ -213,13 +213,16 @@ class ClosedLoopRunner:
         t2 = time.monotonic()
         optimizer = AnalyticUVInverseOptimizer(self._optim_config)
 
-        # Trim normals and uv_maps to match target frame count
+        # Trim normals and uv_maps to match target frame count (safe for
+        # non-4k+1 padded frame counts where arrays may be shorter than target).
         n_target = target_frames.shape[0]
-        normals_trimmed = normals[:n_target]
-        uv_trimmed = uv_maps[:n_target]
+        normals_trimmed = normals[:min(n_target, len(normals))]
+        uv_trimmed = uv_maps[:min(n_target, len(uv_maps))]
+        # Clamp n_target to actual available trimmed length
+        n_target = min(n_target, len(normals_trimmed), len(uv_trimmed))
 
         inverse_result = optimizer.optimize_material_from_video(
-            frames=target_frames,
+            frames=target_frames[:n_target],
             normals=normals_trimmed,
             uv_maps=uv_trimmed,
         )
@@ -244,7 +247,7 @@ class ClosedLoopRunner:
         stitcher = ScalpelStitcher(self._stitch_config)
 
         # Build per-frame RefinementResults for the stitcher
-        source_trimmed = source_frames[:n_target]
+        source_trimmed = source_frames[:min(n_target, len(source_frames))]
         refinements = self._build_refinements(
             rerendered, source_trimmed,
         )

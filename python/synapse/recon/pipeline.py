@@ -77,10 +77,14 @@ class ReconPipeline:
         num_frames, height, width, _ = frames.shape
 
         # 1. 4D Point Tracking
-        tracks_2d, _ = solve_point_tracks(frames, num_points=256)
+        tracks_2d, visibility = solve_point_tracks(frames, num_points=256)
 
-        # 2. Camera Trajectory Recovery
-        camera_traj = solve_camera_trajectory(tracks_2d)
+        # 2. Camera Trajectory Recovery — derive intrinsics from frame size
+        camera_traj = solve_camera_trajectory(
+            tracks_2d,
+            frame_height=height,
+            frame_width=width,
+        )
 
         # 3. Surface Geometry & Quad Remeshing
         if initial_mesh is None:
