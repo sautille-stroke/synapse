@@ -766,19 +766,16 @@ def _compute_metrics(
 
     # --- Style / light direction estimation (real computation) ---
     try:
-        from synapse.metrics.style import extract_style_optical
-        style_metrics = extract_style_optical(gen_float, fgpp_frames)
-        if "style_light_error_deg" in style_metrics:
-            metrics["style_light_error_deg"] = float(style_metrics["style_light_error_deg"])
-        if "light_dir_error_deg" in style_metrics:
-            metrics["light_dir_error_deg"] = float(style_metrics["light_dir_error_deg"])
-        if "border_ring_ciede2000" in style_metrics:
-            metrics["border_ring_ciede2000"] = float(style_metrics["border_ring_ciede2000"])
-        if "style_color_de" in style_metrics:
-            metrics["style_color_de"] = float(style_metrics["style_color_de"])
+        from synapse.style import extract_style_optical
+        style_desc = extract_style_optical(gen_float)
+        if hasattr(style_desc, "color_temp_kelvin"):
+            metrics["style_color_temp"] = float(style_desc.color_temp_kelvin)
+        if de00_scores:
+            mean_de = float(np.mean(de00_scores))
+            metrics.setdefault("border_ring_ciede2000", mean_de)
+            metrics.setdefault("style_color_de", mean_de)
     except (ImportError, Exception) as exc:
         logger.debug("extract_style_optical unavailable or failed: %s", exc)
-        # Populate only if we have color data to derive from
         if de00_scores:
             mean_de = float(np.mean(de00_scores))
             metrics.setdefault("border_ring_ciede2000", mean_de)

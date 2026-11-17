@@ -446,7 +446,7 @@ class TestHttpSecurityAndLedger:
         monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", lambda *args, **kwargs: mock_resp)
 
         with pytest.raises(BackendUnavailableError) as exc_info:
-            transport.submit(FoundaryRequest(service="trellis", payload={}))
+            transport.submit(FoundaryRequest(service="trellis", inputs={}))
         assert exc_info.value.exit_code == 30
         assert "Out of memory" in str(exc_info.value)
 

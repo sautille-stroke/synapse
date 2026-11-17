@@ -673,7 +673,7 @@ class TestPR117FeatureStoreEnhancements:
         import tarfile
 
         tmp = tmp_path
-        shard_path = Path(str(tmp)) / "test.tar"  # type: ignore[arg-type]
+        shard_path = Path(str(tmp)) / "test.tar"
 
         # Create a tarball with one valid and one invalid sample_id
         with tarfile.open(shard_path, "w") as tf:
@@ -712,7 +712,7 @@ class TestPR117FeatureStoreEnhancements:
         import tarfile
 
         tmp = tmp_path
-        shard_path = Path(str(tmp)) / "multi.tar"  # type: ignore[arg-type]
+        shard_path = Path(str(tmp)) / "multi.tar"
 
         with tarfile.open(shard_path, "w") as tf:
             for sid in ["alpha", "beta", "gamma"]:

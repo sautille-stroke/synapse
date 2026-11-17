@@ -261,7 +261,8 @@ class TestWanAdapterLoRAGenerate:
 
     def test_wan_adapter_manage_spatial_hooks_category_routing(self) -> None:
         """PR-116: identity LoRA routes to M_fg and style LoRA routes to ~M_fg."""
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
+        import torch
         from synapse.adapters.lora.manager import MultiLoRAManager
         from synapse.adapters.lora.manifest import LoRAManifest
 

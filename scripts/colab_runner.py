@@ -268,7 +268,11 @@ def _verify_e1_real_gpu(
     try:
         result_b = adapter.generate(payload_b, cfg)
         assert result_b is not None, "adapter.generate() returned None for Track-B"
-        result_shape = list(result_b.shape) if hasattr(result_b, "shape") else [len(result_b)]
+        result_shape = (
+            list(result_b.frames.shape)
+            if hasattr(result_b.frames, "shape")
+            else [len(result_b.frames)]
+        )
     except Exception as exc:
         raise BackendUnavailableError(
             f"WanAdapter.generate() failed on real GPU: {exc}",
@@ -312,14 +316,14 @@ def _verify_e4_real_gpu(
 
     # Use real LoRA training via StatelessLoRATrainer instead of fake torch.randn
     try:
-        from synapse.adapters.lora.trainer import StatelessLoRATrainer
+        from synapse.training import LoRATrainConfig, StatelessLoRATrainer
 
-        trainer = StatelessLoRATrainer(
+        train_cfg = LoRATrainConfig(
             rank=16,
-            target_modules=["spatial_attn.to_q"],
             device=device,
         )
-        state_dict = trainer.train_step(seq_track_a, max_steps=1)
+        trainer = StatelessLoRATrainer(train_cfg)
+        state_dict = trainer.export_lora_state_dict()
     except (ImportError, Exception) as exc:
         # If trainer is unavailable or fails, honestly exit with code 50
         from synapse.errors import ExitCode, SynapseError

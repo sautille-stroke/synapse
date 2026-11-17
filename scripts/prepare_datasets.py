@@ -68,8 +68,6 @@ def _export_software_rasterizer_fallback(
         )
         frame = FGPPFrame(
             frame_index=i,
-            width=width,
-            height=height,
             direct_radiance=np.zeros((height, width, 3), dtype=np.float32),
             depth=np.ones((height, width), dtype=np.float32),
             world_normal=np.tile(
