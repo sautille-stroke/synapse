@@ -103,9 +103,40 @@ def chamfer_mm(
     return chamfer_m * 1000.0  # metres → mm
 
 
+def _triangulate_polygons(faces: Any) -> np.ndarray:
+    """Convert arbitrary polygon faces to triangle faces via fan triangulation.
+
+    Supports:
+      - ``[M, 3]`` int array (returned directly as int64)
+      - ``[M, K]`` int array where K >= 4 (fan-triangulated to [M * (K - 2), 3])
+      - Sequence of variable-length index sequences (e.g. list of lists)
+    """
+    if isinstance(faces, np.ndarray) and faces.ndim == 2:
+        if faces.shape[1] == 3:
+            return faces.astype(np.int64, copy=False)
+        if faces.shape[1] >= 4:
+            f = faces.astype(np.int64, copy=False)
+            k = f.shape[1]
+            tris = []
+            for i in range(1, k - 1):
+                tris.append(f[:, [0, i, i + 1]])
+            return np.vstack(tris)
+
+    # Sequence of polygons
+    tris_list = []
+    for poly in faces:
+        p = [int(idx) for idx in poly]
+        n = len(p)
+        for i in range(1, n - 1):
+            tris_list.append((p[0], p[i], p[i + 1]))
+    if not tris_list:
+        return np.empty((0, 3), dtype=np.int64)
+    return np.asarray(tris_list, dtype=np.int64)
+
+
 def sample_mesh_surface(
     vertices: np.ndarray,
-    faces: np.ndarray,
+    faces: Any,
     num_samples: int = 10000,
     seed: int | None = 42,
 ) -> np.ndarray:
@@ -117,7 +148,7 @@ def sample_mesh_surface(
 
     Args:
         vertices: ``[N, 3]`` float array of vertex coordinates in metres.
-        faces: ``[M, 3]`` int array of triangle face vertex indices.
+        faces: ``[M, 3]`` (or ``[M, K]`` for polygons) face vertex indices.
         num_samples: Number of surface points to sample (default: 10000).
         seed: Optional RNG seed for reproducible sampling.
 
@@ -125,7 +156,7 @@ def sample_mesh_surface(
         ``[num_samples, 3]`` float64 array of sampled 3D points on the mesh surface.
     """
     v = np.asarray(vertices, dtype=np.float64)
-    f = np.asarray(faces, dtype=np.int64)
+    f = _triangulate_polygons(faces)
     if len(v) == 0 or len(f) == 0:
         return np.empty((0, 3), dtype=np.float64)
 
@@ -164,26 +195,35 @@ def sample_mesh_surface(
         + val_v[:, np.newaxis] * pts_v1
         + w[:, np.newaxis] * pts_v2
     )
-    return sampled
+    return np.asarray(sampled, dtype=np.float64)
 
 
 def _extract_or_sample_points(
     mesh_or_points: Any,
-    faces: np.ndarray | None = None,
+    faces: Any = None,
     num_samples: int = 10000,
     seed: int = 42,
 ) -> np.ndarray:
     """Extract or sample points from mesh or point cloud."""
+    if isinstance(mesh_or_points, (tuple, list)) and len(mesh_or_points) == 2:
+        try:
+            v_cand, f_cand = mesh_or_points
+            verts = np.asarray(v_cand, dtype=np.float64)
+            if verts.ndim == 2 and verts.shape[1] == 3:
+                return sample_mesh_surface(verts, f_cand, num_samples=num_samples, seed=seed)
+        except (ValueError, TypeError):
+            pass
+
     if hasattr(mesh_or_points, "vertices") and hasattr(mesh_or_points, "faces"):
         verts = np.asarray(mesh_or_points.vertices, dtype=np.float64)
-        mesh_faces = np.asarray(mesh_or_points.faces, dtype=np.int64)
+        mesh_faces = mesh_or_points.faces
         if len(mesh_faces) > 0:
             return sample_mesh_surface(verts, mesh_faces, num_samples=num_samples, seed=seed)
         return verts
 
     arr = np.asarray(mesh_or_points, dtype=np.float64)
     if faces is not None and len(faces) > 0:
-        return sample_mesh_surface(arr, np.asarray(faces, dtype=np.int64), num_samples=num_samples, seed=seed)
+        return sample_mesh_surface(arr, faces, num_samples=num_samples, seed=seed)
     return arr
 
 
@@ -225,22 +265,30 @@ def compute_chamfer_distance_mm(
 
 
 def f_score_1mm(
-    points_a: np.ndarray,
-    points_b: np.ndarray,
+    points_a: Any,
+    points_b: Any,
     threshold_mm: float = 1.0,
+    faces_a: Any = None,
+    faces_b: Any = None,
+    num_samples: int = 10000,
+    seed: int = 42,
 ) -> float:
     """F-score at a given distance threshold (default 1 mm).
 
     Args:
-        points_a: ``[N, 3]`` point cloud in **metres**.
-        points_b: ``[M, 3]`` point cloud in **metres**.
+        points_a: ``[N, 3]`` point cloud, or ``(vertices, faces)`` mesh.
+        points_b: ``[M, 3]`` point cloud, or ``(vertices, faces)`` mesh.
         threshold_mm: Distance threshold in millimetres.
+        faces_a: Optional face indices for mesh A.
+        faces_b: Optional face indices for mesh B.
+        num_samples: Sample count for surface sampling.
+        seed: RNG seed for surface sampling.
 
     Returns:
         F-score in [0, 1] (harmonic mean of precision and recall).
     """
-    a = np.asarray(points_a, dtype=np.float64)
-    b = np.asarray(points_b, dtype=np.float64)
+    a = _extract_or_sample_points(points_a, faces_a, num_samples=num_samples, seed=seed)
+    b = _extract_or_sample_points(points_b, faces_b, num_samples=num_samples, seed=seed)
     if len(a) == 0 or len(b) == 0:
         return 0.0
 
@@ -259,26 +307,61 @@ def f_score_1mm(
 
 
 def f_score_5mm(
-    points_a: np.ndarray,
-    points_b: np.ndarray,
+    points_a: Any,
+    points_b: Any,
     threshold_mm: float = 5.0,
+    faces_a: Any = None,
+    faces_b: Any = None,
+    num_samples: int = 10000,
+    seed: int = 42,
 ) -> float:
     """F-score at 5 mm distance threshold (RFC-0063 Track 1/Track 3 standard).
 
     Args:
-        points_a: ``[N, 3]`` point cloud in **metres**.
-        points_b: ``[M, 3]`` point cloud in **metres**.
+        points_a: ``[N, 3]`` point cloud, or ``(vertices, faces)`` mesh.
+        points_b: ``[M, 3]`` point cloud, or ``(vertices, faces)`` mesh.
         threshold_mm: Distance threshold in millimetres (default: 5.0).
+        faces_a: Optional face indices for mesh A.
+        faces_b: Optional face indices for mesh B.
+        num_samples: Sample count for surface sampling.
+        seed: RNG seed for surface sampling.
 
     Returns:
         F-score in [0, 1] (harmonic mean of precision and recall).
     """
-    return f_score_1mm(points_a, points_b, threshold_mm=threshold_mm)
+    return f_score_1mm(
+        points_a,
+        points_b,
+        threshold_mm=threshold_mm,
+        faces_a=faces_a,
+        faces_b=faces_b,
+        num_samples=num_samples,
+        seed=seed,
+    )
 
 
-def _is_mesh_watertight(faces: np.ndarray) -> bool:
-    """Check whether a mesh face array represents a closed 2-manifold orientation-consistent mesh."""
-    f = np.asarray(faces, dtype=np.int64)
+def _is_mesh_watertight(faces_or_vertices: Any, faces: Any = None) -> bool:
+    """Check whether a mesh face array represents a closed 2-manifold orientation-consistent mesh.
+
+    Accepts:
+      - ``_is_mesh_watertight(faces)``
+      - ``_is_mesh_watertight(vertices, faces)``
+    """
+    if faces is not None:
+        verts = np.asarray(faces_or_vertices, dtype=np.float64)
+        if not np.all(np.isfinite(verts)):
+            return False
+        raw_faces = faces
+    else:
+        raw_faces = faces_or_vertices
+
+    # Can be a list of polygons or a numpy array
+    f: list[Any] | np.ndarray
+    if isinstance(raw_faces, np.ndarray) and raw_faces.dtype != object:
+        f = raw_faces.astype(np.int64, copy=False)
+    else:
+        f = [list(map(int, p)) for p in raw_faces]
+
     if len(f) == 0:
         return False
 
@@ -320,7 +403,7 @@ def _is_mesh_watertight(faces: np.ndarray) -> bool:
             for i in range(n):
                 if int(poly[i]) == v:
                     a = int(poly[(i + 1) % n])
-                    b = int(poly[(i + 2) % n])
+                    b = int(poly[(i - 1) % n])
                     if a in next_vertex:
                         return False
                     next_vertex[a] = b
@@ -385,15 +468,18 @@ def watertight_pct(
 
 def _signed_volume(
     vertices: np.ndarray,
-    faces: np.ndarray,
+    faces: Any,
 ) -> float:
     """Signed volume via directed tetrahedra summation.
 
     Each face (v0, v1, v2) defines a tetrahedron with the origin and
     contributes ``v0 . (v1 x v2) / 6`` to the total signed volume.
+    Automatically triangulates polygon faces via fan triangulation.
     """
     v = np.asarray(vertices, dtype=np.float64)
-    f = np.asarray(faces, dtype=np.int64)
+    f = _triangulate_polygons(faces)
+    if len(v) == 0 or len(f) == 0:
+        return 0.0
 
     v0 = v[f[:, 0]]
     v1 = v[f[:, 1]]
@@ -446,7 +532,8 @@ def foot_sliding_cm(
 
     Returns:
         Mean per-frame horizontal displacement on ground XZ plane during contact in
-        **centimetres** (scalar float).
+        **centimetres** (scalar float). Note: multiply by fps to convert to cm/s
+        sliding velocity if needed.
     """
     pos = np.asarray(foot_positions, dtype=np.float64)
     contact = np.asarray(contact_phases, dtype=bool)
@@ -499,16 +586,20 @@ def albedo_delta_e00(
     pred_albedo: np.ndarray,
     gt_albedo: np.ndarray,
     mask: np.ndarray | None = None,
+    input_space: Literal["srgb", "linear"] = "srgb",
 ) -> float:
     """Mean CIEDE2000 colour difference between albedo patches.
 
-    Converts sRGB albedo to linear, then to CIE Lab, and computes the
-    CIEDE2000 metric.
+    Converts albedo to CIE Lab and computes the CIEDE2000 metric.
 
     Args:
-        pred_albedo: ``[H, W, 3]`` sRGB albedo in [0, 1].
-        gt_albedo: ``[H, W, 3]`` sRGB albedo in [0, 1].
+        pred_albedo: ``[H, W, 3]`` albedo in [0, 1].
+        gt_albedo: ``[H, W, 3]`` albedo in [0, 1].
         mask: Optional ``[H, W]`` bool mask (``True`` = valid).
+        input_space: Colour space of the input images (``"srgb"`` or
+            ``"linear"``).  When ``"srgb"``, inputs are converted to linear
+            before computing Lab.  When ``"linear"``, the sRGB-to-linear
+            step is skipped.
 
     Returns:
         Mean deltaE00 (scalar float).
@@ -522,8 +613,16 @@ def albedo_delta_e00(
     p = np.asarray(pred_albedo, dtype=np.float64)
     g = np.asarray(gt_albedo, dtype=np.float64)
 
-    lab_p = rgb_to_cielab(srgb_to_linear(p))
-    lab_g = rgb_to_cielab(srgb_to_linear(g))
+    if input_space == "srgb":
+        lab_p = rgb_to_cielab(srgb_to_linear(p))
+        lab_g = rgb_to_cielab(srgb_to_linear(g))
+    elif input_space == "linear":
+        lab_p = rgb_to_cielab(p)
+        lab_g = rgb_to_cielab(g)
+    else:
+        raise ValueError(
+            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
+        )
 
     de = ciede2000_delta_e(lab_p, lab_g)  # [H, W]
 

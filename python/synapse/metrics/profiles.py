@@ -225,6 +225,27 @@ def evaluate_metrics_gate(
     if scenario_overrides:
         thresholds.update(scenario_overrides)
 
+    # Resolve bidirectional aliases in thresholds so overrides using alias
+    # names (e.g. "style_color_de") supersede their canonical counterpart
+    # (e.g. "border_ring_ciede2000") and vice versa.
+    resolved_thresholds: dict[str, float] = {}
+    for name, thresh in thresholds.items():
+        resolved_thresholds[name] = thresh
+        # If this key has an alias counterpart, propagate the threshold
+        if name in METRIC_ALIASES:
+            canonical = METRIC_ALIASES[name]
+            # Only override if the canonical was not explicitly set by the
+            # user's scenario_overrides
+            if canonical not in thresholds or (
+                scenario_overrides and name in scenario_overrides
+            ):
+                resolved_thresholds[canonical] = thresh
+        else:
+            # Check reverse: is this a canonical name with an alias?
+            for alias, canonical in METRIC_ALIASES.items():
+                if canonical == name and alias not in thresholds:
+                    resolved_thresholds[alias] = thresh
+
     # Resolve bidirectional aliases in measured metrics without mutating caller dict
     resolved_measured = dict(measured)
     for alias, canonical in METRIC_ALIASES.items():
@@ -234,7 +255,7 @@ def evaluate_metrics_gate(
             resolved_measured[alias] = resolved_measured[canonical]
 
     violations: list[GateViolation] = []
-    for name, thresh in thresholds.items():
+    for name, thresh in resolved_thresholds.items():
         if name not in resolved_measured:
             continue
         value = float(resolved_measured[name])

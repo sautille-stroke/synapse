@@ -37,13 +37,17 @@ def _to_float_images(
         )
 
     eff_range = float(data_range)
-    if p_raw.dtype == np.uint8 and g_raw.dtype == np.uint8:
+    # Normalise each image independently by its own dtype
+    if p_raw.dtype == np.uint8:
         p = p_raw.astype(np.float64) / 255.0
-        g = g_raw.astype(np.float64) / 255.0
-        eff_range = 1.0
     else:
         p = p_raw.astype(np.float64)
+    if g_raw.dtype == np.uint8:
+        g = g_raw.astype(np.float64) / 255.0
+    else:
         g = g_raw.astype(np.float64)
+    if p_raw.dtype == np.uint8 or g_raw.dtype == np.uint8:
+        eff_range = 1.0
 
     return p, g, eff_range
 
@@ -97,6 +101,10 @@ def psnr_db(
         return 100.0
 
     return float(min(10.0 * math.log10((eff_range ** 2) / mse), 100.0))
+
+
+# Public alias for psnr_db
+psnr = psnr_db
 
 
 def _gaussian_kernel_1d(win_size: int = 11, sigma: float = 1.5) -> np.ndarray:
@@ -287,7 +295,7 @@ def _downsample_2x(img4: np.ndarray) -> np.ndarray:
 
 
 def _downsample_mask_2x(mask4: np.ndarray) -> np.ndarray:
-    """2x spatial pooling for boolean masks."""
+    """2x spatial pooling for boolean masks using inner intersection (AND)."""
     _, h, w, _ = mask4.shape
     h2 = (h // 2) * 2
     w2 = (w // 2) * 2
@@ -296,9 +304,9 @@ def _downsample_mask_2x(mask4: np.ndarray) -> np.ndarray:
     cropped = mask4[:, :h2, :w2, :]
     return np.asarray(
         cropped[:, 0::2, 0::2, :]
-        | cropped[:, 1::2, 0::2, :]
-        | cropped[:, 0::2, 1::2, :]
-        | cropped[:, 1::2, 1::2, :]
+        & cropped[:, 1::2, 0::2, :]
+        & cropped[:, 0::2, 1::2, :]
+        & cropped[:, 1::2, 1::2, :]
     )
 
 
@@ -421,10 +429,41 @@ def lpips(
 
         if h_s < 4 or w_s < 4:
             break
-        cur_p = _downsample_2x(cur_p)
-        cur_g = _downsample_2x(cur_g)
         if _has_mask and cur_mask is not None:
+            # Mask-normalized average downsampling
+            h2 = (h_s // 2) * 2
+            w2 = (w_s // 2) * 2
+            if h2 >= 2 and w2 >= 2:
+                c_m = cur_mask[:, :h2, :w2, :].astype(np.float64)
+                c_p = cur_p[:, :h2, :w2, :]
+                c_g = cur_g[:, :h2, :w2, :]
+                m_sum = (
+                    c_m[:, 0::2, 0::2, :]
+                    + c_m[:, 1::2, 0::2, :]
+                    + c_m[:, 0::2, 1::2, :]
+                    + c_m[:, 1::2, 1::2, :]
+                )
+                p_sum = (
+                    c_p[:, 0::2, 0::2, :] * c_m[:, 0::2, 0::2, :]
+                    + c_p[:, 1::2, 0::2, :] * c_m[:, 1::2, 0::2, :]
+                    + c_p[:, 0::2, 1::2, :] * c_m[:, 0::2, 1::2, :]
+                    + c_p[:, 1::2, 1::2, :] * c_m[:, 1::2, 1::2, :]
+                )
+                g_sum = (
+                    c_g[:, 0::2, 0::2, :] * c_m[:, 0::2, 0::2, :]
+                    + c_g[:, 1::2, 0::2, :] * c_m[:, 1::2, 0::2, :]
+                    + c_g[:, 0::2, 1::2, :] * c_m[:, 0::2, 1::2, :]
+                    + c_g[:, 1::2, 1::2, :] * c_m[:, 1::2, 1::2, :]
+                )
+                cur_p = np.where(m_sum > 0, p_sum / np.maximum(m_sum, 1e-12), 0.0)
+                cur_g = np.where(m_sum > 0, g_sum / np.maximum(m_sum, 1e-12), 0.0)
+            else:
+                cur_p = _downsample_2x(cur_p)
+                cur_g = _downsample_2x(cur_g)
             cur_mask = _downsample_mask_2x(cur_mask)
+        else:
+            cur_p = _downsample_2x(cur_p)
+            cur_g = _downsample_2x(cur_g)
 
     score = total_dist / max(weight_sum, 1e-12)
     return float(np.clip(score, 0.0, 1.0))
