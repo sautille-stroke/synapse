@@ -114,10 +114,8 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
         mesh = mesh.normalize()
     return mesh
 
-
-# Register load_mesh into Tier-2 inspect default mesh loader registry
-try:
-    from synapse.inspect.model_evaluator import register_default_mesh_loader
-    register_default_mesh_loader(lambda p: load_mesh(p, normalize=True))
-except ImportError:
-    pass
+# NOTE: Import-time side effect removed.  Callers who need to register
+# load_mesh as the default mesh loader should do so explicitly:
+#   from synapse.bench.model_loader import load_mesh
+#   from synapse.inspect.model_evaluator import register_default_mesh_loader
+#   register_default_mesh_loader(lambda p: load_mesh(p, normalize=True))

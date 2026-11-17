@@ -84,11 +84,30 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
             export_inspection_bundle,
         )
 
-        export_path = Path(export_dir)
+        export_path = Path(export_dir).resolve()
+        export_path.mkdir(parents=True, exist_ok=True)
+        if not export_path.is_dir():
+            raise AssetNotFoundError(
+                f"Cannot create export bundle directory: {export_path}",
+                agent_fix_hint=(
+                    f"Ensure '{export_dir}' is a valid writable directory path."
+                ),
+            )
         for r in reports:
+            # Resolve source model from scenario asset, not from export dir
+            source_model: Path | None = None
+            try:
+                from synapse.bench.scenario import load_scenario
+                sc = load_scenario(r.scenario_name)
+                if hasattr(sc, "asset") and hasattr(sc.asset, "path"):
+                    candidate = Path(sc.asset.path)
+                    if candidate.is_file():
+                        source_model = candidate
+            except Exception:
+                pass
             export_inspection_bundle(
                 scenario_name=r.scenario_name,
-                source_model_path=export_path / "source.glb",
+                source_model_path=source_model or export_path / "source.glb",
                 output_dir=export_path / r.scenario_name,
                 metrics_dict=r.metrics,
             )

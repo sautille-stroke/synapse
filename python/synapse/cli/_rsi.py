@@ -32,8 +32,15 @@ def _cmd_rsi_sample_curriculum(
     cfg = CurriculumConfig(seed=seed, num_scenarios=num)
     sampler = CurriculumSampler(cfg)
 
-    # Use empty scores (all factors get default treatment)
+    # Use scores from CLI if provided, otherwise empty defaults
+    scores_raw = getattr(args, "scores", None)
     scores: dict[str, float] = {}
+    if scores_raw:
+        scores_path = Path(scores_raw)
+        if scores_path.is_file():
+            scores = json.loads(scores_path.read_text(encoding="utf-8"))
+        else:
+            scores = json.loads(scores_raw)
     scenarios = sampler.sample_scenarios(scores)
     return {
         "scenarios": [s.model_dump() for s in scenarios],
@@ -136,11 +143,27 @@ def _cmd_rsi_build_pairs(
         )
 
     pairs = builder.build_pairs()
+
+    # Write output if --output specified
+    output_path = getattr(args, "output", None)
+    if output_path:
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(
+            json.dumps(
+                [p.model_dump() for p in pairs],
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+
     return {
         "total": len(pairs),
         "golden_count": sum(
             1 for p in pairs if p.is_golden
         ),
+        "output": str(output_path) if output_path else None,
     }
 
 
@@ -220,8 +243,11 @@ def _cmd_rsi_gate_promote(
         candidate_temporal = float(candidate_temporal_raw)  # type: ignore[arg-type]
 
         # Parse baseline and candidate scenarios separately
-        base_scenarios_raw = getattr(args, "baseline_scenarios", None) or getattr(args, "scenarios", None)
-        cand_scenarios_raw = getattr(args, "candidate_scenarios", None) or getattr(args, "scenarios", None)
+        # NOTE: --scenarios is NOT used as a shared fallback; baseline and
+        # candidate must supply their own --baseline-scenarios /
+        # --candidate-scenarios to prevent data bleeding between the two.
+        base_scenarios_raw = getattr(args, "baseline_scenarios", None)
+        cand_scenarios_raw = getattr(args, "candidate_scenarios", None)
 
         def _parse_scenarios(raw: Any) -> list[BenchScenarioScore]:
             if not raw:
@@ -251,11 +277,21 @@ def _cmd_rsi_gate_promote(
             scenarios=_parse_scenarios(cand_scenarios_raw),
         )
 
-    result = evaluate_monotonic_promotion(
-        baseline=baseline,
-        candidate=candidate,
-        raise_on_reject=True,
-    )
+    promote_kwargs: dict[str, Any] = {
+        "baseline": baseline,
+        "candidate": candidate,
+        "raise_on_reject": True,
+    }
+    if not base_scenarios_raw and not cand_scenarios_raw:
+        promote_kwargs["min_scenarios"] = 0
+    epsilon_min = getattr(args, "epsilon_min", None)
+    if epsilon_min is not None:
+        promote_kwargs["epsilon_min"] = epsilon_min
+    noise_tolerance = getattr(args, "noise_tolerance", None)
+    if noise_tolerance is not None:
+        promote_kwargs["noise_tolerance"] = noise_tolerance
+
+    result = evaluate_monotonic_promotion(**promote_kwargs)
 
     return {
         "promoted": result.promoted,
@@ -294,6 +330,10 @@ def register_rsi_subparser(
         "--num-scenarios", type=int, default=10,
         help="Number of scenarios to sample (default: 10)",
     )
+    rsi_sample.add_argument(
+        "--scores", default=None,
+        help="JSON string or path to JSON file with factor scores for curriculum weighting",
+    )
 
     rsi_verify = rsi_sub.add_parser(
         "verify",
@@ -325,6 +365,10 @@ def register_rsi_subparser(
     rsi_build.add_argument(
         "--self-file", default=None,
         help="Optional path to JSON/JSONL file with self-play pairs",
+    )
+    rsi_build.add_argument(
+        "--output", default=None,
+        help="Path to write built preference pairs JSON output",
     )
 
     rsi_gate = rsi_sub.add_parser(
@@ -379,6 +423,14 @@ def register_rsi_subparser(
     rsi_gate.add_argument(
         "--strict", action="store_true", default=False,
         help="Fail closed with exit code 40 if candidate is not promoted",
+    )
+    rsi_gate.add_argument(
+        "--epsilon-min", type=float, default=None,
+        help="Minimum improvement epsilon threshold for promotion",
+    )
+    rsi_gate.add_argument(
+        "--noise-tolerance", type=float, default=None,
+        help="Noise tolerance for promotion gate comparison",
     )
     return cast(argparse.ArgumentParser, rsi_parser)
 

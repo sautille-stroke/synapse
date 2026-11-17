@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import html
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Base64 content sanitization pattern
+_B64_RE = re.compile(r'^[A-Za-z0-9+/=\s]*$')
 
 # -------------------------------------------------------------------
 # Data model
@@ -405,6 +409,9 @@ def _append_model_card(parts: list[str], m: ModelEvalResult) -> None:
         for img_b64, label in zip(
             m.screenshots_base64, m.screenshot_labels, strict=False
         ):
+            # Sanitize base64 content to prevent XSS via injected data URIs
+            if not _B64_RE.match(img_b64):
+                img_b64 = ""
             parts.append('<div class="gallery-item">')
             parts.append(
                 f'<img src="data:image/png;base64,{img_b64}" '
