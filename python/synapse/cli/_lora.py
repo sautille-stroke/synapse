@@ -194,6 +194,12 @@ def register_lora_subparser(
         "--bundle", required=True,
         help="Path to LoRA bundle directory",
     )
+    lora_eval.add_argument(
+        "--allow-waived",
+        action="store_true",
+        default=False,
+        help="Allow waived quality gates to pass (exit 0 instead of 40)",
+    )
 
     lora_merge = lora_sub.add_parser(
         "merge",

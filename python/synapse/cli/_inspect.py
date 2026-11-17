@@ -240,6 +240,10 @@ def register_inspect_subparser(
     ev.add_argument("--asset-id", default="unknown", help="Asset identifier")
     ev.add_argument("--asset-name", default="Unknown", help="Human-readable asset name")
     ev.add_argument("--mock", action="store_true", help="Enable MockJevTransport for testing")
+    ev.add_argument(
+        "--image-uris", nargs="*", default=[],
+        help="URIs/paths to rendered images for the Visual Jev critic",
+    )
 
     evl = sub.add_parser("evaluate",
                           help="Batch-evaluate 3D models and generate HTML/JSON reports",

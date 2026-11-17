@@ -6,7 +6,7 @@ import base64
 import json
 from pathlib import Path
 
-from synapse.errors import AssetNotFoundError
+from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.viewer.static_html import VIEWER_HTML_TEMPLATE
 
 __all__ = ["export_static_html"]
@@ -56,6 +56,16 @@ def export_static_html(
             agent_fix_hint=f"Ensure '{dataset_path}' exists and contains manifest.json.",
         )
 
+    # Reject symlinks in dataset path
+    if dataset_path.is_symlink():
+        raise ContractValidationError(
+            f"Dataset directory is a symlink: {dataset_path}",
+            agent_fix_hint=(
+                "Symlinks are forbidden for security. "
+                "Use a real directory path."
+            ),
+        )
+
     manifest_file = dataset_path / "manifest.json"
     if not manifest_file.is_file():
         raise AssetNotFoundError(
@@ -63,7 +73,23 @@ def export_static_html(
             agent_fix_hint="Generate a dataset first using 'synapse generate'.",
         )
 
-    manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+    # Reject symlinked manifest
+    if manifest_file.is_symlink():
+        raise ContractValidationError(
+            f"manifest.json is a symlink: {manifest_file}",
+            agent_fix_hint="Use a real file, not a symlink.",
+        )
+
+    try:
+        manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ContractValidationError(
+            f"Invalid JSON in manifest.json: {exc}",
+            agent_fix_hint=(
+                f"Fix the JSON syntax in '{manifest_file}' or "
+                "regenerate the dataset with 'synapse generate'."
+            ),
+        ) from exc
 
     # Gather images to embed as base64
     embedded_images: dict[str, str] = {}

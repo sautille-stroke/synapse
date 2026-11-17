@@ -17,14 +17,17 @@ Exit codes follow AGENTS.md section 3::
     20 -- missing asset
     30 -- GPU OOM / backend unreachable
     40 -- circuit breaker / quality gate
+    50 -- not implemented
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Callable, Iterator
+from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,6 +37,31 @@ from pydantic import BaseModel, Field, field_validator
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
+
+class ClosureType(str, Enum):
+    """RFC 0039 closure type identifiers from ``render-farm`` / ``grand-studio``.
+
+    Maps upstream job closure semantics to synapse stage names.
+    """
+
+    NEURAL_VIDEO = "neural_video"
+    SURGICAL_INPAINT = "surgical_inpaint"
+    MESH_RECONSTRUCT = "mesh_reconstruct"
+    OPTICAL_POLISH = "optical_polish"
+    MOCAP_IK = "mocap_ik"
+    DELIGHTING = "delighting"
+
+
+CLOSURE_TYPE_MAP: dict[str, str] = {
+    "neural_video": "neural_video_generate",
+    "surgical_inpaint": "surgical_composite",
+    "mesh_reconstruct": "video_to_3d_invert",
+    "optical_polish": "style_extract_and_map",
+    "mocap_ik": "kinematic_distill",
+    "delighting": "delight_albedo",
+}
+"""Mapping from RFC 0039 ``closure_type`` to synapse stage names."""
 
 
 class HardwareBudget(BaseModel):
@@ -88,6 +116,143 @@ class BundleManifest(BaseModel):
                 "expected 'synapse.job_bundle.v1.0'"
             )
         return v
+
+    @classmethod
+    def from_rfc0039_job_bundle(
+        cls,
+        raw: dict[str, Any],
+    ) -> BundleManifest:
+        """Create a ``BundleManifest`` from an RFC 0039 ``render-farm`` / ``grand-studio`` JobBundle.
+
+        Accepts the upstream ``{job_id, project_name, closure_type, engine,
+        scene_spec, asset_manifest, output_sink, payload}`` wire format,
+        maps ``closure_type`` via :data:`CLOSURE_TYPE_MAP`, validates
+        ``asset_manifest[].sha256``, and returns a normalised
+        ``BundleManifest``.
+
+        Args:
+            raw: Raw JSON-decoded dict from the upstream scheduler.
+
+        Returns:
+            Normalised ``BundleManifest``.
+
+        Raises:
+            :class:`~synapse.errors.ContractValidationError`:
+                Unknown ``closure_type`` or missing required fields.
+            :class:`~synapse.errors.AssetNotFoundError`:
+                SHA-256 mismatch in ``asset_manifest``.
+        """
+        from synapse.errors import AssetNotFoundError, ContractValidationError
+
+        job_id = raw.get("job_id", "")
+        if not job_id:
+            raise ContractValidationError(
+                "RFC 0039 JobBundle missing 'job_id'.",
+                agent_fix_hint="Ensure 'job_id' is set in the JobBundle payload.",
+            )
+
+        closure_type = raw.get("closure_type", "")
+        stage = CLOSURE_TYPE_MAP.get(closure_type)
+        if stage is None:
+            raise ContractValidationError(
+                f"Unknown closure_type '{closure_type}'. "
+                f"Valid types: {sorted(CLOSURE_TYPE_MAP.keys())}",
+                agent_fix_hint=(
+                    f"Use one of the supported closure types: "
+                    f"{sorted(CLOSURE_TYPE_MAP.keys())}"
+                ),
+            )
+
+        # Validate asset_manifest SHA-256 checksums
+        asset_manifest = raw.get("asset_manifest", [])
+        for entry in asset_manifest:
+            if not isinstance(entry, dict):
+                continue
+            expected_sha = entry.get("sha256", "")
+            asset_path = entry.get("path", "")
+            if expected_sha and asset_path:
+                p = Path(asset_path)
+                if p.is_file():
+                    actual = _compute_sha256(p)
+                    if actual != expected_sha:
+                        raise AssetNotFoundError(
+                            f"SHA-256 mismatch for asset '{asset_path}': "
+                            f"expected {expected_sha[:16]}..., "
+                            f"got {actual[:16]}...",
+                            agent_fix_hint=(
+                                f"Re-download or re-export '{asset_path}' "
+                                "with the correct contents."
+                            ),
+                        )
+                elif not p.exists():
+                    raise AssetNotFoundError(
+                        f"Asset file not found: {asset_path!r}",
+                        agent_fix_hint=(
+                            f"Ensure '{asset_path}' exists on disk "
+                            "before submitting the JobBundle."
+                        ),
+                    )
+
+        # Also check input_sha256s if present
+        input_sha256s = raw.get("input_sha256s", {})
+        for key, expected_sha in input_sha256s.items():
+            asset_path = raw.get("payload", {}).get(key, "")
+            if expected_sha and asset_path:
+                p = Path(str(asset_path))
+                if p.is_file():
+                    actual = _compute_sha256(p)
+                    if actual != expected_sha:
+                        raise AssetNotFoundError(
+                            f"SHA-256 mismatch for input '{key}' "
+                            f"({asset_path}): expected {expected_sha[:16]}..., "
+                            f"got {actual[:16]}...",
+                            agent_fix_hint=(
+                                f"Re-download or re-export '{asset_path}' "
+                                "with the correct contents."
+                            ),
+                        )
+
+        # Build normalised inputs/outputs/params from scene_spec + payload
+        scene_spec = raw.get("scene_spec", {})
+        payload = raw.get("payload", {})
+        output_sink = raw.get("output_sink", {})
+
+        inputs: dict[str, str] = {}
+        outputs: dict[str, str] = {}
+        params: dict[str, Any] = {}
+
+        # Map scene_spec fields to inputs
+        if isinstance(scene_spec, dict):
+            for k, v in scene_spec.items():
+                if isinstance(v, str):
+                    inputs[k] = v
+
+        # Merge payload into params
+        if isinstance(payload, dict):
+            params.update(payload)
+
+        # Map output_sink to outputs
+        if isinstance(output_sink, dict):
+            for k, v in output_sink.items():
+                if isinstance(v, str):
+                    outputs[k] = v
+
+        # Extract traceparent from payload or env
+        traceparent = (
+            raw.get("traceparent")
+            or payload.get("traceparent")
+            or os.environ.get("TRACEPARENT")
+        )
+
+        return cls(
+            schema_version="synapse.job_bundle.v1.0",
+            job_id=str(job_id),
+            stage=stage,
+            inputs=inputs,
+            outputs=outputs,
+            params=params,
+            traceparent=traceparent,
+        )
 
 
 class OutputFileEntry(BaseModel):
@@ -174,6 +339,13 @@ def register_stage(
     def _decorator(
         fn: Callable[..., dict[str, Any]],
     ) -> Callable[..., dict[str, Any]]:
+        if name in _STAGE_HANDLERS and _STAGE_HANDLERS[name] is not fn:
+            existing = _STAGE_HANDLERS[name]
+            raise RuntimeError(
+                f"Duplicate stage registration: '{name}' is already "
+                f"registered to {existing.__module__}.{existing.__qualname__}; "
+                f"cannot re-register to {fn.__module__}.{fn.__qualname__}."
+            )
         _STAGE_HANDLERS[name] = fn
         return fn
 
@@ -398,8 +570,12 @@ def _handle_neural_video_generate(
         "video", str(Path("output") / "video.npy"),
     )
     out_p = Path(output_path)
+    # np.save auto-appends .npy if suffix missing; normalise beforehand
+    if out_p.suffix != ".npy":
+        out_p = out_p.with_suffix(out_p.suffix + ".npy")
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    np.save(str(out_p), result.frames_srgb_u8)
+    with open(out_p, "wb") as f:
+        np.save(f, result.frames_srgb_u8)
 
     output_paths: dict[str, str] = {"video": str(out_p)}
     reanchor: list[dict[str, Any]] | None = None
@@ -625,112 +801,13 @@ def _handle_surgical_composite(
         str(Path("output") / "composited.npy"),
     )
     out_p = Path(output_path)
+    if out_p.suffix != ".npy":
+        out_p = out_p.with_suffix(out_p.suffix + ".npy")
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    np.save(str(out_p), composited)
+    with open(out_p, "wb") as f:
+        np.save(f, composited)
 
     return {"output_paths": {"composited": str(out_p)}}
-
-
-@register_stage("inverse_reconstruct")
-@register_stage("kinematic_distill")
-def _handle_inverse_reconstruct(
-    manifest: BundleManifest,
-) -> dict[str, Any]:
-    """Run Stage 3 Video-to-3D Inverse Reconstruction & Kinematic Distillation.
-
-    Expects video frames or FGPP inputs, performs point tracking, solves camera
-    trajectory, recovers quad geometry, solves zero-slip foot IK (<0.3 cm/s),
-    and de-lights intrinsic albedo.
-    """
-    from synapse.recon import ReconPipeline
-
-    params = dict(manifest.params)
-    int(params.get("width", 512))
-    int(params.get("height", 512))
-    num_frames = int(params.get("num_frames", 8))
-    target_faces = int(params.get("target_faces", 1500))
-
-    frames_dir = Path(manifest.inputs.get("frames_dir", ""))
-    if not frames_dir.is_dir():
-        from synapse.errors import AssetNotFoundError
-
-        raise AssetNotFoundError(
-            f"Frames directory does not exist: {frames_dir}",
-            agent_fix_hint=(
-                "Provide manifest.inputs['frames_dir'] pointing to a "
-                "directory containing .png frame files."
-            ),
-        )
-
-    frames: list[np.ndarray] = []
-    for img_path in sorted(frames_dir.glob("*.png"))[:num_frames]:
-        try:
-            from PIL import Image
-
-            img = np.array(
-                Image.open(img_path).convert("RGB"),
-                dtype=np.uint8,
-            )
-            frames.append(img)
-        except ImportError:
-            from synapse.errors import BackendUnavailableError
-
-            raise BackendUnavailableError(
-                "PIL (Pillow) is required for loading frame images "
-                "but is not installed.",
-                agent_fix_hint="Install Pillow: pip install 'Pillow>=9.0'",
-            ) from None
-
-    if not frames:
-        from synapse.errors import AssetNotFoundError
-
-        raise AssetNotFoundError(
-            f"No .png frame files found in {frames_dir}",
-            agent_fix_hint=(
-                "Ensure frames_dir contains .png frame files for "
-                "inverse reconstruction."
-            ),
-        )
-
-    frames_arr = np.stack(frames, axis=0)
-
-    pipe = ReconPipeline(target_quad_faces=target_faces)
-    result = pipe.run(frames_arr)
-
-    output_paths: dict[str, str] = {}
-
-    # Save mesh if available
-    if result.mesh is not None:
-        mesh_path = manifest.outputs.get(
-            "mesh", str(Path("output") / "reconstructed_mesh.npy"),
-        )
-        p_mesh = Path(mesh_path)
-        p_mesh.parent.mkdir(parents=True, exist_ok=True)
-        np.save(str(p_mesh), result.mesh.vertices)
-        output_paths["mesh"] = str(p_mesh)
-
-    # Save trajectory if requested
-    traj_path = manifest.outputs.get(
-        "trajectory", str(Path("output") / "camera_trajectory.json")
-    )
-    p_traj = Path(traj_path)
-    p_traj.parent.mkdir(parents=True, exist_ok=True)
-    if result.camera_trajectory:
-        with open(p_traj, "w", encoding="utf-8") as f:
-            json.dump(result.camera_trajectory.to_dict(), f, indent=2)
-        output_paths["trajectory"] = str(p_traj)
-
-    # Save telemetry
-    telem_path = manifest.outputs.get(
-        "telemetry", str(Path("output") / "kinematics_telemetry.json")
-    )
-    p_telem = Path(telem_path)
-    p_telem.parent.mkdir(parents=True, exist_ok=True)
-    with open(p_telem, "w", encoding="utf-8") as f:
-        json.dump(result.telemetry, f, indent=2)
-    output_paths["telemetry"] = str(p_telem)
-
-    return {"output_paths": output_paths}
 
 
 # ---------------------------------------------------------------------------
@@ -784,6 +861,25 @@ class JobBundleWorker:
         """
         t_start = time.monotonic()
         _ensure_stage_adapters_loaded()
+
+        # Path normalization and symlink rejection for inputs/outputs
+        for label, mapping in [("inputs", manifest.inputs), ("outputs", manifest.outputs)]:
+            for key, val in mapping.items():
+                p = Path(val).resolve()
+                mapping[key] = str(p)
+                if p.is_symlink():
+                    return ResultManifest(
+                        job_id=manifest.job_id,
+                        stage=manifest.stage,
+                        status="error",
+                        exit_code=10,
+                        timings={"total_seconds": time.monotonic() - t_start},
+                        agent_fix_hint=(
+                            f"Symlinks are forbidden in {label}: "
+                            f"'{key}' -> '{val}' resolves to a symlink. "
+                            "Use real paths only."
+                        ),
+                    )
 
         handler = _STAGE_HANDLERS.get(manifest.stage)
         if handler is None:
@@ -850,7 +946,12 @@ class JobBundleWorker:
                 for sf in subfiles:
                     rel_p = str(sf.relative_to(p)).replace("\\", "/")
                     hasher.update(rel_p.encode("utf-8"))
-                    hasher.update(sf.read_bytes())
+                    with open(sf, "rb") as fh:
+                        while True:
+                            chunk = fh.read(65536)
+                            if not chunk:
+                                break
+                            hasher.update(chunk)
                     total_bytes += sf.stat().st_size
                 output_files[key] = OutputFileEntry(
                     path=str(p),
@@ -887,6 +988,7 @@ class JobBundleWorker:
 def run_worker_cli(
     bundle_path: str,
     json_mode: bool = False,
+    trace_ctx: Any | None = None,
 ) -> int:
     """Execute a job bundle from a JSON manifest file.
 
@@ -896,11 +998,19 @@ def run_worker_cli(
     Args:
         bundle_path: Path to the bundle directory or manifest file.
         json_mode: If ``True``, emit result JSON to stdout.
+        trace_ctx: Optional :class:`~synapse.telemetry.TraceContext`
+            for correlation.  Falls back to env ``TRACEPARENT`` or
+            manifest ``traceparent``.
 
     Returns:
         Process exit code from the result manifest.
     """
     import sys
+
+    from synapse.telemetry import TraceContext
+
+    if trace_ctx is None:
+        trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
 
     bp = Path(bundle_path)
     if bp.is_dir():
@@ -913,6 +1023,7 @@ def run_worker_cli(
         err = {
             "status": "error",
             "exit_code": 20,
+            "trace_id": trace_ctx.trace_id,
             "message": (
                 f"Bundle manifest not found: {manifest_file}"
             ),
@@ -938,6 +1049,7 @@ def run_worker_cli(
         err = {
             "status": "error",
             "exit_code": 10,
+            "trace_id": trace_ctx.trace_id,
             "message": f"Invalid JSON in bundle manifest: {exc}",
             "agent_fix_hint": (
                 "Fix the JSON syntax in the bundle manifest file "
@@ -959,6 +1071,7 @@ def run_worker_cli(
         err = {
             "status": "error",
             "exit_code": 10,
+            "trace_id": trace_ctx.trace_id,
             "message": (
                 f"Bundle manifest validation failed: {exc}"
             ),
@@ -977,6 +1090,12 @@ def run_worker_cli(
             )
         return 10
 
+    # Update trace_ctx from manifest if available
+    if manifest.traceparent and not trace_ctx.trace_id:
+        trace_ctx = TraceContext.from_env_or_dict(
+            {"TRACEPARENT": manifest.traceparent},
+        )
+
     worker = JobBundleWorker()
     result = worker.execute(manifest)
 
@@ -988,11 +1107,11 @@ def run_worker_cli(
     )
 
     if json_mode:
-        json.dump(
-            result.model_dump(),
-            sys.stdout,
-            default=str,
-        )
+        payload = {
+            "trace_id": trace_ctx.trace_id,
+            **result.model_dump(),
+        }
+        json.dump(payload, sys.stdout, default=str)
         print()
     else:
         status_label = result.status.upper()

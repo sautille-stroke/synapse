@@ -51,6 +51,7 @@ def dispatch_worker(
         return run_worker_cli(
             bundle_path=parsed.bundle,
             json_mode=json_mode,
+            trace_ctx=trace_ctx,
         )
     else:
         if json_mode:

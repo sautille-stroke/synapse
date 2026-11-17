@@ -215,3 +215,62 @@ def handle_inverse_render_loop(
     output_paths["diagnostics"] = str(p_diag)
 
     return {"output_paths": output_paths, "diagnostics": diag}
+
+
+@register_stage("delight_albedo")
+def handle_delight_albedo(
+    manifest: BundleManifest,
+) -> dict[str, Any]:
+    """De-light multiview frames to recover intrinsic albedo (ClosureType.DELIGHTING).
+
+    Expects:
+        - ``manifest.inputs["video_frames"]``: Path to ``(T,H,W,3)`` ``.npy``.
+        - ``manifest.inputs["normals"]``: Path to ``(T,H,W,3)`` ``.npy``.
+
+    Returns:
+        Dict with ``output_paths`` to the delighted albedo.
+    """
+    from synapse.recon import ReconPipeline
+    from synapse.recon.delight import delight_multiview_albedo
+
+    # Load input frames — no synthetic fallback
+    video_path = manifest.inputs.get("video_frames", "")
+    if not video_path or not Path(video_path).is_file():
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"Video frames file not found: {video_path!r}",
+            agent_fix_hint=(
+                "Provide manifest.inputs['video_frames'] pointing to "
+                "a valid .npy file of shape (T, H, W, 3)."
+            ),
+        )
+    frames = np.load(video_path)
+
+    # Reconstruct mesh for normals
+    params = dict(manifest.params)
+    target_faces = int(params.get("target_faces", 1500))
+    pipe = ReconPipeline(target_quad_faces=target_faces)
+    result = pipe.run(frames)
+
+    output_paths: dict[str, str] = {}
+
+    if result.mesh is not None and result.mesh.normals is not None:
+        albedo = delight_multiview_albedo(
+            frames=frames,
+            cameras=(
+                result.camera_trajectory.extrinsics
+                if result.camera_trajectory
+                else []
+            ),
+            mesh=result.mesh,
+        )
+        albedo_path = manifest.outputs.get(
+            "albedo", str(Path("output") / "delighted_albedo.npy"),
+        )
+        p_albedo = Path(albedo_path)
+        p_albedo.parent.mkdir(parents=True, exist_ok=True)
+        np.save(str(p_albedo), albedo)
+        output_paths["albedo"] = str(p_albedo)
+
+    return {"output_paths": output_paths}
