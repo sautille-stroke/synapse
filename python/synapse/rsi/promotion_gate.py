@@ -174,8 +174,33 @@ def evaluate_monotonic_promotion(
     _validate_finite_report(baseline, "baseline")
     _validate_finite_report(candidate, "candidate")
 
-    baseline_ids = {s.scenario_id for s in baseline.scenarios}
-    candidate_ids = {s.scenario_id for s in candidate.scenarios}
+    # Validate parameter constraints
+    if not math.isfinite(epsilon_min) or epsilon_min < 0:
+        raise ContractValidationError(
+            f"epsilon_min must be finite and >= 0, got {epsilon_min!r}",
+            agent_fix_hint="Pass a non-negative finite value for epsilon_min.",
+        )
+    if not math.isfinite(noise_tolerance) or noise_tolerance < 0:
+        raise ContractValidationError(
+            f"noise_tolerance must be finite and >= 0, got {noise_tolerance!r}",
+            agent_fix_hint="Pass a non-negative finite value for noise_tolerance.",
+        )
+
+    # Deduplicate scenario_id entries within each report
+    def _dedup_scenarios(scenarios: list[BenchScenarioScore]) -> list[BenchScenarioScore]:
+        seen: set[str] = set()
+        result: list[BenchScenarioScore] = []
+        for s in scenarios:
+            if s.scenario_id not in seen:
+                seen.add(s.scenario_id)
+                result.append(s)
+        return result
+
+    baseline_scenarios = _dedup_scenarios(baseline.scenarios)
+    candidate_scenarios = _dedup_scenarios(candidate.scenarios)
+
+    baseline_ids = {s.scenario_id for s in baseline_scenarios}
+    candidate_ids = {s.scenario_id for s in candidate_scenarios}
     if baseline_ids != candidate_ids:
         missing = sorted(baseline_ids - candidate_ids)
         extra = sorted(candidate_ids - baseline_ids)
@@ -194,11 +219,24 @@ def evaluate_monotonic_promotion(
     conditions: dict[str, bool] = {}
     quarantine: list[QuarantineEntry] = []
 
-    if len(baseline.scenarios) > 0 and len(baseline.scenarios) < min_scenarios:
-        failures.append(
-            f"Condition 0 failed: Scenario count {len(baseline.scenarios)} "
-            f"< required minimum {min_scenarios}"
-        )
+    # Condition 0: Minimum scenario count
+    if min_scenarios > 0:
+        if len(baseline_scenarios) == 0:
+            raise ContractValidationError(
+                "Condition 0 failed: empty scenario list. "
+                f"At least {min_scenarios} scenarios are required when scenario validation is enabled.",
+                agent_fix_hint="Provide a non-empty scenario list or pass min_scenarios=0.",
+            )
+        if len(baseline_scenarios) < min_scenarios:
+            failures.append(
+                f"Condition 0 failed: Scenario count {len(baseline_scenarios)} "
+                f"< required minimum {min_scenarios}"
+            )
+            conditions["min_scenarios"] = False
+        else:
+            conditions["min_scenarios"] = True
+    else:
+        conditions["min_scenarios"] = True
 
     # Condition 1: Overall score improvement
     overall_improved = (
@@ -238,27 +276,34 @@ def evaluate_monotonic_promotion(
 
     # Condition 4: Zero per-scenario regression
     baseline_by_id = {
-        s.scenario_id: s for s in baseline.scenarios
+        s.scenario_id: s for s in baseline_scenarios
     }
     per_scenario_ok = True
 
-    for cs in candidate.scenarios:
+    for cs in candidate_scenarios:
         bs = baseline_by_id[cs.scenario_id]
-        regression = bs.overall - cs.overall
-        if regression > noise_tolerance:
+        # Evaluate 3-axis per-scenario regressions
+        regressions: list[tuple[str, float, float, float]] = [
+            ("overall", bs.overall - cs.overall, bs.overall, cs.overall),
+            ("geom", bs.geom - cs.geom, bs.geom, cs.geom),
+            ("temporal", bs.temporal - cs.temporal, bs.temporal, cs.temporal),
+        ]
+        active_regs = [r for r in regressions if r[1] > noise_tolerance]
+        if active_regs:
             per_scenario_ok = False
+            # Dedup per scenario: record single worst regression entry in quarantine
+            worst = max(active_regs, key=lambda x: x[1])
+            metric_name, reg_val, b_val, c_val = worst
             entry = QuarantineEntry(
                 scenario_id=cs.scenario_id,
-                metric="overall",
-                baseline_value=bs.overall,
-                candidate_value=cs.overall,
-                regression=round(regression, 6),
+                metric=metric_name,
+                baseline_value=b_val,
+                candidate_value=c_val,
+                regression=round(reg_val, 6),
                 diagnosis=(
-                    f"Scenario '{cs.scenario_id}' regressed by "
-                    f"{regression:.4f} (baseline={bs.overall:.4f}"
-                    f" -> candidate={cs.overall:.4f}). "
-                    "Review LoRA training data and "
-                    "hyperparameters for this scenario."
+                    f"Scenario '{cs.scenario_id}' {metric_name} regressed by "
+                    f"{reg_val:.4f} (baseline={b_val:.4f} -> candidate={c_val:.4f}). "
+                    "Review LoRA training data and hyperparameters for this scenario."
                 ),
             )
             quarantine.append(entry)

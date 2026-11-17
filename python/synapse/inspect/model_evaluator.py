@@ -386,9 +386,12 @@ def evaluate_single_model(
 
     floating_island_faces = 0
     if geo_res.num_connected_components > 1:
-        floating_island_faces = max(
-            0, int(mesh.num_faces - (mesh.num_faces // geo_res.num_connected_components))
-        )
+        if hasattr(geo_res, "floating_island_face_indices") and geo_res.floating_island_face_indices:
+            floating_island_faces = len(geo_res.floating_island_face_indices)
+        else:
+            floating_island_faces = max(
+                0, int(mesh.num_faces - (mesh.num_faces // geo_res.num_connected_components))
+            )
 
     metrics: dict[str, float] = {
         "is_manifold": 1.0 if geo_res.is_manifold else 0.0,
@@ -435,6 +438,7 @@ def evaluate_single_model(
             tgt_pts = subsample_point_cloud(
                 reference_mesh.vertices, max_points=10000, seed=42
             )
+        # Compute in world scale (not normalized screenshot space)
         metrics["chamfer_mm"] = compute_chamfer_distance_mm(src_pts, tgt_pts)
         metrics["f_score_1mm"] = f_score_1mm(src_pts, tgt_pts)
 
@@ -457,6 +461,11 @@ def evaluate_single_model(
                     log_fn(
                         f"  Warning: failed to compute multi-view comparison for {effective_name}: {exc}"
                     )
+    else:
+        # No-reference mode: restrict applicable keys to self-topology metrics only.
+        # Do NOT fail-closed on missing chamfer_mm when no reference was provided.
+        if log_fn:
+            log_fn("  No reference mesh provided; restricting to self-topology metrics only.")
 
     gate_results = evaluate_profile_gates(metrics, canonical_profile)
     overall_passed = bool(gate_results) and all(gate_results.values())

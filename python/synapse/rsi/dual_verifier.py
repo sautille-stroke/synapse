@@ -13,6 +13,7 @@ self-evaluation as sole judge is STRICTLY FORBIDDEN.
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -239,9 +240,9 @@ class DualVerifierEngine:
                 ),
             )
 
-        # R1 fix: reject NaN / Inf values across all physics metrics
+        # R1 fix: reject NaN / Inf / bool values across all physics metrics
         for key, val in physics_metrics.items():
-            if not isinstance(val, (int, float)) or not math.isfinite(
+            if isinstance(val, bool) or not isinstance(val, numbers.Real) or not math.isfinite(
                 float(val)
             ):
                 raise ContractValidationError(
@@ -289,11 +290,21 @@ class DualVerifierEngine:
         if nae > t.normal_angular_error_deg:
             failures.append("NORMAL_ERROR")
 
-        # Optional: interpenetration
+        # Optional: interpenetration (reject negative volume collapse)
         interp = physics_metrics.get(
             "interpenetration_volume_ratio",
         )
         if interp is not None:
+            # Reject negative volume collapse (abs check)
+            if interp < 0:
+                raise ContractValidationError(
+                    f"Negative interpenetration_volume_ratio={interp!r} for "
+                    f"sample '{sample_id}'. Negative volume collapse is FORBIDDEN.",
+                    agent_fix_hint=(
+                        "Check geometry volume computation; "
+                        "interpenetration_volume_ratio must be >= 0."
+                    ),
+                )
             checks["interpenetration_volume_ratio"] = {
                 "value": interp,
                 "threshold": t.interpenetration_volume_ratio,

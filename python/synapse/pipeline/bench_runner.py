@@ -253,7 +253,10 @@ class BenchPipelineRunner:
                 b_c = 255.0
             rasterizer_kwargs["light_color"] = np.array([r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64)
 
-        cache_key = f"{width}x{height}"
+        ambient_val = rasterizer_kwargs.get("ambient", 0.1)
+        light_dir_val = tuple(rasterizer_kwargs.get("light_dir", (0.0, 1.0, 0.0)))
+        light_col_val = tuple(rasterizer_kwargs.get("light_color", (1.0, 1.0, 1.0)))
+        cache_key = f"{width}x{height}_a{ambient_val}_ld{light_dir_val}_lc{light_col_val}"
         if self._rasterizer_cache is not None and cache_key in self._rasterizer_cache:
             rasterizer = self._rasterizer_cache[cache_key]
         else:
@@ -758,16 +761,30 @@ def _compute_metrics(
         metrics["ciede2000"] = mean_de
         metrics["border_ring_ciede2000"] = mean_de
         metrics["style_color_de"] = mean_de
-    else:
-        metrics["border_ring_ciede2000"] = 0.5
-        metrics["style_color_de"] = 0.5
     if lpips_scores:
         metrics["lpips"] = float(np.mean(lpips_scores))
 
-    metrics["light_dir_error_deg"] = 0.0
-    metrics["style_light_error_deg"] = 0.0
+    # --- Style / light direction estimation (real computation) ---
+    try:
+        from synapse.metrics.style import extract_style_optical
+        style_metrics = extract_style_optical(gen_float, fgpp_frames)
+        if "style_light_error_deg" in style_metrics:
+            metrics["style_light_error_deg"] = float(style_metrics["style_light_error_deg"])
+        if "light_dir_error_deg" in style_metrics:
+            metrics["light_dir_error_deg"] = float(style_metrics["light_dir_error_deg"])
+        if "border_ring_ciede2000" in style_metrics:
+            metrics["border_ring_ciede2000"] = float(style_metrics["border_ring_ciede2000"])
+        if "style_color_de" in style_metrics:
+            metrics["style_color_de"] = float(style_metrics["style_color_de"])
+    except (ImportError, Exception) as exc:
+        logger.debug("extract_style_optical unavailable or failed: %s", exc)
+        # Populate only if we have color data to derive from
+        if de00_scores:
+            mean_de = float(np.mean(de00_scores))
+            metrics.setdefault("border_ring_ciede2000", mean_de)
+            metrics.setdefault("style_color_de", mean_de)
 
-    # --- Geometry & Kinematic metrics ---
+    # --- Geometry & Kinematic metrics (real computation only) ---
     if mesh is not None and hasattr(mesh, "faces") and len(mesh.faces) > 0:
         from synapse.metrics.roundtrip import _is_mesh_watertight
 
@@ -784,26 +801,13 @@ def _compute_metrics(
         non_manifold = sum(1 for c in edges_count.values() if c != 2)
         metrics["non_manifold_edges"] = float(non_manifold)
 
-    if tier is not None:
-        tier_str = str(getattr(tier, "value", tier))
-    else:
-        tier_str = ""
-    if tier_str == "T1":
-        metrics["foot_sliding_cm"] = 0.0
-        metrics["bone_length_drift_pct"] = 0.0
-        metrics["volume_breathing_pct"] = 0.0
-        metrics["chamfer_mm"] = 0.0
-        metrics["f_score_1mm"] = 1.0
-        metrics["f_score_5mm"] = 1.0
-        metrics["albedo_delta_e00"] = metrics.get("ciede2000", 0.0)
-    elif tier_str in ("T2", "T3"):
-        metrics["foot_sliding_cm"] = 0.05
-        metrics["bone_length_drift_pct"] = 0.1
-        metrics["volume_breathing_pct"] = 0.2
-        metrics["chamfer_mm"] = 0.5
-        metrics["f_score_1mm"] = 0.95
-        metrics["f_score_5mm"] = 0.99
-        metrics["albedo_delta_e00"] = metrics.get("ciede2000", 0.0)
+    # NOTE: Geometry and kinematic metrics (chamfer_mm, f_score_*,
+    # foot_sliding_cm, etc.) are ONLY populated when a real ReconPipeline
+    # roundtrip or kinematic analysis has been performed upstream.
+    # Hardcoded fake constants (0.0 / 0.5 / 1.0) have been removed to
+    # prevent false-pass gate evaluation.  The applicable_keys set in the
+    # gate profile must be narrowed to the actually-measured subset when
+    # only video-stage metrics are available.
 
     return metrics
 

@@ -354,7 +354,12 @@ def generate_cameras(
     scenario_or_type: Any,
     **override_params: Any,
 ) -> list[CameraParams]:
-    """Generate camera trajectory for a scenario or trajectory type."""
+    """Generate camera trajectory for a scenario or trajectory type.
+
+    Supports parameter aliasing so that scenario definitions using
+    alternative names (e.g. ``distance`` → ``radius``) are correctly
+    routed to the underlying generator functions.
+    """
     if isinstance(scenario_or_type, str):
         traj_type = CameraTrajectoryType(scenario_or_type)
         params = dict(override_params)
@@ -368,6 +373,29 @@ def generate_cameras(
         params["width"] = scenario.width
         params["height"] = scenario.height
         params.update(override_params)
+
+    # --- Parameter aliasing for cross-scenario compatibility ---
+    _ALIASES: dict[str, str] = {
+        "distance": "radius",
+        "azimuth_start": "azimuth_start_deg",
+        "azimuth_end": "azimuth_end_deg",
+        "elevation": "elevation_deg",
+        "azimuth": "azimuth_deg",
+    }
+    for alias, canonical in _ALIASES.items():
+        if alias in params and canonical not in params:
+            params[canonical] = params.pop(alias)
+        elif alias in params:
+            # Drop alias if canonical already present
+            params.pop(alias)
+
+    # Derive azimuth_range_deg from start/end if both present
+    if "azimuth_start_deg" in params and "azimuth_end_deg" in params:
+        if "azimuth_range_deg" not in params:
+            params["azimuth_range_deg"] = (
+                float(params["azimuth_end_deg"])
+                - float(params["azimuth_start_deg"])
+            )
 
     generator = _GENERATORS.get(traj_type)
     if generator is None:

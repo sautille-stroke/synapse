@@ -91,11 +91,12 @@ def _unproject_pixel(
         cx, cy: Principal point.
 
     Returns:
-        ``[3]`` float64 camera-space point.
+        ``[3]`` float64 camera-space point (Synapse convention: -Y up, -Z forward).
     """
     x = (u - cx) * z / fx
-    y = (v - cy) * z / fy
-    return np.array([x, y, z], dtype=np.float64)
+    y = -(v - cy) * z / fy  # negate Y for Synapse convention
+    z_out = -z  # negate Z (camera looks along -Z)
+    return np.array([x, y, z_out], dtype=np.float64)
 
 
 # -------------------------------------------------------------------

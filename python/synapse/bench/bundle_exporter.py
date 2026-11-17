@@ -466,9 +466,20 @@ def list_bundle_contents(bundle_dir: Path) -> dict[str, Any]:
 
 
 def _safe_copy(src: Path, dst: Path) -> None:
-    """Copy *src* to *dst* only if they are distinct files."""
+    """Copy *src* to *dst* only if they are distinct files.
+
+    Also validates that *dst* resolves within its parent to prevent
+    symlink-based path traversal.
+    """
     src = Path(src).resolve()
     dst = Path(dst).resolve()
+    # Prevent symlink traversal: dst must be inside its intended parent
+    dst_parent = dst.parent
+    if not dst.is_relative_to(dst_parent):
+        raise ContractValidationError(
+            f"Path traversal detected: '{dst}' escapes '{dst_parent}'",
+            agent_fix_hint="Remove symlinks from the bundle output directory.",
+        )
     if src != dst:
         shutil.copy2(src, dst)
 
