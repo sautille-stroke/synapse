@@ -2,8 +2,8 @@
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.6`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md)（`main` @ `cf2a49f`）
-> - **规划模型**: `[gemini4]`
-> - **当前状态**: 📋 **已规划待执行 (Planned — Ready for Wave 28 Kickoff)**
+> - **规划模型**: `[gemini4]` / 执行模型: `[opus4.6]`
+> - **当前状态**: ✅ **已完成封板 (Sealed — Release v3.6.0, `main` @ `30ce3a5`, 2026-11-17)**
 > - **目标周期**: 4 个里程碑（`M29` – `M32`）、4 个并发 Execution Waves（`Wave 28` – `Wave 31`）、**18 个原子 PR**（`PR-112` – `PR-129`，编号紧接 Post-H7 审计规划 PR `#111`，实现 GitHub PR 号 1:1 严格对齐）
 
 > [!IMPORTANT]

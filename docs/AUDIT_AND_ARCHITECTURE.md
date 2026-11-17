@@ -1,8 +1,8 @@
 # Synapse 整体目标审查与生态架构定界报告 (Architecture & Goal Audit)
 
-- **文档状态**: Accepted Baseline (`v1.1 — Horizon-3 & Horizon-4 Aligned`)
+- **文档状态**: Accepted Baseline (`v1.2 — Horizon-8 Release v3.6.0 Sealed`)
 - **审查范围**: `synapse` 仓库整体目标、代码基线架构、继承自 `RFC 0044` 与 `RFC 0059` 的演进计划
-- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.1`, M1–M16 58 PRs)
+- **关联落地计划**: [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (`v3.6`, M1–M32, 129 PRs ✅ 全部完成)
 - **关联跨文档评审与对齐决议**: [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-01~RV-17` 契约锁死)
 - **关联重构后深度审计**: [docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)
 - **关联设计规范**:
@@ -208,7 +208,7 @@ synapse/
 ├── pyproject.toml                   # 包构建、严格类型检查与可选依赖分层 (core/image/metrics/gpu/dev)
 ├── docs/
 │   ├── AUDIT_AND_ARCHITECTURE.md    # 整体目标审查与跨仓边界定界报告 (本文档)
-│   └── IMPLEMENTATION_PLAN.md       # 分阶段可落地工程实施计划 (M1-M4, 15 个原子 PR)
+│   └── IMPLEMENTATION_PLAN.md       # 全景可落地工程实施计划 (M1-M32, 129 个原子 PR, v3.6)
 ├── python/synapse/
 │   ├── py.typed                     # PEP 561 强类型包标记
 │   ├── errors.py                    # 结构化错误码、退出码 (0/10/20/30/40) 与 agent_fix_hint
@@ -297,13 +297,13 @@ synapse/
 
 ---
 
-## 7. 全域架构对齐、重构后审计与分阶段落地总纲 (`v3.1` Master Plan)
+## 7. 全域架构对齐、重构后审计与分阶段落地总纲 (`v3.6` Master Plan — ✅ Sealed)
 
 针对多篇专项设计与重构演进过程中产生的跨文档契约对齐与架构硬化问题，全仓通过以下四层治理体系完成架构收口与原子化排期：
 
 - **全域设计审查与契约对齐总纲**：**[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（识别并解决 `RV-01` ~ `RV-17` 共 17 项关键架构决议，锁定唯一目录树、双入口 CLI 语法、`JobBundleWorker` 契约与三级分级评测门禁）。
 - **重构后全库架构与技术债务深度审计报告**：**[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](audits/AUDIT-POST-REFACTOR-2026-11.md)**（针对 Horizon 1–3 全量代码基线的多维 AST 静态审计与技术债务诊断）。
-- **全景十六阶段 58-PR 实施总计划 (`v3.1`)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 7 份精细化子计划（覆盖 `M1`–`M16`，共 `58` 个可独立合入的原子 PR 与 15-Wave 多 Agent 并行执行矩阵）。
+- **全景三十二阶段 129-PR 实施总计划 (`v3.6` ✅ Sealed)**：**[docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** 与 `docs/plans/` 下的 11 份精细化子计划（覆盖 `M1`–`M32`，共 `129` 个可独立合入的原子 PR，Horizon 1–8 全部完成）。
 - **重构后解耦与工程硬化子计划**：**[docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)**（覆盖 M13–M16 共 14 个原子 PR，全面落实防静默失败清零、包级 DAG 解耦、原生多边形算子修复与严苛 CI 门禁）。
 
 ---
