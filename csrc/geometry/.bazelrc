@@ -21,4 +21,11 @@ build:macos --per_file_copt=bindings\.cc$@-fexceptions,-frtti
 build:linux --per_file_copt=bindings\.cc$@-fexceptions,-frtti
 build:windows --per_file_copt=bindings\.cc$@/EHsc,/GR,/U_HAS_EXCEPTIONS
 
+# 4. C++20 fallback for standalone builds (when cpp-common.bazelrc is absent)
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+
+# 5. Default to optimized builds
+build --config=opt
+
 try-import %workspace%/.bazelrc.user

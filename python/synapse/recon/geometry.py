@@ -135,14 +135,18 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
     for vert_idx, incident_faces in vertex_faces.items():
         if len(incident_faces) <= 1:
             continue
-        # Two incident faces are linked iff they share an undirected polygon
-        # edge incident to vert_idx.
+        # Build edge → face list map in O(d)
+        edge_to_faces_local: dict[tuple[int, int], list[int]] = defaultdict(list)
+        for fi in incident_faces:
+            for edge_key in face_incident_edges[fi][vert_idx]:
+                canonical = (min(edge_key), max(edge_key))
+                edge_to_faces_local[canonical].append(fi)
+
+        # Build adjacency from shared edges in O(d)
         adj: dict[int, set[int]] = defaultdict(set)
-        for i, f1 in enumerate(incident_faces):
-            edges1 = set(face_incident_edges[f1][vert_idx])
-            for f2 in incident_faces[i + 1 :]:
-                edges2 = set(face_incident_edges[f2][vert_idx])
-                if edges1 & edges2:
+        for faces_sharing_edge in edge_to_faces_local.values():
+            for i, f1 in enumerate(faces_sharing_edge):
+                for f2 in faces_sharing_edge[i + 1:]:
                     adj[f1].add(f2)
                     adj[f2].add(f1)
 
