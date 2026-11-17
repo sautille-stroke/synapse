@@ -185,8 +185,8 @@ def solve_zero_slip_ik(
 
             # Process stance interval [start_t, end_t)
             anchor_pos = np.copy(positions[start_t, j_foot])
-            # Ground plane lock: height y
-            anchor_pos[1] = min(anchor_pos[1], 0.0)
+            # Ground plane lock: anchor Y ≥ ground (project upward if below)
+            anchor_pos[1] = max(anchor_pos[1], 0.0)
 
             for frame in range(start_t, end_t):
                 stance_frames_count += 1
@@ -240,8 +240,8 @@ def solve_zero_slip_ik(
                 else:
                     positions[frame, j_foot] = target_pos
 
-                # Update anchor smoothly
-                anchor_pos = target_pos
+                # Anchor stays fixed for the entire stance interval
+                # (do NOT update anchor per frame — prevents cumulative drift)
 
     res["joint_positions"] = positions
     res["raw_joint_positions"] = raw_positions

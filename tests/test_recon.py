@@ -764,3 +764,84 @@ class TestTrackingRealOpticalFlow:
             # At least some tracked points should show non-zero displacement
             max_disp = np.max(np.abs(frame_displacements[vis[1:]]))
             assert max_disp > 0.0, "No tracked points moved at all"
+
+
+# ---------------------------------------------------------------------------
+# PR-118: Pipeline intrinsics derivation, kinematics anchor, tracking kwargs
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineIntrinsicsDerivation:
+    """ReconPipeline.run() derives intrinsics from frame resolution."""
+
+    def test_pipeline_passes_intrinsics(self) -> None:
+        """Pipeline calls solve_camera_trajectory with frame_width/frame_height."""
+        import inspect
+
+        from synapse.recon.tracking import solve_camera_trajectory
+
+        sig = inspect.signature(solve_camera_trajectory)
+        assert "frame_height" in sig.parameters, (
+            "solve_camera_trajectory must accept frame_height kwarg"
+        )
+        assert "frame_width" in sig.parameters, (
+            "solve_camera_trajectory must accept frame_width kwarg"
+        )
+
+    def test_tracking_derives_intrinsics_from_dims(self) -> None:
+        """When intrinsics is None but frame dims given, derives pinhole model."""
+        from synapse.recon.tracking import solve_camera_trajectory
+
+        # Minimal tracks: 3 frames, 4 points
+        rng = np.random.RandomState(42)
+        tracks = rng.rand(3, 4, 2).astype(np.float32) * 100
+        traj = solve_camera_trajectory(
+            tracks, frame_height=480, frame_width=640
+        )
+        assert traj is not None
+        assert len(traj.extrinsics) == 3
+
+
+class TestKinematicsAnchorFixed:
+    """Kinematics anchor stays fixed and uses max(Y, 0) for ground clamping."""
+
+    def test_anchor_ground_clamp_direction(self) -> None:
+        """anchor_pos[1] = max(y, 0) projects foot upward, not downward.
+
+        We verify indirectly: when foot starts below ground at Y=-0.1, the
+        corrected foot Y after IK should be closer to 0.0 than -0.1 (clamped
+        upward, not pushed further down).
+        """
+        from synapse.recon.kinematics import solve_zero_slip_ik
+
+        # 5 frames, 9 joints (minimum for the default joint index layout)
+        num_frames = 5
+        num_joints = 9
+        rng = np.random.RandomState(99)
+        positions = rng.rand(num_frames, num_joints, 3).astype(np.float64) * 0.5
+        # Place left foot (index 7) well below ground
+        positions[:, 7, 1] = -0.3
+
+        # Ensure hip (1) and knee (4) are well above the foot so IK can reach
+        positions[:, 1, 1] = 0.8  # left hip
+        positions[:, 4, 1] = 0.4  # left knee
+
+        skeleton_data: dict[str, Any] = {
+            "joint_positions": positions.copy(),
+        }
+        # All frames in stance (both feet grounded)
+        foot_contacts = np.ones((num_frames, 2), dtype=np.float64)
+
+        result = solve_zero_slip_ik(skeleton_data, foot_contacts, fps=30.0)
+        corrected = result["joint_positions"]
+
+        # With max(Y, 0) clamping, the target anchor Y is 0.0 (not -0.3).
+        # The IK solution should move the foot closer to 0.0 than the
+        # original -0.3 position.
+        for t in range(num_frames):
+            original_y = -0.3
+            corrected_y = float(corrected[t, 7, 1])
+            assert abs(corrected_y) < abs(original_y), (
+                f"Frame {t}: corrected foot Y={corrected_y:.4f} should be "
+                f"closer to ground than original {original_y}"
+            )

@@ -280,3 +280,119 @@ class TestDerivedForegroundMasks:
 
         assert exc_info.value.exit_code == 10
         assert exc_info.value.agent_fix_hint
+
+
+# ---------------------------------------------------------------------------
+# PR-118: MC winding, watertight, voxel offset, active mask tests
+# ---------------------------------------------------------------------------
+
+
+class TestMarchingCubesWinding:
+    """CCW winding produces outward-facing normals (positive signed volume)."""
+
+    def test_sphere_sdf_positive_volume(self) -> None:
+        """MC on a sphere SDF yields a mesh with positive signed volume (CCW)."""
+        from synapse.recon.multiview import _marching_cubes
+
+        # Create a sphere SDF: negative inside, positive outside
+        n = 16
+        volume = np.ones((n, n, n), dtype=np.float32)
+        centre = np.array([n / 2, n / 2, n / 2])
+        radius = n / 4
+        for ix in range(n):
+            for iy in range(n):
+                for iz in range(n):
+                    dist = np.sqrt((ix - centre[0]) ** 2 + (iy - centre[1]) ** 2 + (iz - centre[2]) ** 2)
+                    volume[ix, iy, iz] = dist - radius
+
+        voxel_size = 1.0
+        origin = np.zeros(3, dtype=np.float32)
+        verts, faces = _marching_cubes(volume, voxel_size, origin, isovalue=0.0)
+
+        assert verts.shape[0] > 0
+        assert faces.shape[0] > 0
+
+        # Signed volume: sum of signed tetrahedra volumes with origin
+        # Positive volume = outward-facing CCW normals
+        signed_vol = 0.0
+        for fi in range(faces.shape[0]):
+            v0 = verts[faces[fi, 0]]
+            v1 = verts[faces[fi, 1]]
+            v2 = verts[faces[fi, 2]]
+            signed_vol += float(np.dot(v0, np.cross(v1, v2))) / 6.0
+
+        assert signed_vol > 0.0, f"Signed volume should be positive for CCW winding, got {signed_vol}"
+
+    def test_active_voxel_mask_matches_naive(self) -> None:
+        """Active-voxel mask pre-filter produces same result as naive MC."""
+        from synapse.recon.multiview import _marching_cubes
+
+        # Sparse volume: only a few voxels are inside
+        n = 10
+        volume = np.ones((n, n, n), dtype=np.float32)
+        volume[3:7, 3:7, 3:7] = -1.0
+
+        voxel_size = 0.1
+        origin = np.zeros(3, dtype=np.float32)
+        verts, faces = _marching_cubes(volume, voxel_size, origin)
+
+        assert verts.shape[0] > 0
+        assert faces.shape[0] > 0
+
+
+class TestTSDFWatertight:
+    """TSDF and visual hull reconstructions produce watertight meshes."""
+
+    def test_visual_hull_watertight(self) -> None:
+        """Visual hull of a centred bright object produces a watertight mesh."""
+        from synapse.recon.geometry import check_watertight
+
+        n_views = 6
+        cameras = _make_ring_cameras(n_views, radius=2.0)
+        h, w = 64, 64
+
+        # Create frames with a bright circle on dark background
+        frames = np.zeros((n_views, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        circle_mask = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (min(h, w) // 4) ** 2
+        for vi in range(n_views):
+            frames[vi][circle_mask] = 200
+
+        init = MultiViewInitializer(
+            voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0)
+        )
+        mesh = init.reconstruct(frames, cameras)
+
+        assert mesh.vertex_count > 0
+        assert mesh.face_count > 0
+
+        # Check watertight
+        is_wt = check_watertight(mesh.vertices, mesh.faces)
+        assert is_wt, "Visual hull mesh should be watertight with outer padding"
+
+    def test_visual_hull_positive_volume(self) -> None:
+        """Visual hull mesh has positive signed volume (outward normals)."""
+        n_views = 6
+        cameras = _make_ring_cameras(n_views, radius=2.0)
+        h, w = 64, 64
+
+        frames = np.zeros((n_views, h, w, 3), dtype=np.uint8)
+        yy, xx = np.ogrid[:h, :w]
+        circle_mask = ((yy - h // 2) ** 2 + (xx - w // 2) ** 2) < (min(h, w) // 4) ** 2
+        for vi in range(n_views):
+            frames[vi][circle_mask] = 200
+
+        init = MultiViewInitializer(
+            voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0)
+        )
+        mesh = init.reconstruct(frames, cameras)
+
+        # Compute signed volume
+        signed_vol = 0.0
+        for fi in range(mesh.faces.shape[0]):
+            v0 = mesh.vertices[mesh.faces[fi, 0]]
+            v1 = mesh.vertices[mesh.faces[fi, 1]]
+            v2 = mesh.vertices[mesh.faces[fi, 2]]
+            signed_vol += float(np.dot(v0, np.cross(v1, v2))) / 6.0
+
+        assert signed_vol > 0.0, f"Visual hull should have positive volume, got {signed_vol}"

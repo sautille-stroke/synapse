@@ -542,6 +542,9 @@ def solve_camera_trajectory(
     tracks_2d: np.ndarray,
     tracks_3d: np.ndarray | None = None,
     intrinsics: dict[str, float] | None = None,
+    *,
+    frame_height: int | None = None,
+    frame_width: int | None = None,
 ) -> CameraTrajectory:
     """Solve 6-DoF metric camera trajectory from tracked points.
 
@@ -552,7 +555,11 @@ def solve_camera_trajectory(
     Args:
         tracks_2d: 2D feature trajectories, shape (T, N, 2).
         tracks_3d: Optional 3D point cloud or depth back-projection, shape (N, 3).
-        intrinsics: Camera intrinsics dict (fx, fy, cx, cy). Defaults to 1050/1050/960/540.
+        intrinsics: Camera intrinsics dict (fx, fy, cx, cy). When *None*,
+            derived from *frame_width* / *frame_height* if provided, else
+            falls back to 1050/1050/960/540.
+        frame_height: Optional frame height in pixels.
+        frame_width: Optional frame width in pixels.
 
     Returns:
         CameraTrajectory object with per-frame CameraExtrinsics.
@@ -561,7 +568,16 @@ def solve_camera_trajectory(
     num_frames = int(tracks_2d.shape[0])
 
     if intrinsics is None:
-        intrinsics = {"fx": 1050.0, "fy": 1050.0, "cx": 960.0, "cy": 540.0}
+        if frame_width is not None and frame_height is not None:
+            # Derive a reasonable pinhole model: fx=fy=width, cx=w/2, cy=h/2.
+            intrinsics = {
+                "fx": float(frame_width),
+                "fy": float(frame_width),
+                "cx": frame_width / 2.0,
+                "cy": frame_height / 2.0,
+            }
+        else:
+            intrinsics = {"fx": 1050.0, "fy": 1050.0, "cx": 960.0, "cy": 540.0}
 
     K = _build_intrinsics_matrix(intrinsics)
 

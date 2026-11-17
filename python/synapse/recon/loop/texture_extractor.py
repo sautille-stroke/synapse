@@ -193,18 +193,36 @@ def _world_to_tangent_space(normals: np.ndarray) -> np.ndarray:
     n_base_len = np.linalg.norm(n_base, axis=-1, keepdims=True)
     n_base = n_base / np.maximum(n_base_len, 1e-8)
 
-    # Tangent and Bitangent from geometric base normal
-    up = np.broadcast_to(
-        np.array([0.0, 1.0, 0.0], dtype=np.float64), (h, w, 3)
-    ).copy()
-    nearly_up = np.abs(n_base[..., 1]) > 0.99
-    up[nearly_up] = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    # Tangent and Bitangent via Frisvad's continuous tangent frame.
+    # Avoids discontinuities from a global up vector; constructs T, B from N
+    # alone by reflecting through the half-angle between N and (0, 0, 1).
+    nz = n_base[..., 2:3]
+    ny = n_base[..., 1:2]
+    nx_arr = n_base[..., 0:1]
 
-    tangent = np.cross(up, n_base)
+    # Frisvad: when nz ~ -1 the frame degenerates; handle via sign flip.
+    neg_z = (nz < -0.9999)
+    # For non-degenerate case: T = normalize((0 - nx*nz/(1+nz), 1 - ny*nz/(1+nz), -nz))
+    # Simplified: direct cross-product construction
+    tangent = np.empty_like(n_base)
+    bitangent = np.empty_like(n_base)
+
+    # Normal case: n.z > -0.9999
+    denom = 1.0 + nz
+    safe_denom = np.where(neg_z, 1.0, denom)
+    a = -nx_arr * ny / safe_denom
+    b_coeff = -nx_arr * nx_arr / safe_denom
+    tangent[..., 0:1] = np.where(neg_z, 0.0, 1.0 + b_coeff)
+    tangent[..., 1:2] = np.where(neg_z, -1.0, a)
+    tangent[..., 2:3] = np.where(neg_z, 0.0, -nx_arr)
+
+    bitangent[..., 0:1] = np.where(neg_z, -1.0, a)
+    bitangent[..., 1:2] = np.where(neg_z, 0.0, 1.0 + (-ny * ny / safe_denom))
+    bitangent[..., 2:3] = np.where(neg_z, 0.0, -ny)
+
     t_norm = np.linalg.norm(tangent, axis=-1, keepdims=True)
     tangent /= np.maximum(t_norm, 1e-8)
 
-    bitangent = np.cross(n_base, tangent)
     b_norm = np.linalg.norm(bitangent, axis=-1, keepdims=True)
     bitangent /= np.maximum(b_norm, 1e-8)
 

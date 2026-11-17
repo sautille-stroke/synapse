@@ -137,13 +137,14 @@ def _build_chromaticity_mask(
     safe_lum = np.clip(lum, lum_floor, None)[..., np.newaxis]
     chroma = radiance / safe_lum  # (H, W, 3)
 
-    # Local variance of chromaticity (box filter)
+    # Local variance of chromaticity (box filter with edge padding)
     h, w = radiance.shape[:2]
     r = chroma_consistency_radius
+    chroma_padded = np.pad(chroma, ((r, r), (r, r), (0, 0)), mode="edge")
     chroma_var = np.zeros((h, w), dtype=np.float64)
     for dy in range(-r, r + 1):
         for dx in range(-r, r + 1):
-            shifted = np.roll(np.roll(chroma, dy, axis=0), dx, axis=1)
+            shifted = chroma_padded[r + dy : r + dy + h, r + dx : r + dx + w]
             chroma_var += np.sum((shifted - chroma) ** 2, axis=-1)
     n_neighbors = (2 * r + 1) ** 2
     chroma_var /= max(n_neighbors, 1)
@@ -804,8 +805,8 @@ def delight_multiview_albedo(
     # Compute CIEDE2000 delta_e_residual between re-lit and original
     relit_clamped = np.clip(relit, 0.0, 1.0)
     mean_frame_clamped = np.clip(mean_frame, 0.0, 1.0)
-    lab_relit = _rgb_to_lab(relit_clamped)
-    lab_orig = _rgb_to_lab(mean_frame_clamped)
+    lab_relit = _rgb_to_lab(relit_clamped, is_linear=True)
+    lab_orig = _rgb_to_lab(mean_frame_clamped, is_linear=True)
     delta_e = float(np.mean(_delta_e_00(lab_relit, lab_orig)))
 
     return DelightResult(
