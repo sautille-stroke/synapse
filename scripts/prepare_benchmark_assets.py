@@ -333,6 +333,7 @@ def stage_from_remote_huggingface(
     tier: str = "starter_dev",
     force: bool = False,
     verbose: bool = True,
+    allow_synthetic_smoke: bool = False,
 ) -> List[Dict[str, Any]]:
     """Stage benchmark assets from Hugging Face Hub with per-file SHA-256 verification.
 
@@ -416,9 +417,17 @@ def stage_from_remote_huggingface(
             )
             downloaded_path = Path(downloaded_path)
         except Exception as e:
-            if verbose:
-                print(f"  [HuggingFace] Failed to download {pkg_name}: {e}")
-            continue
+            if allow_synthetic_smoke:
+                if verbose:
+                    print(f"  [HuggingFace] Failed to download {pkg_name}: {e} (continuing due to --allow-synthetic-smoke)")
+                continue
+            raise AssetNotFoundError(
+                f"Failed to download benchmark asset '{pkg_name}' from HuggingFace: {e}",
+                agent_fix_hint=(
+                    f"Check network connectivity and HF credentials, or use "
+                    f"--allow-synthetic-smoke for minimal CI smoke testing."
+                ),
+            ) from e
 
         # Per-file SHA-256 verification
         if vital_name and vital_sha256:
@@ -577,7 +586,8 @@ def main() -> int:
     # 3. Stage from remote HuggingFace / mirror fallback
     try:
         remote_records = stage_from_remote_huggingface(
-            target_dir, tier_canonical, args.force, verbose=verbose
+            target_dir, tier_canonical, args.force, verbose=verbose,
+            allow_synthetic_smoke=args.allow_synthetic_smoke,
         )
         all_records.extend(remote_records)
     except (AssetNotFoundError, ValueError) as exc:

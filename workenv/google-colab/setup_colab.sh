@@ -39,7 +39,7 @@ python3 -m pip install --upgrade --quiet pip setuptools wheel
 
 # Install Synapse in editable mode with GPU, image, metrics, mesh, and training extras
 if [ -f "pyproject.toml" ]; then
-    python3 -m pip install --quiet -e ".[image,metrics,gpu,train,mesh]"
+    python3 -m pip install --quiet -e ".[image,metrics,gpu,train,mesh,dev]"
 else
     echo "❌ Error: pyproject.toml not found. Please run this script from the synapse repository root."
     exit 1

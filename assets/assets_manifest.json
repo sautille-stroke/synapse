@@ -23,7 +23,8 @@
       "category": "3d_reconstruction",
       "vital_file": {
         "name": "stanford_bunny.obj",
-        "sha256": "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205"
+        "sha256": "PLACEHOLDER_VITAL_SHA256_gso_starter",
+        "sha256_verified": false
       }
     },
     "objaverse_eval": {
@@ -40,7 +41,8 @@
       "category": "3d_reconstruction",
       "vital_file": {
         "name": "sample_manifold.glb",
-        "sha256": "b2f694e9f75dfd2d1d280b017b2b8e88e2c0e86a0487c69a7c39de0bc44c10c1"
+        "sha256": "PLACEHOLDER_VITAL_SHA256_objaverse_eval",
+        "sha256_verified": false
       }
     },
     "mixamo_dynamics": {
@@ -57,7 +59,8 @@
       "category": "actor_dynamics",
       "vital_file": {
         "name": "Action_Idle_To_Standing_Idle.fbx",
-        "sha256": "c88f1981977717277b96e1b764ee7ecb1130e64903a48e71887e5b1f9c8f070a"
+        "sha256": "PLACEHOLDER_VITAL_SHA256_mixamo_dynamics",
+        "sha256_verified": false
       }
     },
     "vbench_prompts": {
@@ -74,7 +77,8 @@
       "category": "video_generation",
       "vital_file": {
         "name": "prompts_per_dimension.json",
-        "sha256": "d60462bcb05906809a3cf3dfe9ae793855c76a742dca64f1e55aa3c0feddf2ca"
+        "sha256": "PLACEHOLDER_VITAL_SHA256_vbench_prompts",
+        "sha256_verified": false
       }
     }
   }
