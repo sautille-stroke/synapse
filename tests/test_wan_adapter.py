@@ -422,8 +422,10 @@ class TestWanSlidingWindowAndGuards:
         )
         config = VideoGenerationConfig(num_frames=4, width=w, height=h)
 
+        rng = np.random.RandomState(42)
+
         def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
-            return np.ones((4, h, w, 3), dtype=np.uint8) * 128
+            return rng.randint(0, 255, (4, h, w, 3), dtype=np.uint8)
 
         adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
         result = adapter.generate(payload, config, fgpp_frames=seq.frames)
@@ -440,14 +442,18 @@ class TestWanSlidingWindowAndGuards:
         payload = PreparedConditionPayload(control_tensor=control)
         config = VideoGenerationConfig(num_frames=total_frames, width=w, height=h)
 
+        # Build fgpp_frames so the scheduler can determine windows
+        seq = _make_fgpp_sequence(n_frames=total_frames, h=h, w=w)
+
         window_calls: list[int] = []
 
         def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
             window_calls.append(c.num_frames)
-            return np.full((c.num_frames, h, w, 3), len(window_calls) * 50, dtype=np.uint8)
+            rng = np.random.RandomState(len(window_calls))
+            return rng.randint(0, 255, (c.num_frames, h, w, 3), dtype=np.uint8)
 
         adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
-        result = adapter.generate(payload, config)
+        result = adapter.generate(payload, config, fgpp_frames=seq.frames)
 
         assert len(window_calls) >= 2, f"Expected multi-window execution, got {len(window_calls)}"
         assert result.frames_srgb_u8.shape == (total_frames, h, w, 3)
@@ -468,7 +474,8 @@ class TestWanSlidingWindowAndGuards:
 
         def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
             captured_extra.update(p.extra)
-            return np.full((5, h, w, 3), 128, dtype=np.uint8)
+            rng = np.random.RandomState(0)
+            return rng.randint(0, 255, (5, h, w, 3), dtype=np.uint8)
 
         adapter = WanAdapter(
             backend=LocalCallableBackend(pipeline_fn=mock_pipeline),

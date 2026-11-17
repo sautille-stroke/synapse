@@ -178,6 +178,8 @@ class TestPackager:
                 output_dir=tmp_bundle_dir,
                 bench_metrics={
                     "chamfer_mm": 10.0,
+                    "normal_angular_error_deg": 8.0,
+                    "border_ring_ciede2000": 1.5,
                 },
             )
         assert exc_info.value.exit_code == 40
@@ -193,7 +195,9 @@ class TestPackager:
                 weights_path=fake_weights,
                 output_dir=tmp_bundle_dir,
                 bench_metrics={
+                    "chamfer_mm": 2.0,
                     "normal_angular_error_deg": 15.0,
+                    "border_ring_ciede2000": 1.5,
                 },
             )
 
@@ -206,6 +210,8 @@ class TestPackager:
                 weights_path=fake_weights,
                 output_dir=tmp_bundle_dir,
                 bench_metrics={
+                    "chamfer_mm": 2.0,
+                    "normal_angular_error_deg": 8.0,
                     "border_ring_ciede2000": 5.0,
                 },
             )
@@ -220,6 +226,9 @@ class TestPackager:
                 output_dir=tmp_bundle_dir,
                 negative_scenarios=["color_shift_test"],
                 bench_metrics={
+                    "chamfer_mm": 2.0,
+                    "normal_angular_error_deg": 8.0,
+                    "border_ring_ciede2000": 1.5,
                     "regression_color_shift_test_pct": 12.0,
                 },
             )
@@ -235,7 +244,11 @@ class TestPackager:
         result = package_and_gate_lora_bundle(
             weights_path=fake_weights,
             output_dir=tmp_bundle_dir,
-            bench_metrics={"chamfer_mm": 8.0},
+            bench_metrics={
+                "chamfer_mm": 8.0,
+                "normal_angular_error_deg": 8.0,
+                "border_ring_ciede2000": 1.5,
+            },
             thresholds=LoRAGateThresholds(chamfer_mm=10.0),
         )
         assert result["passed"] is True
@@ -298,7 +311,11 @@ class TestPackager:
                 weights_path=fake_weights,
                 output_dir=tmp_bundle_dir,
                 negative_scenarios=["color_shift_test"],
-                bench_metrics={"chamfer_mm": 1.0},
+                bench_metrics={
+                    "chamfer_mm": 1.0,
+                    "normal_angular_error_deg": 8.0,
+                    "border_ring_ciede2000": 1.5,
+                },
             )
         assert "Missing required negative scenario" in str(
             exc_info.value,
@@ -313,6 +330,8 @@ class TestPackager:
             output_dir=tmp_bundle_dir,
             bench_metrics={
                 "chamfer_mm": 2.0,
+                "normal_angular_error_deg": 8.0,
+                "border_ring_ciede2000": 1.5,
             },
         )
         report = json.loads(
@@ -380,7 +399,11 @@ class TestLoRACLI:
         package_and_gate_lora_bundle(
             weights_path=fake_weights,
             output_dir=bundle_dir,
-            bench_metrics={"chamfer_mm": 2.0},
+            bench_metrics={
+                "chamfer_mm": 2.0,
+                "normal_angular_error_deg": 8.0,
+                "border_ring_ciede2000": 1.5,
+            },
             skip_bench=False,
         )
 
@@ -672,3 +695,74 @@ class TestPackagerSafetensorsValidation:
                 output_dir=bundle,
                 skip_bench=True,
             )
+
+
+
+# -------------------------------------------------------------------
+# PR-117: Required gate metrics and fnmatch validation
+# -------------------------------------------------------------------
+
+
+class TestPR117GateKeyEnforcement:
+    """PR-117: Fail-closed enforcement of required gate metrics."""
+
+    def test_missing_required_key_fails_gate(
+        self, fake_weights: Path, tmp_path: Path,
+    ) -> None:
+        """Missing chamfer_mm, normal_angular_error_deg, or border_ring_ciede2000 fails gate."""
+        bundle = tmp_path / "missing_key_bundle"
+        # Provide only chamfer_mm — missing the other two required keys
+        with pytest.raises(QualityGateError) as exc_info:
+            package_and_gate_lora_bundle(
+                weights_path=fake_weights,
+                output_dir=bundle,
+                bench_metrics={
+                    "chamfer_mm": 2.0,
+                },
+                skip_bench=False,
+            )
+        assert exc_info.value.exit_code == 40
+        assert "Missing required gate metric" in str(exc_info.value)
+
+    def test_all_required_keys_present_passes(
+        self, fake_weights: Path, tmp_path: Path,
+    ) -> None:
+        """When all 3 required gate metrics are present and within thresholds, gate passes."""
+        bundle = tmp_path / "complete_bundle"
+        result = package_and_gate_lora_bundle(
+            weights_path=fake_weights,
+            output_dir=bundle,
+            bench_metrics={
+                "chamfer_mm": 2.0,
+                "normal_angular_error_deg": 8.0,
+                "border_ring_ciede2000": 1.5,
+            },
+            skip_bench=False,
+        )
+        assert result["passed"] is True
+
+    def test_fnmatch_safetensors_validation(
+        self, tmp_path: Path,
+    ) -> None:
+        """PR-117: fnmatch glob matching works in safetensors weight validation."""
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import save_file
+
+        weights = {
+            "model.cross_attn.to_k.lora_A.weight": np.zeros((8, 64), dtype=np.float32),
+            "model.cross_attn.to_k.lora_B.weight": np.zeros((64, 8), dtype=np.float32),
+            "model.cross_attn.to_v.lora_A.weight": np.zeros((8, 64), dtype=np.float32),
+            "model.cross_attn.to_v.lora_B.weight": np.zeros((64, 8), dtype=np.float32),
+        }
+        p = tmp_path / "fnmatch.safetensors"
+        save_file(weights, str(p))
+
+        bundle = tmp_path / "fnmatch_bundle"
+        # Using 'cross_attn' as pattern — with fnmatch it should match weight keys
+        result = package_and_gate_lora_bundle(
+            weights_path=p,
+            output_dir=bundle,
+            target_modules=["cross_attn.to_k", "cross_attn.to_v"],
+            skip_bench=True,
+        )
+        assert result["passed"] is True

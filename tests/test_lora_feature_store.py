@@ -454,7 +454,7 @@ class TestFeatureStoreQualityGates:
     def test_wan_7ch_control_passes_gates(
         self, tmp_path: object,
     ) -> None:
-        """[7, T, H, W] Wan control tensor skips pixel gates, passes."""
+        """[7, T, H, W] Wan control tensor with valid depth/normals passes gates."""
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(enc, txt)
@@ -463,9 +463,13 @@ class TestFeatureStoreQualityGates:
             0, 256, (17, 32, 32, 3), dtype=np.uint8,
         )
         # [7, T, H, W] — valid Wan control layout
-        wan_cond = np.random.RandomState(42).randn(
-            7, 17, 32, 32,
-        ).astype(np.float32)
+        wan_cond = np.zeros((7, 17, 32, 32), dtype=np.float32)
+        # ch0=depth with sufficient span
+        wan_cond[0] = np.linspace(1.0, 10.0, 32 * 32).reshape(1, 32, 32)
+        # ch1-3=unit normals [0, 0, 1]
+        wan_cond[1] = 0.0
+        wan_cond[2] = 0.0
+        wan_cond[3] = 1.0
 
         builder.add_sample(
             sample_id="wan_valid",
@@ -474,7 +478,7 @@ class TestFeatureStoreQualityGates:
             fgpp_cond=wan_cond,
         )
 
-        # Should NOT be rejected (was 100% rejected before fix)
+        # Should NOT be rejected
         assert builder.rejected_count == 0
 
     def test_bad_rotation_det_rejects(self) -> None:
@@ -575,3 +579,155 @@ class TestFeatureStoreQualityGates:
         shards = builder.build_shards(tmp_path / "empty_shards")
         assert shards == []
         assert list((tmp_path / "empty_shards").glob("*.tar")) == []
+
+
+
+# ===================================================================
+# PR-117: Wan 7ch validation gates, streaming iter, sample_id validation
+# ===================================================================
+
+
+class TestPR117FeatureStoreEnhancements:
+    """PR-117: Wan 7ch quality gates, streaming iter, oversized member filtering."""
+
+    @staticmethod
+    def _make_valid_wan_7ch(t: int = 17, h: int = 32, w: int = 32) -> np.ndarray:
+        """Build a valid [7, T, H, W] Wan control tensor.
+
+        - ch0=depth with span > 0.1
+        - ch1-3=normal with unit-length vectors
+        """
+        wan = np.zeros((7, t, h, w), dtype=np.float32)
+        # Depth with sufficient span
+        wan[0] = np.linspace(1.0, 10.0, h * w).reshape(1, h, w)
+        # Unit normals pointing up: [0, 0, 1]
+        wan[1] = 0.0  # nx
+        wan[2] = 0.0  # ny
+        wan[3] = 1.0  # nz
+        return wan
+
+    def test_wan_7ch_valid_passes_new_gates(self, tmp_path: object) -> None:
+        """PR-117: Valid Wan 7ch tensor passes Gate 2w and Gate 4w."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.random.RandomState(117).randint(
+            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+        )
+        wan_cond = self._make_valid_wan_7ch()
+
+        builder.add_sample(
+            sample_id="wan_117",
+            video_frames=frames,
+            caption="wan 7ch valid",
+            fgpp_cond=wan_cond,
+        )
+
+        assert builder.rejected_count == 0
+
+    def test_wan_7ch_flat_depth_rejected(self) -> None:
+        """PR-117: Gate 2w rejects Wan 7ch with flat depth (span < 0.1)."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        wan = self._make_valid_wan_7ch(5, 16, 16)
+        wan[0] = 5.0  # flat depth → span = 0
+
+        builder.add_sample(
+            sample_id="flat_depth",
+            video_frames=frames,
+            caption="flat depth",
+            fgpp_cond=wan,
+        )
+
+        assert builder.rejected_count == 1
+
+    def test_wan_7ch_non_unit_normal_rejected(self) -> None:
+        """PR-117: Gate 4w rejects Wan 7ch with non-unit normals."""
+        enc = LinearProjectionEncoder()
+        txt = LinearProjectionTextEncoder()
+        builder = FeatureStoreBuilder(enc, txt)
+
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        wan = self._make_valid_wan_7ch(5, 16, 16)
+        # Set normals to non-unit length [2, 0, 0]
+        wan[1] = 2.0
+        wan[2] = 0.0
+        wan[3] = 0.0
+
+        builder.add_sample(
+            sample_id="bad_normal",
+            video_frames=frames,
+            caption="bad normal",
+            fgpp_cond=wan,
+        )
+
+        assert builder.rejected_count == 1
+
+    def test_streaming_iter_validates_sample_id(self, tmp_path: object) -> None:
+        """PR-117: iter_feature_shards filters out invalid sample_ids in streaming mode."""
+        import io
+        import tarfile
+
+        tmp = tmp_path
+        shard_path = Path(str(tmp)) / "test.tar"  # type: ignore[arg-type]
+
+        # Create a tarball with one valid and one invalid sample_id
+        with tarfile.open(shard_path, "w") as tf:
+            # Valid sample
+            for suffix, data in [
+                ("latent.npy", np.zeros((16, 5, 4, 4), dtype=np.float32)),
+                ("prompt.npy", np.zeros((512,), dtype=np.float32)),
+            ]:
+                buf = io.BytesIO()
+                np.save(buf, data)
+                raw = buf.getvalue()
+                info = tarfile.TarInfo(name=f"valid_sample_01.{suffix}")
+                info.size = len(raw)
+                tf.addfile(info, io.BytesIO(raw))
+
+            # Invalid sample_id with special chars
+            for suffix, data in [
+                ("latent.npy", np.zeros((16, 5, 4, 4), dtype=np.float32)),
+                ("prompt.npy", np.zeros((512,), dtype=np.float32)),
+            ]:
+                buf = io.BytesIO()
+                np.save(buf, data)
+                raw = buf.getvalue()
+                info = tarfile.TarInfo(name=f"bad!id@#.{suffix}")
+                info.size = len(raw)
+                tf.addfile(info, io.BytesIO(raw))
+
+        samples = list(iter_feature_shards([shard_path]))
+        # Only the valid sample should be yielded
+        assert len(samples) == 1
+        assert samples[0]["sample_id"] == "valid_sample_01"
+
+    def test_streaming_iter_flushes_at_boundaries(self, tmp_path: object) -> None:
+        """PR-117: streaming iter yields samples at sample_id boundaries."""
+        import io
+        import tarfile
+
+        tmp = tmp_path
+        shard_path = Path(str(tmp)) / "multi.tar"  # type: ignore[arg-type]
+
+        with tarfile.open(shard_path, "w") as tf:
+            for sid in ["alpha", "beta", "gamma"]:
+                for suffix, data in [
+                    ("latent.npy", np.zeros((16, 5, 4, 4), dtype=np.float32)),
+                    ("prompt.npy", np.zeros((512,), dtype=np.float32)),
+                ]:
+                    buf = io.BytesIO()
+                    np.save(buf, data)
+                    raw = buf.getvalue()
+                    info = tarfile.TarInfo(name=f"{sid}.{suffix}")
+                    info.size = len(raw)
+                    tf.addfile(info, io.BytesIO(raw))
+
+        samples = list(iter_feature_shards([shard_path]))
+        assert len(samples) == 3
+        ids = {s["sample_id"] for s in samples}
+        assert ids == {"alpha", "beta", "gamma"}

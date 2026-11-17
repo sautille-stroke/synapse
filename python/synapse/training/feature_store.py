@@ -416,6 +416,28 @@ class FeatureStoreBuilder:
                         f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95"
                     )
 
+        # ── Wan 7ch control tensor validation (depth span & normal unit-length) ──
+        if is_wan and fgpp is not None:
+            # Wan control: [7, T, H, W] — ch0=depth, ch1-3=normal
+            wan_depth = fgpp[0]  # [T, H, W]
+            valid_d = wan_depth[wan_depth > 0]
+            if valid_d.size > 0:
+                span = float(valid_d.max() - valid_d.min())
+                if span < 0.1:
+                    return False, (
+                        f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m"
+                    )
+            wan_normals = fgpp[1:4]  # [3, T, H, W]
+            wan_norms = np.linalg.norm(wan_normals, axis=0)  # [T, H, W]
+            active_w = wan_norms > 0.01
+            if active_w.sum() > 0:
+                unit_ok_w = np.abs(wan_norms[active_w] - 1.0) < 0.01
+                ratio_w = float(unit_ok_w.mean())
+                if ratio_w < 0.95:
+                    return False, (
+                        f"Gate 4w (Wan normal unit-length): {ratio_w:.3f} < 0.95"
+                    )
+
         # ── Gate 5 — Rotation determinant and orthogonality ──────────
         if cam_mats is not None:
             cam = np.asarray(cam_mats)
@@ -442,15 +464,7 @@ class FeatureStoreBuilder:
                         f"Gate 5 (rotation det): |det(R)-1| = "
                         f"{abs(det - 1.0):.2e} >= 1e-4, ortho_err = {ortho_err:.2e}"
                     )
-        elif is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 16:
-            # Embedded 3x3 rotation in fgpp[..., 7:16]
-            rot = fgpp[0, 0, 0, 7:16].reshape(3, 3)
-            det = float(np.linalg.det(rot))
-            if abs(det - 1.0) >= 1e-4:
-                return False, (
-                    f"Gate 5 (rotation det): |det(R)-1| = "
-                    f"{abs(det - 1.0):.2e} >= 1e-4"
-                )
+        # Dead-code fallback for shape[-1] >= 16 removed (FGPP is 15ch only)
 
         return True, ""
 
@@ -604,6 +618,11 @@ def iter_feature_shards(
     Raises:
         AssetNotFoundError: If any shard file does not exist.
     """
+    import re
+
+    _SID_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
+    _MAX_MEMBER_BYTES = 512 * 1024 * 1024  # 512 MiB per-member limit
+
     known_suffixes = (
         ".latent.npy",
         ".prompt.npy",
@@ -619,12 +638,19 @@ def iter_feature_shards(
                 agent_fix_hint=f"Ensure shard file exists at '{shard_path}' before iterating.",
             )
 
-        # Collect all entries grouped by sample_id prefix
-        entries: dict[str, dict[str, bytes]] = {}
-        with tarfile.open(shard_path, "r") as tf:
-            for member in tf.getmembers():
+        # Streaming O(1) memory: read entries one by one and yield when
+        # a sample boundary is reached (all entries of one sample_id are
+        # adjacent in a well-formed shard).
+        current_sid: str | None = None
+        current_parts: dict[str, bytes] = {}
+
+        with tarfile.open(shard_path, "r|") as tf:  # streaming mode
+            for member in tf:
                 if not member.isfile():
                     continue
+                if member.size > _MAX_MEMBER_BYTES:
+                    continue  # skip oversized members
+
                 name = member.name
                 f = tf.extractfile(member)
                 if f is None:
@@ -643,36 +669,60 @@ def iter_feature_shards(
                 if matched_sid is None or matched_suffix is None:
                     continue
 
-                if matched_sid not in entries:
-                    entries[matched_sid] = {}
-                entries[matched_sid][matched_suffix] = data
+                # Validate sample_id format
+                if not _SID_RE.match(matched_sid):
+                    continue
 
-        # Yield complete samples
-        for sid, parts in entries.items():
-            latent = None
-            prompt = None
-            fgpp_cond = None
-            meta: dict[str, Any] = {}
+                # Flush previous sample if we hit a new sample_id boundary
+                if current_sid is not None and matched_sid != current_sid:
+                    sample = _assemble_sample(current_sid, current_parts)
+                    if sample is not None:
+                        yield sample
+                    current_parts = {}
 
-            if "latent.npy" in parts:
-                latent = np.load(io.BytesIO(parts["latent.npy"]), allow_pickle=False)
-            if "prompt.npy" in parts:
-                prompt = np.load(io.BytesIO(parts["prompt.npy"]), allow_pickle=False)
-            if "fgpp_cond.npy" in parts:
-                fgpp_cond = np.load(
-                    io.BytesIO(parts["fgpp_cond.npy"]), allow_pickle=False,
-                )
-            if "meta.json" in parts:
-                meta = json.loads(
-                    parts["meta.json"].decode("utf-8"),
-                )
+                current_sid = matched_sid
+                current_parts[matched_suffix] = data
 
-            if latent is not None and prompt is not None:
-                yield {
-                    "sample_id": sid,
-                    "latent": latent,
-                    "prompt": prompt,
-                    "fgpp_cond": fgpp_cond,
-                    "meta": meta,
-                }
+        # Flush the last sample in the shard
+        if current_sid is not None and current_parts:
+            sample = _assemble_sample(current_sid, current_parts)
+            if sample is not None:
+                yield sample
+
+
+def _assemble_sample(
+    sid: str, parts: dict[str, bytes],
+) -> dict[str, Any] | None:
+    """Assemble a training sample from raw byte parts.
+
+    Returns ``None`` if the minimum required keys (``latent``, ``prompt``)
+    are missing.
+    """
+    latent = None
+    prompt = None
+    fgpp_cond = None
+    meta: dict[str, Any] = {}
+
+    if "latent.npy" in parts:
+        latent = np.load(io.BytesIO(parts["latent.npy"]), allow_pickle=False)
+    if "prompt.npy" in parts:
+        prompt = np.load(io.BytesIO(parts["prompt.npy"]), allow_pickle=False)
+    if "fgpp_cond.npy" in parts:
+        fgpp_cond = np.load(
+            io.BytesIO(parts["fgpp_cond.npy"]), allow_pickle=False,
+        )
+    if "meta.json" in parts:
+        meta = json.loads(
+            parts["meta.json"].decode("utf-8"),
+        )
+
+    if latent is not None and prompt is not None:
+        return {
+            "sample_id": sid,
+            "latent": latent,
+            "prompt": prompt,
+            "fgpp_cond": fgpp_cond,
+            "meta": meta,
+        }
+    return None
 
