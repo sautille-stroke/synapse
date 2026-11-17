@@ -1,9 +1,10 @@
 # Copyright 2026 Sautille-Stroke / DervGen. All rights reserved.
 """Pipeline stage adapters for 3D reconstruction and inverse rendering.
 
-Registers ``video_to_3d_invert`` and ``inverse_render_loop`` stages
-with the :func:`~synapse.pipeline.bundle_worker.register_stage`
-decorator so they are discoverable by the ``JobBundleWorker``.
+Registers ``video_to_3d_invert``, ``inverse_render_loop``, and
+``delight_albedo`` stages with the
+:func:`~synapse.pipeline.bundle_worker.register_stage` decorator so
+they are discoverable by the ``JobBundleWorker``.
 """
 
 from __future__ import annotations
@@ -225,7 +226,11 @@ def handle_delight_albedo(
 
     Expects:
         - ``manifest.inputs["video_frames"]``: Path to ``(T,H,W,3)`` ``.npy``.
-        - ``manifest.inputs["normals"]``: Path to ``(T,H,W,3)`` ``.npy``.
+        - ``manifest.params["target_faces"]``: Optional target face count for
+          mesh reconstruction (default 1500).
+
+    Normals are reconstructed internally via :class:`ReconPipeline` rather
+    than taken from an external input.
 
     Returns:
         Dict with ``output_paths`` to the delighted albedo.
@@ -253,24 +258,36 @@ def handle_delight_albedo(
     pipe = ReconPipeline(target_quad_faces=target_faces)
     result = pipe.run(frames)
 
-    output_paths: dict[str, str] = {}
+    if result.mesh is None or result.mesh.normals is None:
+        from synapse.errors import BackendUnavailableError
 
-    if result.mesh is not None and result.mesh.normals is not None:
-        albedo = delight_multiview_albedo(
-            frames=frames,
-            cameras=(
-                result.camera_trajectory.extrinsics
-                if result.camera_trajectory
-                else []
+        raise BackendUnavailableError(
+            "Mesh reconstruction produced no normals — cannot delight.",
+            agent_fix_hint=(
+                "Check input video frames quality and ensure "
+                "ReconPipeline can triangulate valid geometry."
             ),
-            mesh=result.mesh,
         )
-        albedo_path = manifest.outputs.get(
-            "albedo", str(Path("output") / "delighted_albedo.npy"),
-        )
-        p_albedo = Path(albedo_path)
-        p_albedo.parent.mkdir(parents=True, exist_ok=True)
-        np.save(str(p_albedo), albedo)
-        output_paths["albedo"] = str(p_albedo)
 
-    return {"output_paths": output_paths}
+    albedo = delight_multiview_albedo(
+        frames=frames,
+        cameras=(
+            result.camera_trajectory.extrinsics
+            if result.camera_trajectory
+            else []
+        ),
+        mesh=result.mesh,
+    )
+    albedo_path = manifest.outputs.get(
+        "albedo", str(Path("output") / "delighted_albedo.npy"),
+    )
+    p_albedo = Path(albedo_path)
+    # Normalize suffix — np.save auto-appends .npy if missing, so ensure
+    # output_paths matches the actual file on disk.
+    if p_albedo.suffix != ".npy":
+        p_albedo = p_albedo.with_suffix(p_albedo.suffix + ".npy")
+    p_albedo.parent.mkdir(parents=True, exist_ok=True)
+    with open(p_albedo, "wb") as f_out:
+        np.save(f_out, albedo)
+
+    return {"output_paths": {"albedo": str(p_albedo)}}

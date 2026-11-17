@@ -308,13 +308,16 @@ def _detect_ground_violation(
         elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
             fx = float(w) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
         else:
-            fx = max(float(cam.fx), 1e-6)
+            # Fallback: assume 60° horizontal FoV when no intrinsics are
+            # available.  Produces a plausible focal length rather than the
+            # near-zero sentinel that ``max(cam.fx, 1e-6)`` would give.
+            fx = float(w) / (2.0 * math.tan(math.radians(30.0)))
         if cam.fy > 0:
             fy = float(cam.fy)
         elif hasattr(cam, 'fov_degrees') and cam.fov_degrees > 0:
             fy = float(h) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
         else:
-            fy = max(float(cam.fy), 1e-6)
+            fy = float(h) / (2.0 * math.tan(math.radians(30.0)))
         x_cam = ((xx.astype(np.float64) + 0.5) - cam.cx) * z / fx
         y_cam = -((yy.astype(np.float64) + 0.5) - cam.cy) * z / fy
         z_cam = -z
