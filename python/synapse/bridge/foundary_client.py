@@ -128,6 +128,10 @@ class HttpFoundaryTransport(FoundaryTransport):
         timeout_seconds: float = 300.0,
         max_retries: int = 3,
     ) -> None:
+        if base_url:
+            from synapse.bridge.http_security import validate_safe_url
+
+            validate_safe_url(base_url)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self._max_retries = max_retries
@@ -137,12 +141,18 @@ class HttpFoundaryTransport(FoundaryTransport):
         if not self._base_url:
             return False
         import urllib.error
-        import urllib.request
+
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
+
+        try:
+            validate_safe_url(self._base_url)
+        except Exception:
+            return False
 
         health_url = f"{self._base_url}/healthz"
         for url in (health_url, self._base_url):
             try:
-                with urllib.request.urlopen(url, timeout=3.0) as resp:
+                with safe_urlopen(url, timeout=3.0) as resp:
                     if resp.status in (200, 204):
                         return True
             except urllib.error.HTTPError as exc:
@@ -159,11 +169,13 @@ class HttpFoundaryTransport(FoundaryTransport):
             BackendUnavailableError: If base_url is empty, connection refused,
                 or server times out.
         """
+        import http.client
         import json
         import time
         import urllib.error
         import urllib.request
 
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
         from synapse.errors import BackendUnavailableError
         from synapse.telemetry import TraceContext
 
@@ -176,6 +188,7 @@ class HttpFoundaryTransport(FoundaryTransport):
                 ),
             )
 
+        validate_safe_url(self._base_url)
         url = f"{self._base_url}/v1/{request.service}"
         payload = request.model_dump_json().encode("utf-8")
         trace_headers = TraceContext.current().to_headers()
@@ -194,9 +207,16 @@ class HttpFoundaryTransport(FoundaryTransport):
         last_error: Exception | None = None
         for attempt in range(self._max_retries):
             try:
-                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                with safe_urlopen(req, timeout=self._timeout) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
-                    return FoundaryResponse.model_validate(data)
+                    resp_obj = FoundaryResponse.model_validate(data)
+                    if resp_obj.status == "error":
+                        raise BackendUnavailableError(
+                            f"Foundary service '{request.service}' reported error: "
+                            f"{resp_obj.error_message or 'unknown error'}",
+                            agent_fix_hint="Check foundary container logs and GPU health.",
+                        )
+                    return resp_obj
             except urllib.error.HTTPError as exc:
                 last_error = exc
                 if exc.code in (502, 503, 504) and attempt < self._max_retries - 1:
@@ -206,7 +226,7 @@ class HttpFoundaryTransport(FoundaryTransport):
                     f"Foundary service '{request.service}' HTTP {exc.code}: {exc.reason}",
                     agent_fix_hint="Check foundary container logs and GPU health.",
                 ) from exc
-            except (urllib.error.URLError, TimeoutError) as exc:
+            except (urllib.error.URLError, TimeoutError, http.client.HTTPException, json.JSONDecodeError) as exc:
                 last_error = exc
                 if attempt < self._max_retries - 1:
                     time.sleep(0.5 * (2 ** attempt))

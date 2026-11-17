@@ -11,8 +11,10 @@ inside methods — only ``numpy`` is used at module level.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
@@ -259,6 +261,91 @@ class MultiLoRAManager:
                 )
 
         self._original_weights.clear()
+
+    @contextlib.contextmanager
+    def manage_spatial_hooks(
+        self,
+        module: Any,
+        cryptomatte_ids: np.ndarray | None = None,
+        target_entity_ids: set[int] | None = None,
+    ) -> Iterator[None]:
+        """Context manager to attach spatial LoRAPatchHooks with iterative
+        Modified Gram-Schmidt orthogonalisation, guaranteeing cleanup on exit.
+
+        Routes bundles by category:
+        - "identity": foreground mask M_fg (target entities)
+        - "style": background mask ~M_fg
+        - other: no spatial mask (None)
+        """
+        import torch  # lazy
+
+        from synapse.adapters.lora.patcher import LoRAPatchHook
+
+        attached_hooks: list[tuple[LoRAPatchHook, Any]] = []
+
+        try:
+            # Build spatial masks if cryptomatte IDs are present
+            m_fg: np.ndarray | None = None
+            if cryptomatte_ids is not None:
+                if target_entity_ids is None or len(target_entity_ids) == 0:
+                    target_entity_ids = {
+                        int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0
+                    }
+                m_fg = self.build_spatial_lora_masks(
+                    cryptomatte_ids, target_entity_ids
+                )
+
+            # Collect deltas per submodule name across all bundles
+            layer_deltas: dict[str, list[tuple[LoRAManifest, np.ndarray, Any]]] = {}
+
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, torch.nn.Linear):
+                    continue
+
+                for manifest, scale in self._bundles:
+                    if not self._name_matches(name, manifest.target_modules):
+                        continue
+
+                    delta = self._compute_delta(
+                        submodule, manifest, scale, module_name=name,
+                    )
+                    delta_np = delta.detach().cpu().float().numpy()
+                    if name not in layer_deltas:
+                        layer_deltas[name] = []
+                    layer_deltas[name].append((manifest, delta_np, submodule))
+
+            # Orthogonalize deltas across conflicting pairs and attach hooks
+            for name, bundle_list in layer_deltas.items():
+                if len(bundle_list) >= 2:
+                    deltas = [b[1] for b in bundle_list]
+                    for i in range(len(deltas)):
+                        for j in range(i + 1, len(deltas)):
+                            deltas[j] = self.orthogonalize_conflicting_loras(
+                                deltas[i], deltas[j]
+                            )
+                    bundle_list = [
+                        (b[0], deltas[idx], b[2])
+                        for idx, b in enumerate(bundle_list)
+                    ]
+
+                for manifest, delta_np, submodule in bundle_list:
+                    # Select category-specific mask
+                    mask_to_use: Any | None = None
+                    if m_fg is not None:
+                        if manifest.category == "identity":
+                            mask_to_use = m_fg.astype(np.float32)
+                        elif manifest.category == "style":
+                            mask_to_use = (~m_fg).astype(np.float32)
+
+                    hook = LoRAPatchHook(delta_np)
+                    hook.attach(submodule, mask=mask_to_use, module_name=name)
+                    attached_hooks.append((hook, submodule))
+
+            yield
+        finally:
+            for hook, submodule in attached_hooks:
+                hook.detach(submodule)
+            attached_hooks.clear()
 
     def build_spatial_lora_masks(
         self,
@@ -507,21 +594,13 @@ def _extract_lora_ab(
     b_key = b_candidates[0] if b_candidates else None
 
     if a_key is None or b_key is None:
-        # Fallback: scan all tensors for matching shapes if no module-specific match
-        for key, tensor in state_dict.items():
-            if tensor.shape == torch.Size([rank, in_features]) and a_key is None:
-                a_key = key
-            elif tensor.shape == torch.Size([out_features, rank]) and b_key is None:
-                b_key = key
-
-    if a_key is None or b_key is None:
         raise ContractValidationError(
             f"Cannot find lora_A [{rank}, {in_features}] and "
             f"lora_B [{out_features}, {rank}] in safetensors state dict "
             f"(module_name={module_name}). Available keys: {list(state_dict.keys())}",
             agent_fix_hint=(
                 "Ensure the .safetensors file contains 'lora_A'/'lora_B' "
-                "or 'lora_down'/'lora_up' tensors with correct shapes."
+                "or 'lora_down'/'lora_up' tensors with correct shapes matching target module."
             ),
         )
 

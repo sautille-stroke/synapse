@@ -310,7 +310,7 @@ class DatasetGenerator:
         try:
             from synapse.fgpp.io import export_fgpp
             export_fgpp(fgpp_seq, fgpp_dir)
-        except Exception:
+        except (ImportError, OSError):
             fgpp_seq.save_metadata(fgpp_dir)
 
         # 6. Overall Dataset Manifest

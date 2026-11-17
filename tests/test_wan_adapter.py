@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 import pytest
@@ -309,12 +310,12 @@ class TestWanGenerate:
         assert result.frames_srgb_u8.dtype == np.uint8
 
     def test_generate_without_backend_raises(self) -> None:
-        """generate() should raise RuntimeError if no backend is set."""
+        """generate() should raise BackendUnavailableError if no backend is set."""
         adapter = WanAdapter()
         config = VideoGenerationConfig()
         payload = PreparedConditionPayload()
 
-        with pytest.raises(RuntimeError, match="no backend"):
+        with pytest.raises(BackendUnavailableError, match="no backend"):
             adapter.generate(payload, config)
 
 
@@ -388,3 +389,93 @@ class TestRegistration:
         adapter = WanAdapter()
         assert adapter.adapter_id == "wan2.1"
         assert adapter.tier == "whitebox"
+
+
+# ===================================================================
+# TestWanSlidingWindowAndGuards (PR-116 / H8-P0-05)
+# ===================================================================
+
+
+class TestWanSlidingWindowAndGuards:
+    """Tests for WanAdapter sliding window scheduling, defensive copy, and guards."""
+
+    def test_wan_no_backend_raises_backend_unavailable(self) -> None:
+        """When no backend is configured, generate() raises BackendUnavailableError(30)."""
+        adapter = WanAdapter()
+        config = VideoGenerationConfig(num_frames=2, width=4, height=4)
+        payload = PreparedConditionPayload()
+
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            adapter.generate(payload, config)
+        assert exc_info.value.exit_code == 30
+
+    def test_wan_reanchor_does_not_mutate_input_control_tensor(self) -> None:
+        """Ground-truth re-anchoring must not mutate caller's control_tensor in-place."""
+        h, w = 8, 8
+        control = np.zeros((7, 4, h, w), dtype=np.float32)
+        control_copy = control.copy()
+
+        seq = _make_fgpp_sequence(n_frames=4, h=h, w=w)
+        payload = PreparedConditionPayload(
+            control_tensor=control,
+            extra={"physical_anchor_indices": [0, 2]},
+        )
+        config = VideoGenerationConfig(num_frames=4, width=w, height=h)
+
+        def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
+            return np.ones((4, h, w, 3), dtype=np.uint8) * 128
+
+        adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
+        result = adapter.generate(payload, config, fgpp_frames=seq.frames)
+
+        assert isinstance(result, VideoResult)
+        # Original control tensor must be 100% identical to pre-call state
+        np.testing.assert_array_equal(control, control_copy)
+
+    def test_wan_161_frames_triggers_sliding_window_scheduler(self) -> None:
+        """A 161-frame sequence triggers ConditionScheduler with W=97, S=64, overlap=33."""
+        h, w = 8, 8
+        total_frames = 161
+        control = np.ones((7, total_frames, h, w), dtype=np.float32)
+        payload = PreparedConditionPayload(control_tensor=control)
+        config = VideoGenerationConfig(num_frames=total_frames, width=w, height=h)
+
+        window_calls: list[int] = []
+
+        def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
+            window_calls.append(c.num_frames)
+            return np.full((c.num_frames, h, w, 3), len(window_calls) * 50, dtype=np.uint8)
+
+        adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
+        result = adapter.generate(payload, config)
+
+        assert len(window_calls) >= 2, f"Expected multi-window execution, got {len(window_calls)}"
+        assert result.frames_srgb_u8.shape == (total_frames, h, w, 3)
+
+    def test_wan_gamma_flow_bias_injects_occlusion_mask(self) -> None:
+        """gamma_flow_bias > 0 triggers latent flow operator when motion vectors are present."""
+        h, w = 16, 16
+        # 5 frames: (5-1) % 4 == 0
+        mv = np.zeros((5, h, w, 2), dtype=np.float32)
+        depth = np.ones((5, h, w), dtype=np.float32)
+        payload = PreparedConditionPayload(
+            control_tensor=np.zeros((7, 5, h, w), dtype=np.float32),
+            extra={"motion_vectors": mv, "depth": depth},
+        )
+        config = VideoGenerationConfig(num_frames=5, width=w, height=h)
+
+        captured_extra: dict[str, Any] = {}
+
+        def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
+            captured_extra.update(p.extra)
+            return np.full((5, h, w, 3), 128, dtype=np.uint8)
+
+        adapter = WanAdapter(
+            backend=LocalCallableBackend(pipeline_fn=mock_pipeline),
+            gamma_flow_bias=1.0,
+        )
+        adapter.generate(payload, config)
+
+        assert "flow_meta" in captured_extra
+        assert "occlusion_mask" in captured_extra["flow_meta"]
+

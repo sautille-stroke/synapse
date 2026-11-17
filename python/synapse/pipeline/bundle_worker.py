@@ -512,20 +512,17 @@ def _handle_neural_video_generate(
     else:
         adapter = create_adapter(adapter_name)
 
-    actual_frames = int(params.get("window_frames", num_frames))
-
     gen_cfg = VideoGenerationConfig(
         seed=int(params.get("seed", 42)),
         fps=float(params.get("fps", 24.0)),
         width=width,
         height=height,
-        num_frames=actual_frames,
+        num_frames=num_frames,
         extra={
             k: v for k, v in params.items()
             if k not in {
                 "num_frames", "height", "width",
                 "model_variant", "adapter", "seed", "fps",
-                "window_frames",
             }
         },
     )

@@ -514,9 +514,14 @@ class HttpCloudTransport(CloudApiTransport):
     ) -> None:
         self._provider = provider
         self._api_token = api_token
-        self._endpoint_url = endpoint_url or os.environ.get(
+        raw_url = endpoint_url or os.environ.get(
             f"{provider.upper()}_API_URL", ""
         )
+        if raw_url:
+            from synapse.bridge.http_security import validate_safe_url
+
+            validate_safe_url(raw_url)
+        self._endpoint_url = raw_url
         self._timeout = timeout_s
 
     @property
@@ -536,11 +541,44 @@ class HttpCloudTransport(CloudApiTransport):
                 f"No endpoint URL configured for cloud provider '{self._provider}'.",
                 agent_fix_hint=f"Set {self._provider.upper()}_API_URL to the service endpoint.",
             )
+        import base64
+        import io
         import json
         import urllib.error
         import urllib.request
 
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
         from synapse.telemetry import TraceContext
+
+        validate_safe_url(self._endpoint_url)
+
+        first_anchor_b64 = (
+            base64.b64encode(segment.first_anchor_png).decode("ascii")
+            if segment.first_anchor_png
+            else ""
+        )
+        last_anchor_b64 = (
+            base64.b64encode(segment.last_anchor_png).decode("ascii")
+            if segment.last_anchor_png
+            else ""
+        )
+        text_prompt = (
+            getattr(config, "prompt", "")
+            or config.extra.get("text_prompt", "")
+            or ""
+        )
+
+        depth_guide_b64: str | None = None
+        if segment.depth_guide is not None:
+            buf = io.BytesIO()
+            np.save(buf, segment.depth_guide)
+            depth_guide_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        normal_edge_guide_b64: str | None = None
+        if segment.normal_edge_guide is not None:
+            buf = io.BytesIO()
+            np.save(buf, segment.normal_edge_guide)
+            normal_edge_guide_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
         req_payload = {
             "camera_motion": segment.camera_motion_enum,
@@ -551,6 +589,11 @@ class HttpCloudTransport(CloudApiTransport):
             "fps": config.fps,
             "width": config.width,
             "height": config.height,
+            "first_anchor_png": first_anchor_b64,
+            "last_anchor_png": last_anchor_b64,
+            "text_prompt": text_prompt,
+            "depth_guide": depth_guide_b64,
+            "normal_edge_guide": normal_edge_guide_b64,
         }
         trace_headers = TraceContext.current().to_headers()
         req = urllib.request.Request(
@@ -564,7 +607,7 @@ class HttpCloudTransport(CloudApiTransport):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with safe_urlopen(req, timeout=self._timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return np.array(data["frames"], dtype=np.uint8)
         except Exception as exc:

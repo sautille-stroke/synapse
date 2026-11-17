@@ -23,6 +23,7 @@ from synapse.bridge.hitl import (
     CommandIRRecord,
     FallbackAction,
     OperatorIdentity,
+    PersistentHitlLedger,
     evaluate_hitl_circuit_breaker,
 )
 from synapse.bridge.vg_bridge import (
@@ -57,6 +58,7 @@ __all__ = [
     "MockFoundaryTransport",
     "MockVgBackend",
     "OperatorIdentity",
+    "PersistentHitlLedger",
     "SynapseReconBackend",
     "VgBackend",
     "enforce_distillation_geometry_gate",

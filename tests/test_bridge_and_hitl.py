@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import synapse.recon  # noqa: F401  # registers SynapseReconBackend with bridge
@@ -397,3 +399,110 @@ class TestCommandIRRecord:
         )
         assert op.kind == "agent"
         assert op.model_urn == "urn:google:gemini:4.0"
+
+
+# ===================================================================
+# TestHttpSecurityAndLedger (PR-116 / H8-P1-08)
+# ===================================================================
+
+
+class TestHttpSecurityAndLedger:
+    """Tests for safe URL validation, SSRF guard, and PersistentHitlLedger."""
+
+    def test_http_rejects_file_scheme(self) -> None:
+        from synapse.bridge.http_security import validate_safe_url
+
+        with pytest.raises(ContractValidationError) as exc_info:
+            validate_safe_url("file:///etc/passwd")
+        assert exc_info.value.exit_code == 10
+
+    def test_http_rejects_cloud_metadata_ip(self) -> None:
+        from synapse.bridge.http_security import validate_safe_url
+
+        with pytest.raises(ContractValidationError) as exc_info:
+            validate_safe_url("http://169.254.169.254/latest/meta-data")
+        assert exc_info.value.exit_code == 10
+
+    def test_foundary_transport_rejects_ssrf(self) -> None:
+        from synapse.bridge.foundary_client import HttpFoundaryTransport
+
+        with pytest.raises(ContractValidationError) as exc_info:
+            HttpFoundaryTransport(base_url="http://169.254.169.254")
+        assert exc_info.value.exit_code == 10
+
+    def test_foundary_error_status_raises_backend_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock
+
+        from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
+
+        transport = HttpFoundaryTransport(base_url="http://localhost:8080")
+
+        # Mock safe_urlopen to return an error response
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"status": "error", "error_code": "CUDA_OOM", "error_message": "Out of memory"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+
+        monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", lambda *args, **kwargs: mock_resp)
+
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            transport.submit(FoundaryRequest(service="trellis", payload={}))
+        assert exc_info.value.exit_code == 30
+        assert "Out of memory" in str(exc_info.value)
+
+    def test_persistent_hitl_ledger_rejects_negative_or_nan(self, tmp_path: Path) -> None:
+        from synapse.bridge.hitl import PersistentHitlLedger
+
+        ledger_file = tmp_path / "ledger.json"
+        ledger = PersistentHitlLedger(ledger_path=ledger_file)
+
+        # Negative elapsed
+        rec_neg = CommandIRRecord(intent_group_id="grp1", intent="fix", elapsed_seconds=-10.0)
+        with pytest.raises(ContractValidationError) as exc_info:
+            ledger.record_action(rec_neg)
+        assert exc_info.value.exit_code == 10
+
+        # NaN elapsed
+        rec_nan = CommandIRRecord(intent_group_id="grp1", intent="fix", elapsed_seconds=float("nan"))
+        with pytest.raises(ContractValidationError) as exc_info:
+            ledger.record_action(rec_nan)
+        assert exc_info.value.exit_code == 10
+
+        # Verify ledger file is clean or zero accumulated
+        assert ledger.get_accumulated_elapsed("grp1") == 0.0
+
+    def test_persistent_hitl_ledger_readonly_query_does_not_rewrite(self, tmp_path: Path) -> None:
+        import time
+
+        from synapse.bridge.hitl import PersistentHitlLedger
+
+        ledger_file = tmp_path / "ledger.json"
+        ledger = PersistentHitlLedger(ledger_path=ledger_file)
+
+        # Record valid action
+        rec = CommandIRRecord(intent_group_id="grp1", intent="fix", elapsed_seconds=15.0)
+        ledger.record_action(rec)
+
+        assert ledger_file.is_file()
+        mtime_before = ledger_file.stat().st_mtime_ns
+
+        # Multiple read-only queries
+        time.sleep(0.01)
+        val = ledger.get_accumulated_elapsed("grp1")
+        assert val == 15.0
+        mtime_after = ledger_file.stat().st_mtime_ns
+
+        # Read query must not rewrite file
+        assert mtime_before == mtime_after
+
+    def test_get_vg_backend_production_unregistered_raises_backend_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import synapse.bridge.vg_bridge as vb
+
+        monkeypatch.setattr(vb, "_RECON_BACKEND_FACTORY", None)
+        monkeypatch.delenv("SYNAPSE_VG_MOCK", raising=False)
+
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            vb.get_vg_backend(mock=False)
+        assert exc_info.value.exit_code == 30
