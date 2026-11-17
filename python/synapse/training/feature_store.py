@@ -71,16 +71,10 @@ def format_structured_caption(
         if not value or not value.strip():
             raise ContractValidationError(
                 f"Caption field '{name}' must not be empty",
-                agent_fix_hint=(
-                    f"Provide a non-empty value for '{name}'."
-                ),
+                agent_fix_hint=(f"Provide a non-empty value for '{name}'."),
             )
 
-    return (
-        f"{trigger_token}, {subject_desc}, "
-        f"{lighting_env}, {camera_motion}, "
-        f"{art_style_tag}"
-    )
+    return f"{trigger_token}, {subject_desc}, {lighting_env}, {camera_motion}, {art_style_tag}"
 
 
 # -------------------------------------------------------------------
@@ -147,7 +141,8 @@ class LinearProjectionEncoder:
         # Temporal compression: 4x
         tau = (t - 1) // 4 + 1
         temporal = np.zeros(
-            (tau, h, w, c), dtype=np.float32,
+            (tau, h, w, c),
+            dtype=np.float32,
         )
         for i in range(tau):
             src_start = i * 4
@@ -158,14 +153,15 @@ class LinearProjectionEncoder:
         h8 = h // 8
         w8 = w // 8
         spatial = np.zeros(
-            (tau, h8, w8, c), dtype=np.float32,
+            (tau, h8, w8, c),
+            dtype=np.float32,
         )
         for yi in range(h8):
             for xi in range(w8):
                 block = temporal[
                     :,
-                    yi * 8:(yi + 1) * 8,
-                    xi * 8:(xi + 1) * 8,
+                    yi * 8 : (yi + 1) * 8,
+                    xi * 8 : (xi + 1) * 8,
                     :,
                 ]
                 spatial[:, yi, xi, :] = block.mean(axis=(1, 2))
@@ -178,7 +174,10 @@ class LinearProjectionEncoder:
         # spatial: [tau, h8, w8, C] -> [tau, h8, w8, C_latent]
         flat = spatial.reshape(-1, c)
         projected = (flat @ proj).reshape(
-            tau, h8, w8, self._channels,
+            tau,
+            h8,
+            w8,
+            self._channels,
         )
 
         # Rearrange to [C_latent, tau, h8, w8]
@@ -208,17 +207,19 @@ class LinearProjectionTextEncoder:
 
         # Expand hash to fill embed_dim floats
         result = np.zeros(self._dim, dtype=np.float32)
-        hash_floats = np.frombuffer(
-            digest, dtype=np.uint8,
-        ).astype(np.float32) / 255.0
+        hash_floats = (
+            np.frombuffer(
+                digest,
+                dtype=np.uint8,
+            ).astype(np.float32)
+            / 255.0
+        )
 
         n_hash = len(hash_floats)
         for i in range(self._dim):
             idx = i % n_hash
             # Combine with position for variation
-            result[i] = hash_floats[idx] * (
-                0.5 + 0.5 * np.sin(float(i) * 0.1)
-            )
+            result[i] = hash_floats[idx] * (0.5 + 0.5 * np.sin(float(i) * 0.1))
 
         return result
 
@@ -228,7 +229,11 @@ class LinearProjectionTextEncoder:
 # -------------------------------------------------------------------
 
 _BUFFERED_SAMPLE = tuple[
-    str, np.ndarray, np.ndarray, np.ndarray | None, str,
+    str,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray | None,
+    str,
 ]
 
 
@@ -378,9 +383,7 @@ class FeatureStoreBuilder:
             fg_mask = crypto > 0
             coverage = float(fg_mask.mean())
             if coverage < 0.05:
-                return False, (
-                    f"Gate 1 (foreground coverage): {coverage:.3f} < 0.05"
-                )
+                return False, (f"Gate 1 (foreground coverage): {coverage:.3f} < 0.05")
 
         # Gate 2 — Depth span (CameraLinearDepth.Z, index 0).
         if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 1:
@@ -389,18 +392,14 @@ class FeatureStoreBuilder:
             if valid.size > 0:
                 span = float(valid.max() - valid.min())
                 if span < 0.1:
-                    return False, (
-                        f"Gate 2 (depth span): {span:.4f} m < 0.1 m"
-                    )
+                    return False, (f"Gate 2 (depth span): {span:.4f} m < 0.1 m")
 
         # Gate 3 — DirectRadiance 95th percentile (indices 1-3).
         if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 4:
             radiance = fgpp[..., 1:4]
             p95 = float(np.percentile(radiance, 95))
             if p95 > 65504.0:
-                return False, (
-                    f"Gate 3 (radiance overflow): p95={p95:.1f} > 65504"
-                )
+                return False, (f"Gate 3 (radiance overflow): p95={p95:.1f} > 65504")
 
         # Gate 4 — Normal unit-length (WorldNormal indices 4-6).
         if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 7:
@@ -412,9 +411,7 @@ class FeatureStoreBuilder:
                 unit_ok = np.abs(norms[active] - 1.0) < 0.01
                 ratio = float(unit_ok.mean())
                 if ratio < 0.95:
-                    return False, (
-                        f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95"
-                    )
+                    return False, (f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95")
 
         # ── Wan 7ch control tensor validation (depth span & normal unit-length) ──
         if is_wan and fgpp is not None:
@@ -424,9 +421,7 @@ class FeatureStoreBuilder:
             if valid_d.size > 0:
                 span = float(valid_d.max() - valid_d.min())
                 if span < 0.1:
-                    return False, (
-                        f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m"
-                    )
+                    return False, (f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m")
             wan_normals = fgpp[1:4]  # [3, T, H, W]
             wan_norms = np.linalg.norm(wan_normals, axis=0)  # [T, H, W]
             active_w = wan_norms > 0.01
@@ -434,9 +429,7 @@ class FeatureStoreBuilder:
                 unit_ok_w = np.abs(wan_norms[active_w] - 1.0) < 0.01
                 ratio_w = float(unit_ok_w.mean())
                 if ratio_w < 0.95:
-                    return False, (
-                        f"Gate 4w (Wan normal unit-length): {ratio_w:.3f} < 0.95"
-                    )
+                    return False, (f"Gate 4w (Wan normal unit-length): {ratio_w:.3f} < 0.95")
 
         # ── Gate 5 — Rotation determinant and orthogonality ──────────
         if cam_mats is not None:
@@ -445,9 +438,7 @@ class FeatureStoreBuilder:
                 for t in range(cam.shape[0]):
                     rot = cam[t, :3, :3]
                     det = float(np.linalg.det(rot))
-                    ortho_err = float(
-                        np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro")
-                    )
+                    ortho_err = float(np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro"))
                     if abs(det - 1.0) >= 1e-4 or ortho_err >= 1e-4:
                         return False, (
                             f"Gate 5 (rotation det): frame {t} |det(R)-1| = "
@@ -456,9 +447,7 @@ class FeatureStoreBuilder:
             elif cam.ndim == 2 and cam.shape[0] >= 3 and cam.shape[1] >= 3:
                 rot = cam[:3, :3]
                 det = float(np.linalg.det(rot))
-                ortho_err = float(
-                    np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro")
-                )
+                ortho_err = float(np.linalg.norm(rot.T @ rot - np.eye(3), ord="fro"))
                 if abs(det - 1.0) >= 1e-4 or ortho_err >= 1e-4:
                     return False, (
                         f"Gate 5 (rotation det): |det(R)-1| = "
@@ -513,15 +502,16 @@ class FeatureStoreBuilder:
 
         for sid, lat, prm, cond, sha in self._samples:
             entries = self._serialize_sample(
-                sid, lat, prm, cond, sha,
+                sid,
+                lat,
+                prm,
+                cond,
+                sha,
             )
             sample_size = sum(len(d) for _, d in entries)
 
             # Check if we need a new shard
-            if (
-                current_size > 0
-                and current_size + sample_size > self._max_shard
-            ):
+            if current_size > 0 and current_size + sample_size > self._max_shard:
                 current_tar.close()
                 current_tar, current_path = _open_new_shard()
                 current_size = 0
@@ -582,7 +572,8 @@ class FeatureStoreBuilder:
         if fgpp_cond is not None:
             meta["fgpp_cond_shape"] = list(fgpp_cond.shape)
         meta_bytes = json.dumps(
-            meta, indent=2,
+            meta,
+            indent=2,
         ).encode("utf-8")
         entries.append(
             (f"{sample_id}.meta.json", meta_bytes),
@@ -663,7 +654,7 @@ def iter_feature_shards(
                 matched_suffix: str | None = None
                 for suf in known_suffixes:
                     if name.endswith(suf):
-                        matched_sid = name[:-len(suf)]
+                        matched_sid = name[: -len(suf)]
                         matched_suffix = suf[1:]  # e.g. "latent.npy"
                         break
                 if matched_sid is None or matched_suffix is None:
@@ -691,7 +682,8 @@ def iter_feature_shards(
 
 
 def _assemble_sample(
-    sid: str, parts: dict[str, bytes],
+    sid: str,
+    parts: dict[str, bytes],
 ) -> dict[str, Any] | None:
     """Assemble a training sample from raw byte parts.
 
@@ -709,7 +701,8 @@ def _assemble_sample(
         prompt = np.load(io.BytesIO(parts["prompt.npy"]), allow_pickle=False)
     if "fgpp_cond.npy" in parts:
         fgpp_cond = np.load(
-            io.BytesIO(parts["fgpp_cond.npy"]), allow_pickle=False,
+            io.BytesIO(parts["fgpp_cond.npy"]),
+            allow_pickle=False,
         )
     if "meta.json" in parts:
         meta = json.loads(
@@ -725,4 +718,3 @@ def _assemble_sample(
             "meta": meta,
         }
     return None
-

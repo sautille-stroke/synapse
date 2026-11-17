@@ -26,6 +26,7 @@ __all__ = [
 
 # ── Geometry metrics ─────────────────────────────────────────────────
 
+
 def _nearest_neighbor_distances(
     src: np.ndarray,
     tgt: np.ndarray,
@@ -190,11 +191,7 @@ def sample_mesh_surface(
     pts_v1 = v1[face_choices]
     pts_v2 = v2[face_choices]
 
-    sampled = (
-        u[:, np.newaxis] * pts_v0
-        + val_v[:, np.newaxis] * pts_v1
-        + w[:, np.newaxis] * pts_v2
-    )
+    sampled = u[:, np.newaxis] * pts_v0 + val_v[:, np.newaxis] * pts_v1 + w[:, np.newaxis] * pts_v2
     return np.asarray(sampled, dtype=np.float64)
 
 
@@ -466,6 +463,7 @@ def watertight_pct(
 
 # ── Volume stability ─────────────────────────────────────────────────
 
+
 def _signed_volume(
     vertices: np.ndarray,
     faces: Any,
@@ -518,6 +516,7 @@ def volume_breathing_pct(
 
 
 # ── Skeletal metrics ─────────────────────────────────────────────────
+
 
 def foot_sliding_cm(
     foot_positions: np.ndarray,
@@ -582,6 +581,7 @@ def bone_length_drift_pct(
 
 # ── Appearance metrics ───────────────────────────────────────────────
 
+
 def albedo_delta_e00(
     pred_albedo: np.ndarray,
     gt_albedo: np.ndarray,
@@ -620,9 +620,7 @@ def albedo_delta_e00(
         lab_p = rgb_to_cielab(p)
         lab_g = rgb_to_cielab(g)
     else:
-        raise ValueError(
-            f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'."
-        )
+        raise ValueError(f"Unsupported input_space: {input_space!r}. Expected 'srgb' or 'linear'.")
 
     de = ciede2000_delta_e(lab_p, lab_g)  # [H, W]
 

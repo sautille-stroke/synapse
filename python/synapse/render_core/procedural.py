@@ -73,15 +73,13 @@ class ProceduralMesh:
         for f in self.faces:
             if self.uvs is not None:
                 lines.append(
-                    f"f {f[0]+1}/{f[0]+1}/{f[0]+1} "
-                    f"{f[1]+1}/{f[1]+1}/{f[1]+1} "
-                    f"{f[2]+1}/{f[2]+1}/{f[2]+1}"
+                    f"f {f[0] + 1}/{f[0] + 1}/{f[0] + 1} "
+                    f"{f[1] + 1}/{f[1] + 1}/{f[1] + 1} "
+                    f"{f[2] + 1}/{f[2] + 1}/{f[2] + 1}"
                 )
             else:
                 lines.append(
-                    f"f {f[0]+1}//{f[0]+1} "
-                    f"{f[1]+1}//{f[1]+1} "
-                    f"{f[2]+1}//{f[2]+1}"
+                    f"f {f[0] + 1}//{f[0] + 1} {f[1] + 1}//{f[1] + 1} {f[2] + 1}//{f[2] + 1}"
                 )
 
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -393,64 +391,61 @@ _HUMANOID_SEGMENTS: list[
     ("neck", "cylinder", (0.06, 0.10), "torso", (0.0, 0.30, 0.0)),
     ("head", "sphere", (0.12,), "neck", (0.0, 0.11, 0.0)),
     # Left arm chain
-    ("left_upper_arm", "cylinder", (0.05, 0.28),
-     "torso", (-0.23, 0.20, 0.0)),
-    ("left_forearm", "cylinder", (0.04, 0.25),
-     "left_upper_arm", (0.0, -0.265, 0.0)),
-    ("left_hand", "box", (0.04, 0.08, 0.02),
-     "left_forearm", (0.0, -0.165, 0.0)),
+    ("left_upper_arm", "cylinder", (0.05, 0.28), "torso", (-0.23, 0.20, 0.0)),
+    ("left_forearm", "cylinder", (0.04, 0.25), "left_upper_arm", (0.0, -0.265, 0.0)),
+    ("left_hand", "box", (0.04, 0.08, 0.02), "left_forearm", (0.0, -0.165, 0.0)),
     # Right arm chain
-    ("right_upper_arm", "cylinder", (0.05, 0.28),
-     "torso", (0.23, 0.20, 0.0)),
-    ("right_forearm", "cylinder", (0.04, 0.25),
-     "right_upper_arm", (0.0, -0.265, 0.0)),
-    ("right_hand", "box", (0.04, 0.08, 0.02),
-     "right_forearm", (0.0, -0.165, 0.0)),
+    ("right_upper_arm", "cylinder", (0.05, 0.28), "torso", (0.23, 0.20, 0.0)),
+    ("right_forearm", "cylinder", (0.04, 0.25), "right_upper_arm", (0.0, -0.265, 0.0)),
+    ("right_hand", "box", (0.04, 0.08, 0.02), "right_forearm", (0.0, -0.165, 0.0)),
     # Left leg chain (pelvis -> hip -> knee -> ankle)
-    ("left_thigh", "cylinder", (0.07, 0.40),
-     "pelvis", (-0.10, -0.275, 0.0)),
-    ("left_shin", "cylinder", (0.05, 0.38),
-     "left_thigh", (0.0, -0.39, 0.0)),
-    ("left_foot", "box", (0.06, 0.04, 0.15),
-     "left_shin", (0.0, -0.21, 0.04)),
+    ("left_thigh", "cylinder", (0.07, 0.40), "pelvis", (-0.10, -0.275, 0.0)),
+    ("left_shin", "cylinder", (0.05, 0.38), "left_thigh", (0.0, -0.39, 0.0)),
+    ("left_foot", "box", (0.06, 0.04, 0.15), "left_shin", (0.0, -0.21, 0.04)),
     # Right leg chain (pelvis -> hip -> knee -> ankle)
-    ("right_thigh", "cylinder", (0.07, 0.40),
-     "pelvis", (0.10, -0.275, 0.0)),
-    ("right_shin", "cylinder", (0.05, 0.38),
-     "right_thigh", (0.0, -0.39, 0.0)),
-    ("right_foot", "box", (0.06, 0.04, 0.15),
-     "right_shin", (0.0, -0.21, 0.04)),
+    ("right_thigh", "cylinder", (0.07, 0.40), "pelvis", (0.10, -0.275, 0.0)),
+    ("right_shin", "cylinder", (0.05, 0.38), "right_thigh", (0.0, -0.39, 0.0)),
+    ("right_foot", "box", (0.06, 0.04, 0.15), "right_shin", (0.0, -0.21, 0.04)),
 ]
 
 
 def _make_rotation_x(angle: float) -> np.ndarray:
     """3x3 rotation matrix around X axis."""
     c, s = math.cos(angle), math.sin(angle)
-    return np.array([
-        [1.0, 0.0, 0.0],
-        [0.0, c, -s],
-        [0.0, s, c],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, c, -s],
+            [0.0, s, c],
+        ],
+        dtype=np.float64,
+    )
 
 
 def _make_rotation_y(angle: float) -> np.ndarray:
     """3x3 rotation matrix around Y axis."""
     c, s = math.cos(angle), math.sin(angle)
-    return np.array([
-        [c, 0.0, s],
-        [0.0, 1.0, 0.0],
-        [-s, 0.0, c],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [c, 0.0, s],
+            [0.0, 1.0, 0.0],
+            [-s, 0.0, c],
+        ],
+        dtype=np.float64,
+    )
 
 
 def _make_rotation_z(angle: float) -> np.ndarray:
     """3x3 rotation matrix around Z axis."""
     c, s = math.cos(angle), math.sin(angle)
-    return np.array([
-        [c, -s, 0.0],
-        [s, c, 0.0],
-        [0.0, 0.0, 1.0],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [c, -s, 0.0],
+            [s, c, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
 
 
 def _generate_segment_mesh(
@@ -507,11 +502,13 @@ def _generate_segment_mesh(
         last_ring_base = 1 + (rings - 2) * segments
         for j in range(segments):
             j_next = (j + 1) % segments
-            faces_list.append([
-                last_ring_base + j,
-                bot_idx,
-                last_ring_base + j_next,
-            ])
+            faces_list.append(
+                [
+                    last_ring_base + j,
+                    bot_idx,
+                    last_ring_base + j_next,
+                ]
+            )
 
         return (
             np.array(vertices, dtype=np.float64),
@@ -550,11 +547,13 @@ def _generate_segment_mesh(
         # Top cap (fan)
         for j in range(segments):
             j_next = (j + 1) % segments
-            faces_list.append([
-                top_c,
-                top_ring_start + j_next,
-                top_ring_start + j,
-            ])
+            faces_list.append(
+                [
+                    top_c,
+                    top_ring_start + j_next,
+                    top_ring_start + j,
+                ]
+            )
 
         # Side quads
         for j in range(segments):
@@ -569,11 +568,13 @@ def _generate_segment_mesh(
         # Bottom cap (fan)
         for j in range(segments):
             j_next = (j + 1) % segments
-            faces_list.append([
-                bot_c,
-                bot_ring_start + j,
-                bot_ring_start + j_next,
-            ])
+            faces_list.append(
+                [
+                    bot_c,
+                    bot_ring_start + j,
+                    bot_ring_start + j_next,
+                ]
+            )
 
         return (
             np.array(vertices, dtype=np.float64),
@@ -583,26 +584,42 @@ def _generate_segment_mesh(
     if shape == "box":
         # Build a watertight box with 8 shared vertices
         sx, sy, sz = dims[0], dims[1], dims[2]
-        verts = np.array([
-            [-sx, -sy, -sz], [sx, -sy, -sz],
-            [sx, sy, -sz], [-sx, sy, -sz],
-            [-sx, -sy, sz], [sx, -sy, sz],
-            [sx, sy, sz], [-sx, sy, sz],
-        ], dtype=np.float64)
-        faces = np.array([
-            # Front  (+Z)
-            [4, 5, 6], [4, 6, 7],
-            # Back   (-Z)
-            [1, 0, 3], [1, 3, 2],
-            # Top    (+Y)
-            [3, 7, 6], [3, 6, 2],
-            # Bottom (-Y)
-            [0, 1, 5], [0, 5, 4],
-            # Right  (+X)
-            [1, 2, 6], [1, 6, 5],
-            # Left   (-X)
-            [0, 4, 7], [0, 7, 3],
-        ], dtype=np.int32)
+        verts = np.array(
+            [
+                [-sx, -sy, -sz],
+                [sx, -sy, -sz],
+                [sx, sy, -sz],
+                [-sx, sy, -sz],
+                [-sx, -sy, sz],
+                [sx, -sy, sz],
+                [sx, sy, sz],
+                [-sx, sy, sz],
+            ],
+            dtype=np.float64,
+        )
+        faces = np.array(
+            [
+                # Front  (+Z)
+                [4, 5, 6],
+                [4, 6, 7],
+                # Back   (-Z)
+                [1, 0, 3],
+                [1, 3, 2],
+                # Top    (+Y)
+                [3, 7, 6],
+                [3, 6, 2],
+                # Bottom (-Y)
+                [0, 1, 5],
+                [0, 5, 4],
+                # Right  (+X)
+                [1, 2, 6],
+                [1, 6, 5],
+                # Left   (-X)
+                [0, 4, 7],
+                [0, 7, 3],
+            ],
+            dtype=np.int32,
+        )
         return verts, faces
 
     raise ValueError(f"Unknown segment shape: {shape}")
@@ -684,9 +701,7 @@ def generate_humanoid_proxy(
           to their vertex index ranges
     """
     if target_vertices < 1500:
-        raise ValueError(
-            f"target_vertices must be >= 1500, got {target_vertices}"
-        )
+        raise ValueError(f"target_vertices must be >= 1500, got {target_vertices}")
 
     # Adjust tessellation: need enough vertices across all segments.
     # Watertight cylinder with s segments: 2*s + 2 verts.
@@ -751,12 +766,15 @@ def generate_humanoid_proxy(
     for seg_name, shape, dims, parent, joint_off in _HUMANOID_SEGMENTS:
         # Generate local mesh
         seg_verts, seg_faces = _generate_segment_mesh(
-            shape, dims, segments=cyl_segs,
+            shape,
+            dims,
+            segments=cyl_segs,
         )
 
         # Compute world transform
         local_rot_angles = walk_rotations.get(
-            seg_name, (0.0, 0.0, 0.0),
+            seg_name,
+            (0.0, 0.0, 0.0),
         )
         local_rot = (
             _make_rotation_z(local_rot_angles[2])

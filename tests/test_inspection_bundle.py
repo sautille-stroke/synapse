@@ -65,7 +65,8 @@ def _make_minimal_bundle(
     }
     manifest_path = bundle_dir / "bundle.json"
     manifest_path.write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8",
+        json.dumps(manifest, indent=2),
+        encoding="utf-8",
     )
     return bundle_dir
 
@@ -99,7 +100,9 @@ def _make_full_bundle(tmp_path: Path) -> Path:
         },
     }
     return _make_minimal_bundle(
-        tmp_path, sources=sources, create_files=True,
+        tmp_path,
+        sources=sources,
+        create_files=True,
     )
 
 
@@ -135,24 +138,28 @@ class TestInspectionBundleManifest:
     def test_schema_version_validation(self) -> None:
         """Reject manifests with wrong schema_version."""
         with pytest.raises(ValidationError):
-            InspectionBundleManifest.model_validate({
-                "schema_version": "wrong.v9.9",
-                "bundle_id": "x",
-                "scenario_name": "x",
-                "created_at": "2026-01-01T00:00:00Z",
-                "sources": {},
-            })
+            InspectionBundleManifest.model_validate(
+                {
+                    "schema_version": "wrong.v9.9",
+                    "bundle_id": "x",
+                    "scenario_name": "x",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "sources": {},
+                }
+            )
 
     def test_legacy_schema_version_warning_and_migration(self) -> None:
         """Legacy schema_version 'inspection.v1.0' issues warning and normalizes to 'synapse.bundle.v1.0'."""
         with pytest.warns(UserWarning, match="Legacy schema_version"):
-            m = InspectionBundleManifest.model_validate({
-                "schema_version": "inspection.v1.0",
-                "bundle_id": "legacy123",
-                "scenario_name": "legacy_demo",
-                "created_at": "2026-01-01T00:00:00Z",
-                "sources": {},
-            })
+            m = InspectionBundleManifest.model_validate(
+                {
+                    "schema_version": "inspection.v1.0",
+                    "bundle_id": "legacy123",
+                    "scenario_name": "legacy_demo",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "sources": {},
+                }
+            )
         assert m.schema_version == INSPECTION_SCHEMA_VERSION
 
     def test_path_traversal_rejection(self) -> None:
@@ -215,7 +222,8 @@ class TestValidateBundle:
     def test_missing_referenced_file(self, tmp_path: Path) -> None:
         """Validation fails when a referenced file is absent."""
         bd = _make_minimal_bundle(
-            tmp_path, create_files=False,
+            tmp_path,
+            create_files=False,
         )
         # bundle.json exists but source/model.glb does not
         with pytest.raises(ContractValidationError, match="missing"):
@@ -226,12 +234,14 @@ class TestValidateBundle:
         bd = tmp_path / "empty_bundle"
         bd.mkdir(parents=True, exist_ok=True)
         with pytest.raises(
-            ContractValidationError, match="bundle.json",
+            ContractValidationError,
+            match="bundle.json",
         ):
             validate_inspection_bundle(bd)
 
     def test_sha256_integrity_verification_and_tamper_detection(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Exported bundle has SHA-256 for all sources and catches tamper."""
         model_path = tmp_path / "input_model.glb"
@@ -251,7 +261,7 @@ class TestValidateBundle:
 
         # Tamper source_model on disk
         target_file = out / manifest.sources["source_model"].path
-        target_file.write_bytes(b"\xFFglTF" + b"\x00" * 60)
+        target_file.write_bytes(b"\xffglTF" + b"\x00" * 60)
 
         # Validation must catch SHA-256 mismatch
         with pytest.raises(ContractValidationError, match="SHA-256 integrity mismatch"):
@@ -273,7 +283,8 @@ class TestExportBundle:
         return model_path
 
     def test_export_creates_bundle_json(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Exported bundle contains bundle.json."""
         model = self._create_source_model(tmp_path)
@@ -286,7 +297,8 @@ class TestExportBundle:
         assert (out / "bundle.json").is_file()
 
     def test_export_creates_directory_structure(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Exported bundle has the expected sub-directories."""
         model = self._create_source_model(tmp_path)
@@ -301,7 +313,8 @@ class TestExportBundle:
         assert (out / "metrics" / "comparison.json").is_file()
 
     def test_metrics_has_anchor_frames(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """comparison.json contains anchor_frames field."""
         model = self._create_source_model(tmp_path)
@@ -322,7 +335,8 @@ class TestExportBundle:
         assert "defect_regions" in comp
 
     def test_roundtrip_export_then_validate(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """An exported bundle passes validation."""
         model = self._create_source_model(tmp_path)
@@ -339,7 +353,8 @@ class TestExportBundle:
         assert len(validated.sources) == len(manifest.sources)
 
     def test_export_with_reconstructed_model(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Export includes reconstructed model when provided."""
         model = self._create_source_model(tmp_path)
@@ -365,7 +380,8 @@ class TestListContents:
     """Tests for :func:`list_bundle_contents`."""
 
     def test_lists_all_files_with_sizes(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Listing returns every file with its byte size."""
         bd = _make_minimal_bundle(tmp_path)
@@ -377,7 +393,8 @@ class TestListContents:
             assert f["size_bytes"] >= 0
 
     def test_empty_bundle_returns_minimal_info(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """An empty directory still returns a valid structure."""
         empty = tmp_path / "empty"

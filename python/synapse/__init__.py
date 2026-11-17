@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
-__version__ = "0.1.0"
+__version__ = "3.6.0"
 
 # ---------------------------------------------------------------------------
 # PEP 562 lazy loading — all subpackages are imported on first access only.
@@ -33,26 +33,28 @@ __version__ = "0.1.0"
 # only importing e.g. ``synapse.fgpp.schema``.
 # ---------------------------------------------------------------------------
 
-_SUBMODULES = frozenset({
-    "adapters",
-    "bench",
-    "bridge",
-    "cli",
-    "composite",
-    "fgpp",
-    "generators",
-    "inspect",
-    "metrics",
-    "models",
-    "pipeline",
-    "recon",
-    "refine",
-    "render_core",
-    "rsi",
-    "style",
-    "training",
-    "viewer",
-})
+_SUBMODULES = frozenset(
+    {
+        "adapters",
+        "bench",
+        "bridge",
+        "cli",
+        "composite",
+        "fgpp",
+        "generators",
+        "inspect",
+        "metrics",
+        "models",
+        "pipeline",
+        "recon",
+        "refine",
+        "render_core",
+        "rsi",
+        "style",
+        "training",
+        "viewer",
+    }
+)
 
 if TYPE_CHECKING:  # pragma: no cover — static analysis only
     from synapse import (

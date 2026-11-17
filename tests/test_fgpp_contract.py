@@ -214,17 +214,22 @@ class TestProjectionMatrix:
     """Test CameraParams.projection_matrix()."""
 
     def test_projection_shape(self) -> None:
-        cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256, width=512, height=512
-        )
+        cam = CameraParams(fx=500, fy=500, cx=256, cy=256, width=512, height=512)
         proj = cam.projection_matrix()
         assert proj.shape == (4, 4)
         assert proj.dtype == np.float64
 
     def test_projection_properties(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256, width=1024, height=768,
-            fov_degrees=60.0, z_near=0.1, z_far=100.0,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=1024,
+            height=768,
+            fov_degrees=60.0,
+            z_near=0.1,
+            z_far=100.0,
         )
         proj = cam.projection_matrix()
         # proj[3, 2] should be -1 for perspective
@@ -237,8 +242,15 @@ class TestProjectionMatrix:
 
     def test_new_camera_fields(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256, width=512, height=512,
-            focal_length_mm=50.0, sensor_width_mm=36.0, sensor_height_mm=24.0,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
+            focal_length_mm=50.0,
+            sensor_width_mm=36.0,
+            sensor_height_mm=24.0,
         )
         assert cam.focal_length_mm == 50.0
         assert cam.sensor_width_mm == 36.0
@@ -275,8 +287,12 @@ class TestMetadataRoundtrip:
         world = np.linalg.inv(view)
 
         cam = CameraParams(
-            fx=500, fy=500, cx=512, cy=384,
-            width=1024, height=768,
+            fx=500,
+            fy=500,
+            cx=512,
+            cy=384,
+            width=1024,
+            height=768,
             fov_degrees=55.0,
             view_matrix=view,
             world_matrix=world,
@@ -333,7 +349,12 @@ class TestMetadataRoundtrip:
             dtype=np.float64,
         )
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256, width=512, height=512,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
             view_matrix=view,
             world_matrix=np.linalg.inv(view),
         )
@@ -355,9 +376,7 @@ class TestMetadataRoundtrip:
 
     def test_anchor_flags_in_metadata(self, tmp_path: Any) -> None:
         """Physical anchor flags are correct in saved metadata."""
-        cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256, width=512, height=512
-        )
+        cam = CameraParams(fx=500, fy=500, cx=256, cy=256, width=512, height=512)
         frames = [
             FGPPFrame(
                 camera=cam,
@@ -369,9 +388,7 @@ class TestMetadataRoundtrip:
         seq = FGPPSequence(frames=frames, fps=24.0)
         seq.save_metadata(tmp_path / "anchor_test")
 
-        raw = json.loads(
-            (tmp_path / "anchor_test" / "metadata.json").read_text()
-        )
+        raw = json.loads((tmp_path / "anchor_test" / "metadata.json").read_text())
         for fr in raw["frames"]:
             idx = fr["frame_index"]
             expected_anchor = idx % 48 == 0
@@ -399,10 +416,22 @@ class TestMetadataRoundtrip:
                     "fov_y_deg": 60.0,
                     # Scale matrix (det=8, not 1)
                     "view_matrix_col_major": [
-                        2, 0, 0, 0,
-                        0, 2, 0, 0,
-                        0, 0, 2, 0,
-                        0, 0, 0, 1,
+                        2,
+                        0,
+                        0,
+                        0,
+                        0,
+                        2,
+                        0,
+                        0,
+                        0,
+                        0,
+                        2,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
                     ],
                     "proj_matrix_col_major": list(np.eye(4).T.flatten()),
                     "channels": ["depth"],
@@ -447,12 +476,15 @@ class TestMetadataRoundtrip:
         p22 = -(far + near) / (far - near)
         p23 = -2.0 * far * near / (far - near)
 
-        proj_row = np.array([
-            [p00, 0.0, p02, 0.0],
-            [0.0, p11, p12, 0.0],
-            [0.0, 0.0, p22, p23],
-            [0.0, 0.0, -1.0, 0.0],
-        ], dtype=np.float64)
+        proj_row = np.array(
+            [
+                [p00, 0.0, p02, 0.0],
+                [0.0, p11, p12, 0.0],
+                [0.0, 0.0, p22, p23],
+                [0.0, 0.0, -1.0, 0.0],
+            ],
+            dtype=np.float64,
+        )
 
         proj_col = list(proj_row.T.flatten())
         view_col = list(np.eye(4, dtype=np.float64).T.flatten())
@@ -509,8 +541,12 @@ class TestCameraParamsBackwardCompat:
 
     def test_to_dict_from_dict_roundtrip(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256,
-            width=512, height=512,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
             fov_degrees=60.0,
             focal_length_mm=50.0,
             sensor_width_mm=36.0,
@@ -527,8 +563,12 @@ class TestCameraParamsBackwardCompat:
     def test_from_dict_defaults(self) -> None:
         """Old dicts without new fields should use defaults."""
         d = {
-            "fx": 500, "fy": 500, "cx": 256, "cy": 256,
-            "width": 512, "height": 512,
+            "fx": 500,
+            "fy": 500,
+            "cx": 256,
+            "cy": 256,
+            "width": 512,
+            "height": 512,
             "view_matrix": np.eye(4).tolist(),
             "world_matrix": np.eye(4).tolist(),
         }
@@ -554,7 +594,8 @@ class TestWireGuard:
                 sys.executable,
                 str(Path(__file__).resolve().parent.parent / "tools" / "wire_guard.py"),
                 "--check",
-                "--aether-header", "/nonexistent/path/fgpp_types.h",
+                "--aether-header",
+                "/nonexistent/path/fgpp_types.h",
             ],
             capture_output=True,
             text=True,

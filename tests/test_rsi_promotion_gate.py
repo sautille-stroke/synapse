@@ -36,7 +36,7 @@ def _make_scenario_scores(
     """Generate n scenario scores."""
     return [
         BenchScenarioScore(
-            scenario_id=f"t{i+1:02d}_scenario_{i}",
+            scenario_id=f"t{i + 1:02d}_scenario_{i}",
             overall=base_score,
             geom=base_score,
             temporal=base_score,
@@ -86,7 +86,8 @@ class TestOverallImprovement:
         baseline = _make_baseline()
         candidate = _make_improved_candidate()
         result = evaluate_monotonic_promotion(
-            baseline=baseline, candidate=candidate,
+            baseline=baseline,
+            candidate=candidate,
         )
         assert result.promoted is True
 
@@ -96,7 +97,8 @@ class TestOverallImprovement:
         candidate = _make_improved_candidate(improvement=0.0)
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert exc.value.exit_code == 40
         assert "Condition 1" in str(exc.value)
@@ -130,7 +132,8 @@ class TestGeomTemporalNonRegression:
         candidate.geom_score = 0.6  # below baseline 0.7
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert "Condition 2" in str(exc.value)
 
@@ -141,7 +144,8 @@ class TestGeomTemporalNonRegression:
         candidate.temporal_score = 0.65
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert "Condition 3" in str(exc.value)
 
@@ -151,7 +155,8 @@ class TestGeomTemporalNonRegression:
         candidate = _make_improved_candidate()
         candidate.geom_score = 0.7  # equal to baseline
         result = evaluate_monotonic_promotion(
-            baseline=baseline, candidate=candidate,
+            baseline=baseline,
+            candidate=candidate,
         )
         assert result.conditions["geom_non_regression"] is True
 
@@ -181,7 +186,8 @@ class TestPerScenarioRegression:
 
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert exc.value.exit_code == 40
         assert "Condition 4" in str(exc.value)
@@ -204,7 +210,8 @@ class TestPerScenarioRegression:
 
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
 
         details = exc.value.details
@@ -218,13 +225,12 @@ class TestPerScenarioRegression:
         baseline = _make_baseline(30)
         candidate = _make_improved_candidate(30)
         result = evaluate_monotonic_promotion(
-            baseline=baseline, candidate=candidate,
+            baseline=baseline,
+            candidate=candidate,
         )
         assert result.promoted is True
         assert result.quarantine == []
-        assert result.conditions[
-            "zero_per_scenario_regression"
-        ] is True
+        assert result.conditions["zero_per_scenario_regression"] is True
 
     def test_noise_tolerance_allows_minor_regression(
         self,
@@ -258,9 +264,7 @@ class TestPerScenarioRegression:
         """
         baseline = _make_baseline(30)
         # Override first scenario ID to match spec
-        baseline.scenarios[0].scenario_id = (
-            "t1_rigid_sphere_orbit"
-        )
+        baseline.scenarios[0].scenario_id = "t1_rigid_sphere_orbit"
 
         candidate = _make_improved_candidate(30)
         candidate.scenarios[0] = BenchScenarioScore(
@@ -272,7 +276,8 @@ class TestPerScenarioRegression:
 
         with pytest.raises(QualityGateError) as exc:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert exc.value.exit_code == 40
 
@@ -289,7 +294,8 @@ class TestPerScenarioRegression:
         candidate = _make_improved_candidate(29)
         with pytest.raises(ContractValidationError) as exc_info:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert int(exc_info.value.exit_code) == 10
         assert "missing_in_candidate" in str(exc_info.value)
@@ -301,7 +307,8 @@ class TestPerScenarioRegression:
         candidate.scenarios[0].overall = float("nan")
         with pytest.raises(ContractValidationError) as exc_info:
             evaluate_monotonic_promotion(
-                baseline=baseline, candidate=candidate,
+                baseline=baseline,
+                candidate=candidate,
             )
         assert int(exc_info.value.exit_code) == 10
 
@@ -339,9 +346,7 @@ class TestQuarantineManifest:
         data = json.loads(out.read_text(encoding="utf-8"))
         assert data["promoted"] is False
         assert len(data["quarantine"]) == 1
-        assert data["quarantine"][0][
-            "scenario_id"
-        ] == "t01_test"
+        assert data["quarantine"][0]["scenario_id"] == "t01_test"
         assert data["lora_sha256"] == "c" * 64
 
 
@@ -356,6 +361,7 @@ class TestRSICLI:
     def test_rsi_help(self) -> None:
         """synapse rsi --help does not crash."""
         from synapse.cli import main_synapse
+
         with pytest.raises(SystemExit) as exc:
             main_synapse(["rsi", "--help"])
         assert exc.value.code == 0
@@ -370,9 +376,13 @@ class TestRSICLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "rsi", "sample-curriculum",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "rsi",
+                    "sample-curriculum",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -392,20 +402,27 @@ class TestRSICLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "rsi", "verify",
-                "--sample-id", "test_001",
-                "--physics-metrics",
-                json.dumps({
-                    "chamfer_mm": 1.5,
-                    "normal_angular_error_deg": 4.0,
-                    "silhouette_iou": 0.96,
-                    "depth_rmse_m": 0.01,
-                    "foot_slide_velocity_ms": 0.005,
-                    "volume_breathing_pct": 1.0,
-                    "border_ring_ciede2000": 1.2,
-                }),
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "rsi",
+                    "verify",
+                    "--sample-id",
+                    "test_001",
+                    "--physics-metrics",
+                    json.dumps(
+                        {
+                            "chamfer_mm": 1.5,
+                            "normal_angular_error_deg": 4.0,
+                            "silhouette_iou": 0.96,
+                            "depth_rmse_m": 0.01,
+                            "foot_slide_velocity_ms": 0.005,
+                            "volume_breathing_pct": 1.0,
+                            "border_ring_ciede2000": 1.2,
+                        }
+                    ),
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -426,10 +443,15 @@ class TestRSICLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "rsi", "verify",
-                "--sample-id", "test_001",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "rsi",
+                    "verify",
+                    "--sample-id",
+                    "test_001",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -447,15 +469,25 @@ class TestRSICLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.7",
-                "--candidate-overall", "0.8",
-                "--baseline-geom", "0.6",
-                "--candidate-geom", "0.7",
-                "--baseline-temporal", "0.65",
-                "--candidate-temporal", "0.75",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "rsi",
+                    "gate-promote",
+                    "--baseline-overall",
+                    "0.7",
+                    "--candidate-overall",
+                    "0.8",
+                    "--baseline-geom",
+                    "0.6",
+                    "--candidate-geom",
+                    "0.7",
+                    "--baseline-temporal",
+                    "0.65",
+                    "--candidate-temporal",
+                    "0.75",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -475,15 +507,25 @@ class TestRSICLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "rsi", "gate-promote",
-                "--baseline-overall", "0.8",
-                "--candidate-overall", "0.7",
-                "--baseline-geom", "0.8",
-                "--candidate-geom", "0.6",
-                "--baseline-temporal", "0.8",
-                "--candidate-temporal", "0.6",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "rsi",
+                    "gate-promote",
+                    "--baseline-overall",
+                    "0.8",
+                    "--candidate-overall",
+                    "0.7",
+                    "--baseline-geom",
+                    "0.8",
+                    "--candidate-geom",
+                    "0.6",
+                    "--baseline-temporal",
+                    "0.8",
+                    "--candidate-temporal",
+                    "0.6",
+                ]
+            )
         finally:
             sys.stdout = old
 

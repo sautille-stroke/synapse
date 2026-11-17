@@ -67,7 +67,9 @@ class TestRasterizer:
         model = load_model("cube", normalize=True, target_radius=1.0)
         from synapse.bench.camera import CameraTrajectoryType, generate_cameras
 
-        cameras = generate_cameras(CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128)
+        cameras = generate_cameras(
+            CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128
+        )
         with pytest.deprecated_call():
             rasterizer = SoftwareRasterizer(width=128, height=128)
 
@@ -337,19 +339,21 @@ class TestViewerXSSPrevention:
     in the exported static HTML."""
 
     def test_script_injection_escaped_in_static_html(
-        self, tmp_path: Any,
+        self,
+        tmp_path: Any,
     ) -> None:
         """Manifest containing '</script><script>alert(1)</script>'
         generates HTML without bare '</script>' closing tag that
         could break out of the embedded JSON script block."""
-        xss_payload = '</script><script>alert(1)</script>'
+        xss_payload = "</script><script>alert(1)</script>"
         manifest_data = {
             "dataset_id": xss_payload,
             "frames": [{"frame_index": 0, "label": xss_payload}],
             "splits": {"train_count": 1, "val_count": 0},
         }
         (tmp_path / "manifest.json").write_text(
-            json.dumps(manifest_data), encoding="utf-8",
+            json.dumps(manifest_data),
+            encoding="utf-8",
         )
 
         out_html = export_static_html(tmp_path)
@@ -365,7 +369,7 @@ class TestViewerXSSPrevention:
         # The key assertion: no bare </script> inside the JSON data
 
         # Stronger assertion: the XSS string should be escaped
-        assert '\\u003c/script\\u003e' in content or '\\u003C/script\\u003E' in content, (
+        assert "\\u003c/script\\u003e" in content or "\\u003C/script\\u003E" in content, (
             "XSS payload should be escaped with unicode escapes in embedded JSON"
         )
         # The bare XSS payload must NOT appear in the HTML
@@ -375,7 +379,8 @@ class TestViewerXSSPrevention:
         )
 
     def test_ampersand_and_angle_brackets_escaped(
-        self, tmp_path: Any,
+        self,
+        tmp_path: Any,
     ) -> None:
         """Verify that &, <, > in manifest values are escaped."""
         manifest_data = {
@@ -384,7 +389,8 @@ class TestViewerXSSPrevention:
             "splits": {"train_count": 0, "val_count": 0},
         }
         (tmp_path / "manifest.json").write_text(
-            json.dumps(manifest_data), encoding="utf-8",
+            json.dumps(manifest_data),
+            encoding="utf-8",
         )
 
         out_html = export_static_html(tmp_path)

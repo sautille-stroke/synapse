@@ -50,7 +50,8 @@ def _cmd_refine_anatomical(
     from synapse.refine.types import FusionMethod
 
     fusion_method = _METHOD_MAP.get(
-        fusion_name, FusionMethod.LAPLACIAN_FREQUENCY,
+        fusion_name,
+        FusionMethod.LAPLACIAN_FREQUENCY,
     )
 
     # Build session payload
@@ -106,7 +107,11 @@ def _cmd_refine_anatomical(
     rois_per_frame: list[list[RefinementROI]] = [[] for _ in range(frames.shape[0])]
     if meta_path.suffix.lower() == ".json":
         meta_content = json.loads(meta_path.read_text(encoding="utf-8"))
-        roi_items = meta_content.get("rois", meta_content) if isinstance(meta_content, dict) else meta_content
+        roi_items = (
+            meta_content.get("rois", meta_content)
+            if isinstance(meta_content, dict)
+            else meta_content
+        )
         if isinstance(roi_items, list):
             for item in roi_items:
                 if not isinstance(item, dict):
@@ -118,7 +123,9 @@ def _cmd_refine_anatomical(
                 region = _REGION_MAP.get(rname, _REGION_MAP.get("HAND"))
                 if region is None:
                     continue
-                bbox = np.asarray(item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])), dtype=np.float32)
+                bbox = np.asarray(
+                    item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])), dtype=np.float32
+                )
                 conf = float(item.get("confidence", 0.9))
                 x1, y1 = max(0, int(round(bbox[0]))), max(0, int(round(bbox[1])))
                 x2, y2 = min(width, int(round(bbox[2]))), min(height, int(round(bbox[3])))
@@ -188,7 +195,8 @@ def _cmd_refine_anatomical(
     diag = result.to_dict()
     diag_path = output_dir / "refine_diagnostics.json"
     diag_path.write_text(
-        json.dumps(diag, indent=2, default=str), encoding="utf-8",
+        json.dumps(diag, indent=2, default=str),
+        encoding="utf-8",
     )
 
     return {
@@ -219,27 +227,35 @@ def register_refine_subparser(
         parents=parents,
     )
     refine_anatomical.add_argument(
-        "--video", default=None,
+        "--video",
+        default=None,
         help="Path to video frames .npy file (T, H, W, 3) float32 ACEScg",
     )
     refine_anatomical.add_argument(
-        "--roi-meta", default=None,
+        "--roi-meta",
+        default=None,
         help="Path to ROI metadata JSON or .npy file",
     )
     refine_anatomical.add_argument(
-        "--output", "-o", default="./output/refine",
+        "--output",
+        "-o",
+        default="./output/refine",
         help="Output directory for refined frames and diagnostics",
     )
     refine_anatomical.add_argument(
-        "--regions", default="HAND,FACE",
+        "--regions",
+        default="HAND,FACE",
         help="Comma-separated anatomical regions (default: HAND,FACE)",
     )
     refine_anatomical.add_argument(
-        "--fusion-method", default="LAPLACIAN_FREQUENCY",
+        "--fusion-method",
+        default="LAPLACIAN_FREQUENCY",
         choices=[
-            "LAPLACIAN_FREQUENCY", "CASCADE",
+            "LAPLACIAN_FREQUENCY",
+            "CASCADE",
             "LATENT_TIMESTEP_SWITCH",
-            "UNCERTAINTY_WEIGHTED", "POISSON_GRADIENT",
+            "UNCERTAINTY_WEIGHTED",
+            "POISSON_GRADIENT",
         ],
         help="Fusion strategy (default: LAPLACIAN_FREQUENCY)",
     )
@@ -256,8 +272,10 @@ def dispatch_refine(
     refine_cmd = getattr(parsed, "refine_command", None)
     if refine_cmd == "anatomical":
         return _run_with_json_mode(
-            _cmd_refine_anatomical, parsed,
-            json_mode, trace_ctx,
+            _cmd_refine_anatomical,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         if json_mode:

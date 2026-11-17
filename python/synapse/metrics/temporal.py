@@ -40,6 +40,7 @@ class FVDResult:
     value: float
     is_proxy_metric: bool = False
 
+
 # ---------------------------------------------------------------------------
 # Upstream native extension probe (@aether//metrics)
 # ---------------------------------------------------------------------------
@@ -161,7 +162,7 @@ def _fallback_temporal_warp_error(
 
         valid_weight = valid_in_bounds.astype(np.float32)
         if occlusion_masks is not None:
-            valid_weight *= (1.0 - np.asarray(occlusion_masks[t], dtype=np.float32))
+            valid_weight *= 1.0 - np.asarray(occlusion_masks[t], dtype=np.float32)
 
         weight_sum = valid_weight.sum()
         if weight_sum > 0:
@@ -191,7 +192,7 @@ def _fallback_flicker_score(frames: np.ndarray) -> float:
 
     # Vectorised Laplacian over all interior frames
     lap = frames_f[:-2] - 2.0 * frames_f[1:-1] + frames_f[2:]  # [T-2, H, W, 3]
-    energy = (lap ** 2).mean()
+    energy = (lap**2).mean()
     return float(energy)
 
 
@@ -230,11 +231,16 @@ def temporal_warp_error(
     if _HAS_NATIVE and metric == "rmse":
         return float(
             _native_temporal_warp_error(
-                frames_f, motion_vectors, occlusion_masks,
+                frames_f,
+                motion_vectors,
+                occlusion_masks,
             )
         )
     return _fallback_temporal_warp_error(
-        frames_f, motion_vectors, occlusion_masks, metric=metric,
+        frames_f,
+        motion_vectors,
+        occlusion_masks,
+        metric=metric,
     )
 
 
@@ -332,12 +338,7 @@ def fvd_feature_distance(
     m = 0.5 * (m + m.T)
     tr_covmean = float(np.sum(np.sqrt(np.maximum(np.linalg.eigvalsh(m), 0.0))))
 
-    fvd = float(
-        diff @ diff
-        + np.trace(sigma1)
-        + np.trace(sigma2)
-        - 2.0 * tr_covmean
-    )
+    fvd = float(diff @ diff + np.trace(sigma1) + np.trace(sigma2) - 2.0 * tr_covmean)
     return max(fvd, 0.0)
 
 
@@ -518,7 +519,7 @@ def _statistical_proxy_extractor(
         v = arr[i]  # [T, H, W, C]
         # Spatial-temporal mean and std as robust baseline statistics
         m = v.mean(axis=(0, 1, 2))  # [C]
-        s = v.std(axis=(0, 1, 2))   # [C]
+        s = v.std(axis=(0, 1, 2))  # [C]
         # Temporal diff features
         tdiff = np.abs(v[1:] - v[:-1]).mean(axis=(0, 1, 2)) if v.shape[0] > 1 else m
         feats.append(np.concatenate([m, s, tdiff]))

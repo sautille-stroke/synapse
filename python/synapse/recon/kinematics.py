@@ -124,13 +124,16 @@ def solve_zero_slip_ik(
 
     if "joint_positions" not in res:
         # If positions not explicitly stored (e.g. pure hierarchy mock), return res with zero telemetry
-        res.setdefault("telemetry", {
-            "raw_foot_sliding_cm_per_sec": 0.0,
-            "clamped_foot_sliding_cm_per_sec": 0.0,
-            "max_foot_slip_cm_per_sec": 0.0,
-            "stance_frames": 0,
-            "zero_slip_verified": True,
-        })
+        res.setdefault(
+            "telemetry",
+            {
+                "raw_foot_sliding_cm_per_sec": 0.0,
+                "clamped_foot_sliding_cm_per_sec": 0.0,
+                "max_foot_slip_cm_per_sec": 0.0,
+                "stance_frames": 0,
+                "zero_slip_verified": True,
+            },
+        )
         return res
 
     positions = np.array(res["joint_positions"], dtype=np.float64)

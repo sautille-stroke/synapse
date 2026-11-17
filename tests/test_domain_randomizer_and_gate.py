@@ -33,9 +33,7 @@ class TestDomainRandomizer:
         variants = dr.generate_variants()
         expected = set(RENDERING_CONDITION_FACTORS.keys())
         for v in variants:
-            assert set(v["factors"].keys()) == expected, (
-                f"Missing factors in {v['scene_id']}"
-            )
+            assert set(v["factors"].keys()) == expected, f"Missing factors in {v['scene_id']}"
 
     def test_frame_count_is_4k_plus_1(self) -> None:
         """Every variant's frame_count must satisfy (T - 1) % 4 == 0."""
@@ -124,7 +122,10 @@ def _good_fgpp(t: int = 5, h: int = 16, w: int = 16) -> np.ndarray:
 
 def _good_frames(t: int = 5, h: int = 16, w: int = 16) -> np.ndarray:
     return np.random.RandomState(42).randint(
-        0, 256, (t, h, w, 3), dtype=np.uint8,
+        0,
+        256,
+        (t, h, w, 3),
+        dtype=np.uint8,
     )
 
 
@@ -196,11 +197,14 @@ class TestIngestionGates:
         # Build a [T, 4, 4] camera matrix with bad rotation (det != 1).
         t = fgpp.shape[0]
         bad_cam = np.tile(np.eye(4, dtype=np.float32), (t, 1, 1))
-        bad_cam[:, :3, :3] = np.array([
-            [2.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 2.0],
-        ], dtype=np.float32)
+        bad_cam[:, :3, :3] = np.array(
+            [
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.0, 0.0, 2.0],
+            ],
+            dtype=np.float32,
+        )
         builder = _make_builder()
         passed, reason = builder._validate_ingestion_quality(
             {

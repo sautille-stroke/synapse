@@ -50,6 +50,7 @@ def frame_to_tensors(
         import torch
     except ImportError as e:
         from synapse.errors import BackendUnavailableError
+
         raise BackendUnavailableError(
             "PyTorch is required for tensor bridge",
             agent_fix_hint="Install PyTorch: pip install 'synapse[gpu]'",
@@ -129,6 +130,7 @@ def tensors_to_frame(
 
     if "depth" not in kwargs:
         from synapse.errors import ContractValidationError
+
         raise ContractValidationError(
             "tensors dict must contain 'depth'",
             agent_fix_hint="Ensure the tensor dict includes a 'depth' key.",

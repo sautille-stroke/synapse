@@ -32,7 +32,12 @@ _W, _H = 32, 32
 
 def _cam(w: int = _W, h: int = _H) -> CameraParams:
     return CameraParams(
-        fx=50.0, fy=50.0, cx=w / 2, cy=h / 2, width=w, height=h,
+        fx=50.0,
+        fy=50.0,
+        cx=w / 2,
+        cy=h / 2,
+        width=w,
+        height=h,
     )
 
 
@@ -132,9 +137,7 @@ class TestCausalWindowPlan:
         # Verify overlap between consecutive windows
         for i in range(1, len(windows)):
             overlap = windows[i - 1].end - windows[i].start
-            assert overlap > 0, (
-                f"Windows {i-1} and {i} do not overlap"
-            )
+            assert overlap > 0, f"Windows {i - 1} and {i} do not overlap"
 
         # Verify warmup for k >= 1
         for k in range(1, len(windows)):
@@ -198,7 +201,12 @@ class TestDiscontinuityDetector:
         crypto = np.ones((h, w), dtype=np.uint32)
 
         kappa = det.compute_kappa(
-            mv_prev, mv_curr, normal, normal, crypto, crypto,
+            mv_prev,
+            mv_curr,
+            normal,
+            normal,
+            crypto,
+            crypto,
         )
         # norm_motion_jump should saturate at 1.0, contributing 0.4
         assert kappa >= 0.35
@@ -252,9 +260,14 @@ class TestDiscontinuityDetector:
                 normal[..., 2] = -1.0
                 crypto[:] = 0
 
-            frames.append(_make_frame(
-                i, mv=mv, normal=normal, crypto=crypto,
-            ))
+            frames.append(
+                _make_frame(
+                    i,
+                    mv=mv,
+                    normal=normal,
+                    crypto=crypto,
+                )
+            )
 
         seq = FGPPSequence(frames=frames, fps=24.0)
         reanchors = det.detect(seq)
@@ -271,9 +284,14 @@ class TestDiscontinuityDetector:
             normal = np.zeros((_H, _W, 3), dtype=np.float16)
             normal[..., 2] = 1.0
             crypto = np.ones((_H, _W), dtype=np.uint32)
-            frames.append(_make_frame(
-                i, mv=mv, normal=normal, crypto=crypto,
-            ))
+            frames.append(
+                _make_frame(
+                    i,
+                    mv=mv,
+                    normal=normal,
+                    crypto=crypto,
+                )
+            )
 
         seq = FGPPSequence(frames=frames, fps=24.0)
         reanchors = det.detect(seq)
@@ -300,7 +318,9 @@ class TestFuseOverlapping:
         fused = fuse_overlapping_latents(z_prev, z_curr)
         # At step 0: alpha=0, normaliser=1 => fused[0] == z_prev[0]
         np.testing.assert_allclose(
-            fused[0], z_prev[0], atol=1e-5,
+            fused[0],
+            z_prev[0],
+            atol=1e-5,
         )
 
     def test_variance_preservation(self) -> None:
@@ -317,9 +337,7 @@ class TestFuseOverlapping:
             variances.append(float(np.var(fused)))
 
         mean_var = np.mean(variances)
-        assert abs(mean_var - 1.0) < 0.02, (
-            f"Mean variance {mean_var:.4f} deviates from 1.0"
-        )
+        assert abs(mean_var - 1.0) < 0.02, f"Mean variance {mean_var:.4f} deviates from 1.0"
 
     def test_boundary_continuity(self) -> None:
         """Alpha transitions smoothly from 0 to ~1."""
@@ -408,7 +426,9 @@ class TestLatentFlowOperator:
 
         # Discontinuity at frame 2 => reset accumulator
         result_with_disc = compute_latent_flow_operator(
-            mv, depths, discontinuity_frames=[2],
+            mv,
+            depths,
+            discontinuity_frames=[2],
         )
         result_without = compute_latent_flow_operator(mv, depths)
 
@@ -434,7 +454,9 @@ class TestLatentFlowOperator:
         depths = np.ones((T, H, W), dtype=np.float32)
 
         result = compute_latent_flow_operator(
-            mv, depths, spatial_block=8,
+            mv,
+            depths,
+            spatial_block=8,
         )
         assert result.shape == (3, 3, 4, 2)
         assert result.dtype == np.float32
@@ -454,17 +476,23 @@ class TestLatentFlowOperator:
         mv[1:, 2, 3, 1] = 1.0  # 1 px/frame downward
 
         result = compute_latent_flow_operator(
-            mv, depths, spatial_block=block,
+            mv,
+            depths,
+            spatial_block=block,
         )
         # Single block output at (0, 0)
         assert result.shape == (2, 1, 1, 2)
 
         # tau=1: accumulated 4 frames => [12, 4]
         np.testing.assert_allclose(
-            result[1, 0, 0, 0], 12.0, atol=0.1,
+            result[1, 0, 0, 0],
+            12.0,
+            atol=0.1,
         )
         np.testing.assert_allclose(
-            result[1, 0, 0, 1], 4.0, atol=0.1,
+            result[1, 0, 0, 1],
+            4.0,
+            atol=0.1,
         )
 
     def test_occlusion_filtering(self) -> None:
@@ -521,9 +549,14 @@ class TestConditionScheduler:
                 normal[..., 2] = -1.0
                 crypto[:] = 0
 
-            frames.append(_make_frame(
-                i, mv=mv, normal=normal, crypto=crypto,
-            ))
+            frames.append(
+                _make_frame(
+                    i,
+                    mv=mv,
+                    normal=normal,
+                    crypto=crypto,
+                )
+            )
 
         seq = FGPPSequence(frames=frames, fps=24.0)
         scheduled = sched.schedule(seq)
@@ -532,10 +565,7 @@ class TestConditionScheduler:
         # Window 0 should be clean, window 1 flagged
         assert not scheduled[0].needs_reanchor
         assert scheduled[1].needs_reanchor
-        assert any(
-            r.frame_index == 100
-            for r in scheduled[1].reanchor_requests
-        )
+        assert any(r.frame_index == 100 for r in scheduled[1].reanchor_requests)
 
     def test_window_slice_fields(self) -> None:
         """ScheduledWindow exposes correct window_index."""
@@ -547,7 +577,6 @@ class TestConditionScheduler:
         scheduled = sched.schedule(seq)
         for i, sw in enumerate(scheduled):
             assert sw.window_index == i
-
 
     def test_frame_48_scene_cut_keeps_has_discontinuity(self) -> None:
         """PR-76(d): Frame 48 coinciding with scene cut keeps
@@ -571,13 +600,18 @@ class TestConditionScheduler:
 
             # Inject a massive scene-cut discontinuity at exactly frame 48
             if i == 48:
-                mv[:] = 50.0          # huge motion jump
+                mv[:] = 50.0  # huge motion jump
                 normal[..., 2] = -1.0  # flipped normals
-                crypto[:] = 0          # all background — IoU crashes
+                crypto[:] = 0  # all background — IoU crashes
 
-            frames.append(_make_frame(
-                i, mv=mv, normal=normal, crypto=crypto,
-            ))
+            frames.append(
+                _make_frame(
+                    i,
+                    mv=mv,
+                    normal=normal,
+                    crypto=crypto,
+                )
+            )
 
         seq = FGPPSequence(frames=frames, fps=24.0, scene_id="fr48_cut")
         scheduled = sched.schedule(seq)
@@ -585,10 +619,7 @@ class TestConditionScheduler:
         assert len(scheduled) == 1  # single window [0, 97)
 
         # Frame 48 must appear as a reanchor request
-        req48_list = [
-            r for r in scheduled[0].reanchor_requests
-            if r.frame_index == 48
-        ]
+        req48_list = [r for r in scheduled[0].reanchor_requests if r.frame_index == 48]
         assert len(req48_list) == 1
         req48 = req48_list[0]
 
@@ -601,6 +632,5 @@ class TestConditionScheduler:
         # would filter out the frame 48 request, wrongly reporting
         # needs_reanchor=False).
         assert scheduled[0].needs_reanchor is True, (
-            "Frame 48 is both a physical anchor and a scene cut — "
-            "needs_reanchor must be True"
+            "Frame 48 is both a physical anchor and a scene cut — needs_reanchor must be True"
         )

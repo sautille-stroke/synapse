@@ -60,10 +60,7 @@ def export_static_html(
     if dataset_path.is_symlink():
         raise ContractValidationError(
             f"Dataset directory is a symlink: {dataset_path}",
-            agent_fix_hint=(
-                "Symlinks are forbidden for security. "
-                "Use a real directory path."
-            ),
+            agent_fix_hint=("Symlinks are forbidden for security. Use a real directory path."),
         )
 
     manifest_file = dataset_path / "manifest.json"

@@ -194,9 +194,7 @@ def _write_cpp_layout_fgpp_package(out_dir: Path, num_frames: int = 3) -> Path:
         },
         "frames": frames_meta,
     }
-    (out_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )
+    (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return out_dir
 
 
@@ -222,8 +220,7 @@ def _assert_fgpp_package_valid(pkg_dir: Path) -> FGPPSequence:
     for name, expected_pt, _ in FGPP_CHANNEL_SPECS:
         actual_type_v = int(exr_channels[name].type.v)
         assert actual_type_v == int(expected_pt), (
-            f"Channel {name}: expected pixel_type={int(expected_pt)}, "
-            f"got {actual_type_v}"
+            f"Channel {name}: expected pixel_type={int(expected_pt)}, got {actual_type_v}"
         )
 
     seq = import_fgpp(pkg_dir, lazy=False)

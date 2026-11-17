@@ -21,11 +21,14 @@ from synapse.style.descriptor import StyleDescriptor
 # ---------------------------------------------------------------------------
 
 # sRGB → XYZ matrix (Rec. 709 primaries, D65) for chromaticity estimation
-_M_LINEAR_TO_XYZ: np.ndarray = np.array([
-    [0.4124564, 0.3575761, 0.1804375],
-    [0.2126729, 0.7151522, 0.0721750],
-    [0.0193339, 0.1191920, 0.9503041],
-], dtype=np.float64)
+_M_LINEAR_TO_XYZ: np.ndarray = np.array(
+    [
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041],
+    ],
+    dtype=np.float64,
+)
 
 
 def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:
@@ -51,7 +54,7 @@ def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:
 
     # McCamy's formula
     n = (x - 0.3320) / (0.1858 - y + 1e-12)
-    cct = 449.0 * n ** 3 + 3525.0 * n ** 2 + 6823.3 * n + 5520.33
+    cct = 449.0 * n**3 + 3525.0 * n**2 + 6823.3 * n + 5520.33
     return float(np.clip(cct, 2000.0, 20000.0))
 
 
@@ -65,11 +68,7 @@ def _estimate_exposure_ev(rgb_linear: np.ndarray) -> float:
         Exposure offset in EV.
     """
     # Luminance (Rec. 709 coefficients)
-    lum = (
-        0.2126 * rgb_linear[..., 0]
-        + 0.7152 * rgb_linear[..., 1]
-        + 0.0722 * rgb_linear[..., 2]
-    )
+    lum = 0.2126 * rgb_linear[..., 0] + 0.7152 * rgb_linear[..., 1] + 0.0722 * rgb_linear[..., 2]
     lum_positive = lum[lum > 1e-10]
     if lum_positive.size == 0:
         return 0.0
@@ -90,23 +89,13 @@ def _estimate_grain_sigma(rgb_linear: np.ndarray) -> float:
     Returns:
         Estimated grain sigma (>= 0).
     """
-    lum = (
-        0.2126 * rgb_linear[..., 0]
-        + 0.7152 * rgb_linear[..., 1]
-        + 0.0722 * rgb_linear[..., 2]
-    )
+    lum = 0.2126 * rgb_linear[..., 0] + 0.7152 * rgb_linear[..., 1] + 0.0722 * rgb_linear[..., 2]
     if lum.shape[0] < 3 or lum.shape[1] < 3:
         return 0.0
 
     # Laplacian via finite differences (no opencv dependency)
     # L(i,j) = -4*p(i,j) + p(i-1,j) + p(i+1,j) + p(i,j-1) + p(i,j+1)
-    lap = (
-        -4.0 * lum[1:-1, 1:-1]
-        + lum[:-2, 1:-1]
-        + lum[2:, 1:-1]
-        + lum[1:-1, :-2]
-        + lum[1:-1, 2:]
-    )
+    lap = -4.0 * lum[1:-1, 1:-1] + lum[:-2, 1:-1] + lum[2:, 1:-1] + lum[1:-1, :-2] + lum[1:-1, 2:]
     # Robust sigma via MAD (median absolute deviation)
     # For Laplacian of Gaussian noise: sigma ≈ MAD / 0.6745 / sqrt(20)
     # where sqrt(20) accounts for the Laplacian kernel gain
@@ -121,11 +110,7 @@ def _estimate_contrast(rgb_linear: np.ndarray) -> float:
     Measures standard deviation of log2 luminance relative to a reference standard (1.5 EV).
     For uniform or near-flat images, returns 1.0.
     """
-    lum = (
-        0.2126 * rgb_linear[..., 0]
-        + 0.7152 * rgb_linear[..., 1]
-        + 0.0722 * rgb_linear[..., 2]
-    )
+    lum = 0.2126 * rgb_linear[..., 0] + 0.7152 * rgb_linear[..., 1] + 0.0722 * rgb_linear[..., 2]
     pos = lum[lum > 1e-6]
     if pos.size < 10:
         return 1.0
@@ -382,13 +367,15 @@ def extract_style_fgpp_intrinsic(
             fg_mask = fgpp_frame.cryptomatte_id > 0
         else:
             fg_mask = np.ones(
-                (fgpp_frame.height, fgpp_frame.width), dtype=bool,
+                (fgpp_frame.height, fgpp_frame.width),
+                dtype=bool,
             )
 
         # Optional roughness filter (diffuse-dominated: roughness > 0.3)
         if fgpp_frame.roughness_metallic is not None:
             rm = np.asarray(
-                fgpp_frame.roughness_metallic, dtype=np.float64,
+                fgpp_frame.roughness_metallic,
+                dtype=np.float64,
             )
             fg_mask = fg_mask & (rm[..., 0] > 0.3)
 
@@ -404,11 +391,7 @@ def extract_style_fgpp_intrinsic(
             + normals[..., 2] * neg_view_dir[2]
         )
         # Also filter normals with near-zero magnitude (invalid)
-        normal_len = np.sqrt(
-            normals[..., 0] ** 2
-            + normals[..., 1] ** 2
-            + normals[..., 2] ** 2
-        )
+        normal_len = np.sqrt(normals[..., 0] ** 2 + normals[..., 1] ** 2 + normals[..., 2] ** 2)
         fg_mask = fg_mask & (ndotv > 0.05) & (normal_len > 0.1)
 
         # Flatten valid pixels
@@ -425,9 +408,7 @@ def extract_style_fgpp_intrinsic(
         ).ravel()[valid]
 
         albedo_lum = (
-            0.2126 * base_color[..., 0]
-            + 0.7152 * base_color[..., 1]
-            + 0.0722 * base_color[..., 2]
+            0.2126 * base_color[..., 0] + 0.7152 * base_color[..., 1] + 0.0722 * base_color[..., 2]
         ).ravel()[valid]
         albedo_lum = np.clip(albedo_lum, 1e-6, None)
 
@@ -440,9 +421,7 @@ def extract_style_fgpp_intrinsic(
         valid_normals = np.column_stack([nx, ny, nz])
 
         # Solve half-cosine lighting model via IRLS
-        amb_ratio, light_dir, light_norm = _solve_half_cosine_light_irls(
-            valid_normals, ratio
-        )
+        amb_ratio, light_dir, light_norm = _solve_half_cosine_light_irls(valid_normals, ratio)
 
         if light_norm > 1e-6:
             light_dirs.append(light_dir)

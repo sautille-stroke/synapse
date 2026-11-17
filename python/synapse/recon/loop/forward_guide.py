@@ -89,8 +89,7 @@ class ForwardGuide:
 
         if not phase_valid:
             raise ContractValidationError(
-                f"Phase-lock enforcement failed: {total_locked} does not "
-                f"satisfy T = 4k+1.",
+                f"Phase-lock enforcement failed: {total_locked} does not satisfy T = 4k+1.",
                 agent_fix_hint=(
                     "This should not happen after enforce_phase_lock; "
                     "file a bug against synapse.recon.loop.radiometric."
@@ -103,13 +102,9 @@ class ForwardGuide:
 
         # --- Synthesise frames (mock / adapter) ------------------------------
         if adapter is not None:
-            frames = self._run_adapter(
-                adapter, conditioning, total_locked, h, w
-            )
+            frames = self._run_adapter(adapter, conditioning, total_locked, h, w)
         else:
-            frames = self._mock_generate(
-                conditioning, total_locked, h, w, n_preroll=actual_preroll
-            )
+            frames = self._mock_generate(conditioning, total_locked, h, w, n_preroll=actual_preroll)
 
         # --- κ re-anchoring --------------------------------------------------
         if actual_preroll > 0 and actual_preroll < total_locked:
@@ -124,9 +119,7 @@ class ForwardGuide:
                 preroll_segment, production_first, kappa=cfg.kappa
             )
 
-        fgpp_seq: list[dict[str, Any]] = [
-            {"frame_index": i} for i in range(total_locked)
-        ]
+        fgpp_seq: list[dict[str, Any]] = [{"frame_index": i} for i in range(total_locked)]
 
         return ForwardGuideResult(
             frames=frames,
@@ -142,8 +135,7 @@ class ForwardGuide:
         """Raise if *n_preroll* is not in the valid set."""
         if n_preroll not in VALID_PREROLL_COUNTS:
             raise ContractValidationError(
-                f"n_preroll must be one of {sorted(VALID_PREROLL_COUNTS)}, "
-                f"got {n_preroll}.",
+                f"n_preroll must be one of {sorted(VALID_PREROLL_COUNTS)}, got {n_preroll}.",
                 agent_fix_hint=(
                     f"Set n_preroll to one of {sorted(VALID_PREROLL_COUNTS)}.  "
                     "These values align with the 3-D Causal VAE block "
@@ -272,8 +264,6 @@ def extract_main_take(
         raise ContractValidationError(
             f"n_preroll ({n_preroll}) >= total frame count ({n_total}); "
             f"trimming would yield an empty or invalid sequence.",
-            agent_fix_hint=(
-                f"Reduce n_preroll to < {n_total}, or generate more frames."
-            ),
+            agent_fix_hint=(f"Reduce n_preroll to < {n_total}, or generate more frames."),
         )
     return frames[n_preroll:]

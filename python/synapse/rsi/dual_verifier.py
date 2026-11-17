@@ -47,22 +47,29 @@ class PhysicsThresholds(BaseModel):
     """
 
     interpenetration_volume_ratio: float = Field(
-        default=0.001, ge=0.0,
+        default=0.001,
+        ge=0.0,
     )
     foot_sliding_cm: float = Field(
-        default=float(RSI_PROMOTION["foot_sliding_cm"]), ge=0.0,
+        default=float(RSI_PROMOTION["foot_sliding_cm"]),
+        ge=0.0,
     )
     foot_slide_velocity_ms: float = Field(
-        default=0.02, ge=0.0,
+        default=0.02,
+        ge=0.0,
     )
     silhouette_iou: float = Field(
-        default=float(RSI_PROMOTION["silhouette_iou"]), ge=0.0, le=1.0,
+        default=float(RSI_PROMOTION["silhouette_iou"]),
+        ge=0.0,
+        le=1.0,
     )
     depth_rmse_m: float = Field(
-        default=float(RSI_PROMOTION["depth_rmse_m"]), ge=0.0,
+        default=float(RSI_PROMOTION["depth_rmse_m"]),
+        ge=0.0,
     )
     normal_angular_error_deg: float = Field(
-        default=float(RSI_PROMOTION["normal_angular_error_deg"]), ge=0.0,
+        default=float(RSI_PROMOTION["normal_angular_error_deg"]),
+        ge=0.0,
     )
     manifold_watertight: bool = True
 
@@ -143,7 +150,9 @@ class VerificationVerdict(BaseModel):
     physics_passed: bool = True
     prm_score: float = Field(default=0.0, ge=0.0, le=1.0)
     verdict: Literal[
-        "ACCEPT", "HARD_NEGATIVE", "REJECT",
+        "ACCEPT",
+        "HARD_NEGATIVE",
+        "REJECT",
     ] = "ACCEPT"
     failure_attributions: list[str] = Field(
         default_factory=list,
@@ -222,10 +231,7 @@ class DualVerifierEngine:
             "depth_rmse_m",
             "normal_angular_error_deg",
         ]
-        missing = [
-            k for k in required_keys
-            if k not in physics_metrics
-        ]
+        missing = [k for k in required_keys if k not in physics_metrics]
         if missing:
             raise ContractValidationError(
                 f"Missing required physics metrics for sample "
@@ -242,16 +248,17 @@ class DualVerifierEngine:
 
         # R1 fix: reject NaN / Inf / bool values across all physics metrics
         for key, val in physics_metrics.items():
-            if isinstance(val, bool) or not isinstance(val, numbers.Real) or not math.isfinite(
-                float(val)
+            if (
+                isinstance(val, bool)
+                or not isinstance(val, numbers.Real)
+                or not math.isfinite(float(val))
             ):
                 raise ContractValidationError(
                     f"Non-finite physics metric '{key}'={val!r} for "
                     f"sample '{sample_id}'. NaN/Inf values are "
                     "FORBIDDEN in physical verification.",
                     agent_fix_hint=(
-                        f"Check geometry/depth computation for '{key}' "
-                        "to eliminate NaN/Inf."
+                        f"Check geometry/depth computation for '{key}' to eliminate NaN/Inf."
                     ),
                 )
 
@@ -386,7 +393,8 @@ class DualVerifierEngine:
             )
 
         physics = self.verify_physics(
-            sample_id, physics_metrics,
+            sample_id,
+            physics_metrics,
         )
 
         if not physics.passed:

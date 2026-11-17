@@ -55,11 +55,19 @@ class TestResidualHeatmap:
 
     def test_identical_images_zero_heatmap(self) -> None:
         """Same image for ref and rendered -> heatmap near zero."""
-        img = np.random.RandomState(0).rand(
-            64, 64, 3,
-        ).astype(np.float32)
+        img = (
+            np.random.RandomState(0)
+            .rand(
+                64,
+                64,
+                3,
+            )
+            .astype(np.float32)
+        )
         heatmap, rois = compute_isotopic_residual_heatmap(
-            img, img, top_k=3,
+            img,
+            img,
+            top_k=3,
         )
         assert heatmap.shape == (64, 64)
         assert heatmap.max() < 0.01
@@ -67,7 +75,9 @@ class TestResidualHeatmap:
     def test_localized_patch_detected(self) -> None:
         """A color patch at a known location is detected as ROI."""
         ref = np.full(
-            (128, 128, 3), 0.5, dtype=np.float32,
+            (128, 128, 3),
+            0.5,
+            dtype=np.float32,
         )
         rendered = ref.copy()
         # Red patch at (48:80, 48:80)
@@ -76,7 +86,10 @@ class TestResidualHeatmap:
         rendered[48:80, 48:80, 2] = 0.0
 
         heatmap, rois = compute_isotopic_residual_heatmap(
-            ref, rendered, top_k=3, nms_radius=16,
+            ref,
+            rendered,
+            top_k=3,
+            nms_radius=16,
         )
 
         assert len(rois) >= 1
@@ -89,9 +102,7 @@ class TestResidualHeatmap:
             if dist < 20:
                 found = True
                 break
-        assert found, (
-            f"No ROI found near (64,64); rois={rois}"
-        )
+        assert found, f"No ROI found near (64,64); rois={rois}"
 
         # Severity should be significant
         assert rois[0]["mean_severity"] > 0.1
@@ -100,13 +111,18 @@ class TestResidualHeatmap:
         """Depth edge mismatch increases heatmap near the edge."""
         h, w = 64, 64
         ref = np.full(
-            (h, w, 3), 0.5, dtype=np.float32,
+            (h, w, 3),
+            0.5,
+            dtype=np.float32,
         )
         rendered = ref.copy()
 
         # Reference depth: smooth gradient
         depth_ref = np.linspace(
-            1.0, 5.0, w, dtype=np.float32,
+            1.0,
+            5.0,
+            w,
+            dtype=np.float32,
         )[None, :].repeat(h, axis=0)
 
         # Rendered depth: same but with a jump at column 32
@@ -114,7 +130,8 @@ class TestResidualHeatmap:
         depth_ren[:, 32:] += 2.0
 
         heatmap, rois = compute_isotopic_residual_heatmap(
-            ref, rendered,
+            ref,
+            rendered,
             depth_reference=depth_ref,
             depth_rendered=depth_ren,
             top_k=3,
@@ -129,7 +146,9 @@ class TestResidualHeatmap:
         """Normal map angular error detected in heatmap."""
         h, w = 64, 64
         ref = np.full(
-            (h, w, 3), 0.5, dtype=np.float32,
+            (h, w, 3),
+            0.5,
+            dtype=np.float32,
         )
         rendered = ref.copy()
 
@@ -143,7 +162,8 @@ class TestResidualHeatmap:
         n_ren[20:40, 20:40, 2] = 0.866
 
         heatmap, rois = compute_isotopic_residual_heatmap(
-            ref, rendered,
+            ref,
+            rendered,
             normals_reference=n_ref,
             normals_rendered=n_ren,
             top_k=3,
@@ -157,7 +177,9 @@ class TestResidualHeatmap:
     def test_nms_suppresses_nearby_rois(self) -> None:
         """Two close patches yield 1 ROI; two far patches yield 2."""
         ref = np.full(
-            (128, 128, 3), 0.5, dtype=np.float32,
+            (128, 128, 3),
+            0.5,
+            dtype=np.float32,
         )
 
         # Close patches: 5px apart
@@ -166,7 +188,10 @@ class TestResidualHeatmap:
         close_rendered[32:40, 40:48, 0] = 1.0
 
         _, close_rois = compute_isotopic_residual_heatmap(
-            ref, close_rendered, top_k=10, nms_radius=32,
+            ref,
+            close_rendered,
+            top_k=10,
+            nms_radius=32,
         )
         # Should merge to 1 or few ROIs
         assert len(close_rois) <= 2
@@ -177,38 +202,57 @@ class TestResidualHeatmap:
         far_rendered[90:100, 90:100, 0] = 1.0
 
         _, far_rois = compute_isotopic_residual_heatmap(
-            ref, far_rendered, top_k=10, nms_radius=32,
+            ref,
+            far_rendered,
+            top_k=10,
+            nms_radius=32,
         )
         assert len(far_rois) >= 2
 
     def test_top_k_limit(self) -> None:
         """Only top_k ROIs are returned."""
         ref = np.full(
-            (256, 256, 3), 0.5, dtype=np.float32,
+            (256, 256, 3),
+            0.5,
+            dtype=np.float32,
         )
         rendered = ref.copy()
 
         # Create 8 widely separated patches
         positions = [
-            (20, 20), (20, 120), (20, 220),
-            (120, 20), (120, 120), (120, 220),
-            (220, 20), (220, 120),
+            (20, 20),
+            (20, 120),
+            (20, 220),
+            (120, 20),
+            (120, 120),
+            (120, 220),
+            (220, 20),
+            (220, 120),
         ]
         for y, x in positions:
-            rendered[y:y+12, x:x+12, 0] = 1.0
+            rendered[y : y + 12, x : x + 12, 0] = 1.0
 
         _, rois = compute_isotopic_residual_heatmap(
-            ref, rendered, top_k=3, nms_radius=16,
+            ref,
+            rendered,
+            top_k=3,
+            nms_radius=16,
         )
         assert len(rois) <= 3
 
     def test_empty_heatmap_no_rois(self) -> None:
         """Identical images produce no ROIs."""
-        img = np.ones(
-            (32, 32, 3), dtype=np.float32,
-        ) * 0.5
+        img = (
+            np.ones(
+                (32, 32, 3),
+                dtype=np.float32,
+            )
+            * 0.5
+        )
         _, rois = compute_isotopic_residual_heatmap(
-            img, img, top_k=5,
+            img,
+            img,
+            top_k=5,
         )
         assert len(rois) == 0
 
@@ -227,7 +271,10 @@ class TestMacroCameraPlanning:
         w: int = 128,
         depth_val: float = 5.0,
     ) -> tuple[
-        dict[str, float], np.ndarray, np.ndarray, np.ndarray,
+        dict[str, float],
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
     ]:
         """Create simple identity camera setup.
 
@@ -238,7 +285,10 @@ class TestMacroCameraPlanning:
         cx = float(w) / 2.0
         cy = float(h) / 2.0
         intrinsics = {
-            "fx": fx, "fy": fy, "cx": cx, "cy": cy,
+            "fx": fx,
+            "fy": fy,
+            "cx": cx,
+            "cy": cy,
         }
 
         # Identity extrinsics (camera at origin)
@@ -246,7 +296,9 @@ class TestMacroCameraPlanning:
 
         # Uniform depth
         depth = np.full(
-            (h, w), depth_val, dtype=np.float32,
+            (h, w),
+            depth_val,
+            dtype=np.float32,
         )
 
         # Normals pointing toward camera: [0, 0, -1] in world
@@ -259,19 +311,31 @@ class TestMacroCameraPlanning:
     def test_unproject_center(self) -> None:
         """Unproject center pixel with identity camera."""
         p = _unproject_pixel(
-            u=64.0, v=64.0, z=5.0,
-            fx=256.0, fy=256.0, cx=64.0, cy=64.0,
+            u=64.0,
+            v=64.0,
+            z=5.0,
+            fx=256.0,
+            fy=256.0,
+            cx=64.0,
+            cy=64.0,
         )
         # At center: (u-cx)/fx * z = 0, (v-cy)/fy * z = 0, z_out = -z (camera looks along -Z)
         np.testing.assert_allclose(
-            p, [0.0, 0.0, -5.0], atol=1e-10,
+            p,
+            [0.0, 0.0, -5.0],
+            atol=1e-10,
         )
 
     def test_unproject_off_center(self) -> None:
         """Unproject off-center pixel."""
         p = _unproject_pixel(
-            u=128.0, v=64.0, z=10.0,
-            fx=256.0, fy=256.0, cx=64.0, cy=64.0,
+            u=128.0,
+            v=64.0,
+            z=10.0,
+            fx=256.0,
+            fy=256.0,
+            cx=64.0,
+            cy=64.0,
         )
         expected_x = (128 - 64) * 10.0 / 256.0
         assert abs(p[0] - expected_x) < 1e-10
@@ -279,9 +343,7 @@ class TestMacroCameraPlanning:
 
     def test_macro_camera_position(self) -> None:
         """Macro camera positioned along normal direction."""
-        intrinsics, extrinsics, depth, normals = (
-            self._make_identity_setup()
-        )
+        intrinsics, extrinsics, depth, normals = self._make_identity_setup()
 
         roi = {
             "roi_id": 0,
@@ -292,7 +354,9 @@ class TestMacroCameraPlanning:
         }
 
         pose = plan_macro_camera_for_roi(
-            roi, depth, normals,
+            roi,
+            depth,
+            normals,
             camera_intrinsics=intrinsics,
             camera_extrinsics=extrinsics,
             macro_fov_deg=35.0,
@@ -302,15 +366,11 @@ class TestMacroCameraPlanning:
         cam_pos = np.array(pose.position)
         assert abs(cam_pos[0]) < 1e-4
         assert abs(cam_pos[1]) < 1e-4
-        assert abs(cam_pos[2] - (-5.0)) > 0.5, (
-            "Camera should be offset from defect along normal"
-        )
+        assert abs(cam_pos[2] - (-5.0)) > 0.5, "Camera should be offset from defect along normal"
 
     def test_macro_distance_formula(self) -> None:
         """Distance matches: d = 1.35 * r_3d / tan(fov/2)."""
-        intrinsics, extrinsics, depth, normals = (
-            self._make_identity_setup(depth_val=10.0)
-        )
+        intrinsics, extrinsics, depth, normals = self._make_identity_setup(depth_val=10.0)
 
         r_px = 20.0
         roi = {
@@ -323,7 +383,9 @@ class TestMacroCameraPlanning:
 
         fov = 35.0
         pose = plan_macro_camera_for_roi(
-            roi, depth, normals,
+            roi,
+            depth,
+            normals,
             camera_intrinsics=intrinsics,
             camera_extrinsics=extrinsics,
             macro_fov_deg=fov,
@@ -338,15 +400,11 @@ class TestMacroCameraPlanning:
         # Defect is at (0, 0, -z_c=-10) for center pixel in camera space
         defect = np.array([0.0, 0.0, -z_c])
         actual_d = float(np.linalg.norm(cam_pos - defect))
-        assert abs(actual_d - expected_d) < 0.1, (
-            f"Expected d={expected_d:.3f}, got {actual_d:.3f}"
-        )
+        assert abs(actual_d - expected_d) < 0.1, f"Expected d={expected_d:.3f}, got {actual_d:.3f}"
 
     def test_macro_covers_defect(self) -> None:
         """FOV and distance ensure defect fits in viewport."""
-        intrinsics, extrinsics, depth, normals = (
-            self._make_identity_setup()
-        )
+        intrinsics, extrinsics, depth, normals = self._make_identity_setup()
 
         roi = {
             "roi_id": 0,
@@ -358,7 +416,9 @@ class TestMacroCameraPlanning:
 
         fov = 35.0
         pose = plan_macro_camera_for_roi(
-            roi, depth, normals,
+            roi,
+            depth,
+            normals,
             camera_intrinsics=intrinsics,
             camera_extrinsics=extrinsics,
             macro_fov_deg=fov,
@@ -377,15 +437,12 @@ class TestMacroCameraPlanning:
         r_3d = 16.0 * 5.0 / intrinsics["fx"]
 
         assert half_viewport > r_3d, (
-            f"Viewport {half_viewport:.4f} should cover "
-            f"defect radius {r_3d:.4f}"
+            f"Viewport {half_viewport:.4f} should cover defect radius {r_3d:.4f}"
         )
 
     def test_camera_pose_valid(self) -> None:
         """Returned CameraPose has valid structure."""
-        intrinsics, extrinsics, depth, normals = (
-            self._make_identity_setup()
-        )
+        intrinsics, extrinsics, depth, normals = self._make_identity_setup()
 
         roi = {
             "roi_id": 0,
@@ -396,7 +453,9 @@ class TestMacroCameraPlanning:
         }
 
         pose = plan_macro_camera_for_roi(
-            roi, depth, normals,
+            roi,
+            depth,
+            normals,
             camera_intrinsics=intrinsics,
             camera_extrinsics=extrinsics,
         )

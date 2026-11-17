@@ -45,7 +45,8 @@ def _make_fgpp_dir_with_metadata(
         "frames": [{"frame_index": i} for i in range(num_frames)],
     }
     (fgpp_dir / "metadata.json").write_text(
-        json.dumps(meta), encoding="utf-8",
+        json.dumps(meta),
+        encoding="utf-8",
     )
     return fgpp_dir
 
@@ -62,18 +63,26 @@ def _make_mock_fgpp_sequence(
     frames = []
     for i in range(num_frames):
         cam = CameraParams(
-            fx=float(width), fy=float(height),
-            cx=float(width) / 2, cy=float(height) / 2,
-            width=width, height=height,
+            fx=float(width),
+            fy=float(height),
+            cx=float(width) / 2,
+            cy=float(height) / 2,
+            width=width,
+            height=height,
         )
         depth = np.full((height, width), 2.5, dtype=np.float32)
         normal = np.zeros((height, width, 3), dtype=np.float16)
         normal[:, :, 2] = np.float16(1.0)
-        frames.append(FGPPFrame(
-            camera=cam, depth=depth,
-            world_normal=normal, frame_index=i,
-        ))
+        frames.append(
+            FGPPFrame(
+                camera=cam,
+                depth=depth,
+                world_normal=normal,
+                frame_index=i,
+            )
+        )
     return FGPPSequence(frames=frames, fps=24.0, scene_id="test_scene")
+
 
 # =========================================================================
 # BundleManifest
@@ -217,7 +226,8 @@ class TestJobBundleWorker:
             ],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         manifest = BundleManifest(
@@ -235,7 +245,8 @@ class TestJobBundleWorker:
         assert result.stage == "fgpp_validate"
 
     def test_neural_video_generate_stage(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """neural_video_generate without fgpp_dir should return exit_code=20."""
         output_video = tmp_path / "video.npy"
@@ -265,7 +276,8 @@ class TestJobBundleWorker:
         assert "fgpp" in (result.agent_fix_hint or "").lower()
 
     def test_neural_video_generate_with_fgpp(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """neural_video_generate with valid fgpp_dir should succeed."""
         fgpp_dir = _make_fgpp_dir_with_metadata(tmp_path)
@@ -362,7 +374,8 @@ class TestJobBundleWorker:
         assert "style_profile" in result.output_files
 
     def test_surgical_composite_stage(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """surgical_composite without input dirs should return exit_code=20."""
         output_npy = tmp_path / "composited.npy"
@@ -386,7 +399,8 @@ class TestJobBundleWorker:
         assert result.status == "error"
 
     def test_inverse_reconstruct_stage(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """inverse_reconstruct without frames_dir should return exit_code=20."""
         output_traj = tmp_path / "camera_trajectory.json"
@@ -414,7 +428,8 @@ class TestJobBundleWorker:
         assert result.status == "error"
 
     def test_style_extract_missing_pil_exits_30(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """style_extract_and_map with PIL unavailable should return exit_code=30."""
         import unittest.mock
@@ -440,7 +455,8 @@ class TestJobBundleWorker:
 
         worker = JobBundleWorker()
         with unittest.mock.patch.dict(
-            "sys.modules", {"PIL": None, "PIL.Image": None},
+            "sys.modules",
+            {"PIL": None, "PIL.Image": None},
         ):
             result = worker.execute(manifest)
 
@@ -448,7 +464,8 @@ class TestJobBundleWorker:
         assert result.status == "error"
 
     def test_lora_preencode_missing_dataset_exits_20(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """lora_preencode without dataset_dir should return exit_code=20."""
         manifest = BundleManifest(
@@ -466,7 +483,8 @@ class TestJobBundleWorker:
         assert result.status == "error"
 
     def test_lora_package_skip_bench_false_exits_40(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """lora_package with skip_bench=False and no bench_metrics → exit 40."""
         # Create a valid safetensors weights file so we get past path/format validation
@@ -506,7 +524,8 @@ class TestJobBundleWorker:
         assert result.status == "error"
 
     def test_oom_fallback_spatial_tile(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """With tight VRAM (0.80 < R <= 1.05), spatial_tile injected."""
         from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
@@ -526,7 +545,8 @@ class TestJobBundleWorker:
             ],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         output_video = tmp_path / "video.npy"
@@ -555,13 +575,11 @@ class TestJobBundleWorker:
 
         assert result.exit_code == 0
         assert result.status == "fallback"
-        assert (
-            result.fallback_level
-            == "LEVEL_1_SPATIAL_TILE_2X2"
-        )
+        assert result.fallback_level == "LEVEL_1_SPATIAL_TILE_2X2"
 
     def test_oom_fallback_short_window(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """With very tight VRAM (R > 1.05), window_frames=49."""
         output_video = tmp_path / "video.npy"
@@ -622,7 +640,8 @@ class TestJobBundleWorker:
         assert result.agent_fix_hint is not None
 
     def test_result_manifest_sha256(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """SHA256 checksums in output_files must be correct."""
         from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
@@ -642,7 +661,8 @@ class TestJobBundleWorker:
             ],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         output_video = tmp_path / "video.npy"
@@ -700,7 +720,8 @@ class TestJobBundleWorker:
             ],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         output_video = tmp_path / "video.npy"
@@ -741,9 +762,7 @@ class TestJobBundleWorker:
 
         assert result.exit_code == 10
         assert result.status == "error"
-        assert "nonexistent_stage_xyz" in (
-            result.agent_fix_hint or ""
-        )
+        assert "nonexistent_stage_xyz" in (result.agent_fix_hint or "")
 
 
 # =========================================================================
@@ -755,7 +774,9 @@ class TestCLIWorker:
     """Test the worker CLI entry point."""
 
     def test_worker_run_json(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Create temp bundle, run via CLI, verify JSON output."""
         from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
@@ -773,7 +794,8 @@ class TestCLIWorker:
             "frames": [{"frame_index": 0}],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         # Create bundle manifest
@@ -788,11 +810,13 @@ class TestCLIWorker:
             "params": {},
         }
         (bundle_dir / "bundle_manifest.json").write_text(
-            json.dumps(bundle_manifest), encoding="utf-8",
+            json.dumps(bundle_manifest),
+            encoding="utf-8",
         )
 
         exit_code = run_worker_cli(
-            str(bundle_dir), json_mode=True,
+            str(bundle_dir),
+            json_mode=True,
         )
 
         assert exit_code == 0
@@ -808,16 +832,21 @@ class TestCLIWorker:
         assert result_file.exists()
 
     def test_worker_run_missing_bundle(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Missing bundle manifest should return exit_code=20."""
         exit_code = run_worker_cli(
-            str(tmp_path / "nonexistent"), json_mode=True,
+            str(tmp_path / "nonexistent"),
+            json_mode=True,
         )
         assert exit_code == 20
 
     def test_worker_run_text_mode(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Non-JSON mode should print human-readable output."""
         from synapse.fgpp.schema import FGPP_SCHEMA_VERSION
@@ -834,7 +863,8 @@ class TestCLIWorker:
             "frames": [{"frame_index": 0}],
         }
         (fgpp_dir / "metadata.json").write_text(
-            json.dumps(meta), encoding="utf-8",
+            json.dumps(meta),
+            encoding="utf-8",
         )
 
         bundle_dir = tmp_path / "bundle"
@@ -848,11 +878,13 @@ class TestCLIWorker:
             "params": {},
         }
         (bundle_dir / "bundle_manifest.json").write_text(
-            json.dumps(bundle_manifest), encoding="utf-8",
+            json.dumps(bundle_manifest),
+            encoding="utf-8",
         )
 
         exit_code = run_worker_cli(
-            str(bundle_dir), json_mode=False,
+            str(bundle_dir),
+            json_mode=False,
         )
 
         assert exit_code == 0
@@ -981,7 +1013,8 @@ class TestMissingInputErrors:
         assert result.status == "error"
 
     def test_lora_package_skip_bench_defaults_false(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """handle_lora_package skip_bench defaults to False."""
         manifest = BundleManifest(
@@ -1010,7 +1043,8 @@ class TestNeuralVideoGenerateTrueEXR:
     """Verify neural_video_generate loads real FGPP pixel data via import_fgpp."""
 
     def test_import_fgpp_with_missing_exr_exits_20(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """neural_video_generate with metadata-only FGPP dir (no EXR files)
         should return exit_code=20 since import_fgpp finds no frames."""
@@ -1039,7 +1073,8 @@ class TestNeuralVideoGenerateTrueEXR:
         assert "exr" in (result.agent_fix_hint or "").lower()
 
     def test_import_fgpp_with_real_data_enters_adapter(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """neural_video_generate with mock FGPP sequence containing
         non-zero depth/normal should succeed via the adapter."""
@@ -1071,7 +1106,8 @@ class TestNeuralVideoGenerateTrueEXR:
         assert output_video.exists()
 
     def test_run_worker_cli_invalid_json(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """run_worker_cli with malformed JSON should return exit_code=10."""
         bad_manifest = tmp_path / "bundle_manifest.json"
@@ -1081,7 +1117,8 @@ class TestNeuralVideoGenerateTrueEXR:
         assert exit_code == 10
 
     def test_run_worker_cli_invalid_json_json_mode(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """run_worker_cli with invalid JSON in --json mode
         emits a valid JSON error envelope."""
@@ -1105,16 +1142,19 @@ class TestNeuralVideoGenerateTrueEXR:
         assert "agent_fix_hint" in payload
 
     def test_run_worker_cli_schema_validation_error(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """run_worker_cli with schema mismatch should return exit_code=10."""
         bad_manifest = tmp_path / "bundle_manifest.json"
         bad_manifest.write_text(
-            json.dumps({
-                "schema_version": "bad.schema.v99",
-                "job_id": "j1",
-                "stage": "fgpp_validate",
-            }),
+            json.dumps(
+                {
+                    "schema_version": "bad.schema.v99",
+                    "job_id": "j1",
+                    "stage": "fgpp_validate",
+                }
+            ),
             encoding="utf-8",
         )
 

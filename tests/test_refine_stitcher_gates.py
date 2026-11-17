@@ -51,7 +51,7 @@ def _make_masks(t: int = 4) -> np.ndarray:
     cy, cx = H // 2, W // 2
     r = min(H, W) // 4
     y, x = np.ogrid[:H, :W]
-    circle = ((y - cy) ** 2 + (x - cx) ** 2) <= r ** 2
+    circle = ((y - cy) ** 2 + (x - cx) ** 2) <= r**2
     for i in range(t):
         masks[i][circle] = 1.0
     return masks
@@ -77,7 +77,9 @@ def test_blend_with_motion_vectors_runs() -> None:
     mv = _make_motion_vectors(t_count, mag=5.0)
 
     result = composite_surgical_sequence(
-        video, rerendered, masks,
+        video,
+        rerendered,
+        masks,
         motion_vectors=mv,
     )
     assert result.shape == video.shape
@@ -95,11 +97,15 @@ def test_blend_motion_vectors_reduces_temporal_error() -> None:
     mv = np.ones((t_count, H, W, 2), dtype=np.float32) * 2.0
 
     result_no_mv = composite_surgical_sequence(
-        video, rerendered, masks,
+        video,
+        rerendered,
+        masks,
         motion_vectors=None,
     )
     result_with_mv = composite_surgical_sequence(
-        video, rerendered, masks,
+        video,
+        rerendered,
+        masks,
         motion_vectors=mv,
     )
 
@@ -118,7 +124,9 @@ def test_blend_large_flow_reduces_ema_alpha() -> None:
     mv = np.ones((t_count, H, W, 2), dtype=np.float32) * 30.0
 
     result = composite_surgical_sequence(
-        video, rerendered, masks,
+        video,
+        rerendered,
+        masks,
         motion_vectors=mv,
         ema_alpha=0.85,
     )
@@ -145,7 +153,10 @@ def test_stitcher_basic() -> None:
         bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
     )
     refinements: list[list[RefinementResult]] = [
-        [ref_result], [], [], [],
+        [ref_result],
+        [],
+        [],
+        [],
     ]
 
     result, report = stitcher.stitch_sequence(frames, refinements)
@@ -213,22 +224,23 @@ def test_stitcher_motion_vectors_affect_output() -> None:
     # With zero motion vectors.
     mv_zero = np.zeros((4, H, W, 2), dtype=np.float32)
     result_zero, _ = stitcher.stitch_sequence(
-        frames.copy(), refinements, motion_vectors=mv_zero,
+        frames.copy(),
+        refinements,
+        motion_vectors=mv_zero,
     )
 
     # With non-zero motion vectors.
     mv_nonzero = _make_motion_vectors(4, mag=8.0)
     result_nonzero, _ = stitcher.stitch_sequence(
-        frames.copy(), refinements, motion_vectors=mv_nonzero,
+        frames.copy(),
+        refinements,
+        motion_vectors=mv_nonzero,
     )
 
     # Outputs must differ.
-    diff = np.abs(
-        result_zero.astype(np.float64) - result_nonzero.astype(np.float64)
-    )
+    diff = np.abs(result_zero.astype(np.float64) - result_nonzero.astype(np.float64))
     assert np.max(diff) > 1e-5, (
-        "Non-zero motion_vectors must produce different output from "
-        "zero motion_vectors"
+        "Non-zero motion_vectors must produce different output from zero motion_vectors"
     )
 
 
@@ -242,32 +254,34 @@ def test_stitcher_temporal_warp_error_with_motion_vectors() -> None:
     refined = np.full((20, 20, 3), 0.52, dtype=np.float32)
     refinements: list[list[RefinementResult]] = []
     for t in range(4):
-        refinements.append([RefinementResult(
-            refined_acescg=refined,
-            region=AnatomicalRegion.FACE,
-            fusion_method=FusionMethod.CASCADE,
-            bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
-            frame_index=t,
-        )])
+        refinements.append(
+            [
+                RefinementResult(
+                    refined_acescg=refined,
+                    region=AnatomicalRegion.FACE,
+                    fusion_method=FusionMethod.CASCADE,
+                    bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
+                    frame_index=t,
+                )
+            ]
+        )
 
     # Small, uniform flow.
     mv = np.ones((4, H, W, 2), dtype=np.float32) * 1.0
     result, _ = stitcher.stitch_sequence(
-        frames.copy(), refinements, motion_vectors=mv,
+        frames.copy(),
+        refinements,
+        motion_vectors=mv,
     )
 
     # Compute temporal warp error: mean absolute frame-to-frame diff.
     diffs = []
     for t in range(1, result.shape[0]):
-        d = np.mean(np.abs(
-            result[t].astype(np.float64)
-            - result[t - 1].astype(np.float64)
-        ))
+        d = np.mean(np.abs(result[t].astype(np.float64) - result[t - 1].astype(np.float64)))
         diffs.append(d)
     temporal_warp_error = float(np.mean(diffs))
     assert temporal_warp_error <= 0.015, (
-        f"temporal_warp_error={temporal_warp_error:.6f} > 0.015 "
-        "with motion vectors on smooth data"
+        f"temporal_warp_error={temporal_warp_error:.6f} > 0.015 with motion vectors on smooth data"
     )
 
 
@@ -337,10 +351,13 @@ def test_stitcher_inverse_affine_with_explicit_matrix() -> None:
 
     refined = np.full((20, 20, 3), 0.9, dtype=np.float32)
     # Explicit affine: maps patch (20x20) → frame region [15, 15, 35, 35].
-    M = np.array([
-        [1.0, 0.0, 15.0],
-        [0.0, 1.0, 15.0],
-    ], dtype=np.float64)
+    M = np.array(
+        [
+            [1.0, 0.0, 15.0],
+            [0.0, 1.0, 15.0],
+        ],
+        dtype=np.float64,
+    )
     ref_result = RefinementResult(
         refined_acescg=refined,
         region=AnatomicalRegion.HAND,
@@ -363,31 +380,41 @@ def test_stitcher_large_flow_decays_ema() -> None:
     """When mean flow > max_flow_magnitude, EMA alpha should be reduced."""
     frames = _make_acescg_frames(4)
     config_strict = StitchConfig(
-        border_ring_px=8, ema_alpha=0.95, max_flow_magnitude=5.0,
+        border_ring_px=8,
+        ema_alpha=0.95,
+        max_flow_magnitude=5.0,
     )
     stitcher = ScalpelStitcher(config_strict)
 
     refined = np.full((20, 20, 3), 0.9, dtype=np.float32)
     refinements: list[list[RefinementResult]] = []
     for t in range(4):
-        refinements.append([RefinementResult(
-            refined_acescg=refined,
-            region=AnatomicalRegion.HAND,
-            fusion_method=FusionMethod.CASCADE,
-            bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
-            frame_index=t,
-        )])
+        refinements.append(
+            [
+                RefinementResult(
+                    refined_acescg=refined,
+                    region=AnatomicalRegion.HAND,
+                    fusion_method=FusionMethod.CASCADE,
+                    bbox_xyxy=np.array([10, 10, 30, 30], dtype=np.float32),
+                    frame_index=t,
+                )
+            ]
+        )
 
     # Large flow exceeding max_flow_magnitude=5.0.
     mv_large = np.ones((4, H, W, 2), dtype=np.float32) * 20.0
     result_large, _ = stitcher.stitch_sequence(
-        frames.copy(), refinements, motion_vectors=mv_large,
+        frames.copy(),
+        refinements,
+        motion_vectors=mv_large,
     )
 
     # Small flow within limit.
     mv_small = np.ones((4, H, W, 2), dtype=np.float32) * 1.0
     result_small, _ = stitcher.stitch_sequence(
-        frames.copy(), refinements, motion_vectors=mv_small,
+        frames.copy(),
+        refinements,
+        motion_vectors=mv_small,
     )
 
     # Different flow magnitudes should produce different results due to
@@ -530,7 +557,8 @@ def test_export_hard_negatives() -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = export_hard_negatives(
-            negatives, Path(tmpdir) / "hard_negatives.jsonl",
+            negatives,
+            Path(tmpdir) / "hard_negatives.jsonl",
         )
         assert out_path.exists()
 
@@ -561,8 +589,7 @@ def test_stitcher_no_black_halo_white_background() -> None:
     # A refined patch slightly different from white
     patch_size = 30
     refined = np.full((patch_size, patch_size, 3), 0.9, dtype=np.float32)
-    bbox = np.array([40, 40, 40 + patch_size, 40 + patch_size],
-                    dtype=np.float32)
+    bbox = np.array([40, 40, 40 + patch_size, 40 + patch_size], dtype=np.float32)
     ref_result = RefinementResult(
         refined_acescg=refined,
         region=AnatomicalRegion.HAND,
@@ -583,8 +610,7 @@ def test_stitcher_no_black_halo_white_background() -> None:
     outer_x_left = max(x1 - ring_end, 0)
     outer_x_right = min(x2 + ring_end, w)
 
-    outer_ring = result[0, outer_y_top:outer_y_bot,
-                        outer_x_left:outer_x_right, :]
+    outer_ring = result[0, outer_y_top:outer_y_bot, outer_x_left:outer_x_right, :]
 
     # No pixel in the border region should be near-black
     min_val = float(outer_ring.min())
@@ -622,7 +648,9 @@ def test_stitcher_hdr_pixel_preservation() -> None:
     # The HDR pixel must be preserved exactly
     hdr_result = result[0, hdr_y, hdr_x, :]
     np.testing.assert_allclose(
-        hdr_result, 2.5, atol=1e-5,
+        hdr_result,
+        2.5,
+        atol=1e-5,
         err_msg=(
             f"HDR pixel was truncated from 2.5 to {hdr_result}. "
             "Stitcher must preserve linear ACEScg HDR values > 1.0"
@@ -682,7 +710,9 @@ def test_stitcher_roi_hdr_3_5_preservation() -> None:
     # Center of ROI: (50, 50)
     core_val = result[0, 50, 50, :]
     np.testing.assert_allclose(
-        core_val, 3.5, atol=0.25,
+        core_val,
+        3.5,
+        atol=0.25,
         err_msg=f"ROI HDR core value was {core_val}, expected 3.5 ± 0.25",
     )
 

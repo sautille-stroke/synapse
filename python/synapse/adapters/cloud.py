@@ -105,9 +105,7 @@ def _frame_to_srgb_u8(radiance: np.ndarray) -> np.ndarray:
     linear_srgb = acescg_to_linear_srgb(radiance)
     srgb = linear_to_srgb(linear_srgb)
     srgb_clipped = np.clip(srgb, 0.0, 1.0)
-    return np.asarray(
-        np.clip(np.round(srgb_clipped * 255.0), 0, 255).astype(np.uint8)
-    )
+    return np.asarray(np.clip(np.round(srgb_clipped * 255.0), 0, 255).astype(np.uint8))
 
 
 def _encode_png_bytes(image_u8: np.ndarray) -> bytes:
@@ -124,6 +122,7 @@ def _encode_png_bytes(image_u8: np.ndarray) -> bytes:
     """
     try:
         from PIL import Image
+
         img = Image.fromarray(image_u8, mode="RGB")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -304,17 +303,13 @@ def degrade_fgpp_for_blackbox(
 
         # Tonemap anchor frames to sRGB PNG
         if first_frame.direct_radiance is not None:
-            first_u8 = _frame_to_srgb_u8(
-                first_frame.direct_radiance.astype(np.float64)
-            )
+            first_u8 = _frame_to_srgb_u8(first_frame.direct_radiance.astype(np.float64))
         else:
             h, w = first_frame.height, first_frame.width
             first_u8 = np.zeros((h, w, 3), dtype=np.uint8)
 
         if last_frame.direct_radiance is not None:
-            last_u8 = _frame_to_srgb_u8(
-                last_frame.direct_radiance.astype(np.float64)
-            )
+            last_u8 = _frame_to_srgb_u8(last_frame.direct_radiance.astype(np.float64))
         else:
             h, w = last_frame.height, last_frame.width
             last_u8 = np.zeros((h, w, 3), dtype=np.uint8)
@@ -351,22 +346,22 @@ def degrade_fgpp_for_blackbox(
             # Use simple Sobel-like finite differences
             dx = np.diff(normals, axis=2, prepend=normals[:, :, :1, :])
             dy = np.diff(normals, axis=1, prepend=normals[:, :1, :, :])
-            edge_mag = np.sqrt(
-                np.sum(dx ** 2, axis=-1) + np.sum(dy ** 2, axis=-1)
-            )
+            edge_mag = np.sqrt(np.sum(dx**2, axis=-1) + np.sum(dy**2, axis=-1))
             normal_edge = edge_mag
 
-        segments.append(DegradedSegment(
-            start_frame=seg_start,
-            end_frame=seg_end,
-            first_anchor_png=first_png,
-            last_anchor_png=last_png,
-            camera_trajectory=trajectory,
-            camera_motion_enum=camera_motion,
-            motion_intensity=intensity,
-            depth_guide=depth_guide,
-            normal_edge_guide=normal_edge,
-        ))
+        segments.append(
+            DegradedSegment(
+                start_frame=seg_start,
+                end_frame=seg_end,
+                first_anchor_png=first_png,
+                last_anchor_png=last_png,
+                camera_trajectory=trajectory,
+                camera_motion_enum=camera_motion,
+                motion_intensity=intensity,
+                depth_guide=depth_guide,
+                normal_edge_guide=normal_edge,
+            )
+        )
 
     return segments
 
@@ -480,16 +475,13 @@ class MockCloudTransport(CloudApiTransport):
         assert 0.0 <= segment.motion_intensity <= 10.0
 
         # Deterministic seed from config + segment range
-        combined_seed = (
-            config.seed
-            ^ (segment.start_frame * 31)
-            ^ (segment.end_frame * 97)
-        )
+        combined_seed = config.seed ^ (segment.start_frame * 31) ^ (segment.end_frame * 97)
         rng = np.random.Generator(np.random.PCG64(combined_seed))
 
         num_frames = segment.end_frame - segment.start_frame + 1
         return rng.integers(
-            0, 256,
+            0,
+            256,
             size=(num_frames, config.height, config.width, 3),
             dtype=np.uint8,
         )
@@ -514,9 +506,7 @@ class HttpCloudTransport(CloudApiTransport):
     ) -> None:
         self._provider = provider
         self._api_token = api_token
-        raw_url = endpoint_url or os.environ.get(
-            f"{provider.upper()}_API_URL", ""
-        )
+        raw_url = endpoint_url or os.environ.get(f"{provider.upper()}_API_URL", "")
         if raw_url:
             from synapse.bridge.http_security import validate_safe_url
 
@@ -562,11 +552,7 @@ class HttpCloudTransport(CloudApiTransport):
             if segment.last_anchor_png
             else ""
         )
-        text_prompt = (
-            getattr(config, "prompt", "")
-            or config.extra.get("text_prompt", "")
-            or ""
-        )
+        text_prompt = getattr(config, "prompt", "") or config.extra.get("text_prompt", "") or ""
 
         depth_guide_b64: str | None = None
         if segment.depth_guide is not None:
@@ -639,9 +625,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
         api_token: str | None = None,
     ) -> None:
         self._transport = transport
-        self._api_token = api_token or os.environ.get(
-            self._env_var_name, ""
-        )
+        self._api_token = api_token or os.environ.get(self._env_var_name, "")
 
     @property
     @abstractmethod
@@ -682,8 +666,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
                 raise BackendUnavailableError(
                     f"{self.adapter_id} transport is not available.",
                     agent_fix_hint=(
-                        f"Check network connectivity to "
-                        f"{self._transport.provider_name}."
+                        f"Check network connectivity to {self._transport.provider_name}."
                     ),
                 )
             return self._transport
@@ -693,9 +676,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
             raise BackendUnavailableError(
                 f"{self.adapter_id} requires an API token. "
                 f"Set the {self._env_var_name} environment variable.",
-                agent_fix_hint=(
-                    f"export {self._env_var_name}=<your-token>"
-                ),
+                agent_fix_hint=(f"export {self._env_var_name}=<your-token>"),
             )
 
         endpoint_url = os.environ.get(f"{self.adapter_id.upper()}_API_URL", "")
@@ -708,10 +689,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
 
         raise BackendUnavailableError(
             f"No transport configured for {self.adapter_id}.",
-            agent_fix_hint=(
-                f"Provide a CloudApiTransport instance or set "
-                f"{self._env_var_name}."
-            ),
+            agent_fix_hint=(f"Provide a CloudApiTransport instance or set {self._env_var_name}."),
         )
 
     def prepare_conditions(
@@ -746,9 +724,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
         return PreparedConditionPayload(
             extra={
                 "degraded_segments": segments,
-                "scene_id": getattr(
-                    fgpp_sequence, "scene_id", ""
-                ),
+                "scene_id": getattr(fgpp_sequence, "scene_id", ""),
             },
         )
 
@@ -770,9 +746,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
             ``VideoResult`` with concatenated sRGB uint8 frames.
         """
         transport = self._ensure_transport()
-        segments: list[DegradedSegment] = conditions.extra.get(
-            "degraded_segments", []
-        )
+        segments: list[DegradedSegment] = conditions.extra.get("degraded_segments", [])
         scene_id: str = conditions.extra.get("scene_id", "")
 
         if not segments:
@@ -791,7 +765,10 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
 
         for i, seg in enumerate(segments):
             key = _compute_idempotency_key(
-                scene_id, seg.start_frame, seg.end_frame, config.seed,
+                scene_id,
+                seg.start_frame,
+                seg.end_frame,
+                config.seed,
             )
             idempotency_keys.append(key)
 
@@ -809,6 +786,7 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
 
         # Validate generated frames are non-degenerate
         from synapse.metrics.image_quality import validate_output_non_degenerate
+
         validate_output_non_degenerate(result_frames)
 
         return VideoResult(

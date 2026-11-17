@@ -98,12 +98,18 @@ class TestBenchCliExitCodes:
 
     def test_bench_run_gate_failure_exit_40(self) -> None:
         """Running with strict gate profile should exit 40 if thresholds fail."""
-        code, out, err = _capture_bench([
-            "--json", "run",
-            "--scenario", "t1_orbit_97f_humanoid",
-            "--profile", "rsi_promotion_target",
-            "--adapter", "mock",
-        ])
+        code, out, err = _capture_bench(
+            [
+                "--json",
+                "run",
+                "--scenario",
+                "t1_orbit_97f_humanoid",
+                "--profile",
+                "rsi_promotion_target",
+                "--adapter",
+                "mock",
+            ]
+        )
         assert code == ExitCode.CIRCUIT_BREAKER  # 40
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -119,12 +125,17 @@ class TestBenchCliExitCodes:
             json.dumps({"schema_version": "bundle.v1.0", "sources": []}),
             encoding="utf-8",
         )
-        code, out, err = _capture_bench([
-            "--json", "evaluate",
-            "--bundle", str(bundle_dir),
-            "--profile", "track_b_video",
-            "--strict",
-        ])
+        code, out, err = _capture_bench(
+            [
+                "--json",
+                "evaluate",
+                "--bundle",
+                str(bundle_dir),
+                "--profile",
+                "track_b_video",
+                "--strict",
+            ]
+        )
         assert code == ExitCode.CIRCUIT_BREAKER  # 40
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -138,9 +149,15 @@ class TestFgppCliExrValidation:
     def test_fgpp_validate_check_exr_missing_files_exit_20(self, tmp_path: Path) -> None:
         """Specifying --check-exr when no EXR files exist should exit 20."""
         fgpp_dir = _make_minimal_fgpp_dir(tmp_path)
-        code, out, err = _capture_synapse([
-            "--json", "fgpp", "validate", str(fgpp_dir), "--check-exr",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "fgpp",
+                "validate",
+                str(fgpp_dir),
+                "--check-exr",
+            ]
+        )
         assert code == ExitCode.RESOURCE_MISSING  # 20
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -180,9 +197,15 @@ class TestFgppCliExrValidation:
         out_dir = tmp_path / "valid_fgpp_export"
         export_fgpp(seq, out_dir)
 
-        code, out, err = _capture_synapse([
-            "--json", "fgpp", "validate", str(out_dir), "--check-exr",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "fgpp",
+                "validate",
+                str(out_dir),
+                "--check-exr",
+            ]
+        )
         assert code == 0
         payload = json.loads(out)
         assert payload["status"] == "ok"
@@ -213,9 +236,15 @@ class TestFgppCliExrValidation:
         exr.writePixels({"R": pixels, "G": pixels, "B": pixels})
         exr.close()
 
-        code, out, err = _capture_synapse([
-            "--json", "fgpp", "validate", str(out_dir), "--check-exr",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "fgpp",
+                "validate",
+                str(out_dir),
+                "--check-exr",
+            ]
+        )
         assert code == ExitCode.CONTRACT_ERROR  # 10
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -233,8 +262,14 @@ class TestFgppCliExrValidation:
 
         h, w = 16, 16
         cam = CameraParams(
-            fx=16.0, fy=16.0, cx=8.0, cy=8.0,
-            width=w, height=h, z_near=0.1, z_far=100.0,
+            fx=16.0,
+            fy=16.0,
+            cx=8.0,
+            cy=8.0,
+            width=w,
+            height=h,
+            z_near=0.1,
+            z_far=100.0,
         )
         frame = FGPPFrame(
             camera=cam,
@@ -263,9 +298,15 @@ class TestFgppCliExrValidation:
         exr_out.writePixels(chan_data)
         exr_out.close()
 
-        code, out, err = _capture_synapse([
-            "--json", "fgpp", "validate", str(out_dir), "--check-exr",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "fgpp",
+                "validate",
+                str(out_dir),
+                "--check-exr",
+            ]
+        )
         assert code == ExitCode.CONTRACT_ERROR  # 10
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -281,9 +322,15 @@ class TestFgppCliExrValidation:
         from unittest.mock import patch
 
         with patch.dict(sys.modules, {"OpenEXR": None}):
-            code, out, err = _capture_synapse([
-                "--json", "fgpp", "validate", str(out_dir), "--check-exr",
-            ])
+            code, out, err = _capture_synapse(
+                [
+                    "--json",
+                    "fgpp",
+                    "validate",
+                    str(out_dir),
+                    "--check-exr",
+                ]
+            )
 
         assert code == ExitCode.BACKEND_UNAVAILABLE  # 30
         payload = json.loads(out)
@@ -297,15 +344,25 @@ class TestRsiCliPromotionGate:
 
     def test_rsi_gate_promote_multi_axis_success(self) -> None:
         """All axes improving should promote and exit 0."""
-        code, out, err = _capture_synapse([
-            "--json", "rsi", "gate-promote",
-            "--baseline-overall", "0.7",
-            "--candidate-overall", "0.85",
-            "--baseline-geom", "0.65",
-            "--candidate-geom", "0.80",
-            "--baseline-temporal", "0.70",
-            "--candidate-temporal", "0.88",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--baseline-overall",
+                "0.7",
+                "--candidate-overall",
+                "0.85",
+                "--baseline-geom",
+                "0.65",
+                "--candidate-geom",
+                "0.80",
+                "--baseline-temporal",
+                "0.70",
+                "--candidate-temporal",
+                "0.88",
+            ]
+        )
         assert code == 0
         payload = json.loads(out)
         assert payload["status"] == "ok"
@@ -315,16 +372,26 @@ class TestRsiCliPromotionGate:
 
     def test_rsi_gate_promote_strict_regression_exit_40(self) -> None:
         """Regressed candidate with --strict should exit 40."""
-        code, out, err = _capture_synapse([
-            "--json", "rsi", "gate-promote",
-            "--baseline-overall", "0.85",
-            "--candidate-overall", "0.70",
-            "--baseline-geom", "0.85",
-            "--candidate-geom", "0.65",
-            "--baseline-temporal", "0.85",
-            "--candidate-temporal", "0.65",
-            "--strict",
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--baseline-overall",
+                "0.85",
+                "--candidate-overall",
+                "0.70",
+                "--baseline-geom",
+                "0.85",
+                "--candidate-geom",
+                "0.65",
+                "--baseline-temporal",
+                "0.85",
+                "--candidate-temporal",
+                "0.65",
+                "--strict",
+            ]
+        )
         assert code == ExitCode.CIRCUIT_BREAKER  # 40
         payload = json.loads(out)
         assert payload["status"] == "error"
@@ -339,13 +406,20 @@ class TestGenerateCliJsonEnvelopes:
     def test_synapse_generate_json_mode(self, tmp_path: Path) -> None:
         """'synapse --json generate' should emit 100% parseable JSON to stdout."""
         out_dir = tmp_path / "gen_output"
-        code, out, err = _capture_synapse([
-            "--json", "generate",
-            "--model", "cube",
-            "--frames", "2",
-            "--res", "64",
-            "--out", str(out_dir),
-        ])
+        code, out, err = _capture_synapse(
+            [
+                "--json",
+                "generate",
+                "--model",
+                "cube",
+                "--frames",
+                "2",
+                "--res",
+                "64",
+                "--out",
+                str(out_dir),
+            ]
+        )
         assert code == 0
         # Entire stdout must parse as single JSON object
         clean_out = out.strip()
@@ -359,13 +433,19 @@ class TestGenerateCliJsonEnvelopes:
     def test_standalone_data_gen_json_flag(self, tmp_path: Path) -> None:
         """'synapse-data-gen --json' should emit 100% parseable JSON to stdout."""
         out_dir = tmp_path / "data_gen_out"
-        code, out, err = _capture_data_gen([
-            "--json",
-            "--model", "cube",
-            "--frames", "2",
-            "--res", "64",
-            "--out", str(out_dir),
-        ])
+        code, out, err = _capture_data_gen(
+            [
+                "--json",
+                "--model",
+                "cube",
+                "--frames",
+                "2",
+                "--res",
+                "64",
+                "--out",
+                str(out_dir),
+            ]
+        )
         assert code == 0
         clean_out = out.strip()
         assert clean_out.startswith("{") and clean_out.endswith("}")
@@ -399,17 +479,25 @@ class TestCliJsonHardening:
         """'synapse worker run --bundle ... --json' with trailing --json parses correctly."""
         bundle_file = tmp_path / "bundle_manifest.json"
         bundle_file.write_text(
-            json.dumps({
-                "schema_version": "synapse.job_bundle.v1.0",
-                "job_id": "test_j1",
-                "stage": "fgpp_validate",
-                "inputs": {"fgpp_dir": str(tmp_path)},
-            }),
+            json.dumps(
+                {
+                    "schema_version": "synapse.job_bundle.v1.0",
+                    "job_id": "test_j1",
+                    "stage": "fgpp_validate",
+                    "inputs": {"fgpp_dir": str(tmp_path)},
+                }
+            ),
             encoding="utf-8",
         )
-        code, out, _ = _capture_synapse([
-            "worker", "run", "--bundle", str(bundle_file), "--json",
-        ])
+        code, out, _ = _capture_synapse(
+            [
+                "worker",
+                "run",
+                "--bundle",
+                str(bundle_file),
+                "--json",
+            ]
+        )
         payload = json.loads(out)
         assert payload["exit_code"] in (0, 20)
 
@@ -417,13 +505,19 @@ class TestCliJsonHardening:
     def test_bench_export_fgpp_generates_exr(self, tmp_path: Path) -> None:
         """'synapse bench export-fgpp' should write valid 15-channel EXR files."""
         out_dir = tmp_path / "bench_export"
-        code, out, _ = _capture_synapse([
-            "bench", "export-fgpp",
-            "--scenario", "t1_cube_orbit",
-            "--output-dir", str(out_dir),
-            "--frames", "2",
-            "--json",
-        ])
+        code, out, _ = _capture_synapse(
+            [
+                "bench",
+                "export-fgpp",
+                "--scenario",
+                "t1_cube_orbit",
+                "--output-dir",
+                str(out_dir),
+                "--frames",
+                "2",
+                "--json",
+            ]
+        )
         assert code == 0
         payload = json.loads(out)
         assert payload["status"] == "ok"
@@ -436,18 +530,30 @@ class TestCliJsonHardening:
     def test_fgpp_inspect_export_vis(self, tmp_path: Path) -> None:
         """'synapse fgpp inspect --export-vis' should render visualization images."""
         out_dir = tmp_path / "bench_export_vis"
-        code1, _, _ = _capture_synapse([
-            "bench", "export-fgpp",
-            "--scenario", "t1_cube_orbit",
-            "--output-dir", str(out_dir),
-            "--frames", "2",
-            "--json",
-        ])
+        code1, _, _ = _capture_synapse(
+            [
+                "bench",
+                "export-fgpp",
+                "--scenario",
+                "t1_cube_orbit",
+                "--output-dir",
+                str(out_dir),
+                "--frames",
+                "2",
+                "--json",
+            ]
+        )
         assert code1 == 0
 
-        code2, out2, _ = _capture_synapse([
-            "fgpp", "inspect", str(out_dir), "--export-vis", "--json",
-        ])
+        code2, out2, _ = _capture_synapse(
+            [
+                "fgpp",
+                "inspect",
+                str(out_dir),
+                "--export-vis",
+                "--json",
+            ]
+        )
         assert code2 == 0
         payload2 = json.loads(out2)
         assert payload2["status"] == "ok"

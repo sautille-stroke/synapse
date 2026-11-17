@@ -115,11 +115,13 @@ class CausalWindowPlan:
                 else:
                     warmup = [base - 3, base - 2, base - 1]
 
-            windows.append(WindowSlice(
-                start=start,
-                end=end,
-                causal_warmup_prefix_indices=warmup,
-            ))
+            windows.append(
+                WindowSlice(
+                    start=start,
+                    end=end,
+                    causal_warmup_prefix_indices=warmup,
+                )
+            )
 
             # If this window already reaches the end, stop
             if end >= self.total_frames:
@@ -285,7 +287,9 @@ class DiscontinuityDetector:
 
         nmj = self.norm_motion_jump(mv_prev, mv_curr)
         ncd = self.normal_cosine_drop(
-            normal_prev, normal_curr, fg_mask,
+            normal_prev,
+            normal_curr,
+            fg_mask,
         )
         iou = self.mask_iou(crypto_prev, crypto_curr)
 
@@ -320,10 +324,12 @@ class DiscontinuityDetector:
             curr_f = frames[t]
 
             mv_prev = _safe_channel(
-                prev_f.motion_vector, (prev_f.height, prev_f.width, 2),
+                prev_f.motion_vector,
+                (prev_f.height, prev_f.width, 2),
             )
             mv_curr = _safe_channel(
-                curr_f.motion_vector, (curr_f.height, curr_f.width, 2),
+                curr_f.motion_vector,
+                (curr_f.height, curr_f.width, 2),
             )
             normal_prev = _safe_channel(
                 prev_f.world_normal,
@@ -345,17 +351,22 @@ class DiscontinuityDetector:
             )
 
             kappa = self.compute_kappa(
-                mv_prev, mv_curr,
-                normal_prev, normal_curr,
-                crypto_prev, crypto_curr,
+                mv_prev,
+                mv_curr,
+                normal_prev,
+                normal_curr,
+                crypto_prev,
+                crypto_curr,
             )
 
             if kappa > self._threshold:
-                requests.append(ReanchorRequest(
-                    frame_index=t,
-                    subframe_window=(-2, 2),
-                    kappa=kappa,
-                ))
+                requests.append(
+                    ReanchorRequest(
+                        frame_index=t,
+                        subframe_window=(-2, 2),
+                        kappa=kappa,
+                    )
+                )
 
         return requests
 
@@ -442,9 +453,7 @@ class ConditionScheduler:
         reanchors = self._detector.detect(fgpp_sequence)
 
         # Index reanchor requests by frame
-        reanchor_by_frame: dict[int, ReanchorRequest] = {
-            r.frame_index: r for r in reanchors
-        }
+        reanchor_by_frame: dict[int, ReanchorRequest] = {r.frame_index: r for r in reanchors}
 
         # Track which frames had real discontinuities from the detector
         # BEFORE physical anchor injection, so we can preserve them.
@@ -455,9 +464,8 @@ class ConditionScheduler:
         frames = getattr(fgpp_sequence, "frames", [])
         for aidx, f in enumerate(frames):
             is_anchor = (
-                (self._anchor_interval > 0 and aidx % self._anchor_interval == 0)
-                or getattr(f, "is_physical_anchor", False)
-            )
+                self._anchor_interval > 0 and aidx % self._anchor_interval == 0
+            ) or getattr(f, "is_physical_anchor", False)
             if is_anchor:
                 if aidx in reanchor_by_frame:
                     reanchor_by_frame[aidx].is_physical_anchor = True
@@ -485,15 +493,16 @@ class ConditionScheduler:
             # same frame was ALSO flagged by the detector (i.e. a real
             # scene cut coincides with a 48-frame anchor boundary).
             has_discontinuity = any(
-                r.frame_index in detector_flagged_frames
-                for r in window_reanchors
+                r.frame_index in detector_flagged_frames for r in window_reanchors
             )
-            scheduled.append(ScheduledWindow(
-                window=w,
-                window_index=idx,
-                needs_reanchor=has_discontinuity,
-                reanchor_requests=window_reanchors,
-            ))
+            scheduled.append(
+                ScheduledWindow(
+                    window=w,
+                    window_index=idx,
+                    needs_reanchor=has_discontinuity,
+                    reanchor_requests=window_reanchors,
+                )
+            )
 
         return scheduled
 
@@ -542,15 +551,9 @@ def fuse_overlapping_latents(
             ``overlap_steps``.
     """
     if z_prev.shape[0] < overlap_steps:
-        raise ValueError(
-            f"z_prev has {z_prev.shape[0]} steps, "
-            f"need >= {overlap_steps}"
-        )
+        raise ValueError(f"z_prev has {z_prev.shape[0]} steps, need >= {overlap_steps}")
     if z_curr.shape[0] < overlap_steps:
-        raise ValueError(
-            f"z_curr has {z_curr.shape[0]} steps, "
-            f"need >= {overlap_steps}"
-        )
+        raise ValueError(f"z_curr has {z_curr.shape[0]} steps, need >= {overlap_steps}")
 
     zp = z_prev[-overlap_steps:].astype(np.float64)
     zc = z_curr[:overlap_steps].astype(np.float64)
@@ -576,8 +579,8 @@ def fuse_overlapping_latents(
     if rho is None:
         zp_c = zp - zp.mean(axis=tuple(range(1, zp.ndim)), keepdims=True)
         zc_c = zc - zc.mean(axis=tuple(range(1, zc.ndim)), keepdims=True)
-        zp_var = np.mean(zp_c ** 2, axis=tuple(range(1, zp.ndim)), keepdims=True)
-        zc_var = np.mean(zc_c ** 2, axis=tuple(range(1, zc.ndim)), keepdims=True)
+        zp_var = np.mean(zp_c**2, axis=tuple(range(1, zp.ndim)), keepdims=True)
+        zc_var = np.mean(zc_c**2, axis=tuple(range(1, zc.ndim)), keepdims=True)
         denom = np.sqrt(np.maximum(zp_var * zc_var, 1e-12))
         cov = np.mean(zp_c * zc_c, axis=tuple(range(1, zp.ndim)), keepdims=True)
         rho_val = np.clip(cov / denom, -0.99, 0.99)
@@ -585,9 +588,7 @@ def fuse_overlapping_latents(
         rho_val = np.clip(float(rho), -0.99, 0.99)
 
     blended = (1.0 - a) * zp + a * zc
-    normaliser = np.sqrt(
-        np.maximum((1.0 - a) ** 2 + a ** 2 + 2.0 * a * (1.0 - a) * rho_val, 1e-12)
-    )
+    normaliser = np.sqrt(np.maximum((1.0 - a) ** 2 + a**2 + 2.0 * a * (1.0 - a) * rho_val, 1e-12))
     fused = blended / normaliser
 
     return fused.astype(z_prev.dtype)
@@ -683,7 +684,11 @@ def compute_latent_flow_operator(
         if step_in_group == temporal_compression:
             # Emit a latent-space displacement sample
             output[latent_idx] = _pool_displacement(
-                accum, dep[t], spatial_block, Hb, Wb,
+                accum,
+                dep[t],
+                spatial_block,
+                Hb,
+                Wb,
             )
             latent_idx += 1
             step_in_group = 0

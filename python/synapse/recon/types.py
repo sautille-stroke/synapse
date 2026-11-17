@@ -151,9 +151,7 @@ class MocapKinematics:
     joint_positions: np.ndarray = field(
         default_factory=lambda: np.zeros((0, 0, 3), dtype=np.float32)
     )
-    foot_contacts: np.ndarray = field(
-        default_factory=lambda: np.zeros((0, 2), dtype=np.float32)
-    )
+    foot_contacts: np.ndarray = field(default_factory=lambda: np.zeros((0, 2), dtype=np.float32))
     raw_foot_slip_cm_s: float = 0.0
     clamped_foot_slip_cm_s: float = 0.0
     max_foot_slip_cm_s: float = 0.0

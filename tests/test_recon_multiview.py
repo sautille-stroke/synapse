@@ -93,9 +93,7 @@ def _make_sphere_depth_maps(
         for py in range(h):
             for px in range(w):
                 # Ray in camera space.
-                d_cam = np.array(
-                    [(px - cx) / fx, (py - cy) / fy, 1.0], dtype=np.float64
-                )
+                d_cam = np.array([(px - cx) / fx, (py - cy) / fy, 1.0], dtype=np.float64)
                 d_cam /= np.linalg.norm(d_cam)
                 # Transform ray to world.
                 d_world = R_inv @ d_cam
@@ -104,7 +102,7 @@ def _make_sphere_depth_maps(
                 # Ray-sphere intersection (sphere at origin, radius).
                 a = np.dot(d_world, d_world)
                 b = 2.0 * np.dot(o_world, d_world)
-                c = np.dot(o_world, o_world) - sphere_radius ** 2
+                c = np.dot(o_world, o_world) - sphere_radius**2
                 disc = b * b - 4.0 * a * c
                 if disc >= 0:
                     sqrt_disc = math.sqrt(disc)
@@ -143,9 +141,7 @@ class TestMultiView12Views:
         frames = np.zeros((n_views, h, w, 3), dtype=np.uint8)
         depths = _make_sphere_depth_maps(cameras, h, w, sphere_radius=0.5)
 
-        init = MultiViewInitializer(
-            voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0)
-        )
+        init = MultiViewInitializer(voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0))
         mesh = init.reconstruct(frames, cameras, depths=depths)
 
         # Must produce a non-trivial mesh, not the old 8-vertex box.
@@ -212,9 +208,7 @@ class TestVisualHull:
         frames = np.zeros((n_views, h, w, 3), dtype=np.uint8)
         masks = _make_sphere_masks(cameras, h, w, sphere_radius=0.5)
 
-        init = MultiViewInitializer(
-            voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0)
-        )
+        init = MultiViewInitializer(voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0))
         mesh = init.reconstruct(frames, cameras, masks=masks)
 
         assert mesh.vertex_count > 50, (
@@ -247,9 +241,7 @@ class TestDerivedForegroundMasks:
         for v in range(n_views):
             frames_rect[v][rect_mask] = 200
 
-        init = MultiViewInitializer(
-            voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0)
-        )
+        init = MultiViewInitializer(voxel_size=0.05, sdf_trunc=0.1, volume_bounds=(2.0, 2.0, 2.0))
 
         mesh_circle = init.reconstruct(frames_circle, cameras)
         mesh_rect = init.reconstruct(frames_rect, cameras)
@@ -262,8 +254,8 @@ class TestDerivedForegroundMasks:
 
         # They should differ (different silhouettes → different visual hulls)
         assert mesh_circle.vertex_count != mesh_rect.vertex_count or not np.allclose(
-            mesh_circle.vertices[:min(5, mesh_circle.vertex_count)],
-            mesh_rect.vertices[:min(5, mesh_rect.vertex_count)],
+            mesh_circle.vertices[: min(5, mesh_circle.vertex_count)],
+            mesh_rect.vertices[: min(5, mesh_rect.vertex_count)],
         ), "Different foreground shapes must produce different meshes"
 
     def test_uniform_frames_without_depth_or_masks_raises(self) -> None:
@@ -302,7 +294,9 @@ class TestMarchingCubesWinding:
         for ix in range(n):
             for iy in range(n):
                 for iz in range(n):
-                    dist = np.sqrt((ix - centre[0]) ** 2 + (iy - centre[1]) ** 2 + (iz - centre[2]) ** 2)
+                    dist = np.sqrt(
+                        (ix - centre[0]) ** 2 + (iy - centre[1]) ** 2 + (iz - centre[2]) ** 2
+                    )
                     volume[ix, iy, iz] = dist - radius
 
         voxel_size = 1.0
@@ -321,7 +315,9 @@ class TestMarchingCubesWinding:
             v2 = verts[faces[fi, 2]]
             signed_vol += float(np.dot(v0, np.cross(v1, v2))) / 6.0
 
-        assert signed_vol > 0.0, f"Signed volume should be positive for CCW winding, got {signed_vol}"
+        assert signed_vol > 0.0, (
+            f"Signed volume should be positive for CCW winding, got {signed_vol}"
+        )
 
     def test_active_voxel_mask_matches_naive(self) -> None:
         """Active-voxel mask pre-filter produces same result as naive MC."""
@@ -358,9 +354,7 @@ class TestTSDFWatertight:
         for vi in range(n_views):
             frames[vi][circle_mask] = 200
 
-        init = MultiViewInitializer(
-            voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0)
-        )
+        init = MultiViewInitializer(voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0))
         mesh = init.reconstruct(frames, cameras)
 
         assert mesh.vertex_count > 0
@@ -382,9 +376,7 @@ class TestTSDFWatertight:
         for vi in range(n_views):
             frames[vi][circle_mask] = 200
 
-        init = MultiViewInitializer(
-            voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0)
-        )
+        init = MultiViewInitializer(voxel_size=0.05, sdf_trunc=0.2, volume_bounds=(2.0, 2.0, 2.0))
         mesh = init.reconstruct(frames, cameras)
 
         # Compute signed volume

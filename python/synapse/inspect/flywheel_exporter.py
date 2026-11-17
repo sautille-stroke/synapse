@@ -47,7 +47,8 @@ class RoundtripGate(BaseModel):
 
     delta_fscore_1mm: float = Field(default=0.0, ge=0.0)
     volume_breathing_pct: float = Field(
-        default=float(TRACK_A_ASSET["volume_breathing_pct"]), ge=0.0,
+        default=float(TRACK_A_ASSET["volume_breathing_pct"]),
+        ge=0.0,
     )
     max_non_manifold_edges: int = Field(default=0, ge=0)
 
@@ -324,42 +325,24 @@ def run_targeted_refinement(
             or not isinstance(fs_delta, (int, float))
             or not math.isfinite(fs_delta)
         ):
-            failures.append(
-                f"fscore_delta={fs_delta!r} is missing or non-finite"
-            )
+            failures.append(f"fscore_delta={fs_delta!r} is missing or non-finite")
         elif fs_delta < gate.delta_fscore_1mm:
             failures.append(
-                f"delta_fscore_1mm={fs_delta:.4f} "
-                f"< threshold={gate.delta_fscore_1mm:.4f}"
+                f"delta_fscore_1mm={fs_delta:.4f} < threshold={gate.delta_fscore_1mm:.4f}"
             )
 
-        if (
-            vol_pct is None
-            or not isinstance(vol_pct, (int, float))
-            or not math.isfinite(vol_pct)
-        ):
-            failures.append(
-                f"volume_change_pct={vol_pct!r} is missing or non-finite"
-            )
+        if vol_pct is None or not isinstance(vol_pct, (int, float)) or not math.isfinite(vol_pct):
+            failures.append(f"volume_change_pct={vol_pct!r} is missing or non-finite")
         elif vol_pct > gate.volume_breathing_pct:
             failures.append(
-                f"volume_breathing_pct={vol_pct:.2f}% "
-                f"> threshold="
-                f"{gate.volume_breathing_pct:.2f}%"
+                f"volume_breathing_pct={vol_pct:.2f}% > threshold={gate.volume_breathing_pct:.2f}%"
             )
 
-        if (
-            nm_edges is None
-            or not isinstance(nm_edges, int)
-        ):
-            failures.append(
-                f"non_manifold_edges={nm_edges!r} is missing or non-int"
-            )
+        if nm_edges is None or not isinstance(nm_edges, int):
+            failures.append(f"non_manifold_edges={nm_edges!r} is missing or non-int")
         elif nm_edges > gate.max_non_manifold_edges:
             failures.append(
-                f"non_manifold_edges={nm_edges} "
-                f"> threshold="
-                f"{gate.max_non_manifold_edges}"
+                f"non_manifold_edges={nm_edges} > threshold={gate.max_non_manifold_edges}"
             )
 
         if failures:
@@ -377,11 +360,9 @@ def run_targeted_refinement(
 
     if not gate_result["passed"]:
         raise QualityGateError(
-            "Roundtrip gate failed after auto-fix: "
-            + "; ".join(gate_result.get("failures", [])),
+            "Roundtrip gate failed after auto-fix: " + "; ".join(gate_result.get("failures", [])),
             agent_fix_hint=(
-                "Auto-fix did not meet quality thresholds. "
-                "Escalate to L2 manual HITL refinement."
+                "Auto-fix did not meet quality thresholds. Escalate to L2 manual HITL refinement."
             ),
             details=result_dict,
         )
@@ -412,8 +393,7 @@ def _load_intent_groups(
         raise ContractValidationError(
             f"Intent log directory does not exist: {log_path}",
             agent_fix_hint=(
-                f"Ensure '{log_path}' is a valid directory "
-                "containing intent group JSON files."
+                f"Ensure '{log_path}' is a valid directory containing intent group JSON files."
             ),
         )
 
@@ -471,10 +451,7 @@ def export_rl_flywheel_dataset(
     # Write JSONL
     with open(output_path, "w", encoding="utf-8") as f:
         for rec in records:
-            f.write(
-                json.dumps(rec.model_dump(), default=str)
-                + "\n"
-            )
+            f.write(json.dumps(rec.model_dump(), default=str) + "\n")
 
     return {
         "format": format,
@@ -520,7 +497,8 @@ def _build_dpo_records(
                 continue
 
             def _matches_initial_state(
-                r: IntentGroup, c: IntentGroup,
+                r: IntentGroup,
+                c: IntentGroup,
             ) -> bool:
                 if not c.final_passed_gate or c.undo_triggered:
                     return False
@@ -558,8 +536,7 @@ def _build_dpo_records(
                 records.append(
                     DPORecord(
                         pair_id=f"{rej.intent_id}__{matched_ch.intent_id}",
-                        prompt=rej.prompt_context
-                        or f"Fix defect on asset {asset_id}",
+                        prompt=rej.prompt_context or f"Fix defect on asset {asset_id}",
                         state_before=rej.initial_state_uri,
                         chosen=matched_ch.final_state_uri,
                         rejected=rej.final_state_uri,
@@ -593,4 +570,3 @@ def _build_prm_records(
             )
 
     return records
-

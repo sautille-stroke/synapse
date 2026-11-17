@@ -141,6 +141,7 @@ class PersistentHitlLedger:
         f = open(lock_file, "a+", encoding="utf-8")  # noqa: SIM115
         try:
             import fcntl
+
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         except (ImportError, OSError):
             pass
@@ -157,6 +158,7 @@ class PersistentHitlLedger:
         """Release lock without writing data."""
         try:
             import fcntl
+
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
         except (ImportError, OSError):
             pass
@@ -194,12 +196,14 @@ class PersistentHitlLedger:
         group_id = record.intent_group_id
         entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
         entry["elapsed_seconds"] += elapsed
-        entry["records"].append({
-            "intent": record.intent,
-            "elapsed_seconds": record.elapsed_seconds,
-            "feedback": record.feedback,
-            "actions": record.actions,
-        })
+        entry["records"].append(
+            {
+                "intent": record.intent,
+                "elapsed_seconds": record.elapsed_seconds,
+                "feedback": record.feedback,
+                "actions": record.actions,
+            }
+        )
         total_elapsed = float(entry["elapsed_seconds"])
         self._unlock_and_write(data, handle)
 

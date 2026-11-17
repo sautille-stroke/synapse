@@ -82,9 +82,7 @@ class TestProfiles:
             scenario_overrides={"watertight_pct": 50.0},
         )
         assert verdict.passed is False
-        assert any(
-            v.metric_name == "watertight_pct" for v in verdict.violations
-        )
+        assert any(v.metric_name == "watertight_pct" for v in verdict.violations)
 
     def test_profile_strictness_ordering(self) -> None:
         """RSI thresholds must be equal or stricter than Track-A."""
@@ -101,13 +99,9 @@ class TestProfiles:
             a = TRACK_A_ASSET[name]
             r = RSI_PROMOTION[name]
             if direction == "lower_is_better":
-                assert b >= a >= r, (
-                    f"{name}: track_b={b} >= track_a={a} >= rsi={r}"
-                )
+                assert b >= a >= r, f"{name}: track_b={b} >= track_a={a} >= rsi={r}"
             else:
-                assert b <= a <= r, (
-                    f"{name}: track_b={b} <= track_a={a} <= rsi={r}"
-                )
+                assert b <= a <= r, f"{name}: track_b={b} <= track_a={a} <= rsi={r}"
 
     def test_gate_all_pass(self) -> None:
         from synapse.metrics import evaluate_metrics_gate
@@ -161,7 +155,8 @@ class TestProfiles:
 
         # Override to tighter threshold → should fail
         v2 = evaluate_metrics_gate(
-            measured, "track_b_video",
+            measured,
+            "track_b_video",
             scenario_overrides={"temporal_warp_error": 0.005},
         )
         assert v2.passed is False
@@ -171,7 +166,8 @@ class TestProfiles:
 
         # Only supply one metric; others should be silently skipped
         verdict = evaluate_metrics_gate(
-            {"depth_rmse_m": 0.01}, "track_a_asset",
+            {"depth_rmse_m": 0.01},
+            "track_a_asset",
         )
         assert verdict.passed is True
 
@@ -198,7 +194,8 @@ class TestTemporal:
 
         T, H, W = 3, 4, 4
         frames = np.random.default_rng(42).random(
-            (T, H, W, 3), dtype=np.float32,
+            (T, H, W, 3),
+            dtype=np.float32,
         )
         mvs = np.zeros((T - 1, H, W, 2), dtype=np.float32)
         # Fully occluded → error should be 0
@@ -280,7 +277,9 @@ class TestTemporal:
         gen = rng.random((3, 4, 8, 8, 3)).astype(np.float32) + 0.5
 
         result = compute_fvd_from_videos(
-            real, gen, allow_statistical_proxy=True,
+            real,
+            gen,
+            allow_statistical_proxy=True,
         )
         assert result.is_proxy_metric is True
         assert result.value >= 0.0
@@ -299,12 +298,15 @@ class TestTemporal:
         # but at minimum it should not crash with unhandled exception.
         try:
             result = compute_fvd_from_videos(
-                real, gen, require_pretrained=True,
+                real,
+                gen,
+                require_pretrained=True,
             )
             # If torch is available, we get a real result
             assert result.is_proxy_metric is False
         except Exception as exc:
             from synapse.errors import BackendUnavailableError
+
             assert isinstance(exc, BackendUnavailableError)
             assert exc.exit_code == 30
 
@@ -344,7 +346,8 @@ class TestFGPPFidelity:
 
         d = np.ones((8, 8), dtype=np.float64) * 3.0
         assert scale_invariant_depth_error(d, d) == pytest.approx(
-            0.0, abs=1e-10,
+            0.0,
+            abs=1e-10,
         )
 
     def test_normal_angular_error_gt_vs_gt(self) -> None:
@@ -353,7 +356,8 @@ class TestFGPPFidelity:
         n = np.zeros((8, 8, 3), dtype=np.float64)
         n[..., 2] = 1.0  # all pointing +Z
         assert normal_angular_error_deg(n, n) == pytest.approx(
-            0.0, abs=1e-10,
+            0.0,
+            abs=1e-10,
         )
 
     def test_normal_angular_error_known_rotation(self) -> None:
@@ -373,7 +377,8 @@ class TestFGPPFidelity:
 
         f = np.random.default_rng(2).random((16, 16, 2))
         assert flow_endpoint_error_px(f, f) == pytest.approx(
-            0.0, abs=1e-10,
+            0.0,
+            abs=1e-10,
         )
 
     def test_flow_epe_known_offset(self) -> None:
@@ -462,10 +467,7 @@ class TestRoundtrip:
             dtype=np.float64,
         )
         faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
-        meshes = [
-            (verts * scale, faces)
-            for scale in [1.0, 1.0, 2.0, 1.0, 1.0]
-        ]
+        meshes = [(verts * scale, faces) for scale in [1.0, 1.0, 2.0, 1.0, 1.0]]
         pct = volume_breathing_pct(meshes)
         assert pct > 0.0
 
@@ -606,8 +608,14 @@ class TestQuadWatertight:
         # Unit cube: 8 vertices, 6 quad faces
         verts = np.array(
             [
-                [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-                [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+                [0, 0, 0],
+                [1, 0, 0],
+                [1, 1, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 0, 1],
+                [1, 1, 1],
+                [0, 1, 1],
             ],
             dtype=np.float64,
         )
@@ -679,7 +687,8 @@ class TestAliasOverride:
         # Default TRACK_B_VIDEO threshold for border_ring_ciede2000 is 3.0
         # Without override, 4.0 > 3.0 → fail
         verdict_no_override = evaluate_metrics_gate(
-            measured, profile="track_b_video",
+            measured,
+            profile="track_b_video",
         )
         assert not verdict_no_override.passed
 
@@ -714,8 +723,14 @@ class TestQuadGeometryAndSampling:
     def quad_cube(self) -> tuple[np.ndarray, list[list[int]]]:
         verts = np.array(
             [
-                [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-                [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+                [0, 0, 0],
+                [1, 0, 0],
+                [1, 1, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 0, 1],
+                [1, 1, 1],
+                [0, 1, 1],
             ],
             dtype=np.float64,
         )
@@ -745,7 +760,9 @@ class TestQuadGeometryAndSampling:
         # it would only be 0.5 (losing half each quad)
         assert vol == pytest.approx(1.0, abs=1e-5)
 
-    def test_quad_cube_surface_sampling(self, quad_cube: tuple[np.ndarray, list[list[int]]]) -> None:
+    def test_quad_cube_surface_sampling(
+        self, quad_cube: tuple[np.ndarray, list[list[int]]]
+    ) -> None:
         from synapse.metrics.roundtrip import sample_mesh_surface
 
         verts, faces = quad_cube

@@ -156,8 +156,11 @@ class TestCamera:
 
     def test_orbit_positions_form_circle(self) -> None:
         cameras = generate_cameras(
-            "orbit", num_frames=36, radius=5.0,
-            elevation_deg=0.0, azimuth_range_deg=360.0,
+            "orbit",
+            num_frames=36,
+            radius=5.0,
+            elevation_deg=0.0,
+            azimuth_range_deg=360.0,
         )
         for cam in cameras:
             pos = cam.position()
@@ -166,8 +169,10 @@ class TestCamera:
 
     def test_dolly_distance_changes(self) -> None:
         cameras = generate_cameras(
-            "dolly", num_frames=10,
-            start_distance=5.0, end_distance=2.0,
+            "dolly",
+            num_frames=10,
+            start_distance=5.0,
+            end_distance=2.0,
         )
         d_first = np.linalg.norm(cameras[0].position())
         d_last = np.linalg.norm(cameras[-1].position())
@@ -175,7 +180,9 @@ class TestCamera:
 
     def test_static_no_drift(self) -> None:
         cameras = generate_cameras(
-            "static", num_frames=10, drift_amplitude=0.0,
+            "static",
+            num_frames=10,
+            drift_amplitude=0.0,
         )
         pos_first = cameras[0].position()
         for cam in cameras[1:]:
@@ -183,15 +190,19 @@ class TestCamera:
 
     def test_tracking_moves_laterally(self) -> None:
         cameras = generate_cameras(
-            "tracking", num_frames=10,
-            start=[-3, 1.5, 0], end=[3, 1.5, 0],
+            "tracking",
+            num_frames=10,
+            start=[-3, 1.5, 0],
+            end=[3, 1.5, 0],
         )
         assert cameras[0].position()[0] < cameras[-1].position()[0]
 
     def test_arc_elevation_changes(self) -> None:
         cameras = generate_cameras(
-            "arc", num_frames=10,
-            elevation_start_deg=0.0, elevation_end_deg=60.0,
+            "arc",
+            num_frames=10,
+            elevation_start_deg=0.0,
+            elevation_end_deg=60.0,
         )
         y_first = cameras[0].position()[1]
         y_last = cameras[-1].position()[1]
@@ -221,9 +232,16 @@ class TestCamera:
 class TestProceduralMesh:
     """Test procedural mesh generators."""
 
-    @pytest.mark.parametrize("mesh_type", [
-        "cube", "sphere", "cylinder", "torus", "plane",
-    ])
+    @pytest.mark.parametrize(
+        "mesh_type",
+        [
+            "cube",
+            "sphere",
+            "cylinder",
+            "torus",
+            "plane",
+        ],
+    )
     def test_generate_mesh(self, mesh_type: Any) -> None:
         mesh = generate_procedural_mesh(mesh_type)
         assert isinstance(mesh, ProceduralMesh)
@@ -284,8 +302,12 @@ class TestFGPP:
 
     def test_fgpp_frame_create(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=512, cy=512,
-            width=1024, height=1024,
+            fx=500,
+            fy=500,
+            cx=512,
+            cy=512,
+            width=1024,
+            height=1024,
         )
         depth = np.ones((1024, 1024), dtype=np.float32) * 5.0
         frame = FGPPFrame(camera=cam, depth=depth, frame_index=0)
@@ -297,8 +319,12 @@ class TestFGPP:
 
     def test_fgpp_frame_with_all_channels(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256,
-            width=512, height=512,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
         )
         frame = FGPPFrame(
             camera=cam,
@@ -315,8 +341,12 @@ class TestFGPP:
 
     def test_fgpp_sequence_metadata(self, tmp_path: Any) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256,
-            width=512, height=512,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
         )
         frames = [
             FGPPFrame(
@@ -341,8 +371,12 @@ class TestFGPP:
 
     def test_camera_params_roundtrip(self) -> None:
         cam = CameraParams(
-            fx=500, fy=500, cx=256, cy=256,
-            width=512, height=512,
+            fx=500,
+            fy=500,
+            cx=256,
+            cy=256,
+            width=512,
+            height=512,
             fov_degrees=60.0,
         )
         d = cam.to_dict()

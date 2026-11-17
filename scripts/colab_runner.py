@@ -211,7 +211,9 @@ def finalize_job_workspace(
         scorecard = "\n".join(conclusion_lines)
         if "## 4. 关键指标与结论 (Results & Scorecard)" in content:
             parts = content.split("## 4. 关键指标与结论 (Results & Scorecard)")
-            new_content = parts[0] + "## 4. 关键指标与结论 (Results & Scorecard)\n" + scorecard + "\n"
+            new_content = (
+                parts[0] + "## 4. 关键指标与结论 (Results & Scorecard)\n" + scorecard + "\n"
+            )
             readme_path.write_text(new_content, encoding="utf-8")
 
 
@@ -268,7 +270,7 @@ def _verify_e1_real_gpu(
     try:
         result_b = adapter.generate(payload_b, cfg)
         assert result_b is not None, "adapter.generate() returned None for Track-B"
-        result_shape = list(result_b.shape) if hasattr(result_b, "shape") else [len(result_b)]
+        result_shape = list(result_b.frames_srgb_u8.shape)
     except Exception as exc:
         raise BackendUnavailableError(
             f"WanAdapter.generate() failed on real GPU: {exc}",
@@ -300,7 +302,10 @@ def _verify_e4_real_gpu(
     assert f0.cryptomatte_id is not None
 
     try:
-        from safetensors.torch import save_file
+        import importlib.util
+
+        if importlib.util.find_spec("safetensors") is None:
+            raise ImportError("safetensors not installed")
     except ImportError as exc:
         raise BackendUnavailableError(
             "safetensors is required for real GPU LoRA packaging",
@@ -312,14 +317,13 @@ def _verify_e4_real_gpu(
 
     # Use real LoRA training via StatelessLoRATrainer instead of fake torch.randn
     try:
-        from synapse.adapters.lora.trainer import StatelessLoRATrainer
+        from synapse.training import LoRATrainConfig, StatelessLoRATrainer
 
-        trainer = StatelessLoRATrainer(
-            rank=16,
-            target_modules=["spatial_attn.to_q"],
-            device=device,
-        )
-        state_dict = trainer.train_step(seq_track_a, max_steps=1)
+        train_cfg = LoRATrainConfig(category="style", rank=16, alpha=16.0)
+        trainer = StatelessLoRATrainer(train_cfg)
+        toy_module = torch.nn.Linear(64, 64).to(device)
+        trainer.inject_lora(toy_module, target_patterns=["weight"])
+        trainer.export_checkpoint(toy_module, lora_dst)
     except (ImportError, Exception) as exc:
         # If trainer is unavailable or fails, honestly exit with code 50
         from synapse.errors import ExitCode, SynapseError
@@ -334,7 +338,6 @@ def _verify_e4_real_gpu(
             ),
         ) from exc
 
-    save_file(state_dict, str(lora_dst))
     sha256 = hashlib.sha256(lora_dst.read_bytes()).hexdigest()
 
     manifest = LoRAManifest(
@@ -427,12 +430,8 @@ def run_colab_suite(
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
     # --- Load datasets ---
-    seq_b = import_fgpp(
-        dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False
-    )
-    seq_a = import_fgpp(
-        dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False
-    )
+    seq_b = import_fgpp(dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False)
+    seq_a = import_fgpp(dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False)
     assert isinstance(seq_b, FGPPSequence)
     assert isinstance(seq_a, FGPPSequence)
 

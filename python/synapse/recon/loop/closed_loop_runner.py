@@ -216,8 +216,8 @@ class ClosedLoopRunner:
         # Trim normals and uv_maps to match target frame count (safe for
         # non-4k+1 padded frame counts where arrays may be shorter than target).
         n_target = target_frames.shape[0]
-        normals_trimmed = normals[:min(n_target, len(normals))]
-        uv_trimmed = uv_maps[:min(n_target, len(uv_maps))]
+        normals_trimmed = normals[: min(n_target, len(normals))]
+        uv_trimmed = uv_maps[: min(n_target, len(uv_maps))]
         # Clamp n_target to actual available trimmed length
         n_target = min(n_target, len(normals_trimmed), len(uv_trimmed))
 
@@ -247,13 +247,15 @@ class ClosedLoopRunner:
         stitcher = ScalpelStitcher(self._stitch_config)
 
         # Build per-frame RefinementResults for the stitcher
-        source_trimmed = source_frames[:min(n_target, len(source_frames))]
+        source_trimmed = source_frames[: min(n_target, len(source_frames))]
         refinements = self._build_refinements(
-            rerendered, source_trimmed,
+            rerendered,
+            source_trimmed,
         )
 
         output_frames, stitch_report = stitcher.stitch_sequence(
-            source_trimmed, refinements,
+            source_trimmed,
+            refinements,
         )
 
         # Bake tangent-space UV normal map from trimmed normals and UVs
@@ -347,10 +349,14 @@ class ClosedLoopRunner:
             u = np.clip(uv_maps[t, :, :, 0], 0.0, 1.0)
             v = np.clip(uv_maps[t, :, :, 1], 0.0, 1.0)
             ix = np.clip(
-                (u * (tex_w - 1)).astype(np.int32), 0, tex_w - 1,
+                (u * (tex_w - 1)).astype(np.int32),
+                0,
+                tex_w - 1,
             )
             iy = np.clip(
-                (v * (tex_h - 1)).astype(np.int32), 0, tex_h - 1,
+                (v * (tex_h - 1)).astype(np.int32),
+                0,
+                tex_h - 1,
             )
 
             sampled_albedo = albedo_map[iy, ix]  # (H, W, 3)
@@ -383,7 +389,8 @@ class ClosedLoopRunner:
                 quality_score=1.0,
                 frame_index=t,
                 bbox_xyxy=np.array(
-                    [0, 0, w, h], dtype=np.float32,
+                    [0, 0, w, h],
+                    dtype=np.float32,
                 ),
             )
             refinements.append([ref])

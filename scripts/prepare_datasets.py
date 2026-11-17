@@ -68,8 +68,6 @@ def _export_software_rasterizer_fallback(
         )
         frame = FGPPFrame(
             frame_index=i,
-            width=width,
-            height=height,
             direct_radiance=np.zeros((height, width, 3), dtype=np.float32),
             depth=np.ones((height, width), dtype=np.float32),
             world_normal=np.tile(
@@ -82,7 +80,9 @@ def _export_software_rasterizer_fallback(
         )
         frames.append(frame)
     seq = FGPPSequence(
-        frames=frames, fps=24, scene_id="synthetic_fallback",
+        frames=frames,
+        fps=24,
+        scene_id="synthetic_fallback",
     )
     export_fgpp(seq, out_dir)
     # Mark provenance honestly
@@ -139,8 +139,11 @@ def _export_fulgur_course102(
         env.setdefault("VK_ICD_FILENAMES", "")
     try:
         result = subprocess.run(
-            cmd, cwd=str(fulgur_repo), env=env,
-            capture_output=True, text=True,
+            cmd,
+            cwd=str(fulgur_repo),
+            env=env,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             sig = -result.returncode if result.returncode < 0 else result.returncode
@@ -148,13 +151,14 @@ def _export_fulgur_course102(
                 "fulgur course_102 exited with code %d (signal %d); "
                 "falling back to SoftwareRasterizer with provenance "
                 "='software_rasterizer_fallback'.",
-                result.returncode, sig,
+                result.returncode,
+                sig,
             )
             _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
     except FileNotFoundError:
         logger.warning(
-            "fulgur binary not found at %s; falling back to "
-            "SoftwareRasterizer.", bin_path,
+            "fulgur binary not found at %s; falling back to SoftwareRasterizer.",
+            bin_path,
         )
         _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
 
@@ -202,7 +206,7 @@ def _build_long_horizon_97f_from_base(
         f_meta = json.loads(json.dumps(base_frames[src_idx]))
         f_meta["frame_index"] = idx
         f_meta["timestamp_sec"] = idx / 24.0
-        f_meta["is_physical_anchor"] = (idx % 48 == 0)
+        f_meta["is_physical_anchor"] = idx % 48 == 0
         f_meta["file"] = f"frame_{idx:06d}.exr"
 
         # Construct smooth camera motion for [0..63] and shot-cut jump at idx == 64
@@ -233,9 +237,7 @@ def _build_long_horizon_97f_from_base(
     meta_97["num_frames"] = 97
     meta_97["fps"] = 24.0
     meta_97["frames"] = frames_meta
-    (out_97f_dir / "metadata.json").write_text(
-        json.dumps(meta_97, indent=2), encoding="utf-8"
-    )
+    (out_97f_dir / "metadata.json").write_text(json.dumps(meta_97, indent=2), encoding="utf-8")
 
 
 def _export_caelum_track_a_17f(
@@ -300,16 +302,12 @@ def _export_caelum_track_a_17f(
         normals[mask_hero, 0] = (nx_grid[mask_hero] - cx1) / 0.375
         normals[mask_hero, 1] = (ny_grid[mask_hero] - cy1) / 0.375
         normals[mask_hero, 2] = np.sqrt(
-            np.maximum(
-                1.0 - normals[mask_hero, 0] ** 2 - normals[mask_hero, 1] ** 2, 0.01
-            )
+            np.maximum(1.0 - normals[mask_hero, 0] ** 2 - normals[mask_hero, 1] ** 2, 0.01)
         )
         normals[mask_orb, 0] = (nx_grid[mask_orb] - cx2) / 0.283
         normals[mask_orb, 1] = (ny_grid[mask_orb] - cy2) / 0.283
         normals[mask_orb, 2] = np.sqrt(
-            np.maximum(
-                1.0 - normals[mask_orb, 0] ** 2 - normals[mask_orb, 1] ** 2, 0.01
-            )
+            np.maximum(1.0 - normals[mask_orb, 0] ** 2 - normals[mask_orb, 1] ** 2, 0.01)
         )
 
         # Albedo
@@ -322,9 +320,9 @@ def _export_caelum_track_a_17f(
         light_dir /= np.linalg.norm(light_dir)
         ndotl = np.maximum(np.sum(normals * light_dir, axis=-1, keepdims=True), 0.05)
         diff_dir = albedo * ndotl * 1.35
-        spec_dir = np.power(ndotl, 24.0) * np.where(
-            mask_orb[..., None], 2.8, 0.45
-        ).astype(np.float32)
+        spec_dir = np.power(ndotl, 24.0) * np.where(mask_orb[..., None], 2.8, 0.45).astype(
+            np.float32
+        )
         indirect_gi = albedo * 0.22
         beauty = diff_dir + spec_dir + indirect_gi
         beauty_list.append(beauty)
@@ -410,11 +408,13 @@ def _export_caelum_track_a_17f(
         half_ch = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
         header["channels"] = {"B": half_ch, "G": half_ch, "R": half_ch}
         out_file = OpenEXR.OutputFile(str(beauty_path), header)
-        out_file.writePixels({
-            "R": beauty_rgb[..., 0].astype(np.float16).tobytes(),
-            "G": beauty_rgb[..., 1].astype(np.float16).tobytes(),
-            "B": beauty_rgb[..., 2].astype(np.float16).tobytes(),
-        })
+        out_file.writePixels(
+            {
+                "R": beauty_rgb[..., 0].astype(np.float16).tobytes(),
+                "G": beauty_rgb[..., 1].astype(np.float16).tobytes(),
+                "B": beauty_rgb[..., 2].astype(np.float16).tobytes(),
+            }
+        )
         out_file.close()
 
     # Enrich metadata.json with Track-A specific fields
@@ -488,7 +488,8 @@ DEFAULT_CAELUM_REPO = Path(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output-root", "--output-dir",
+        "--output-root",
+        "--output-dir",
         type=Path,
         default=DEFAULT_OUTPUT_ROOT,
         dest="output_root",

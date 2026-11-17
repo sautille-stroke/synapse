@@ -144,15 +144,14 @@ class ViewerServer:
             )
 
         def handler_cls(*args: Any, **kwargs: Any) -> _DatasetHTTPRequestHandler:
-            return _DatasetHTTPRequestHandler(
-                *args, directory=str(self.dataset_dir), **kwargs
-            )
+            return _DatasetHTTPRequestHandler(*args, directory=str(self.dataset_dir), **kwargs)
 
         # Port binding without probing blind range:
         # When port=0, OS assigns an ephemeral free port.
         # When port>0, bind directly; if in use, fail closed with OSError.
         self.httpd = _ReusableHTTPServer(
-            (self.host, self.port), handler_cls,  # type: ignore[arg-type]
+            (self.host, self.port),
+            handler_cls,  # type: ignore[arg-type]
         )
         self.port = self.httpd.server_address[1]
 

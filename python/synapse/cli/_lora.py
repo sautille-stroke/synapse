@@ -30,8 +30,7 @@ def _cmd_lora_prepare_data(
         "CLI 'synapse lora prepare-data' is not yet wired to "
         "FeatureStoreBuilder; refusing to emit silent success.",
         agent_fix_hint=(
-            "Use 'synapse.training.FeatureStoreBuilder' API directly "
-            "to encode WebDataset shards."
+            "Use 'synapse.training.FeatureStoreBuilder' API directly to encode WebDataset shards."
         ),
         details={
             "input_dir": str(input_dir),
@@ -79,8 +78,7 @@ def _cmd_lora_train(
         "CLI 'synapse lora train' standalone backbone execution is "
         "not yet implemented; refusing to emit silent success.",
         agent_fix_hint=(
-            "Use 'synapse.training.StatelessLoRATrainer' in Python "
-            "with an injected DiT model."
+            "Use 'synapse.training.StatelessLoRATrainer' in Python with an injected DiT model."
         ),
         details={"validated_config": validated.model_dump()},
     )
@@ -122,8 +120,7 @@ def _cmd_lora_eval(
             "Review training hyperparameters.",
         )
         raise QualityGateError(
-            "LoRA bundle failed quality gate: "
-            + "; ".join(failures),
+            "LoRA bundle failed quality gate: " + "; ".join(failures),
             agent_fix_hint=hint,
         )
 
@@ -157,7 +154,9 @@ def register_lora_subparser(
     """Register the ``lora`` subcommand tree."""
     parents = [json_parent] if json_parent is not None else []
     lora_parser = subparsers.add_parser(
-        "lora", help="LoRA fine-tuning pipeline operations", parents=parents,
+        "lora",
+        help="LoRA fine-tuning pipeline operations",
+        parents=parents,
     )
     lora_sub = lora_parser.add_subparsers(dest="lora_command")
 
@@ -167,11 +166,13 @@ def register_lora_subparser(
         parents=parents,
     )
     lora_prep.add_argument(
-        "--input", default=".",
+        "--input",
+        default=".",
         help="Input data directory",
     )
     lora_prep.add_argument(
-        "--output", default=".",
+        "--output",
+        default=".",
         help="Output directory for prepared data",
     )
 
@@ -181,7 +182,8 @@ def register_lora_subparser(
         parents=parents,
     )
     lora_train.add_argument(
-        "--config", default="{}",
+        "--config",
+        default="{}",
         help="JSON training configuration string",
     )
 
@@ -191,7 +193,8 @@ def register_lora_subparser(
         parents=parents,
     )
     lora_eval.add_argument(
-        "--bundle", required=True,
+        "--bundle",
+        required=True,
         help="Path to LoRA bundle directory",
     )
     lora_eval.add_argument(
@@ -207,11 +210,13 @@ def register_lora_subparser(
         parents=parents,
     )
     lora_merge.add_argument(
-        "--bundle", required=True,
+        "--bundle",
+        required=True,
         help="Path to LoRA bundle directory",
     )
     lora_merge.add_argument(
-        "--output", required=True,
+        "--output",
+        required=True,
         help="Output directory for merged model",
     )
     return cast(argparse.ArgumentParser, lora_parser)
@@ -227,29 +232,36 @@ def dispatch_lora(
     lora_cmd = getattr(parsed, "lora_command", None)
     if lora_cmd == "prepare-data":
         return _run_with_json_mode(
-            _cmd_lora_prepare_data, parsed,
-            json_mode, trace_ctx,
+            _cmd_lora_prepare_data,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif lora_cmd == "train":
         return _run_with_json_mode(
-            _cmd_lora_train, parsed,
-            json_mode, trace_ctx,
+            _cmd_lora_train,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif lora_cmd == "eval":
         return _run_with_json_mode(
-            _cmd_lora_eval, parsed,
-            json_mode, trace_ctx,
+            _cmd_lora_eval,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif lora_cmd == "merge":
         return _run_with_json_mode(
-            _cmd_lora_merge, parsed,
-            json_mode, trace_ctx,
+            _cmd_lora_merge,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         if json_mode:
             err = SynapseError(
-                "Missing lora sub-command "
-                "(prepare-data|train|eval|merge)",
+                "Missing lora sub-command (prepare-data|train|eval|merge)",
                 ExitCode.CONTRACT_ERROR,
                 "Use 'synapse lora <sub-command> --help'.",
             )

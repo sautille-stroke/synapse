@@ -28,7 +28,11 @@ class TestPipelineStageAdapters:
                         for alias in node.names:
                             if alias.name.startswith("synapse.pipeline"):
                                 violations.append(f"{py_file}: import {alias.name}")
-                    elif isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("synapse.pipeline"):
+                    elif (
+                        isinstance(node, ast.ImportFrom)
+                        and node.module
+                        and node.module.startswith("synapse.pipeline")
+                    ):
                         violations.append(f"{py_file}: from {node.module} import ...")
         assert violations == [], f"Domain modules must not import synapse.pipeline: {violations}"
 
@@ -75,6 +79,4 @@ class TestPipelineStageAdapters:
             source = py_file.read_text(encoding="utf-8")
             if "_MIN_ANGULAR_SPAN_DEG" in source:
                 violations.append(str(py_file))
-        assert violations == [], (
-            f"_MIN_ANGULAR_SPAN_DEG monkey-patch found in: {violations}"
-        )
+        assert violations == [], f"_MIN_ANGULAR_SPAN_DEG monkey-patch found in: {violations}"

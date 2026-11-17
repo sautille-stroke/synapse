@@ -60,7 +60,7 @@ def _make_synthetic_scene(
         # Slightly varying normals per view
         nx = rng.uniform(-0.2, 0.2, (h, w)).astype(np.float32)
         ny = rng.uniform(-0.2, 0.2, (h, w)).astype(np.float32)
-        nz = np.sqrt(np.clip(1.0 - nx ** 2 - ny ** 2, 0.01, 1.0))
+        nz = np.sqrt(np.clip(1.0 - nx**2 - ny**2, 0.01, 1.0))
         normals[v, :, :, 0] = nx
         normals[v, :, :, 1] = ny
         normals[v, :, :, 2] = nz
@@ -74,12 +74,15 @@ def _make_synthetic_scene(
                 uv_maps[v, row, col, 1] = row / max(h - 1, 1)
 
     # Light directions (varied per view)
-    light_dirs = np.array([
-        [0.0, 0.0, 1.0],
-        [0.3, 0.0, 0.95],
-        [-0.3, 0.0, 0.95],
-        [0.0, 0.3, 0.95],
-    ], dtype=np.float32)[:n_views]
+    light_dirs = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.3, 0.0, 0.95],
+            [-0.3, 0.0, 0.95],
+            [0.0, 0.3, 0.95],
+        ],
+        dtype=np.float32,
+    )[:n_views]
     # Normalise
     light_dirs /= np.linalg.norm(light_dirs, axis=1, keepdims=True)
 
@@ -88,16 +91,19 @@ def _make_synthetic_scene(
     for v in range(n_views):
         tx = np.clip(
             (uv_maps[v, :, :, 0] * (tex_res - 1)).astype(np.intp),
-            0, tex_res - 1,
+            0,
+            tex_res - 1,
         )
         ty = np.clip(
             (uv_maps[v, :, :, 1] * (tex_res - 1)).astype(np.intp),
-            0, tex_res - 1,
+            0,
+            tex_res - 1,
         )
         sampled_albedo = gt_albedo[ty, tx, :]
         ndotl = np.clip(
             np.sum(normals[v] * light_dirs[v], axis=-1),
-            0.0, 1.0,
+            0.0,
+            1.0,
         )
         frames[v] = sampled_albedo * ndotl[:, :, np.newaxis]
 
@@ -119,7 +125,10 @@ def test_analytic_optimizer_basic() -> None:
     )
     optimizer = AnalyticUVInverseOptimizer(config)
     result = optimizer.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs,
     )
 
     assert isinstance(result, InverseOptimResult)
@@ -144,19 +153,16 @@ def test_analytic_optimizer_convergence() -> None:
     )
     optimizer = AnalyticUVInverseOptimizer(config)
     result = optimizer.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs,
     )
 
     improvement = result.psnr_after_db - result.psnr_before_db
-    assert improvement >= 10.0, (
-        f"PSNR improvement {improvement:.2f} dB < 10.0 dB"
-    )
-    assert result.psnr_after_db >= 28.5, (
-        f"Final PSNR {result.psnr_after_db:.2f} dB < 28.5 dB"
-    )
-    assert result.ciede2000_after <= 2.5, (
-        f"ΔE₀₀ {result.ciede2000_after:.3f} > 2.5"
-    )
+    assert improvement >= 10.0, f"PSNR improvement {improvement:.2f} dB < 10.0 dB"
+    assert result.psnr_after_db >= 28.5, f"Final PSNR {result.psnr_after_db:.2f} dB < 28.5 dB"
+    assert result.ciede2000_after <= 2.5, f"ΔE₀₀ {result.ciede2000_after:.3f} > 2.5"
 
 
 def test_analytic_optimizer_default_light() -> None:
@@ -164,11 +170,15 @@ def test_analytic_optimizer_default_light() -> None:
     frames, normals, uv_maps, _, _ = _make_synthetic_scene()
 
     config = InverseOptimConfig(
-        max_iterations=5, texture_resolution=TEX_RES,
+        max_iterations=5,
+        texture_resolution=TEX_RES,
     )
     optimizer = AnalyticUVInverseOptimizer(config)
     result = optimizer.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs=None,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs=None,
     )
     assert result.albedo_map.shape == (TEX_RES, TEX_RES, 3)
 
@@ -186,6 +196,7 @@ def test_mitsuba_import_guard() -> None:
     """
     try:
         import mitsuba  # noqa: F401
+
         _has_mitsuba = True
     except ImportError:
         _has_mitsuba = False
@@ -213,9 +224,15 @@ def test_import_recon_loop_succeeds() -> None:
 
 def test_extract_pbr_textures_basic() -> None:
     """extract_and_pack_pbr_textures produces correct texture set."""
-    albedo = np.random.default_rng(42).uniform(
-        0, 1, (64, 64, 3),
-    ).astype(np.float32)
+    albedo = (
+        np.random.default_rng(42)
+        .uniform(
+            0,
+            1,
+            (64, 64, 3),
+        )
+        .astype(np.float32)
+    )
 
     texture_set = extract_and_pack_pbr_textures(albedo)
 
@@ -234,7 +251,8 @@ def test_extract_pbr_textures_save() -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         extract_and_pack_pbr_textures(
-            albedo, output_dir=tmpdir,
+            albedo,
+            output_dir=tmpdir,
         )
         assert (Path(tmpdir) / "albedo.npy").exists()
         assert (Path(tmpdir) / "normal.npy").exists()
@@ -250,10 +268,13 @@ def test_extract_pbr_textures_with_normal_map() -> None:
     normals[..., 2] = 0.866
 
     texture_set = extract_and_pack_pbr_textures(
-        albedo, normal_map=normals,
+        albedo,
+        normal_map=normals,
     )
     np.testing.assert_allclose(
-        texture_set.normal[0, 0, 0], 0.5, atol=0.01,
+        texture_set.normal[0, 0, 0],
+        0.5,
+        atol=0.01,
     )
 
 
@@ -292,7 +313,10 @@ def test_vectorized_uv_accumulation_512() -> None:
 
     start = time.monotonic()
     result = optimizer.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs,
     )
     elapsed_ms = (time.monotonic() - start) * 1000.0
 
@@ -322,7 +346,10 @@ def test_photometric_gradient_decreases_mse() -> None:
     )
     opt_few = AnalyticUVInverseOptimizer(config_few)
     res_few = opt_few.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs,
     )
 
     config_many = InverseOptimConfig(
@@ -333,7 +360,10 @@ def test_photometric_gradient_decreases_mse() -> None:
     )
     opt_many = AnalyticUVInverseOptimizer(config_many)
     res_many = opt_many.optimize_material_from_video(
-        frames, normals, uv_maps, light_dirs,
+        frames,
+        normals,
+        uv_maps,
+        light_dirs,
     )
 
     # More iterations should yield higher PSNR (lower MSE).
@@ -347,8 +377,7 @@ def test_photometric_gradient_decreases_mse() -> None:
     delta_many = res_many.psnr_after_db - res_many.psnr_before_db
     assert delta_few > 0, f"ΔPSNR should be positive, got {delta_few:.2f} dB"
     assert delta_many >= delta_few, (
-        f"More iterations should yield higher or equal ΔPSNR: "
-        f"{delta_many:.2f} vs {delta_few:.2f}"
+        f"More iterations should yield higher or equal ΔPSNR: {delta_many:.2f} vs {delta_few:.2f}"
     )
 
 
@@ -361,8 +390,7 @@ def test_no_approx_ciede2000_in_optimizer() -> None:
         "synapse.metrics.image_quality.ciede2000"
     )
     assert not hasattr(mod, "_compute_psnr"), (
-        "_compute_psnr should have been removed in favour of "
-        "synapse.metrics.image_quality.psnr_db"
+        "_compute_psnr should have been removed in favour of synapse.metrics.image_quality.psnr_db"
     )
 
 
@@ -397,7 +425,7 @@ def test_tv_gradient_step_reduces_tv_loss() -> None:
         """Compute isotropic (L2) total variation loss."""
         dy = img[1:, :, :] - img[:-1, :, :]
         dx = img[:, 1:, :] - img[:, :-1, :]
-        return float(np.sum(dy ** 2) + np.sum(dx ** 2))
+        return float(np.sum(dy**2) + np.sum(dx**2))
 
     tv_before = _tv_loss(albedo)
 
@@ -414,9 +442,7 @@ def test_tv_gradient_step_reduces_tv_loss() -> None:
     )
     # Verify meaningful reduction (not just numerical noise)
     reduction_pct = (tv_before - tv_after) / tv_before * 100.0
-    assert reduction_pct > 1.0, (
-        f"TV loss reduction should be > 1%, got {reduction_pct:.2f}%"
-    )
+    assert reduction_pct > 1.0, f"TV loss reduction should be > 1%, got {reduction_pct:.2f}%"
 
 
 def test_tv_gradient_uniform_image_is_zero() -> None:
@@ -424,7 +450,8 @@ def test_tv_gradient_uniform_image_is_zero() -> None:
     uniform = np.full((16, 16, 3), 0.42, dtype=np.float64)
     tv_grad = compute_tv_gradient(uniform)
     np.testing.assert_array_equal(
-        tv_grad, np.zeros_like(tv_grad),
+        tv_grad,
+        np.zeros_like(tv_grad),
         err_msg="TV gradient of uniform image should be all zeros",
     )
 

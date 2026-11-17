@@ -103,8 +103,7 @@ class InspectionBundleManifest(BaseModel):
             return INSPECTION_SCHEMA_VERSION
         if v != INSPECTION_SCHEMA_VERSION:
             raise ValueError(
-                f"Unsupported schema_version '{v}'; "
-                f"expected '{INSPECTION_SCHEMA_VERSION}'"
+                f"Unsupported schema_version '{v}'; expected '{INSPECTION_SCHEMA_VERSION}'"
             )
         return v
 
@@ -155,18 +154,14 @@ def _assert_safe_relative_path(p: str) -> None:
     if p.startswith("/"):
         raise ContractValidationError(
             f"Absolute POSIX path rejected: '{p}'",
-            agent_fix_hint=(
-                "Use a relative path within the bundle directory."
-            ),
+            agent_fix_hint=("Use a relative path within the bundle directory."),
         )
 
     # Windows drive letter
     if _DRIVE_LETTER_RE.match(p):
         raise ContractValidationError(
             f"Windows absolute path rejected: '{p}'",
-            agent_fix_hint=(
-                "Use a relative path within the bundle directory."
-            ),
+            agent_fix_hint=("Use a relative path within the bundle directory."),
         )
 
     # Traverse segments
@@ -174,9 +169,7 @@ def _assert_safe_relative_path(p: str) -> None:
     if ".." in parts or any(part == ".." for part in p.split("/")):
         raise ContractValidationError(
             f"Path traversal ('..') rejected: '{p}'",
-            agent_fix_hint=(
-                "Remove '..' segments from the bundle source path."
-            ),
+            agent_fix_hint=("Remove '..' segments from the bundle source path."),
         )
 
 
@@ -207,10 +200,7 @@ def validate_inspection_bundle(
     if not manifest_path.is_file():
         raise ContractValidationError(
             f"bundle.json not found in '{bundle_dir}'",
-            agent_fix_hint=(
-                "Ensure the bundle directory contains a valid "
-                "bundle.json manifest."
-            ),
+            agent_fix_hint=("Ensure the bundle directory contains a valid bundle.json manifest."),
         )
 
     try:
@@ -226,10 +216,7 @@ def validate_inspection_bundle(
     except Exception as exc:
         raise ContractValidationError(
             f"Manifest validation failed: {exc}",
-            agent_fix_hint=(
-                "Ensure bundle.json conforms to the "
-                "inspection.v1.0 schema."
-            ),
+            agent_fix_hint=("Ensure bundle.json conforms to the inspection.v1.0 schema."),
         ) from exc
 
     # Verify every referenced path exists on disk and matches SHA-256 (if present)
@@ -237,8 +224,7 @@ def validate_inspection_bundle(
         ref_path = bundle_dir / entry.path
         if not ref_path.exists():
             raise ContractValidationError(
-                f"Referenced file missing for '{logical_name}': "
-                f"'{entry.path}'",
+                f"Referenced file missing for '{logical_name}': '{entry.path}'",
                 agent_fix_hint=(
                     f"Add the missing file at "
                     f"'{ref_path}' or remove the entry from "
@@ -381,9 +367,7 @@ def export_inspection_bundle(
     interval = DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES
     comparison_payload: dict[str, Any] = {
         "scenario_name": scenario_name,
-        "anchor_frames": [
-            i * interval for i in range(3)
-        ],  # [0, 48, 96]
+        "anchor_frames": [i * interval for i in range(3)],  # [0, 48, 96]
         "defect_regions": [],
     }
     if metrics_dict:
@@ -445,11 +429,13 @@ def list_bundle_contents(bundle_dir: Path) -> dict[str, Any]:
             if fp.is_file():
                 size = fp.stat().st_size
                 rel = fp.relative_to(bundle_dir).as_posix()
-                files.append({
-                    "path": rel,
-                    "size_bytes": size,
-                    "media_type": _guess_media_type(fp.name),
-                })
+                files.append(
+                    {
+                        "path": rel,
+                        "size_bytes": size,
+                        "media_type": _guess_media_type(fp.name),
+                    }
+                )
                 total_size += size
 
     return {

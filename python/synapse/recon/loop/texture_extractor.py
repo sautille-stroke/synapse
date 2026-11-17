@@ -67,13 +67,13 @@ def compute_tv_gradient(img: np.ndarray) -> np.ndarray:
 
     # Vertical (row) axis — forward differences along axis 0
     dy_fwd = alb_f64[:-1, :, :] - alb_f64[1:, :, :]
-    tv_grad[:-1, :, :] += dy_fwd   # positive at source
-    tv_grad[1:, :, :]  -= dy_fwd   # negative at destination
+    tv_grad[:-1, :, :] += dy_fwd  # positive at source
+    tv_grad[1:, :, :] -= dy_fwd  # negative at destination
 
     # Horizontal (column) axis — forward differences along axis 1
     dx_fwd = alb_f64[:, :-1, :] - alb_f64[:, 1:, :]
-    tv_grad[:, :-1, :] += dx_fwd   # positive at source
-    tv_grad[:, 1:, :]  -= dx_fwd   # negative at destination
+    tv_grad[:, :-1, :] += dx_fwd  # positive at source
+    tv_grad[:, 1:, :] -= dx_fwd  # negative at destination
 
     return tv_grad
 
@@ -121,10 +121,14 @@ def bake_uv_normal_map(
     for v in range(n_views):
         uv = uv_coords[v].astype(np.float64)
         tx = np.clip(
-            (uv[..., 0] * (resolution - 1)).astype(np.intp), 0, resolution - 1,
+            (uv[..., 0] * (resolution - 1)).astype(np.intp),
+            0,
+            resolution - 1,
         )
         ty = np.clip(
-            (uv[..., 1] * (resolution - 1)).astype(np.intp), 0, resolution - 1,
+            (uv[..., 1] * (resolution - 1)).astype(np.intp),
+            0,
+            resolution - 1,
         )
         wn = world_normals[v].astype(np.float64)
 
@@ -201,7 +205,7 @@ def _world_to_tangent_space(normals: np.ndarray) -> np.ndarray:
     nx_arr = n_base[..., 0:1]
 
     # Frisvad: when nz ~ -1 the frame degenerates; handle via sign flip.
-    neg_z = (nz < -0.9999)
+    neg_z = nz < -0.9999
     # For non-degenerate case: T = normalize((0 - nx*nz/(1+nz), 1 - ny*nz/(1+nz), -nz))
     # Simplified: direct cross-product construction
     tangent = np.empty_like(n_base)
@@ -302,7 +306,9 @@ def extract_and_pack_pbr_textures(
 
 
 def _tv_smooth(
-    img: np.ndarray, iterations: int = 5, weight: float = 0.1,
+    img: np.ndarray,
+    iterations: int = 5,
+    weight: float = 0.1,
 ) -> np.ndarray:
     """Apply total-variation smoothing (Chambolle-like denoising).
 

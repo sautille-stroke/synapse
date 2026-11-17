@@ -162,7 +162,9 @@ class TestMultiLoRAManager:
 
     @staticmethod
     def _wrap_linear(
-        torch: Any, linear: Any, name: str = "ffn.proj",
+        torch: Any,
+        linear: Any,
+        name: str = "ffn.proj",
     ) -> Any:
         """Wrap *linear* in a parent Module at the given dotted path."""
         parts = name.split(".")
@@ -254,7 +256,9 @@ class TestMultiLoRAManager:
         ids = np.zeros((2, 16, 16), dtype=np.uint32)
         mgr = MultiLoRAManager(lora_bundles=[])
         mask = mgr.build_spatial_lora_masks(
-            ids, target_entity_ids={1}, spatial_block=8,
+            ids,
+            target_entity_ids={1},
+            spatial_block=8,
         )
         assert mask.shape == (2, 2, 2)
         assert mask.dtype == bool
@@ -265,7 +269,9 @@ class TestMultiLoRAManager:
         ids[0, :, 8:] = 42  # right half is entity 42
         mgr = MultiLoRAManager(lora_bundles=[])
         mask = mgr.build_spatial_lora_masks(
-            ids, target_entity_ids={42}, spatial_block=8,
+            ids,
+            target_entity_ids={42},
+            spatial_block=8,
         )
         # mask shape: [1, 1, 2]
         assert mask[0, 0, 0] is np.bool_(False)
@@ -276,7 +282,9 @@ class TestMultiLoRAManager:
         ids = np.full((1, 8, 8), fill_value=5, dtype=np.uint32)
         mgr = MultiLoRAManager(lora_bundles=[])
         fg = mgr.build_spatial_lora_masks(
-            ids, target_entity_ids={5}, spatial_block=8,
+            ids,
+            target_entity_ids={5},
+            spatial_block=8,
         )
         bg = ~fg
         assert fg[0, 0, 0] is np.bool_(True)
@@ -289,7 +297,9 @@ class TestMultiLoRAManager:
         ids[0, :5, :7] = 7  # 35 pixels of entity 7
         mgr = MultiLoRAManager(lora_bundles=[])
         mask = mgr.build_spatial_lora_masks(
-            ids, target_entity_ids={7}, spatial_block=8,
+            ids,
+            target_entity_ids={7},
+            spatial_block=8,
         )
         assert mask[0, 0, 0] is np.bool_(True)
 
@@ -408,7 +418,9 @@ class TestOrthogonalization:
         b = np.array([[2.0, 0.0], [0.0, 0.0]])
 
         result = MultiLoRAManager.orthogonalize_conflicting_loras(
-            a, b, threshold=0.25,
+            a,
+            b,
+            threshold=0.25,
         )
         assert np.linalg.norm(result) < 1e-10
 
@@ -418,7 +430,9 @@ class TestOrthogonalization:
         b = np.array([[0.0, 1.0], [0.0, 0.0]])
 
         result = MultiLoRAManager.orthogonalize_conflicting_loras(
-            a, b, threshold=0.25,
+            a,
+            b,
+            threshold=0.25,
         )
         np.testing.assert_allclose(result, b, atol=1e-10)
 
@@ -430,7 +444,9 @@ class TestOrthogonalization:
 
         # Use a very high threshold to ensure no projection
         result = MultiLoRAManager.orthogonalize_conflicting_loras(
-            a, b, threshold=0.99,
+            a,
+            b,
+            threshold=0.99,
         )
         np.testing.assert_allclose(result, b, atol=1e-10)
 
@@ -441,18 +457,16 @@ class TestOrthogonalization:
 
         a_flat = a.ravel()
         b_flat = b.ravel()
-        cos_before = abs(
-            np.dot(a_flat, b_flat)
-            / (np.linalg.norm(a_flat) * np.linalg.norm(b_flat))
-        )
+        cos_before = abs(np.dot(a_flat, b_flat) / (np.linalg.norm(a_flat) * np.linalg.norm(b_flat)))
 
         result = MultiLoRAManager.orthogonalize_conflicting_loras(
-            a, b, threshold=0.25,
+            a,
+            b,
+            threshold=0.25,
         )
         r_flat = result.ravel()
         cos_after = abs(
-            np.dot(a_flat, r_flat)
-            / (np.linalg.norm(a_flat) * np.linalg.norm(r_flat) + 1e-12)
+            np.dot(a_flat, r_flat) / (np.linalg.norm(a_flat) * np.linalg.norm(r_flat) + 1e-12)
         )
         assert cos_after < cos_before
 
@@ -570,8 +584,7 @@ class TestPatcher:
         # Background tokens (2, 3) should have strictly zero delta
         bg_diff = (out_after[2:] - out_before[2:]).abs().max().item()
         assert bg_diff < 1e-6, (
-            f"Background (masked-out) tokens must have zero delta, "
-            f"got max diff {bg_diff}"
+            f"Background (masked-out) tokens must have zero delta, got max diff {bg_diff}"
         )
 
         hook.detach(linear)

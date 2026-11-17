@@ -42,15 +42,33 @@ if TYPE_CHECKING:
 _MIN_CAMERAS = 2
 _MIN_ANGULAR_SPAN_DEG = 15.0
 
-_CORNERS = np.array([
-    [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-    [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
-], dtype=np.int32)
+_CORNERS = np.array(
+    [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+        [1, 0, 1],
+        [1, 1, 1],
+        [0, 1, 1],
+    ],
+    dtype=np.int32,
+)
 
 _EDGE_CORNERS = [
-    (0, 1), (1, 2), (2, 3), (3, 0),
-    (4, 5), (5, 6), (6, 7), (7, 4),
-    (0, 4), (1, 5), (2, 6), (3, 7),
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 0),
+    (4, 5),
+    (5, 6),
+    (6, 7),
+    (7, 4),
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7),
 ]
 
 
@@ -89,12 +107,20 @@ def _marching_cubes(
     # share the same sign (~400x speedup for sparse grids).
     inside = volume < isovalue
     active = np.zeros((max(nx - 1, 0), max(ny - 1, 0), max(nz - 1, 0)), dtype=bool)
-    for di, dj, dk in [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
-                        (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]:
-        active |= (inside[di:di + active.shape[0],
-                          dj:dj + active.shape[1],
-                          dk:dk + active.shape[2]]
-                   != inside[:active.shape[0], :active.shape[1], :active.shape[2]])
+    for di, dj, dk in [
+        (0, 0, 0),
+        (1, 0, 0),
+        (1, 1, 0),
+        (0, 1, 0),
+        (0, 0, 1),
+        (1, 0, 1),
+        (1, 1, 1),
+        (0, 1, 1),
+    ]:
+        active |= (
+            inside[di : di + active.shape[0], dj : dj + active.shape[1], dk : dk + active.shape[2]]
+            != inside[: active.shape[0], : active.shape[1], : active.shape[2]]
+        )
     active_cells = np.argwhere(active)
 
     for cell in active_cells:
@@ -112,7 +138,7 @@ def _marching_cubes(
         cubeindex = 0
         for k in range(8):
             if c_vals[k] < isovalue:
-                cubeindex |= (1 << k)
+                cubeindex |= 1 << k
 
         if cubeindex == 0 or cubeindex == 255:
             continue
@@ -295,9 +321,7 @@ class MultiViewInitializer:
             # variance on a 256-bin histogram.
             hist_bins = 256
             g_uint8 = np.clip(g * 255.0, 0, 255).astype(np.uint8)
-            hist = np.bincount(g_uint8.ravel(), minlength=hist_bins).astype(
-                np.float64
-            )
+            hist = np.bincount(g_uint8.ravel(), minlength=hist_bins).astype(np.float64)
             total = g_uint8.size
             if total == 0:
                 continue
@@ -580,7 +604,11 @@ class MultiViewInitializer:
         tsdf = np.pad(tsdf, pad_width=1, mode="constant", constant_values=1.0)
 
         # Origin for MC: shift back by one voxel (padding) + half voxel (centre).
-        mc_origin = origin - np.array([1.0, 1.0, 1.0]) * effective_voxel + np.array([0.5, 0.5, 0.5]) * effective_voxel
+        mc_origin = (
+            origin
+            - np.array([1.0, 1.0, 1.0]) * effective_voxel
+            + np.array([0.5, 0.5, 0.5]) * effective_voxel
+        )
 
         verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
 
@@ -677,7 +705,11 @@ class MultiViewInitializer:
         sdf = np.pad(sdf, pad_width=1, mode="constant", constant_values=1.0)
 
         # Origin for MC: shift back by one voxel (padding) + half voxel (centre).
-        mc_origin = origin - np.array([1.0, 1.0, 1.0]) * effective_voxel + np.array([0.5, 0.5, 0.5]) * effective_voxel
+        mc_origin = (
+            origin
+            - np.array([1.0, 1.0, 1.0]) * effective_voxel
+            + np.array([0.5, 0.5, 0.5]) * effective_voxel
+        )
 
         verts, faces = _marching_cubes(sdf, effective_voxel, mc_origin, isovalue=0.0)
 

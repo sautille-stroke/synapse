@@ -63,7 +63,7 @@ def _cmd_rsi_verify(
             "metrics are FORBIDDEN.",
             agent_fix_hint=(
                 "Pass '--physics-metrics '{\"silhouette_iou\": 0.95, "
-                "\"depth_rmse_m\": 0.01, "
+                '"depth_rmse_m": 0.01, '
                 "\"normal_angular_error_deg\": 5.0}'' or a JSON file path."
             ),
         )
@@ -71,9 +71,7 @@ def _cmd_rsi_verify(
     metrics_path = Path(metrics_raw)
     try:
         if metrics_path.is_file():
-            physics_metrics = json.loads(
-                metrics_path.read_text(encoding="utf-8")
-            )
+            physics_metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
         else:
             physics_metrics = json.loads(metrics_raw)
     except json.JSONDecodeError as exc:
@@ -117,11 +115,7 @@ def _cmd_rsi_build_pairs(
     if raw_text.startswith("["):
         items = json.loads(raw_text)
     else:
-        items = [
-            json.loads(line)
-            for line in raw_text.splitlines()
-            if line.strip()
-        ]
+        items = [json.loads(line) for line in raw_text.splitlines() if line.strip()]
 
     builder = PreferenceDatasetBuilder()
     builder.add_golden_pairs([PreferencePair(**item) for item in items])
@@ -132,15 +126,9 @@ def _cmd_rsi_build_pairs(
         self_items = (
             json.loads(self_text)
             if self_text.startswith("[")
-            else [
-                json.loads(line)
-                for line in self_text.splitlines()
-                if line.strip()
-            ]
+            else [json.loads(line) for line in self_text.splitlines() if line.strip()]
         )
-        builder.add_self_pairs(
-            [PreferencePair(**item) for item in self_items]
-        )
+        builder.add_self_pairs([PreferencePair(**item) for item in self_items])
 
     pairs = builder.build_pairs()
 
@@ -160,9 +148,7 @@ def _cmd_rsi_build_pairs(
 
     return {
         "total": len(pairs),
-        "golden_count": sum(
-            1 for p in pairs if p.is_golden
-        ),
+        "golden_count": sum(1 for p in pairs if p.is_golden),
         "output": str(output_path) if output_path else None,
     }
 
@@ -187,16 +173,14 @@ def _cmd_rsi_gate_promote(
             raise AssetNotFoundError(
                 f"Baseline report file not found: {baseline_report_raw!r}",
                 agent_fix_hint=(
-                    f"Ensure '{baseline_report_raw}' exists and is a valid "
-                    "BenchReport JSON file."
+                    f"Ensure '{baseline_report_raw}' exists and is a valid BenchReport JSON file."
                 ),
             )
         if not cand_p.is_file():
             raise AssetNotFoundError(
                 f"Candidate report file not found: {candidate_report_raw!r}",
                 agent_fix_hint=(
-                    f"Ensure '{candidate_report_raw}' exists and is a valid "
-                    "BenchReport JSON file."
+                    f"Ensure '{candidate_report_raw}' exists and is a valid BenchReport JSON file."
                 ),
             )
         baseline = BenchReport.model_validate_json(base_p.read_text(encoding="utf-8"))
@@ -323,15 +307,20 @@ def register_rsi_subparser(
         parents=parents,
     )
     rsi_sample.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="Random seed (default: 42)",
     )
     rsi_sample.add_argument(
-        "--num-scenarios", type=int, default=10,
+        "--num-scenarios",
+        type=int,
+        default=10,
         help="Number of scenarios to sample (default: 10)",
     )
     rsi_sample.add_argument(
-        "--scores", default=None,
+        "--scores",
+        default=None,
         help="JSON string or path to JSON file with factor scores for curriculum weighting",
     )
 
@@ -341,15 +330,19 @@ def register_rsi_subparser(
         parents=parents,
     )
     rsi_verify.add_argument(
-        "--sample-id", default="unknown",
+        "--sample-id",
+        default="unknown",
         help="Sample identifier (default: unknown)",
     )
     rsi_verify.add_argument(
-        "--physics-metrics", default=None,
+        "--physics-metrics",
+        default=None,
         help="JSON string or file path with measured physics metrics",
     )
     rsi_verify.add_argument(
-        "--prm-score", type=float, default=0.8,
+        "--prm-score",
+        type=float,
+        default=0.8,
         help="PRM neural score in [0, 1] (default: 0.8)",
     )
 
@@ -359,15 +352,18 @@ def register_rsi_subparser(
         parents=parents,
     )
     rsi_build.add_argument(
-        "--golden-file", default=None,
+        "--golden-file",
+        default=None,
         help="Path to JSON/JSONL file with L0 golden preference pairs",
     )
     rsi_build.add_argument(
-        "--self-file", default=None,
+        "--self-file",
+        default=None,
         help="Optional path to JSON/JSONL file with self-play pairs",
     )
     rsi_build.add_argument(
-        "--output", default=None,
+        "--output",
+        default=None,
         help="Path to write built preference pairs JSON output",
     )
 
@@ -377,59 +373,82 @@ def register_rsi_subparser(
         parents=parents,
     )
     rsi_gate.add_argument(
-        "--baseline-overall", type=float, default=None,
+        "--baseline-overall",
+        type=float,
+        default=None,
         help="Baseline overall score",
     )
     rsi_gate.add_argument(
-        "--candidate-overall", type=float, default=None,
+        "--candidate-overall",
+        type=float,
+        default=None,
         help="Candidate overall score",
     )
     rsi_gate.add_argument(
-        "--baseline-geom", type=float, default=None,
+        "--baseline-geom",
+        type=float,
+        default=None,
         help="Baseline geometry score",
     )
     rsi_gate.add_argument(
-        "--candidate-geom", type=float, default=None,
+        "--candidate-geom",
+        type=float,
+        default=None,
         help="Candidate geometry score",
     )
     rsi_gate.add_argument(
-        "--baseline-temporal", type=float, default=None,
+        "--baseline-temporal",
+        type=float,
+        default=None,
         help="Baseline temporal score",
     )
     rsi_gate.add_argument(
-        "--candidate-temporal", type=float, default=None,
+        "--candidate-temporal",
+        type=float,
+        default=None,
         help="Candidate temporal score",
     )
     rsi_gate.add_argument(
-        "--baseline-report", default=None,
+        "--baseline-report",
+        default=None,
         help="Path to baseline BenchReport JSON file",
     )
     rsi_gate.add_argument(
-        "--candidate-report", default=None,
+        "--candidate-report",
+        default=None,
         help="Path to candidate BenchReport JSON file",
     )
     rsi_gate.add_argument(
-        "--scenarios", default=None,
+        "--scenarios",
+        default=None,
         help="Optional JSON string or path to JSON file with scenario scores list",
     )
     rsi_gate.add_argument(
-        "--baseline-scenarios", default=None,
+        "--baseline-scenarios",
+        default=None,
         help="Optional JSON string or path to JSON file with baseline scenario scores list",
     )
     rsi_gate.add_argument(
-        "--candidate-scenarios", default=None,
+        "--candidate-scenarios",
+        default=None,
         help="Optional JSON string or path to JSON file with candidate scenario scores list",
     )
     rsi_gate.add_argument(
-        "--strict", action="store_true", default=False,
+        "--strict",
+        action="store_true",
+        default=False,
         help="Fail closed with exit code 40 if candidate is not promoted",
     )
     rsi_gate.add_argument(
-        "--epsilon-min", type=float, default=None,
+        "--epsilon-min",
+        type=float,
+        default=None,
         help="Minimum improvement epsilon threshold for promotion",
     )
     rsi_gate.add_argument(
-        "--noise-tolerance", type=float, default=None,
+        "--noise-tolerance",
+        type=float,
+        default=None,
         help="Noise tolerance for promotion gate comparison",
     )
     return cast(argparse.ArgumentParser, rsi_parser)
@@ -445,33 +464,38 @@ def dispatch_rsi(
     rsi_cmd = getattr(parsed, "rsi_command", None)
     if rsi_cmd == "sample-curriculum":
         return _run_with_json_mode(
-            _cmd_rsi_sample_curriculum, parsed,
-            json_mode, trace_ctx,
+            _cmd_rsi_sample_curriculum,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif rsi_cmd == "verify":
         return _run_with_json_mode(
-            _cmd_rsi_verify, parsed,
-            json_mode, trace_ctx,
+            _cmd_rsi_verify,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif rsi_cmd == "build-pairs":
         return _run_with_json_mode(
-            _cmd_rsi_build_pairs, parsed,
-            json_mode, trace_ctx,
+            _cmd_rsi_build_pairs,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif rsi_cmd == "gate-promote":
         return _run_with_json_mode(
-            _cmd_rsi_gate_promote, parsed,
-            json_mode, trace_ctx,
+            _cmd_rsi_gate_promote,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         if json_mode:
             err = SynapseError(
-                "Missing rsi sub-command "
-                "(sample-curriculum|verify|"
-                "build-pairs|gate-promote)",
+                "Missing rsi sub-command (sample-curriculum|verify|build-pairs|gate-promote)",
                 ExitCode.CONTRACT_ERROR,
-                "Use 'synapse rsi <sub-command>"
-                " --help'.",
+                "Use 'synapse rsi <sub-command> --help'.",
             )
             json.dump(
                 err.to_json_dict(trace_ctx.trace_id),

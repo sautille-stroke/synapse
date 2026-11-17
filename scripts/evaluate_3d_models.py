@@ -94,8 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         "--backend",
         default="native",
         choices=["native", "python"],
-        help="Geometry gate backend (default: native). "
-             "'python' is for Oracle parity testing only.",
+        help="Geometry gate backend (default: native). 'python' is for Oracle parity testing only.",
     )
 
     args = parser.parse_args(argv)

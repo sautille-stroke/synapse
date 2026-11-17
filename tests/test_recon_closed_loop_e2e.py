@@ -205,7 +205,19 @@ def test_recon_closed_loop_cli_json() -> None:
         # T=5 satisfies Wan 2.1 T=4k+1 phase lock
         np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
         np.save(normals_path, np.full((5, 32, 32, 3), 0.0, dtype=np.float32))
-        rc = main_synapse(["--json", "recon", "closed-loop", "--video", str(video_path), "--normals", str(normals_path), "--max-iterations", "2"])
+        rc = main_synapse(
+            [
+                "--json",
+                "recon",
+                "closed-loop",
+                "--video",
+                str(video_path),
+                "--normals",
+                str(normals_path),
+                "--max-iterations",
+                "2",
+            ]
+        )
         assert rc == 0
 
 
@@ -219,7 +231,18 @@ def test_recon_closed_loop_cli_human() -> None:
         # T=5 satisfies Wan 2.1 T=4k+1 phase lock
         np.save(video_path, np.full((5, 32, 32, 3), 0.5, dtype=np.float32))
         np.save(normals_path, np.full((5, 32, 32, 3), 0.0, dtype=np.float32))
-        rc = main_synapse(["recon", "closed-loop", "--video", str(video_path), "--normals", str(normals_path), "--max-iterations", "2"])
+        rc = main_synapse(
+            [
+                "recon",
+                "closed-loop",
+                "--video",
+                str(video_path),
+                "--normals",
+                str(normals_path),
+                "--max-iterations",
+                "2",
+            ]
+        )
         assert rc == 0
 
 
@@ -281,8 +304,8 @@ def test_closed_loop_non_4k_plus_1_frame_count() -> None:
     # We test only the trimming logic via the internal step, so we
     # verify the trimmed arrays have consistent lengths.
     n_target = target_frames.shape[0]
-    normals_trimmed = normals[:min(n_target, len(normals))]
-    uv_trimmed = uv_maps[:min(n_target, len(uv_maps))]
+    normals_trimmed = normals[: min(n_target, len(normals))]
+    uv_trimmed = uv_maps[: min(n_target, len(uv_maps))]
     n_clamped = min(n_target, len(normals_trimmed), len(uv_trimmed))
 
     assert n_clamped == t_avail, f"Expected {t_avail}, got {n_clamped}"

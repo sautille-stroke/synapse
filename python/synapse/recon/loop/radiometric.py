@@ -102,9 +102,7 @@ def acescg_to_linear(acescg: np.ndarray) -> np.ndarray:
         Array of the same shape in linear sRGB colour space.
     """
     return np.asarray(
-        np.einsum("...c,rc->...r", acescg.astype(np.float64), _AP1_TO_SRGB).astype(
-            acescg.dtype
-        )
+        np.einsum("...c,rc->...r", acescg.astype(np.float64), _AP1_TO_SRGB).astype(acescg.dtype)
     )
 
 

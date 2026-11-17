@@ -64,7 +64,8 @@ def _look_at(
     # Zenith / nadir singularity guard
     if abs(float(np.dot(forward, up_norm))) > 0.9999:
         up_fallback = np.array(
-            [0.0, 0.0, -1.0 if forward[1] > 0 else 1.0], dtype=np.float64,
+            [0.0, 0.0, -1.0 if forward[1] > 0 else 1.0],
+            dtype=np.float64,
         )
         right = np.cross(forward, up_fallback)
     else:
@@ -173,9 +174,7 @@ def _generate_orbit(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
 
         eye = target_pt + np.array([x, y, z])
-        cameras.append(
-            _make_camera(eye, target_pt, width, height, fov_deg)
-        )
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
 
     return cameras
 
@@ -199,9 +198,7 @@ def _generate_tracking(
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
         eye = start_pt + t * (end_pt - start_pt)
-        cameras.append(
-            _make_camera(eye, target_pt, width, height, fov_deg)
-        )
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
 
     return cameras
 
@@ -224,19 +221,19 @@ def _generate_dolly(
     az_rad = math.radians(azimuth_deg)
     cameras: list[CameraParams] = []
 
-    direction = np.array([
-        math.cos(el_rad) * math.sin(az_rad),
-        math.sin(el_rad),
-        math.cos(el_rad) * math.cos(az_rad),
-    ])
+    direction = np.array(
+        [
+            math.cos(el_rad) * math.sin(az_rad),
+            math.sin(el_rad),
+            math.cos(el_rad) * math.cos(az_rad),
+        ]
+    )
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
         dist = start_distance + t * (end_distance - start_distance)
         eye = target_pt + direction * dist
-        cameras.append(
-            _make_camera(eye, target_pt, width, height, fov_deg)
-        )
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
 
     return cameras
 
@@ -258,15 +255,15 @@ def _generate_static(
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
-        drift = np.array([
-            drift_amplitude * math.sin(2 * math.pi * t),
-            drift_amplitude * 0.3 * math.sin(4 * math.pi * t),
-            0.0,
-        ])
-        eye = pos + drift
-        cameras.append(
-            _make_camera(eye, target_pt, width, height, fov_deg)
+        drift = np.array(
+            [
+                drift_amplitude * math.sin(2 * math.pi * t),
+                drift_amplitude * 0.3 * math.sin(4 * math.pi * t),
+                0.0,
+            ]
         )
+        eye = pos + drift
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
 
     return cameras
 
@@ -300,9 +297,7 @@ def _generate_arc(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
 
         eye = target_pt + np.array([x, y, z])
-        cameras.append(
-            _make_camera(eye, target_pt, width, height, fov_deg)
-        )
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
 
     return cameras
 
@@ -326,14 +321,14 @@ def _generate_pan(
         pan_deg = pan_start_deg + t * (pan_end_deg - pan_start_deg)
         pan_rad = math.radians(pan_deg)
 
-        target = pos + np.array([
-            math.sin(pan_rad) * 5.0,
-            0.0,
-            -math.cos(pan_rad) * 5.0,
-        ])
-        cameras.append(
-            _make_camera(pos, target, width, height, fov_deg)
+        target = pos + np.array(
+            [
+                math.sin(pan_rad) * 5.0,
+                0.0,
+                -math.cos(pan_rad) * 5.0,
+            ]
         )
+        cameras.append(_make_camera(pos, target, width, height, fov_deg))
 
     return cameras
 
@@ -392,9 +387,8 @@ def generate_cameras(
     # Derive azimuth_range_deg from start/end if both present
     if "azimuth_start_deg" in params and "azimuth_end_deg" in params:
         if "azimuth_range_deg" not in params:
-            params["azimuth_range_deg"] = (
-                float(params["azimuth_end_deg"])
-                - float(params["azimuth_start_deg"])
+            params["azimuth_range_deg"] = float(params["azimuth_end_deg"]) - float(
+                params["azimuth_start_deg"]
             )
 
     generator = _GENERATORS.get(traj_type)

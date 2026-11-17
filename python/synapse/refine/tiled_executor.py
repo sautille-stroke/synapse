@@ -36,9 +36,7 @@ class TiledBypassExecutor:
         if tile_size <= 0:
             raise ValueError(f"tile_size must be positive, got {tile_size}")
         if not 0.0 <= health_threshold <= 1.0:
-            raise ValueError(
-                f"health_threshold must be in [0, 1], got {health_threshold}"
-            )
+            raise ValueError(f"health_threshold must be in [0, 1], got {health_threshold}")
         self._tile_size = tile_size
         self._health_threshold = health_threshold
 
@@ -78,9 +76,7 @@ class TiledBypassExecutor:
             refinement and the count of healthy ROIs that were bypassed.
         """
         if frames.ndim != 4 or frames.shape[-1] != 3:
-            raise ValueError(
-                f"frames must have shape (T, H, W, 3), got {frames.shape}"
-            )
+            raise ValueError(f"frames must have shape (T, H, W, 3), got {frames.shape}")
 
         defective: list[RefinementROI] = []
         bypass_count = 0

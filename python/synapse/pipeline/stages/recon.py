@@ -60,7 +60,8 @@ def handle_video_to_3d_invert(
 
     # Save mesh
     mesh_path = manifest.outputs.get(
-        "mesh", str(Path("output") / "reconstructed_mesh.npy"),
+        "mesh",
+        str(Path("output") / "reconstructed_mesh.npy"),
     )
     p_mesh = Path(mesh_path)
     p_mesh.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +85,8 @@ def handle_video_to_3d_invert(
 
     # Save trajectory
     traj_path = manifest.outputs.get(
-        "trajectory", str(Path("output") / "camera_trajectory.json"),
+        "trajectory",
+        str(Path("output") / "camera_trajectory.json"),
     )
     p_traj = Path(traj_path)
     p_traj.parent.mkdir(parents=True, exist_ok=True)
@@ -101,7 +103,8 @@ def handle_video_to_3d_invert(
             mesh=result.mesh,
         )
         albedo_path = manifest.outputs.get(
-            "albedo", str(Path("output") / "albedo.npy"),
+            "albedo",
+            str(Path("output") / "albedo.npy"),
         )
         p_albedo = Path(albedo_path)
         p_albedo.parent.mkdir(parents=True, exist_ok=True)
@@ -271,15 +274,12 @@ def handle_delight_albedo(
 
     albedo = delight_multiview_albedo(
         frames=frames,
-        cameras=(
-            result.camera_trajectory.extrinsics
-            if result.camera_trajectory
-            else []
-        ),
+        cameras=(result.camera_trajectory.extrinsics if result.camera_trajectory else []),
         mesh=result.mesh,
     )
     albedo_path = manifest.outputs.get(
-        "albedo", str(Path("output") / "delighted_albedo.npy"),
+        "albedo",
+        str(Path("output") / "delighted_albedo.npy"),
     )
     p_albedo = Path(albedo_path)
     # Normalize suffix — np.save auto-appends .npy if missing, so ensure

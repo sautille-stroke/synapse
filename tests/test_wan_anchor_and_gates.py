@@ -38,8 +38,14 @@ from synapse.metrics.image_quality import validate_output_non_degenerate
 def _make_dummy_frame(idx: int, h: int = 32, w: int = 32) -> FGPPFrame:
     """Create a dummy FGPPFrame."""
     cam = CameraParams(
-        fx=32.0, fy=32.0, cx=16.0, cy=16.0,
-        width=w, height=h, z_near=0.1, z_far=100.0,
+        fx=32.0,
+        fy=32.0,
+        cx=16.0,
+        cy=16.0,
+        width=w,
+        height=h,
+        z_near=0.1,
+        z_far=100.0,
     )
     return FGPPFrame(
         camera=cam,
@@ -195,9 +201,7 @@ class _CaptureHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length)
         _CaptureHandler.captured_body = json.loads(body.decode("utf-8"))
         # Store headers with lowercase keys for case-insensitive lookup
-        _CaptureHandler.captured_headers = {
-            k.lower(): v for k, v in self.headers.items()
-        }
+        _CaptureHandler.captured_headers = {k.lower(): v for k, v in self.headers.items()}
 
         # Respond with valid frames JSON
         rng = np.random.default_rng(42)
@@ -234,16 +238,24 @@ class TestFoundaryHttpTransportSerialization:
             )
 
             # Build a payload with a real control_tensor
-            control = np.random.default_rng(0).random(
-                (7, 2, 8, 8), dtype=np.float64,
-            ).astype(np.float32)
+            control = (
+                np.random.default_rng(0)
+                .random(
+                    (7, 2, 8, 8),
+                    dtype=np.float64,
+                )
+                .astype(np.float32)
+            )
             payload = PreparedConditionPayload(
                 control_tensor=control,
                 text_prompt="test prompt",
                 extra={"anchor_interval": 48},
             )
             config = VideoGenerationConfig(
-                num_frames=2, width=8, height=8, seed=42,
+                num_frames=2,
+                width=8,
+                height=8,
+                seed=42,
             )
 
             frames = transport.submit(payload, config)

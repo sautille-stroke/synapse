@@ -33,9 +33,7 @@ class FoundaryRequest(BaseModel):
         params: Service-specific hyper-parameters.
     """
 
-    service: Literal[
-        "trellis", "hunyuan3d", "sam2", "gvhmr", "visual_jev"
-    ]
+    service: Literal["trellis", "hunyuan3d", "sam2", "gvhmr", "visual_jev"]
     job_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
@@ -220,16 +218,21 @@ class HttpFoundaryTransport(FoundaryTransport):
             except urllib.error.HTTPError as exc:
                 last_error = exc
                 if exc.code in (502, 503, 504) and attempt < self._max_retries - 1:
-                    time.sleep(0.5 * (2 ** attempt))
+                    time.sleep(0.5 * (2**attempt))
                     continue
                 raise BackendUnavailableError(
                     f"Foundary service '{request.service}' HTTP {exc.code}: {exc.reason}",
                     agent_fix_hint="Check foundary container logs and GPU health.",
                 ) from exc
-            except (urllib.error.URLError, TimeoutError, http.client.HTTPException, json.JSONDecodeError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                http.client.HTTPException,
+                json.JSONDecodeError,
+            ) as exc:
                 last_error = exc
                 if attempt < self._max_retries - 1:
-                    time.sleep(0.5 * (2 ** attempt))
+                    time.sleep(0.5 * (2**attempt))
                     continue
                 raise BackendUnavailableError(
                     f"Cannot reach foundary service at {url}: {exc}",

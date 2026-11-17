@@ -42,29 +42,35 @@ from synapse.recon.geometry import (
 @pytest.fixture()
 def tetrahedron() -> None:
     """Regular tetrahedron — closed, watertight, 2-manifold, zero defects."""
-    verts = np.array([
-        [1.0, 1.0, 1.0],
-        [-1.0, -1.0, 1.0],
-        [-1.0, 1.0, -1.0],
-        [1.0, -1.0, -1.0],
-    ])
-    faces = np.array([
-        [0, 1, 2],
-        [0, 3, 1],
-        [0, 2, 3],
-        [1, 3, 2],
-    ])
+    verts = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+        ]
+    )
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [0, 3, 1],
+            [0, 2, 3],
+            [1, 3, 2],
+        ]
+    )
     return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
 def open_plane() -> None:
     """Single triangle — manifold but not watertight (boundary edges)."""
-    verts = np.array([
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-    ])
+    verts = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]
+    )
     faces = np.array([[0, 1, 2]])
     return verts, faces  # type: ignore[return-value]
 
@@ -72,11 +78,13 @@ def open_plane() -> None:
 @pytest.fixture()
 def needle_triangle() -> None:
     """Extremely thin needle triangle — should be flagged as degenerate."""
-    verts = np.array([
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.5, 1e-12, 0.0],  # Near-zero area
-    ])
+    verts = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1e-12, 0.0],  # Near-zero area
+        ]
+    )
     faces = np.array([[0, 1, 2]])
     return verts, faces  # type: ignore[return-value]
 
@@ -87,37 +95,45 @@ def bowtie_mesh() -> None:
 
     This is a non-manifold pinch point at vertex 2.
     """
-    verts = np.array([
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.5, 0.5, 0.0],  # shared pinch vertex
-        [0.0, 1.0, 0.0],
-        [1.0, 1.0, 0.0],
-    ])
-    faces = np.array([
-        [0, 1, 2],
-        [2, 3, 4],
-    ])
+    verts = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 0.5, 0.0],  # shared pinch vertex
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ]
+    )
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [2, 3, 4],
+        ]
+    )
     return verts, faces  # type: ignore[return-value]
 
 
 @pytest.fixture()
 def self_intersecting_mesh() -> None:
     """Two triangles that cross through each other in 3D space."""
-    verts = np.array([
-        # Triangle 0: lies in the XY plane
-        [-1.0, -1.0, 0.0],
-        [1.0, -1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        # Triangle 1: lies in the XZ plane, crossing through tri 0
-        [-1.0, 0.0, -1.0],
-        [1.0, 0.0, -1.0],
-        [0.0, 0.0, 1.0],
-    ])
-    faces = np.array([
-        [0, 1, 2],
-        [3, 4, 5],
-    ])
+    verts = np.array(
+        [
+            # Triangle 0: lies in the XY plane
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            # Triangle 1: lies in the XZ plane, crossing through tri 0
+            [-1.0, 0.0, -1.0],
+            [1.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [3, 4, 5],
+        ]
+    )
     return verts, faces  # type: ignore[return-value]
 
 
@@ -125,24 +141,30 @@ def self_intersecting_mesh() -> None:
 def mesh_with_debris() -> None:
     """Tetrahedron + tiny floating debris cube far away."""
     # Main body: tetrahedron
-    main_verts = np.array([
-        [1.0, 1.0, 1.0],
-        [-1.0, -1.0, 1.0],
-        [-1.0, 1.0, -1.0],
-        [1.0, -1.0, -1.0],
-    ])
-    main_faces = np.array([
-        [0, 1, 2],
-        [0, 3, 1],
-        [0, 2, 3],
-        [1, 3, 2],
-    ])
+    main_verts = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+        ]
+    )
+    main_faces = np.array(
+        [
+            [0, 1, 2],
+            [0, 3, 1],
+            [0, 2, 3],
+            [1, 3, 2],
+        ]
+    )
     # Debris: single isolated triangle far away
-    debris_verts = np.array([
-        [100.0, 100.0, 100.0],
-        [100.1, 100.0, 100.0],
-        [100.0, 100.1, 100.0],
-    ])
+    debris_verts = np.array(
+        [
+            [100.0, 100.0, 100.0],
+            [100.1, 100.0, 100.0],
+            [100.0, 100.1, 100.0],
+        ]
+    )
     debris_faces = np.array([[4, 5, 6]])
 
     verts = np.vstack([main_verts, debris_verts])
@@ -171,25 +193,32 @@ class TestCheckDegenerateFaces:
 
     def test_zero_area_face(self) -> None:
         """Three collinear points — zero area face."""
-        verts = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [2.0, 0.0, 0.0],
-        ])
+        verts = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ]
+        )
         faces = np.array([[0, 1, 2]])
         result = check_degenerate_faces(verts, faces)
         assert len(result) == 1
 
     def test_high_aspect_ratio(self) -> None:
         """Very elongated but nonzero-area triangle."""
-        verts = np.array([
-            [0.0, 0.0, 0.0],
-            [1000.0, 0.0, 0.0],
-            [500.0, 0.01, 0.0],
-        ])
+        verts = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1000.0, 0.0, 0.0],
+                [500.0, 0.01, 0.0],
+            ]
+        )
         faces = np.array([[0, 1, 2]])
         result = check_degenerate_faces(
-            verts, faces, min_area=1e-10, max_aspect_ratio=50.0,
+            verts,
+            faces,
+            min_area=1e-10,
+            max_aspect_ratio=50.0,
         )
         assert len(result) == 1
 
@@ -201,12 +230,14 @@ class TestCheckDegenerateFaces:
 
     def test_quad_degenerate_second_triangle(self) -> None:
         """Quad where v0,v1,v2 form a healthy sub-tri but v0,v2,v3 is a degenerate needle."""
-        verts = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [2.0, 2.0, 0.0],
-        ])
+        verts = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [2.0, 2.0, 0.0],
+            ]
+        )
         # Make v3 nearly collinear with v0→v2 → degenerate needle
         verts[3] = verts[0] + (verts[2] - verts[0]) * 2.0 + np.array([0, 1e-14, 0])
         faces = np.array([[0, 1, 2, 3]])
@@ -236,16 +267,20 @@ class TestCheckSelfIntersections:
 
     def test_adjacent_faces_not_flagged(self) -> None:
         """Two triangles sharing an edge should NOT be flagged."""
-        verts = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 1.0, 0.0],
-            [0.5, -1.0, 0.0],
-        ])
-        faces = np.array([
-            [0, 1, 2],
-            [0, 3, 1],
-        ])
+        verts = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, -1.0, 0.0],
+            ]
+        )
+        faces = np.array(
+            [
+                [0, 1, 2],
+                [0, 3, 1],
+            ]
+        )
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) == 0
 
@@ -257,18 +292,20 @@ class TestCheckSelfIntersections:
 
     def test_quad_self_intersection_second_triangle(self) -> None:
         """Two quads: first sub-triangles don't intersect but second sub-triangles do."""
-        verts = np.array([
-            # Quad A: XY plane
-            [-2.0, -1.0, 0.0],   # 0
-            [2.0, -1.0, 0.0],    # 1
-            [2.0, 1.0, 0.0],     # 2
-            [-2.0, 1.0, 0.0],    # 3
-            # Quad B: crosses quad A in XZ plane
-            [0.0, 0.0, -2.0],    # 4
-            [10.0, 0.0, -2.0],   # 5 — far right
-            [10.0, 0.0, 2.0],    # 6 — far right
-            [0.0, 0.0, 2.0],     # 7
-        ])
+        verts = np.array(
+            [
+                # Quad A: XY plane
+                [-2.0, -1.0, 0.0],  # 0
+                [2.0, -1.0, 0.0],  # 1
+                [2.0, 1.0, 0.0],  # 2
+                [-2.0, 1.0, 0.0],  # 3
+                # Quad B: crosses quad A in XZ plane
+                [0.0, 0.0, -2.0],  # 4
+                [10.0, 0.0, -2.0],  # 5 — far right
+                [10.0, 0.0, 2.0],  # 6 — far right
+                [0.0, 0.0, 2.0],  # 7
+            ]
+        )
         faces = np.array([[0, 1, 2, 3], [4, 5, 6, 7]])
         pairs = check_self_intersections(verts, faces)
         assert len(pairs) >= 1
@@ -299,11 +336,13 @@ class TestFindConnectedComponents:
 
     def test_isolated_triangles(self) -> None:
         """Three completely disconnected triangles."""
-        faces = np.array([
-            [0, 1, 2],
-            [3, 4, 5],
-            [6, 7, 8],
-        ])
+        faces = np.array(
+            [
+                [0, 1, 2],
+                [3, 4, 5],
+                [6, 7, 8],
+            ]
+        )
         components = find_connected_components(faces)
         assert len(components) == 3
 
@@ -330,7 +369,9 @@ class TestPruneFloatingIslands:
     def test_debris_removed(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         clean_v, clean_f, mask = prune_floating_islands(
-            verts, faces, min_face_ratio=0.25,
+            verts,
+            faces,
+            min_face_ratio=0.25,
         )
         # Debris (1 face out of 5 = 20%) < 25% threshold → pruned
         assert len(clean_f) == 4
@@ -339,7 +380,9 @@ class TestPruneFloatingIslands:
     def test_vertex_remapping(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         clean_v, clean_f, _ = prune_floating_islands(
-            verts, faces, min_face_ratio=0.25,
+            verts,
+            faces,
+            min_face_ratio=0.25,
         )
         # All face indices should be valid for cleaned vertices
         assert np.all(clean_f >= 0)
@@ -410,7 +453,10 @@ class TestValidateMeshGeometry:
     def test_debris_detected(self, mesh_with_debris: Any) -> None:
         verts, faces = mesh_with_debris
         result = validate_mesh_geometry(
-            verts, faces, min_face_ratio=0.25, backend="python",
+            verts,
+            faces,
+            min_face_ratio=0.25,
+            backend="python",
         )
         assert result.num_connected_components == 2
         assert len(result.floating_island_face_indices) > 0
@@ -418,7 +464,10 @@ class TestValidateMeshGeometry:
     def test_require_watertight_open_fails(self, open_plane: Any) -> None:
         verts, faces = open_plane
         result = validate_mesh_geometry(
-            verts, faces, require_watertight=True, backend="python",
+            verts,
+            faces,
+            require_watertight=True,
+            backend="python",
         )
         assert result.passed is False
         assert result.is_watertight is False
@@ -437,6 +486,7 @@ class TestValidateMeshGeometry:
         verts, faces = tetrahedron
         with pytest.raises(ValueError, match="Invalid backend"):
             validate_mesh_geometry(verts, faces, backend="auto")  # type: ignore[arg-type]
+
     def test_native_backend_unavailable_raises(self, tetrahedron: Any) -> None:
         """Native backend raises BackendUnavailableError(exit_code=30) when _c_geometry missing (P1-ARCH-03)."""
         import sys
@@ -481,7 +531,9 @@ class TestBuildNativeScript:
             capture_output=True,
             text=True,
         )
-        assert res.returncode == 0, f"build_native.py --dry-run --backend=direct failed: {res.stderr}"
+        assert res.returncode == 0, (
+            f"build_native.py --dry-run --backend=direct failed: {res.stderr}"
+        )
 
     def test_build_native_pybind11_missing_exit_30(self) -> None:
         """When pybind11 is absent, build_native.py must exit with code 30 (BACKEND_UNAVAILABLE).
@@ -500,12 +552,13 @@ class TestBuildNativeScript:
         # Create a wrapper that blocks pybind11 AND clears bazel cache path
         wrapper = (
             "import sys, os, importlib, importlib.util\n"
-            "# Block pybind11 from import\n"
-            "class _Block:\n"
-            "    def find_module(self, n, p=None):\n"
-            "        return self if n == 'pybind11' else None\n"
-            "    def load_module(self, n):\n"
-            "        raise ImportError('blocked')\n"
+            "# Block pybind11 from import (Python 3.12+ requires find_spec)\n"
+            "from importlib.abc import MetaPathFinder\n"
+            "class _Block(MetaPathFinder):\n"
+            "    def find_spec(self, fullname, path, target=None):\n"
+            "        if fullname == 'pybind11' or fullname.startswith('pybind11.'):\n"
+            "            raise ImportError('blocked by test')\n"
+            "        return None\n"
             "sys.meta_path.insert(0, _Block())\n"
             "sys.modules.pop('pybind11', None)\n"
             "# Redirect HOME to a temp dir so bazel cache is not found\n"
@@ -596,7 +649,9 @@ class TestBuildNativeRealCompile:
 
         # Locate the built .so
         so_files = list(tmp_path.glob("_c_geometry*"))
-        assert len(so_files) >= 1, f"No _c_geometry .so found in {tmp_path}: {list(tmp_path.iterdir())}"
+        assert len(so_files) >= 1, (
+            f"No _c_geometry .so found in {tmp_path}: {list(tmp_path.iterdir())}"
+        )
 
         # Load the module dynamically
         spec = importlib.util.spec_from_file_location("_c_geometry", str(so_files[0]))
@@ -684,6 +739,7 @@ class TestGeometryGateNativeBackend:
                     delattr(synapse, "_c_geometry")
             else:
                 synapse._c_geometry = old_attr
+
     def test_native_backend_validate_mesh_geometry_dict_access(self) -> None:
         """validate_mesh_geometry with backend='native' reads dict keys
         without AttributeError."""
@@ -703,13 +759,24 @@ class TestGeometryGateNativeBackend:
             "num_faces": 4,
         }
 
-        v = np.array([
-            [1.0, 1.0, 1.0], [-1.0, -1.0, 1.0],
-            [-1.0, 1.0, -1.0], [1.0, -1.0, -1.0],
-        ], dtype=np.float64)
-        f = np.array([
-            [0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2],
-        ], dtype=np.int64)
+        v = np.array(
+            [
+                [1.0, 1.0, 1.0],
+                [-1.0, -1.0, 1.0],
+                [-1.0, 1.0, -1.0],
+                [1.0, -1.0, -1.0],
+            ],
+            dtype=np.float64,
+        )
+        f = np.array(
+            [
+                [0, 1, 2],
+                [0, 3, 1],
+                [0, 2, 3],
+                [1, 3, 2],
+            ],
+            dtype=np.int64,
+        )
 
         old_mod = sys.modules.get("synapse._c_geometry")
         old_attr = getattr(synapse, "_c_geometry", None)
@@ -730,6 +797,8 @@ class TestGeometryGateNativeBackend:
                     delattr(synapse, "_c_geometry")
             else:
                 synapse._c_geometry = old_attr
+
+
 # ===================================================================
 # PR-80: quad_remesh no duplicate-vertex faces (test-b)
 # ===================================================================
@@ -743,17 +812,23 @@ class TestQuadRemeshNoDuplicateVertex:
         [a,b,c,c] duplicate-vertex quad faces. Uses Catmull-Clark
         midpoint subdivision instead."""
         # 3 triangles forming a fan — one will remain unpaired
-        v = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 1.0, 0.0],
-            [-0.5, 1.0, 0.0],
-        ], dtype=np.float32)
-        f = np.array([
-            [0, 1, 2],  # can pair with tri 1
-            [0, 2, 3],  # can pair with tri 0
-            [0, 3, 1],  # unpaired (odd one out)
-        ], dtype=np.int32)
+        v = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [-0.5, 1.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+        f = np.array(
+            [
+                [0, 1, 2],  # can pair with tri 1
+                [0, 2, 3],  # can pair with tri 0
+                [0, 3, 1],  # unpaired (odd one out)
+            ],
+            dtype=np.int32,
+        )
 
         new_v, new_f = quad_remesh(v, f)
 
@@ -770,20 +845,36 @@ class TestQuadRemeshNoDuplicateVertex:
 
     def test_even_triangle_count_all_quads(self) -> None:
         """Cube (12 triangles) should remesh to 6 quads with no duplicates."""
-        v = np.array([
-            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0],
-            [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0],
-            [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
-        ], dtype=np.float32)
-        f = np.array([
-            [0, 2, 1], [0, 3, 2],
-            [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4],
-            [2, 3, 7], [2, 7, 6],
-            [0, 4, 7], [0, 7, 3],
-            [1, 2, 6], [1, 6, 5],
-        ], dtype=np.int32)
+        v = np.array(
+            [
+                [-1.0, -1.0, -1.0],
+                [1.0, -1.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [-1.0, 1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [-1.0, 1.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        f = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
+            dtype=np.int32,
+        )
 
         new_v, new_f = quad_remesh(v, f)
         assert new_f.shape[1] == 4
@@ -798,11 +889,14 @@ class TestQuadRemeshNoDuplicateVertex:
 
     def test_single_triangle_subdivision(self) -> None:
         """A single triangle should be subdivided into 3 quads."""
-        v = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 1.0, 0.0],
-        ], dtype=np.float32)
+        v = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
         f = np.array([[0, 1, 2]], dtype=np.int32)
 
         new_v, new_f = quad_remesh(v, f)

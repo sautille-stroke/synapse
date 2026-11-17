@@ -21,9 +21,15 @@ from synapse.fgpp.io import (
 
 def _make_camera(w: int = 64, h: int = 64) -> CameraParams:
     return CameraParams(
-        fx=50.0, fy=50.0, cx=w / 2.0, cy=h / 2.0,
-        width=w, height=h, fov_degrees=60.0,
-        z_near=0.1, z_far=100.0,
+        fx=50.0,
+        fy=50.0,
+        cx=w / 2.0,
+        cy=h / 2.0,
+        width=w,
+        height=h,
+        fov_degrees=60.0,
+        z_near=0.1,
+        z_far=100.0,
     )
 
 
@@ -205,9 +211,7 @@ class TestExportImport:
             assert isinstance(loaded, FGPPSequence)
             assert loaded.num_frames == 2
             # Depth should round-trip exactly (float32)
-            np.testing.assert_array_equal(
-                loaded.frames[0].depth, seq.frames[0].depth
-            )
+            np.testing.assert_array_equal(loaded.frames[0].depth, seq.frames[0].depth)
 
     def test_roundtrip_cryptomatte_exact(self) -> None:
         """Large uint32 IDs (>2^24) must survive EXR round-trip exactly."""
@@ -281,7 +285,9 @@ class TestExportImport:
             exr_in.close()
 
             # Change header type and convert uint32 buffer to view(float32)
-            header["channels"]["Cryptomatte.ID"] = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+            header["channels"]["Cryptomatte.ID"] = Imath.Channel(
+                Imath.PixelType(Imath.PixelType.FLOAT)
+            )
             legacy_arr = np.frombuffer(chan_data["Cryptomatte.ID"], dtype=np.uint32)
             chan_data["Cryptomatte.ID"] = legacy_arr.view(np.float32).tobytes()
 
@@ -309,10 +315,12 @@ class TestExportImport:
             assert isinstance(loaded, FGPPSequence)
             assert loaded.frames[0].base_color is not None
             assert seq.frames[0].base_color is not None
-            max_err = np.max(np.abs(
-                loaded.frames[0].base_color.astype(np.float32)
-                - seq.frames[0].base_color.astype(np.float32)
-            ))
+            max_err = np.max(
+                np.abs(
+                    loaded.frames[0].base_color.astype(np.float32)
+                    - seq.frames[0].base_color.astype(np.float32)
+                )
+            )
             assert max_err <= 5e-4
 
     def test_lazy_import_yields_frames(self) -> None:
@@ -372,9 +380,15 @@ class TestTorchBridge:
 
         frame = _make_frame()
         tensors = frame_to_tensors(frame)
-        expected = {"depth", "direct_radiance", "world_normal",
-                    "motion_vector", "base_color", "roughness_metallic",
-                    "cryptomatte_id"}
+        expected = {
+            "depth",
+            "direct_radiance",
+            "world_normal",
+            "motion_vector",
+            "base_color",
+            "roughness_metallic",
+            "cryptomatte_id",
+        }
         assert set(tensors.keys()) == expected
 
     def test_frame_to_tensors_zero_copy(self) -> None:

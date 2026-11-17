@@ -78,11 +78,14 @@ class TestFvdVideoBridge:
     def test_custom_extractor_identical_distributions(self) -> None:
         def mock_extractor(vids: list[np.ndarray]) -> np.ndarray:
             # Output deterministic 4-dimensional embeddings per video
-            return np.array([
-                [1.0, 2.0, 3.0, 4.0],
-                [2.0, 3.0, 4.0, 5.0],
-                [3.0, 4.0, 5.0, 6.0],
-            ], dtype=np.float64)
+            return np.array(
+                [
+                    [1.0, 2.0, 3.0, 4.0],
+                    [2.0, 3.0, 4.0, 5.0],
+                    [3.0, 4.0, 5.0, 6.0],
+                ],
+                dtype=np.float64,
+            )
 
         dummy_videos = [np.zeros((5, 16, 16, 3), dtype=np.float32) for _ in range(3)]
         fvd = compute_fvd_from_videos(dummy_videos, dummy_videos, feature_extractor=mock_extractor)
@@ -214,23 +217,47 @@ class TestRoundtripMetrics3D:
 
     def test_watertight_pct(self) -> None:
         # 1. Closed watertight cube (8 vertices, 12 faces)
-        cube_v = np.array([
-            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-        ], dtype=np.float64)
-        cube_f = np.array([
-            [0, 2, 1], [0, 3, 2],
-            [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4],
-            [3, 6, 2], [3, 7, 6],
-            [0, 4, 7], [0, 7, 3],
-            [1, 2, 6], [1, 6, 5],
-        ], dtype=np.int64)
+        cube_v = np.array(
+            [
+                [-1, -1, -1],
+                [1, -1, -1],
+                [1, 1, -1],
+                [-1, 1, -1],
+                [-1, -1, 1],
+                [1, -1, 1],
+                [1, 1, 1],
+                [-1, 1, 1],
+            ],
+            dtype=np.float64,
+        )
+        cube_f = np.array(
+            [
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [3, 6, 2],
+                [3, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
+            dtype=np.int64,
+        )
 
         # 2. Open non-watertight single quad (4 vertices, 2 faces with boundary)
-        open_v = np.array([
-            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-        ], dtype=np.float64)
+        open_v = np.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [1, 1, 0],
+                [0, 1, 0],
+            ],
+            dtype=np.float64,
+        )
         open_f = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
 
         # Batch with 1 watertight cube -> 100%
@@ -247,10 +274,18 @@ class TestRoundtripMetrics3D:
 
     def test_watertight_rejects_pinch_vertex(self) -> None:
         """Two tetrahedra sharing a single pinch vertex must fail watertight check."""
-        pinch_faces = np.array([
-            [0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2],
-            [0, 4, 5], [0, 5, 6], [0, 6, 4], [4, 6, 5],
-        ])
+        pinch_faces = np.array(
+            [
+                [0, 1, 2],
+                [0, 2, 3],
+                [0, 3, 1],
+                [1, 3, 2],
+                [0, 4, 5],
+                [0, 5, 6],
+                [0, 6, 4],
+                [4, 6, 5],
+            ]
+        )
         assert _is_mesh_watertight(pinch_faces) is False
 
 

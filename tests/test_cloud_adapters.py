@@ -45,8 +45,12 @@ def _make_camera(
     world_mat[0, 3] = t * 2.0  # pan right by 2 units over sequence
     view_mat = np.linalg.inv(world_mat)
     return CameraParams(
-        fx=500.0, fy=500.0, cx=32.0, cy=32.0,
-        width=64, height=64,
+        fx=500.0,
+        fy=500.0,
+        cx=32.0,
+        cy=32.0,
+        width=64,
+        height=64,
         view_matrix=view_mat,
         world_matrix=world_mat,
     )
@@ -65,13 +69,9 @@ def _make_fgpp_sequence(
         frame = FGPPFrame(
             camera=cam,
             depth=rng.uniform(0.1, 100.0, (h, w)).astype(np.float32),
-            direct_radiance=rng.uniform(
-                0.0, 2.0, (h, w, 3)
-            ).astype(np.float16),
+            direct_radiance=rng.uniform(0.0, 2.0, (h, w, 3)).astype(np.float16),
             world_normal=_random_normals(rng, h, w),
-            base_color=rng.uniform(
-                0.0, 1.0, (h, w, 3)
-            ).astype(np.float16),
+            base_color=rng.uniform(0.0, 1.0, (h, w, 3)).astype(np.float16),
             frame_index=i,
         )
         frames.append(frame)
@@ -123,7 +123,10 @@ class TestDegradeFGPP:
         segments = degrade_fgpp_for_blackbox(seq, anchor_interval=48)
 
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
         transport = MockCloudTransport()
 
@@ -155,9 +158,12 @@ class TestDegradeFGPP:
         segments = degrade_fgpp_for_blackbox(seq, anchor_interval=48)
 
         valid_motions = {
-            "pan_right", "pan_left",
-            "dolly_in", "dolly_out",
-            "orbit_cw", "orbit_ccw",
+            "pan_right",
+            "pan_left",
+            "dolly_in",
+            "dolly_out",
+            "orbit_cw",
+            "orbit_ccw",
             "static",
         }
         for seg in segments:
@@ -195,13 +201,9 @@ class TestDegradeFGPP:
 
         for seg in segments:
             assert seg.depth_guide is not None
-            assert seg.depth_guide.shape[0] == (
-                seg.end_frame - seg.start_frame + 1
-            )
+            assert seg.depth_guide.shape[0] == (seg.end_frame - seg.start_frame + 1)
             assert seg.normal_edge_guide is not None
-            assert seg.normal_edge_guide.shape[0] == (
-                seg.end_frame - seg.start_frame + 1
-            )
+            assert seg.normal_edge_guide.shape[0] == (seg.end_frame - seg.start_frame + 1)
 
     def test_static_camera_returns_static_enum(self) -> None:
         """A sequence with identical cameras returns 'static'."""
@@ -233,14 +235,14 @@ class TestMockCloudTransport:
             end_frame=48,
             first_anchor_png=b"\x89PNG_fake",
             last_anchor_png=b"\x89PNG_fake",
-            camera_trajectory=np.eye(4, dtype=np.float64)[
-                np.newaxis
-            ].repeat(49, axis=0),
+            camera_trajectory=np.eye(4, dtype=np.float64)[np.newaxis].repeat(49, axis=0),
             camera_motion_enum="static",
             motion_intensity=0.0,
         )
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64,
+            seed=42,
+            width=64,
+            height=64,
         )
         result = transport.submit_segment(seg, config)
         assert result.shape == (49, 64, 64, 3)
@@ -254,9 +256,7 @@ class TestMockCloudTransport:
             end_frame=10,
             first_anchor_png=b"anchor1",
             last_anchor_png=b"anchor2",
-            camera_trajectory=np.eye(4, dtype=np.float64)[
-                np.newaxis
-            ].repeat(11, axis=0),
+            camera_trajectory=np.eye(4, dtype=np.float64)[np.newaxis].repeat(11, axis=0),
             camera_motion_enum="pan_right",
             motion_intensity=5.0,
         )
@@ -274,9 +274,7 @@ class TestMockCloudTransport:
             end_frame=10,
             first_anchor_png=b"anchor1",
             last_anchor_png=b"anchor2",
-            camera_trajectory=np.eye(4, dtype=np.float64)[
-                np.newaxis
-            ].repeat(11, axis=0),
+            camera_trajectory=np.eye(4, dtype=np.float64)[np.newaxis].repeat(11, axis=0),
             camera_motion_enum="pan_right",
             motion_intensity=5.0,
         )
@@ -328,7 +326,10 @@ class TestCloudAdapters:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
 
         conditions = adapter.prepare_conditions(seq, config)
@@ -347,7 +348,10 @@ class TestCloudAdapters:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
 
         conditions = adapter.prepare_conditions(seq, config)
@@ -365,7 +369,10 @@ class TestCloudAdapters:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
         conditions = adapter.prepare_conditions(seq, config)
         segments = conditions.extra["degraded_segments"]
@@ -380,7 +387,10 @@ class TestCloudAdapters:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
         conditions = adapter.prepare_conditions(seq, config)
         segments = conditions.extra["degraded_segments"]
@@ -395,7 +405,10 @@ class TestCloudAdapters:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
         conditions = adapter.prepare_conditions(seq, config)
         segments = conditions.extra["degraded_segments"]
@@ -410,7 +423,10 @@ class TestCloudAdapters:
         adapter = SeedanceAdapter()  # no transport, no token
         seq = _make_fgpp_sequence(50)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=50,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=50,
         )
         conditions = adapter.prepare_conditions(seq, config)
 
@@ -465,7 +481,10 @@ class TestIdempotencyKey:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
 
         conditions = adapter.prepare_conditions(seq, config)
@@ -510,7 +529,10 @@ class TestDegenerateOutputValidation:
 
         seq = _make_fgpp_sequence(97)
         config = VideoGenerationConfig(
-            seed=42, width=64, height=64, num_frames=97,
+            seed=42,
+            width=64,
+            height=64,
+            num_frames=97,
         )
         conditions = adapter.prepare_conditions(seq, config)
 
@@ -524,7 +546,10 @@ class TestDegenerateOutputValidation:
         adapter = MockVideoAdapter()
         seq = _make_fgpp_sequence(8, h=16, w=16)
         config = VideoGenerationConfig(
-            seed=42, width=16, height=16, num_frames=8,
+            seed=42,
+            width=16,
+            height=16,
+            num_frames=8,
         )
         conditions = adapter.prepare_conditions(seq, config)
         # Normal generation should pass validation
@@ -538,7 +563,10 @@ class TestDegenerateOutputValidation:
         adapter = MockVideoAdapter()
         seq = _make_fgpp_sequence(8, h=16, w=16)
         config = VideoGenerationConfig(
-            seed=42, width=16, height=16, num_frames=8,
+            seed=42,
+            width=16,
+            height=16,
+            num_frames=8,
         )
         conditions = adapter.prepare_conditions(seq, config)
         result = adapter.generate(conditions, config)
@@ -565,7 +593,9 @@ class TestDegenerateOutputValidation:
 
         from synapse.adapters.cloud import DegradedSegment, HttpCloudTransport
 
-        transport = HttpCloudTransport("runway", "test_tok", endpoint_url="http://localhost:9000/gen")
+        transport = HttpCloudTransport(
+            "runway", "test_tok", endpoint_url="http://localhost:9000/gen"
+        )
 
         seg = DegradedSegment(
             start_frame=0,
@@ -579,7 +609,10 @@ class TestDegenerateOutputValidation:
             normal_edge_guide=np.zeros((4, 8, 8), dtype=np.float32),
         )
         cfg = VideoGenerationConfig(
-            seed=42, width=8, height=8, num_frames=4,
+            seed=42,
+            width=8,
+            height=8,
+            num_frames=4,
             extra={"text_prompt": "a beautiful forest"},
         )
 
@@ -589,7 +622,9 @@ class TestDegenerateOutputValidation:
             nonlocal captured_body
             captured_body = json.loads(req.data.decode("utf-8"))
             resp = MagicMock()
-            resp.read.return_value = json.dumps({"frames": np.zeros((4, 8, 8, 3), dtype=np.uint8).tolist()}).encode("utf-8")
+            resp.read.return_value = json.dumps(
+                {"frames": np.zeros((4, 8, 8, 3), dtype=np.uint8).tolist()}
+            ).encode("utf-8")
             resp.__enter__.return_value = resp
             resp.__exit__.return_value = None
             return resp
@@ -598,9 +633,12 @@ class TestDegenerateOutputValidation:
 
         out = transport.submit_segment(seg, cfg)
         assert out.shape == (4, 8, 8, 3)
-        assert captured_body["first_anchor_png"] == base64.b64encode(b"\x89PNG\r\n\x1a\nfirst").decode("ascii")
-        assert captured_body["last_anchor_png"] == base64.b64encode(b"\x89PNG\r\n\x1a\nlast").decode("ascii")
+        assert captured_body["first_anchor_png"] == base64.b64encode(
+            b"\x89PNG\r\n\x1a\nfirst"
+        ).decode("ascii")
+        assert captured_body["last_anchor_png"] == base64.b64encode(
+            b"\x89PNG\r\n\x1a\nlast"
+        ).decode("ascii")
         assert captured_body["text_prompt"] == "a beautiful forest"
         assert captured_body["depth_guide"] is not None
         assert captured_body["normal_edge_guide"] is not None
-

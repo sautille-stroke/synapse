@@ -28,7 +28,9 @@ class ModelAsset:
     occlusion_texture: np.ndarray | None = None  # [H, W, 3] uint8
 
     # Base PBR material factors
-    base_color_factor: np.ndarray = field(default_factory=lambda: np.array([0.8, 0.8, 0.8], dtype=np.float32))
+    base_color_factor: np.ndarray = field(
+        default_factory=lambda: np.array([0.8, 0.8, 0.8], dtype=np.float32)
+    )
     metallic_factor: float = 0.0
     roughness_factor: float = 0.5
 

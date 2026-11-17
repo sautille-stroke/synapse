@@ -99,8 +99,12 @@ def _normalize_normals(nrm: np.ndarray) -> np.ndarray:
         Unit-length normal vectors, same shape.
     """
     nrm_vec = np.copy(nrm)
-    if (np.min(nrm) >= 0.0 and np.max(nrm) <= 1.0
-            and np.mean(nrm[..., :2]) > 0.35 and np.mean(nrm[..., 2]) > 0.6):
+    if (
+        np.min(nrm) >= 0.0
+        and np.max(nrm) <= 1.0
+        and np.mean(nrm[..., :2]) > 0.35
+        and np.mean(nrm[..., 2]) > 0.6
+    ):
         nrm_vec = nrm * 2.0 - 1.0
 
     lens = np.linalg.norm(nrm_vec, axis=-1, keepdims=True)
@@ -376,7 +380,8 @@ def decompose_intrinsic(
     albedo_sh_lum = lum / sh_shading  # initial SH-based albedo luminance
     # Smooth the initial albedo estimate to separate texture from residual shading
     albedo_sh_smooth = _spatial_smooth(
-        albedo_sh_lum[..., np.newaxis], radius=max(2, min(h, w) // 8),
+        albedo_sh_lum[..., np.newaxis],
+        radius=max(2, min(h, w) // 8),
     )[..., 0]
     albedo_sh_smooth = np.clip(albedo_sh_smooth, 1e-4, None)
     # Residual shading = smooth(albedo_sh) / albedo_sh → inverted residual
@@ -393,12 +398,16 @@ def decompose_intrinsic(
         ch_lum = rad[..., ch]
         ch_albedo = ch_lum / total_shading_lum
         ch_albedo_smooth = _spatial_smooth(
-            ch_albedo[..., np.newaxis], radius=max(2, min(h, w) // 8),
+            ch_albedo[..., np.newaxis],
+            radius=max(2, min(h, w) // 8),
         )[..., 0]
         ch_albedo_smooth = np.clip(ch_albedo_smooth, 1e-4, None)
         ch_shading = ch_lum / ch_albedo_smooth
         sh_rgb_coeffs[:, ch] = _solve_sh_irradiance(
-            flat_nrm, ch_shading.reshape(-1), flat_mask, max_samples=2048,
+            flat_nrm,
+            ch_shading.reshape(-1),
+            flat_mask,
+            max_samples=2048,
         )
 
     # Decompose intrinsic albedo: rho_hat = I / E
@@ -534,23 +543,27 @@ def _delta_e_00(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
         ),
     )
 
-    T = (1.0
-         - 0.17 * np.cos(np.radians(hp_bar - 30.0))
-         + 0.24 * np.cos(np.radians(2.0 * hp_bar))
-         + 0.32 * np.cos(np.radians(3.0 * hp_bar + 6.0))
-         - 0.20 * np.cos(np.radians(4.0 * hp_bar - 63.0)))
+    T = (
+        1.0
+        - 0.17 * np.cos(np.radians(hp_bar - 30.0))
+        + 0.24 * np.cos(np.radians(2.0 * hp_bar))
+        + 0.32 * np.cos(np.radians(3.0 * hp_bar + 6.0))
+        - 0.20 * np.cos(np.radians(4.0 * hp_bar - 63.0))
+    )
 
-    SL = 1.0 + 0.015 * (Lp_bar - 50.0)**2 / np.sqrt(20.0 + (Lp_bar - 50.0)**2)
+    SL = 1.0 + 0.015 * (Lp_bar - 50.0) ** 2 / np.sqrt(20.0 + (Lp_bar - 50.0) ** 2)
     SC = 1.0 + 0.045 * Cp_bar
     SH = 1.0 + 0.015 * Cp_bar * T
 
     Cp_bar_7 = Cp_bar**7
-    RT = (-2.0 * np.sqrt(Cp_bar_7 / (Cp_bar_7 + 25.0**7))
-          * np.sin(np.radians(60.0 * np.exp(-((hp_bar - 275.0) / 25.0)**2))))
+    RT = (
+        -2.0
+        * np.sqrt(Cp_bar_7 / (Cp_bar_7 + 25.0**7))
+        * np.sin(np.radians(60.0 * np.exp(-(((hp_bar - 275.0) / 25.0) ** 2))))
+    )
 
     dE: np.ndarray = np.sqrt(
-        (dLp / SL)**2 + (dCp / SC)**2 + (dHp / SH)**2
-        + RT * (dCp / SC) * (dHp / SH)
+        (dLp / SL) ** 2 + (dCp / SC) ** 2 + (dHp / SH) ** 2 + RT * (dCp / SC) * (dHp / SH)
     )
     return dE
 
@@ -715,7 +728,12 @@ def delight_multiview_albedo(
 
         # Project mesh normals into this view
         proj_normal, proj_weight, proj_valid = _project_mesh_to_view(
-            mesh_verts, mesh_nrms, cam, h, w, faces=getattr(mesh, "faces", None),
+            mesh_verts,
+            mesh_nrms,
+            cam,
+            h,
+            w,
+            faces=getattr(mesh, "faces", None),
         )
 
         # Use projected normals where available, fall back to pseudo-normals
@@ -737,27 +755,32 @@ def delight_multiview_albedo(
         flat_mask = chroma_mask.reshape(-1)
 
         # Compute luminance
-        view_lum = (0.2126 * frame_rgb[..., 0] + 0.7152 * frame_rgb[..., 1]
-                    + 0.0722 * frame_rgb[..., 2])
+        view_lum = (
+            0.2126 * frame_rgb[..., 0] + 0.7152 * frame_rgb[..., 1] + 0.0722 * frame_rgb[..., 2]
+        )
         flat_view_lum = view_lum.reshape(-1)
         median_view_lum = float(
-            np.median(flat_view_lum[flat_mask]) if np.any(flat_mask)
-            else np.median(flat_view_lum)
+            np.median(flat_view_lum[flat_mask]) if np.any(flat_mask) else np.median(flat_view_lum)
         )
         median_view_lum = max(median_view_lum, 1e-6)
         normalized_view_lum = flat_view_lum / median_view_lum
 
         # Fit SH to normalized luminance
         sh_lum_coeffs_view = _solve_sh_irradiance(
-            flat_nrm, normalized_view_lum, flat_mask, max_samples=2048,
+            flat_nrm,
+            normalized_view_lum,
+            flat_mask,
+            max_samples=2048,
         )
 
         # SH coefficients stored as per-channel (broadcast to 3ch for output)
-        sh_coeffs_view = np.column_stack([
-            sh_lum_coeffs_view * median_view_lum,
-            sh_lum_coeffs_view * median_view_lum,
-            sh_lum_coeffs_view * median_view_lum,
-        ])
+        sh_coeffs_view = np.column_stack(
+            [
+                sh_lum_coeffs_view * median_view_lum,
+                sh_lum_coeffs_view * median_view_lum,
+                sh_lum_coeffs_view * median_view_lum,
+            ]
+        )
         per_view_sh_coeffs.append(sh_coeffs_view)
 
         # Evaluate SH shading field for this view

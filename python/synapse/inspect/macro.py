@@ -40,14 +40,21 @@ def _sobel_gradient_magnitude(image: np.ndarray) -> np.ndarray:
     # Horizontal Sobel: [-1, 0, 1; -2, 0, 2; -1, 0, 1]
     if w > 2 and h > 2:
         gx[1:-1, 1:-1] = (
-            -img[:-2, :-2] + img[:-2, 2:]
-            - 2.0 * img[1:-1, :-2] + 2.0 * img[1:-1, 2:]
-            - img[2:, :-2] + img[2:, 2:]
+            -img[:-2, :-2]
+            + img[:-2, 2:]
+            - 2.0 * img[1:-1, :-2]
+            + 2.0 * img[1:-1, 2:]
+            - img[2:, :-2]
+            + img[2:, 2:]
         )
         # Vertical Sobel: [-1, -2, -1; 0, 0, 0; 1, 2, 1]
         gy[1:-1, 1:-1] = (
-            -img[:-2, :-2] - 2.0 * img[:-2, 1:-1] - img[:-2, 2:]
-            + img[2:, :-2] + 2.0 * img[2:, 1:-1] + img[2:, 2:]
+            -img[:-2, :-2]
+            - 2.0 * img[:-2, 1:-1]
+            - img[:-2, 2:]
+            + img[2:, :-2]
+            + 2.0 * img[2:, 1:-1]
+            + img[2:, 2:]
         )
 
     return np.asarray(np.sqrt(gx * gx + gy * gy), dtype=np.float32)
@@ -161,10 +168,7 @@ def compute_isotopic_residual_heatmap(
     total_weight = w_rgb
 
     # --- Channel 2: Depth edge residual ---
-    if (
-        depth_reference is not None
-        and depth_rendered is not None
-    ):
+    if depth_reference is not None and depth_rendered is not None:
         d_ref = np.asarray(depth_reference, dtype=np.float32)
         d_ren = np.asarray(depth_rendered, dtype=np.float32)
         edge_ref = _sobel_gradient_magnitude(d_ref)
@@ -177,15 +181,14 @@ def compute_isotopic_residual_heatmap(
         total_weight += w_depth
 
     # --- Channel 3: Normal angular error ---
-    if (
-        normals_reference is not None
-        and normals_rendered is not None
-    ):
+    if normals_reference is not None and normals_rendered is not None:
         n_ref = np.asarray(
-            normals_reference, dtype=np.float32,
+            normals_reference,
+            dtype=np.float32,
         )
         n_ren = np.asarray(
-            normals_rendered, dtype=np.float32,
+            normals_rendered,
+            dtype=np.float32,
         )
         # Dot product per pixel
         dot = np.sum(n_ref * n_ren, axis=-1)
@@ -205,7 +208,9 @@ def compute_isotopic_residual_heatmap(
 
     # --- Connected-component NMS ---
     rois = _extract_rois_nms(
-        heatmap, top_k=top_k, nms_radius=nms_radius,
+        heatmap,
+        top_k=top_k,
+        nms_radius=nms_radius,
     )
 
     return heatmap, rois
@@ -249,25 +254,27 @@ def _extract_rois_nms(
 
         # Bounding radius: max distance from center
         dists = np.sqrt(
-            (pixels[:, 0] - center_y) ** 2
-            + (pixels[:, 1] - center_x) ** 2,
+            (pixels[:, 0] - center_y) ** 2 + (pixels[:, 1] - center_x) ** 2,
         )
         bounding_radius = float(dists.max()) if len(dists) > 0 else 0.0
 
         mean_sev = float(heatmap[mask].mean())
         pixel_count = int(mask.sum())
 
-        candidates.append({
-            "roi_id": comp_id,
-            "center_uv": (int(round(center_x)), int(round(center_y))),
-            "bounding_radius_px": bounding_radius,
-            "mean_severity": mean_sev,
-            "pixel_count": pixel_count,
-        })
+        candidates.append(
+            {
+                "roi_id": comp_id,
+                "center_uv": (int(round(center_x)), int(round(center_y))),
+                "bounding_radius_px": bounding_radius,
+                "mean_severity": mean_sev,
+                "pixel_count": pixel_count,
+            }
+        )
 
     # Sort by mean severity descending
     candidates.sort(
-        key=lambda r: r["mean_severity"], reverse=True,
+        key=lambda r: r["mean_severity"],
+        reverse=True,
     )
 
     # NMS: suppress ROIs whose centroid is within nms_radius
@@ -365,7 +372,13 @@ def plan_macro_camera_for_roi(
 
     # Unproject to camera space
     p_cam = _unproject_pixel(
-        float(cx_px), float(cy_px), z_c, fx, fy, cx, cy,
+        float(cx_px),
+        float(cy_px),
+        z_c,
+        fx,
+        fy,
+        cx,
+        cy,
     )
 
     # Transform to world space
@@ -382,7 +395,8 @@ def plan_macro_camera_for_roi(
     x_lo = max(0, cx_px - win)
     x_hi = min(w, cx_px + win)
     local_normals = normal_map[y_lo:y_hi, x_lo:x_hi].reshape(
-        -1, 3,
+        -1,
+        3,
     )
     n_avg = local_normals.mean(axis=0).astype(np.float64)
     n_len = np.linalg.norm(n_avg)

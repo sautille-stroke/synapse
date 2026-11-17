@@ -133,8 +133,7 @@ def evaluate_refinement_gates(
     if temporal_warp_error > th.max_temporal_warp_error:
         tier1_pass = False
         verdict.failure_reasons.append(
-            f"temporal_warp_error {temporal_warp_error:.4f} "
-            f"> {th.max_temporal_warp_error:.4f}"
+            f"temporal_warp_error {temporal_warp_error:.4f} > {th.max_temporal_warp_error:.4f}"
         )
 
     verdict.tier_results["tier1_automatic"] = tier1_pass

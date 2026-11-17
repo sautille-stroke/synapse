@@ -72,7 +72,9 @@ def separable_gaussian(
 
         return np.asarray(
             gaussian_filter(
-                img.astype(np.float64), sigma=sigma, mode="reflect",
+                img.astype(np.float64),
+                sigma=sigma,
+                mode="reflect",
             ).astype(orig_dtype)
         )
     except ImportError:
@@ -137,8 +139,12 @@ def upsample2x(
     else:
         out = np.zeros((th, tw, img.shape[2]), dtype=img.dtype)
 
-    row_idx = np.clip((np.arange(th, dtype=np.float64) + 0.5) * (h / max(th, 1)) - 0.5, 0.0, float(h - 1))
-    col_idx = np.clip((np.arange(tw, dtype=np.float64) + 0.5) * (w / max(tw, 1)) - 0.5, 0.0, float(w - 1))
+    row_idx = np.clip(
+        (np.arange(th, dtype=np.float64) + 0.5) * (h / max(th, 1)) - 0.5, 0.0, float(h - 1)
+    )
+    col_idx = np.clip(
+        (np.arange(tw, dtype=np.float64) + 0.5) * (w / max(tw, 1)) - 0.5, 0.0, float(w - 1)
+    )
 
     r0 = np.floor(row_idx).astype(np.intp)
     r1 = np.minimum(r0 + 1, h - 1)
@@ -155,10 +161,7 @@ def upsample2x(
     else:
         for i in range(th):
             top = (1.0 - rf[i]) * img[r0[i], :, :] + rf[i] * img[r1[i], :, :]
-            out[i, :, :] = (
-                (1.0 - cf)[:, np.newaxis] * top[c0, :]
-                + cf[:, np.newaxis] * top[c1, :]
-            )
+            out[i, :, :] = (1.0 - cf)[:, np.newaxis] * top[c0, :] + cf[:, np.newaxis] * top[c1, :]
     return out
 
 

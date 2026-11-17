@@ -86,7 +86,9 @@ class TestPackager:
     """Tests for package_and_gate_lora_bundle function."""
 
     def test_creates_bundle_structure(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Bundle dir contains manifest + evaluation report."""
         result = package_and_gate_lora_bundle(
@@ -99,15 +101,13 @@ class TestPackager:
         )
         assert result["passed"] is True
         assert (tmp_bundle_dir / "lora_manifest.json").exists()
-        assert (
-            tmp_bundle_dir / "evaluation_report.json"
-        ).exists()
-        assert (
-            tmp_bundle_dir / "adapter_model.safetensors"
-        ).exists()
+        assert (tmp_bundle_dir / "evaluation_report.json").exists()
+        assert (tmp_bundle_dir / "adapter_model.safetensors").exists()
 
     def test_manifest_content(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Manifest JSON has correct fields."""
         package_and_gate_lora_bundle(
@@ -136,7 +136,9 @@ class TestPackager:
         assert meta["model_tag"] == "gemini4"
 
     def test_sha256_computed(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Manifest contains correct SHA256 of adapter file."""
         package_and_gate_lora_bundle(
@@ -154,7 +156,9 @@ class TestPackager:
         assert all(c in "0123456789abcdef" for c in sha)
 
     def test_clean_metrics_pass(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Bundle with metrics within thresholds passes gate."""
         result = package_and_gate_lora_bundle(
@@ -169,7 +173,9 @@ class TestPackager:
         assert result["passed"] is True
 
     def test_chamfer_exceeds_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Chamfer distance exceeding threshold raises error."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -187,7 +193,9 @@ class TestPackager:
         assert exc_info.value.agent_fix_hint != ""
 
     def test_normal_error_exceeds_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Normal angular error exceeding threshold raises error."""
         with pytest.raises(QualityGateError):
@@ -202,7 +210,9 @@ class TestPackager:
             )
 
     def test_ciede2000_exceeds_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Border CIE dE2000 exceeding threshold raises error."""
         with pytest.raises(QualityGateError):
@@ -217,7 +227,9 @@ class TestPackager:
             )
 
     def test_negative_regression_exceeds_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Negative scenario regression exceeding threshold."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -237,7 +249,9 @@ class TestPackager:
         )
 
     def test_custom_thresholds(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Custom thresholds are respected."""
         # Should pass with relaxed thresholds
@@ -254,7 +268,9 @@ class TestPackager:
         assert result["passed"] is True
 
     def test_missing_weights_raises_asset_not_found(
-        self, tmp_path: Path, tmp_bundle_dir: Path,
+        self,
+        tmp_path: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Non-existent weights file raises AssetNotFoundError(20)."""
         fake = tmp_path / "nonexistent.safetensors"
@@ -265,12 +281,12 @@ class TestPackager:
                 skip_bench=True,
             )
         assert int(exc_info.value.exit_code) == 20
-        assert not (
-            tmp_bundle_dir / "adapter_model.safetensors"
-        ).exists()
+        assert not (tmp_bundle_dir / "adapter_model.safetensors").exists()
 
     def test_empty_metrics_without_skip_bench_fails_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Missing or empty bench_metrics fails gate when skip_bench=False."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -290,7 +306,9 @@ class TestPackager:
             )
 
     def test_nan_metric_fails_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """NaN metric is caught by fail-closed gate."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -303,7 +321,9 @@ class TestPackager:
         assert "non-finite" in str(exc_info.value)
 
     def test_missing_negative_scenario_metric_fails_gate(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Missing required negative scenario metric fails gate."""
         with pytest.raises(QualityGateError) as exc_info:
@@ -322,7 +342,9 @@ class TestPackager:
         )
 
     def test_evaluation_report_content(
-        self, fake_weights: Path, tmp_bundle_dir: Path,
+        self,
+        fake_weights: Path,
+        tmp_bundle_dir: Path,
     ) -> None:
         """Evaluation report JSON has correct structure."""
         package_and_gate_lora_bundle(
@@ -334,11 +356,7 @@ class TestPackager:
                 "border_ring_ciede2000": 1.5,
             },
         )
-        report = json.loads(
-            (
-                tmp_bundle_dir / "evaluation_report.json"
-            ).read_text(encoding="utf-8")
-        )
+        report = json.loads((tmp_bundle_dir / "evaluation_report.json").read_text(encoding="utf-8"))
         assert report["passed"] is True
         assert "thresholds" in report
         assert "measured" in report
@@ -356,6 +374,7 @@ class TestLoRACLI:
     def test_lora_help(self) -> None:
         """synapse lora --help does not crash."""
         from synapse.cli import main_synapse
+
         with pytest.raises(SystemExit) as exc:
             main_synapse(["lora", "--help"])
         assert exc.value.code == 0
@@ -370,11 +389,17 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "prepare-data",
-                "--input", ".",
-                "--output", ".",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "prepare-data",
+                    "--input",
+                    ".",
+                    "--output",
+                    ".",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -386,7 +411,9 @@ class TestLoRACLI:
         assert "agent_fix_hint" in parsed
 
     def test_lora_eval_pass_json(
-        self, fake_weights: Path, tmp_path: Path,
+        self,
+        fake_weights: Path,
+        tmp_path: Path,
     ) -> None:
         """synapse lora eval --json with passing bundle."""
         import io
@@ -410,10 +437,15 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "eval",
-                "--bundle", str(bundle_dir),
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "eval",
+                    "--bundle",
+                    str(bundle_dir),
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -424,7 +456,9 @@ class TestLoRACLI:
         assert parsed["passed"] is True
 
     def test_lora_eval_waived_rejected_json(
-        self, fake_weights: Path, tmp_path: Path,
+        self,
+        fake_weights: Path,
+        tmp_path: Path,
     ) -> None:
         """synapse lora eval rejects waived bundle (skip_bench=True)."""
         import io
@@ -442,10 +476,15 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "eval",
-                "--bundle", str(bundle_dir),
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "eval",
+                    "--bundle",
+                    str(bundle_dir),
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -455,7 +494,9 @@ class TestLoRACLI:
         assert "waived" in parsed["message"]
 
     def test_lora_eval_fail_json(
-        self, fake_weights: Path, tmp_path: Path,
+        self,
+        fake_weights: Path,
+        tmp_path: Path,
     ) -> None:
         """synapse lora eval --json with failing metrics."""
         import io
@@ -482,7 +523,8 @@ class TestLoRACLI:
             "target_modules": [],
         }
         (bundle_dir / "lora_manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8",
+            json.dumps(manifest),
+            encoding="utf-8",
         )
 
         # Write bad evaluation report
@@ -494,16 +536,22 @@ class TestLoRACLI:
             "agent_fix_hint": "Review training.",
         }
         (bundle_dir / "evaluation_report.json").write_text(
-            json.dumps(report), encoding="utf-8",
+            json.dumps(report),
+            encoding="utf-8",
         )
 
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "eval",
-                "--bundle", str(bundle_dir),
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "eval",
+                    "--bundle",
+                    str(bundle_dir),
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -523,10 +571,15 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "train",
-                "--config", '{"category": "style"}',
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--config",
+                    '{"category": "style"}',
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -546,10 +599,15 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "train",
-                "--config", "{not-valid-json",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--config",
+                    "{not-valid-json",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -567,10 +625,15 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "train",
-                "--config", "{}",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--config",
+                    "{}",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -588,11 +651,17 @@ class TestLoRACLI:
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
-            code = main_synapse([
-                "--json", "lora", "merge",
-                "--bundle", ".",
-                "--output", ".",
-            ])
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "merge",
+                    "--bundle",
+                    ".",
+                    "--output",
+                    ".",
+                ]
+            )
         finally:
             sys.stdout = old
 
@@ -631,7 +700,8 @@ class TestPackagerSafetensorsValidation:
     """PR-77: Validate .safetensors header and weight key whitelist."""
 
     def test_valid_safetensors_passes(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Valid safetensors with matching target_modules passes."""
         pytest.importorskip("safetensors")
@@ -656,7 +726,8 @@ class TestPackagerSafetensorsValidation:
         assert result["passed"] is True
 
     def test_unauthorized_weight_key_rejected(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Weight key not matching target_modules is rejected."""
         pytest.importorskip("safetensors")
@@ -679,7 +750,8 @@ class TestPackagerSafetensorsValidation:
             )
 
     def test_empty_safetensors_rejected(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Safetensors file with no tensors is rejected."""
         pytest.importorskip("safetensors")
@@ -697,7 +769,6 @@ class TestPackagerSafetensorsValidation:
             )
 
 
-
 # -------------------------------------------------------------------
 # PR-117: Required gate metrics and fnmatch validation
 # -------------------------------------------------------------------
@@ -707,7 +778,9 @@ class TestPR117GateKeyEnforcement:
     """PR-117: Fail-closed enforcement of required gate metrics."""
 
     def test_missing_required_key_fails_gate(
-        self, fake_weights: Path, tmp_path: Path,
+        self,
+        fake_weights: Path,
+        tmp_path: Path,
     ) -> None:
         """Missing chamfer_mm, normal_angular_error_deg, or border_ring_ciede2000 fails gate."""
         bundle = tmp_path / "missing_key_bundle"
@@ -725,7 +798,9 @@ class TestPR117GateKeyEnforcement:
         assert "Missing required gate metric" in str(exc_info.value)
 
     def test_all_required_keys_present_passes(
-        self, fake_weights: Path, tmp_path: Path,
+        self,
+        fake_weights: Path,
+        tmp_path: Path,
     ) -> None:
         """When all 3 required gate metrics are present and within thresholds, gate passes."""
         bundle = tmp_path / "complete_bundle"
@@ -742,7 +817,8 @@ class TestPR117GateKeyEnforcement:
         assert result["passed"] is True
 
     def test_fnmatch_safetensors_validation(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """PR-117: fnmatch glob matching works in safetensors weight validation."""
         pytest.importorskip("safetensors")

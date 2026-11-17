@@ -112,12 +112,14 @@ class Scenario:
 
     asset: Asset = field(default_factory=lambda: Asset(AssetSource.PROCEDURAL, "cube"))
     camera_type: str = "orbit"
-    camera_params: dict[str, Any] = field(default_factory=lambda: {
-        "radius": 3.0,
-        "elevation_deg": 15.0,
-        "num_frames": 97,
-        "fps": 24,
-    })
+    camera_params: dict[str, Any] = field(
+        default_factory=lambda: {
+            "radius": 3.0,
+            "elevation_deg": 15.0,
+            "num_frames": 97,
+            "fps": 24,
+        }
+    )
     temporal_mode: Literal["continuous_clip", "discrete_views"] = "continuous_clip"
 
     conditions: dict[str, Any] = field(default_factory=dict)
@@ -235,6 +237,4 @@ def load_scenario(scenario_id: str) -> Scenario:
         norm_id = s.id.replace("_rigid_", "_").replace("_dynamic_", "_").replace("_style_", "_")
         if norm_id == scenario_id:
             return s
-    raise FileNotFoundError(
-        f"Scenario '{scenario_id}' not found in {scenarios_dir}"
-    )
+    raise FileNotFoundError(f"Scenario '{scenario_id}' not found in {scenarios_dir}")

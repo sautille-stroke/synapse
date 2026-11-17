@@ -25,6 +25,7 @@ from synapse.metrics.profiles import (
 
 try:
     import synapse._c_geometry  # noqa: F401
+
     _BACKEND = "native"
 except ImportError:
     _BACKEND = "python"

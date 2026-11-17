@@ -29,10 +29,14 @@ class CameraPose(BaseModel):
     """
 
     position: list[float] = Field(
-        ..., min_length=3, max_length=3,
+        ...,
+        min_length=3,
+        max_length=3,
     )
     rotation: list[float] = Field(
-        ..., min_length=4, max_length=9,
+        ...,
+        min_length=4,
+        max_length=9,
     )
     fov_deg: float = Field(..., gt=0.0, le=180.0)
     resolution: tuple[int, int] = (512, 512)
@@ -77,7 +81,9 @@ class DefectAnnotation3D(BaseModel):
     severity: float = Field(..., ge=0.0, le=1.0)
     confidence: float = Field(..., ge=0.0, le=1.0)
     center_3d: list[float] = Field(
-        ..., min_length=3, max_length=3,
+        ...,
+        min_length=3,
+        max_length=3,
     )
     bounding_radius_m: float = Field(..., ge=0.0)
     affected_vertices_count: int = Field(..., ge=0)
@@ -177,7 +183,8 @@ class GeometricValidationResult(BaseModel):
 
     is_manifold: bool = Field(..., description="Whether mesh is a valid 2-manifold")
     is_watertight: bool = Field(
-        ..., description="Whether mesh is strictly watertight (closed)",
+        ...,
+        description="Whether mesh is strictly watertight (closed)",
     )
     num_vertices: int = Field(..., ge=0)
     num_faces: int = Field(..., ge=0)

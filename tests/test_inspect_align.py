@@ -138,14 +138,13 @@ class TestFibonacciSphere:
         """All cameras are at the specified radius from the origin."""
         radius = 3.5
         cameras = generate_fibonacci_sphere_cameras(
-            n_cameras=24, radius_scale=radius,
+            n_cameras=24,
+            radius_scale=radius,
         )
         for cam in cameras:
             pos = np.array(cam.position)
             dist = float(np.linalg.norm(pos))
-            assert abs(dist - radius) < 1e-6, (
-                f"Camera at distance {dist}, expected {radius}"
-            )
+            assert abs(dist - radius) < 1e-6, f"Camera at distance {dist}, expected {radius}"
 
     def test_angular_coverage(self) -> None:
         """Minimum pairwise angle exceeds a reasonable threshold.
@@ -165,9 +164,7 @@ class TestFibonacciSphere:
         max_dot = dots.max()  # closest pair
         min_angle_deg = math.degrees(math.acos(min(max_dot, 1.0)))
 
-        assert min_angle_deg > 10.0, (
-            f"Min pairwise angle {min_angle_deg:.1f} deg is too small"
-        )
+        assert min_angle_deg > 10.0, f"Min pairwise angle {min_angle_deg:.1f} deg is too small"
 
 
 # ===================================================================
@@ -187,7 +184,10 @@ class TestSilhouette:
             fov_deg=60.0,
         )
         mask = compute_silhouette(
-            mesh.vertices, mesh.faces, cam, resolution=64,
+            mesh.vertices,
+            mesh.faces,
+            cam,
+            resolution=64,
         )
         assert mask.shape == (64, 64)
         assert mask.any(), "Cube silhouette should not be empty"
@@ -227,7 +227,8 @@ class TestAlignPose:
 
     @pytest.mark.slow
     def test_fast_alignment_contract(
-        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+        self,
+        humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
         """Lightweight smoke verification of alignment contract with minimal search."""
         verts, faces = humanoid_mesh
@@ -237,19 +238,25 @@ class TestAlignPose:
         bbox_r = float(np.max(radii))
         cam_radius = bbox_r * 2.5
         cams = generate_fibonacci_sphere_cameras(
-            n_cameras=4, radius_scale=cam_radius, fov_deg=50.0,
+            n_cameras=4,
+            radius_scale=cam_radius,
+            fov_deg=50.0,
         )
         ref_sil = compute_silhouette(verts, faces, cams[0], resolution=res)
         best_pose, best_iou = align_reference_image_to_mesh(
-            ref_sil, verts, faces,
-            n_coarse=4, n_refine_iters=2,
+            ref_sil,
+            verts,
+            faces,
+            n_coarse=4,
+            n_refine_iters=2,
         )
         assert isinstance(best_pose, CameraPose)
         assert 0.0 <= best_iou <= 1.0
 
     @pytest.mark.slow
     def test_known_pose_recovery(
-        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+        self,
+        humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
         """Recover a known camera pose with IoU >= 0.88."""
         verts, faces = humanoid_mesh
@@ -269,10 +276,13 @@ class TestAlignPose:
         gz = cam_radius * math.sin(gt_theta) * math.sin(gt_phi)
 
         gt_cam = generate_fibonacci_sphere_cameras(
-            n_cameras=1, radius_scale=cam_radius, fov_deg=50.0,
+            n_cameras=1,
+            radius_scale=cam_radius,
+            fov_deg=50.0,
         )[0]
         # Override with our known position
         from synapse.inspect.align import _look_at_rotation
+
         rot = _look_at_rotation(
             np.array([gx, gy, gz]),
             np.zeros(3),
@@ -291,16 +301,18 @@ class TestAlignPose:
 
         # Run alignment
         best_pose, best_iou = align_reference_image_to_mesh(
-            ref_sil, verts, faces,
-            n_coarse=48, n_refine_iters=30,
+            ref_sil,
+            verts,
+            faces,
+            n_coarse=48,
+            n_refine_iters=30,
         )
-        assert best_iou >= 0.88, (
-            f"Recovered IoU {best_iou:.4f} < 0.88"
-        )
+        assert best_iou >= 0.88, f"Recovered IoU {best_iou:.4f} < 0.88"
 
     @pytest.mark.slow
     def test_position_error_within_threshold(
-        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+        self,
+        humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
         """Recovered position within 5% of bounding sphere diameter."""
         verts, faces = humanoid_mesh
@@ -313,12 +325,19 @@ class TestAlignPose:
 
         # Known camera
         from synapse.inspect.align import _look_at_rotation
-        gt_pos = np.array([
-            cam_radius * 0.6, cam_radius * 0.5, cam_radius * 0.6,
-        ])
+
+        gt_pos = np.array(
+            [
+                cam_radius * 0.6,
+                cam_radius * 0.5,
+                cam_radius * 0.6,
+            ]
+        )
         gt_pos = gt_pos / np.linalg.norm(gt_pos) * cam_radius
         rot = _look_at_rotation(
-            gt_pos, np.zeros(3), np.array([0.0, 1.0, 0.0]),
+            gt_pos,
+            np.zeros(3),
+            np.array([0.0, 1.0, 0.0]),
         )
         gt_cam = CameraPose(
             position=gt_pos.tolist(),
@@ -329,16 +348,17 @@ class TestAlignPose:
         ref_sil = compute_silhouette(verts, faces, gt_cam, resolution=res)
 
         best_pose, best_iou = align_reference_image_to_mesh(
-            ref_sil, verts, faces,
-            n_coarse=48, n_refine_iters=30,
+            ref_sil,
+            verts,
+            faces,
+            n_coarse=48,
+            n_refine_iters=30,
         )
 
         diameter = bbox_r * 2.0
         # If IoU is good, position should be close (or symmetric)
         # For asymmetric mesh, good IoU implies close position
-        assert best_iou >= 0.88, (
-            f"IoU {best_iou:.4f} too low for position check"
-        )
+        assert best_iou >= 0.88, f"IoU {best_iou:.4f} too low for position check"
 
         # Position displacement error within bounding sphere diameter threshold
         # (allowing for single-view 64x64 perspective depth-scale ambiguity)
@@ -351,7 +371,8 @@ class TestAlignPose:
 
     @pytest.mark.slow
     def test_blank_reference_triggers_gate(
-        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+        self,
+        humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
         """Blank reference image triggers QualityGateError."""
         verts, faces = humanoid_mesh
@@ -359,14 +380,18 @@ class TestAlignPose:
 
         with pytest.raises(QualityGateError) as exc_info:
             align_reference_image_to_mesh(
-                blank, verts, faces,
-                n_coarse=2, n_refine_iters=1,
+                blank,
+                verts,
+                faces,
+                n_coarse=2,
+                n_refine_iters=1,
             )
         assert exc_info.value.exit_code == 40
 
     @pytest.mark.slow
     def test_top3_above_random_chance(
-        self, humanoid_mesh: tuple[np.ndarray, np.ndarray],
+        self,
+        humanoid_mesh: tuple[np.ndarray, np.ndarray],
     ) -> None:
         """Top-3 coarse candidates have IoU above random chance.
 
@@ -383,18 +408,26 @@ class TestAlignPose:
 
         # Generate a reference from a known view
         cameras = generate_fibonacci_sphere_cameras(
-            n_cameras=48, radius_scale=cam_radius, fov_deg=50.0,
+            n_cameras=48,
+            radius_scale=cam_radius,
+            fov_deg=50.0,
         )
         ref_cam = cameras[7]  # pick an arbitrary camera
         ref_sil = compute_silhouette(
-            verts, faces, ref_cam, resolution=res,
+            verts,
+            faces,
+            ref_cam,
+            resolution=res,
         )
 
         # Compute coarse IoU scores for all cameras
         scores: list[float] = []
         for cam in cameras:
             sil = compute_silhouette(
-                verts, faces, cam, resolution=res,
+                verts,
+                faces,
+                cam,
+                resolution=res,
             )
             scores.append(compute_silhouette_iou(ref_sil, sil))
 
@@ -402,7 +435,4 @@ class TestAlignPose:
         top3 = scores[:3]
 
         for i, s in enumerate(top3):
-            assert s > 0.05, (
-                f"Top-{i+1} coarse IoU {s:.4f} is not above "
-                "random chance"
-            )
+            assert s > 0.05, f"Top-{i + 1} coarse IoU {s:.4f} is not above random chance"

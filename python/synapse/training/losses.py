@@ -126,16 +126,24 @@ class EdgePreservingLoss:
         if h <= 2 or w <= 2:
             return torch.zeros_like(x)
 
-        sobel_x = torch.tensor(
-            [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
-            dtype=torch.float32,
-            device=x.device,
-        ).unsqueeze(0).unsqueeze(0)
-        sobel_y = torch.tensor(
-            [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
-            dtype=torch.float32,
-            device=x.device,
-        ).unsqueeze(0).unsqueeze(0)
+        sobel_x = (
+            torch.tensor(
+                [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],
+                dtype=torch.float32,
+                device=x.device,
+            )
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
+        sobel_y = (
+            torch.tensor(
+                [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
+                dtype=torch.float32,
+                device=x.device,
+            )
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
 
         gx = F.conv2d(x, sobel_x, padding=1)
         gy = F.conv2d(x, sobel_y, padding=1)

@@ -173,15 +173,9 @@ class CurriculumSampler:
         # Build weighted pool of (factor, level) pairs
         pool: list[tuple[str, str, float]] = []
         for factor, w in weights.items():
-            raw_val = (
-                float(bench_scores[factor]) if factor in bench_scores else 1.0
-            )
-            is_weak = (
-                factor in bench_scores
-                and (
-                    not math.isfinite(raw_val)
-                    or raw_val < self._config.weakness_threshold
-                )
+            raw_val = float(bench_scores[factor]) if factor in bench_scores else 1.0
+            is_weak = factor in bench_scores and (
+                not math.isfinite(raw_val) or raw_val < self._config.weakness_threshold
             )
             for i, level in enumerate(_DIFFICULTY_LEVELS):
                 if i > self._config.max_level:
@@ -215,10 +209,7 @@ class CurriculumSampler:
                     factor=factor,
                     level=level,
                     weight=round(weight, 4),
-                    description=(
-                        f"Challenge {factor} at {level} "
-                        f"(weight={weight:.2f})"
-                    ),
+                    description=(f"Challenge {factor} at {level} (weight={weight:.2f})"),
                 )
             )
 
@@ -310,9 +301,7 @@ class CurriculumManager:
         import json
 
         self._quarantine_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = (
-            self._quarantine_dir / f"quarantine_round_{self._round:04d}.json"
-        )
+        manifest_path = self._quarantine_dir / f"quarantine_round_{self._round:04d}.json"
         manifest = {
             "round": self._round,
             "lora_sha256": lora_sha256,

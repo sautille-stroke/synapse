@@ -195,9 +195,7 @@ class DomainRandomizer:
     def __init__(self, config: DomainRandomizationConfig | None = None) -> None:
         self._cfg = config or DomainRandomizationConfig()
         self._rng = np.random.default_rng(self._cfg.seed)
-        self._base_scenes = (
-            self._cfg.base_scenes if self._cfg.base_scenes else _DEFAULT_BASE_SCENES
-        )
+        self._base_scenes = self._cfg.base_scenes if self._cfg.base_scenes else _DEFAULT_BASE_SCENES
 
     # ── core generation ────────────────────────────────────────────
 

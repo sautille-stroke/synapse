@@ -26,6 +26,7 @@ import numpy as np
 # Synthetic data helpers
 # ---------------------------------------------------------------------------
 
+
 def _ring_cameras(
     n_views: int,
     radius: float = 2.0,
@@ -40,23 +41,28 @@ def _ring_cameras(
         cos_t, sin_t = math.cos(theta), math.sin(theta)
 
         pos = np.array([radius * sin_t, height, radius * cos_t], dtype=np.float64)
-        r_mat = np.array([
-            [cos_t, 0.0, -sin_t],
-            [0.0, 1.0, 0.0],
-            [sin_t, 0.0, cos_t],
-        ], dtype=np.float64)
+        r_mat = np.array(
+            [
+                [cos_t, 0.0, -sin_t],
+                [0.0, 1.0, 0.0],
+                [sin_t, 0.0, cos_t],
+            ],
+            dtype=np.float64,
+        )
 
         mat4 = np.eye(4, dtype=np.float64)
         mat4[:3, :3] = r_mat
         mat4[:3, 3] = pos
 
-        cameras.append(CameraExtrinsics(
-            frame=i,
-            transform=mat4,
-            position=pos,
-            rotation_matrix=r_mat,
-            yaw_rad=theta,
-        ))
+        cameras.append(
+            CameraExtrinsics(
+                frame=i,
+                transform=mat4,
+                position=pos,
+                rotation_matrix=r_mat,
+                yaw_rad=theta,
+            )
+        )
     return cameras  # type: ignore[return-value]
 
 
@@ -132,7 +138,7 @@ def _render_depth_for_view(
     fx = fy = float(w)
     cx, cy = w / 2.0, h / 2.0
     rel = verts - cam_pos[np.newaxis, :]
-    z = np.sqrt(np.sum(rel ** 2, axis=1))
+    z = np.sqrt(np.sum(rel**2, axis=1))
     forward = -cam_pos / (np.linalg.norm(cam_pos) + 1e-8)
     z_proj = rel @ forward
     valid = z_proj > 0.1
@@ -231,6 +237,7 @@ def inject_defect_c(
 # Core comparison
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RoundtripMetrics:
     """Collected metrics from a single round-trip run."""
@@ -279,9 +286,9 @@ def run_single_pipeline(
 
     faces = result.mesh.faces
     if faces.ndim == 2 and faces.shape[1] == 4:
-        tri_faces = np.concatenate(
-            [faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0
-        ).astype(np.int32)
+        tri_faces = np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]], axis=0).astype(
+            np.int32
+        )
     else:
         tri_faces = faces.astype(np.int32)
 
@@ -316,9 +323,7 @@ def run_single_pipeline(
         camera=cams[0],
         entity_name="recon_mesh",
     )
-    rendered = np.clip(
-        np.asarray(frame_res.direct_radiance, dtype=np.float32), 0.0, 1.0
-    )
+    rendered = np.clip(np.asarray(frame_res.direct_radiance, dtype=np.float32), 0.0, 1.0)
 
     p = psnr_db(rendered, mean_frame)
     s = ssim(rendered, mean_frame)
@@ -381,8 +386,7 @@ def run_roundtrip_comparison(config: RoundtripConfig | None = None) -> dict[str,
     # Compute differential ratios
     cd_clean = max(clean_metrics.chamfer_distance, 1e-6)
     ratios = {
-        name: round(m.chamfer_distance / cd_clean, 2)
-        for name, m in corrupted_results.items()
+        name: round(m.chamfer_distance / cd_clean, 2) for name, m in corrupted_results.items()
     }
 
     report = {
@@ -437,11 +441,11 @@ h1 {{ color: #333; }}
 <h2>Clean Baseline</h2>
 <table>
 <tr><th>CD</th><th>PSNR (dB)</th><th>SSIM</th><th>Vertices</th><th>Faces</th></tr>
-<tr><td>{clean['chamfer_distance']:.6f}</td>
-    <td>{clean['psnr_db']:.2f}</td>
-    <td>{clean['ssim']:.4f}</td>
-    <td>{clean['vertex_count']}</td>
-    <td>{clean['face_count']}</td></tr>
+<tr><td>{clean["chamfer_distance"]:.6f}</td>
+    <td>{clean["psnr_db"]:.2f}</td>
+    <td>{clean["ssim"]:.4f}</td>
+    <td>{clean["vertex_count"]}</td>
+    <td>{clean["face_count"]}</td></tr>
 </table>
 <h2>Corrupted vs Clean (Differential Sensitivity)</h2>
 <table>

@@ -35,7 +35,12 @@ SYNAPSE_ASSET_CACHE: Path = Path(
 
 # Built-in procedural asset names.
 _BUILTIN_PROCEDURAL: set[str] = {
-    "cube", "sphere", "cylinder", "torus", "plane", "cone",
+    "cube",
+    "sphere",
+    "cylinder",
+    "torus",
+    "plane",
+    "cone",
     "humanoid_53",
 }
 
@@ -91,8 +96,7 @@ class AssetRegistry:
         """
         if name not in self._entries:
             raise KeyError(
-                f"Asset '{name}' not registered. "
-                f"Available: {sorted(self._entries.keys())}"
+                f"Asset '{name}' not registered. Available: {sorted(self._entries.keys())}"
             )
         return self._entries[name]
 
@@ -126,9 +130,7 @@ class AssetRegistry:
         if name in _BUILTIN_PROCEDURAL:
             return self._resolve_builtin(entry, cache_dir)
 
-        raise FileNotFoundError(
-            f"Cannot resolve asset '{name}': not builtin and no URL."
-        )
+        raise FileNotFoundError(f"Cannot resolve asset '{name}': not builtin and no URL.")
 
     # ── private ───────────────────────────────────────────────────
 
@@ -136,11 +138,14 @@ class AssetRegistry:
         """Pre-register standard procedural primitives."""
         for prim in _BUILTIN_PROCEDURAL:
             self._entries[prim] = AssetEntry(
-                name=prim, builtin=True,
+                name=prim,
+                builtin=True,
             )
 
     def _resolve_builtin(
-        self, entry: AssetEntry, cache_dir: Path,
+        self,
+        entry: AssetEntry,
+        cache_dir: Path,
     ) -> Path:
         """Generate a procedural mesh and cache as OBJ."""
         obj_path = cache_dir / f"{entry.name}.obj"
@@ -151,6 +156,7 @@ class AssetRegistry:
             from synapse.bench.procedural import (
                 generate_humanoid_proxy,
             )
+
             verts, faces, _ = generate_humanoid_proxy()
             # Write simple OBJ
             lines = [
@@ -158,16 +164,13 @@ class AssetRegistry:
                 f"# Vertices: {len(verts)}, Faces: {len(faces)}",
             ]
             for v in verts:
-                lines.append(
-                    f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}"
-                )
+                lines.append(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}")
             for f in faces:
-                lines.append(
-                    f"f {f[0]+1} {f[1]+1} {f[2]+1}"
-                )
+                lines.append(f"f {f[0] + 1} {f[1] + 1} {f[2] + 1}")
             obj_path.parent.mkdir(parents=True, exist_ok=True)
             obj_path.write_text(
-                "\n".join(lines) + "\n", encoding="utf-8",
+                "\n".join(lines) + "\n",
+                encoding="utf-8",
             )
             return obj_path
 
@@ -187,7 +190,9 @@ class AssetRegistry:
         return obj_path
 
     def _resolve_remote(
-        self, entry: AssetEntry, cache_dir: Path,
+        self,
+        entry: AssetEntry,
+        cache_dir: Path,
     ) -> Path:
         """Download a remote asset with SHA-256 verification."""
         # Determine local filename from URL
@@ -197,7 +202,8 @@ class AssetRegistry:
 
         if local_path.is_file():
             if entry.sha256 and not self._verify_sha256(
-                local_path, entry.sha256,
+                local_path,
+                entry.sha256,
             ):
                 logger.warning(
                     "SHA256 mismatch for cached %s, re-downloading",
@@ -210,6 +216,7 @@ class AssetRegistry:
         # Download
         try:
             import urllib.request
+
             logger.info("Downloading %s -> %s", entry.url, local_path)
             local_path.parent.mkdir(parents=True, exist_ok=True)
             urllib.request.urlretrieve(entry.url, str(local_path))
@@ -217,24 +224,21 @@ class AssetRegistry:
             # Offline fallback: try procedural
             if entry.name in _BUILTIN_PROCEDURAL:
                 logger.warning(
-                    "Download failed for %s, falling back to "
-                    "procedural: %s",
-                    entry.name, exc,
+                    "Download failed for %s, falling back to procedural: %s",
+                    entry.name,
+                    exc,
                 )
                 return self._resolve_builtin(entry, cache_dir)
             raise FileNotFoundError(
-                f"Cannot download asset '{entry.name}' from "
-                f"{entry.url}: {exc}"
+                f"Cannot download asset '{entry.name}' from {entry.url}: {exc}"
             ) from exc
 
         # Verify checksum
         if entry.sha256 and not self._verify_sha256(
-            local_path, entry.sha256,
+            local_path,
+            entry.sha256,
         ):
-            raise ValueError(
-                f"SHA256 mismatch for {entry.name}: expected "
-                f"{entry.sha256}"
-            )
+            raise ValueError(f"SHA256 mismatch for {entry.name}: expected {entry.sha256}")
 
         return local_path
 
@@ -281,10 +285,7 @@ class ScenarioRegistry:
             If the scenario ID is not found.
         """
         if name not in self._scenarios:
-            raise KeyError(
-                f"Scenario '{name}' not found. "
-                f"Available: {self.list_scenarios()}"
-            )
+            raise KeyError(f"Scenario '{name}' not found. Available: {self.list_scenarios()}")
         return self._scenarios[name]
 
     def list_by_tier(self, tier: str) -> list[str]:

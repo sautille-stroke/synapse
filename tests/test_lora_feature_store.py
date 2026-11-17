@@ -62,7 +62,8 @@ class TestStructuredCaption:
     def test_empty_subject_raises(self) -> None:
         """Empty subject_desc raises ContractValidationError."""
         with pytest.raises(
-            ContractValidationError, match="subject",
+            ContractValidationError,
+            match="subject",
         ):
             format_structured_caption(
                 trigger_token="sks",
@@ -75,7 +76,8 @@ class TestStructuredCaption:
     def test_empty_lighting_raises(self) -> None:
         """Empty lighting_env raises ContractValidationError."""
         with pytest.raises(
-            ContractValidationError, match="lighting",
+            ContractValidationError,
+            match="lighting",
         ):
             format_structured_caption(
                 trigger_token="sks",
@@ -88,7 +90,8 @@ class TestStructuredCaption:
     def test_empty_camera_raises(self) -> None:
         """Empty camera_motion raises ContractValidationError."""
         with pytest.raises(
-            ContractValidationError, match="camera",
+            ContractValidationError,
+            match="camera",
         ):
             format_structured_caption(
                 trigger_token="sks",
@@ -101,7 +104,8 @@ class TestStructuredCaption:
     def test_empty_style_raises(self) -> None:
         """Empty art_style_tag raises ContractValidationError."""
         with pytest.raises(
-            ContractValidationError, match="art_style",
+            ContractValidationError,
+            match="art_style",
         ):
             format_structured_caption(
                 trigger_token="sks",
@@ -137,7 +141,10 @@ class TestLinearProjectionEncoder:
         """[T=17, H=64, W=64, 3] -> [16, 5, 8, 8]."""
         enc = LinearProjectionEncoder()
         frames = np.random.RandomState(0).randint(
-            0, 256, (17, 64, 64, 3), dtype=np.uint8,
+            0,
+            256,
+            (17, 64, 64, 3),
+            dtype=np.uint8,
         )
         latent = enc.encode(frames)
         # tau = (17-1)//4 + 1 = 5
@@ -148,7 +155,10 @@ class TestLinearProjectionEncoder:
         """Same input produces identical output."""
         enc = LinearProjectionEncoder()
         frames = np.random.RandomState(1).randint(
-            0, 256, (9, 32, 32, 3), dtype=np.uint8,
+            0,
+            256,
+            (9, 32, 32, 3),
+            dtype=np.uint8,
         )
         a = enc.encode(frames)
         b = enc.encode(frames)
@@ -168,12 +178,12 @@ class TestLinearProjectionEncoder:
         enc = LinearProjectionEncoder()
         for t_in, tau_exp in [(5, 2), (9, 3), (17, 5), (33, 9)]:
             frames = np.zeros(
-                (t_in, 16, 16, 3), dtype=np.uint8,
+                (t_in, 16, 16, 3),
+                dtype=np.uint8,
             )
             latent = enc.encode(frames)
             assert latent.shape[1] == tau_exp, (
-                f"T={t_in}: expected tau={tau_exp}, "
-                f"got {latent.shape[1]}"
+                f"T={t_in}: expected tau={tau_exp}, got {latent.shape[1]}"
             )
 
 
@@ -231,7 +241,10 @@ class TestFeatureStoreBuilder:
         rng = np.random.RandomState(42)
         for i in range(3):
             frames = rng.randint(
-                0, 256, (17, 64, 64, 3), dtype=np.uint8,
+                0,
+                256,
+                (17, 64, 64, 3),
+                dtype=np.uint8,
             )
             builder.add_sample(
                 sample_id=f"s{i:03d}",
@@ -255,20 +268,26 @@ class TestFeatureStoreBuilder:
             assert s["meta"]["source_sha256"] == "a" * 64
 
     def test_build_multiple_shards(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """Small max_shard_bytes forces multiple shards."""
         tmp = tmp_path
         enc = LinearProjectionEncoder()
         txt = LinearProjectionTextEncoder()
         builder = FeatureStoreBuilder(
-            enc, txt, max_shard_bytes=1024,
+            enc,
+            txt,
+            max_shard_bytes=1024,
         )
 
         rng = np.random.RandomState(0)
         for i in range(3):
             frames = rng.randint(
-                0, 256, (17, 32, 32, 3), dtype=np.uint8,
+                0,
+                256,
+                (17, 32, 32, 3),
+                dtype=np.uint8,
             )
             builder.add_sample(
                 sample_id=f"multi_{i}",
@@ -277,9 +296,7 @@ class TestFeatureStoreBuilder:
             )
 
         shard_paths = builder.build_shards(tmp / "shards")  # type: ignore[operator]
-        assert len(shard_paths) > 1, (
-            "Expected multiple shards with small size limit"
-        )
+        assert len(shard_paths) > 1, "Expected multiple shards with small size limit"
 
         # All samples recoverable
         samples = list(iter_feature_shards(shard_paths))
@@ -288,7 +305,8 @@ class TestFeatureStoreBuilder:
         assert ids == {"multi_0", "multi_1", "multi_2"}
 
     def test_fgpp_cond_roundtrip(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """FGPP condition tensor round-trips through shards."""
         tmp = tmp_path
@@ -297,9 +315,16 @@ class TestFeatureStoreBuilder:
         builder = FeatureStoreBuilder(enc, txt)
 
         frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
-        cond = np.random.RandomState(99).randn(
-            4, 2, 2, 2,
-        ).astype(np.float32)
+        cond = (
+            np.random.RandomState(99)
+            .randn(
+                4,
+                2,
+                2,
+                2,
+            )
+            .astype(np.float32)
+        )
 
         builder.add_sample(
             sample_id="cond_test",
@@ -313,11 +338,14 @@ class TestFeatureStoreBuilder:
         assert len(samples) == 1
         assert samples[0]["fgpp_cond"] is not None
         np.testing.assert_allclose(
-            samples[0]["fgpp_cond"], cond, atol=1e-6,
+            samples[0]["fgpp_cond"],
+            cond,
+            atol=1e-6,
         )
 
     def test_no_fgpp_cond_is_none(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """Samples without fgpp_cond yield None."""
         tmp = tmp_path
@@ -337,7 +365,8 @@ class TestFeatureStoreBuilder:
         assert samples[0]["fgpp_cond"] is None
 
     def test_sha256_in_meta(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """source_sha256 appears in meta."""
         tmp = tmp_path
@@ -418,7 +447,8 @@ class TestFeatureStoreQualityGates:
         return cam
 
     def test_raw_fgpp_with_camera_matrices_passes_all_gates(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """15-channel FGPP + valid SO(3) camera_matrices passes all 5 gates."""
         tmp = tmp_path
@@ -427,7 +457,10 @@ class TestFeatureStoreQualityGates:
         builder = FeatureStoreBuilder(enc, txt)
 
         frames = np.random.RandomState(77).randint(
-            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+            0,
+            256,
+            (17, 32, 32, 3),
+            dtype=np.uint8,
         )
         fgpp_cond = self._make_valid_fgpp(17, 32, 32)
         cam_mats = self._make_valid_camera_matrices(17)
@@ -452,7 +485,8 @@ class TestFeatureStoreQualityGates:
         assert samples[0]["latent"].shape == (16, 5, 4, 4)
 
     def test_wan_7ch_control_passes_gates(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         """[7, T, H, W] Wan control tensor with valid depth/normals passes gates."""
         enc = LinearProjectionEncoder()
@@ -460,7 +494,10 @@ class TestFeatureStoreQualityGates:
         builder = FeatureStoreBuilder(enc, txt)
 
         frames = np.random.RandomState(88).randint(
-            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+            0,
+            256,
+            (17, 32, 32, 3),
+            dtype=np.uint8,
         )
         # [7, T, H, W] — valid Wan control layout
         wan_cond = np.zeros((7, 17, 32, 32), dtype=np.float32)
@@ -581,7 +618,6 @@ class TestFeatureStoreQualityGates:
         assert list((tmp_path / "empty_shards").glob("*.tar")) == []
 
 
-
 # ===================================================================
 # PR-117: Wan 7ch validation gates, streaming iter, sample_id validation
 # ===================================================================
@@ -613,7 +649,10 @@ class TestPR117FeatureStoreEnhancements:
         builder = FeatureStoreBuilder(enc, txt)
 
         frames = np.random.RandomState(117).randint(
-            0, 256, (17, 32, 32, 3), dtype=np.uint8,
+            0,
+            256,
+            (17, 32, 32, 3),
+            dtype=np.uint8,
         )
         wan_cond = self._make_valid_wan_7ch()
 
@@ -673,7 +712,7 @@ class TestPR117FeatureStoreEnhancements:
         import tarfile
 
         tmp = tmp_path
-        shard_path = Path(str(tmp)) / "test.tar"  # type: ignore[arg-type]
+        shard_path = Path(str(tmp)) / "test.tar"
 
         # Create a tarball with one valid and one invalid sample_id
         with tarfile.open(shard_path, "w") as tf:
@@ -712,7 +751,7 @@ class TestPR117FeatureStoreEnhancements:
         import tarfile
 
         tmp = tmp_path
-        shard_path = Path(str(tmp)) / "multi.tar"  # type: ignore[arg-type]
+        shard_path = Path(str(tmp)) / "multi.tar"
 
         with tarfile.open(shard_path, "w") as tf:
             for sid in ["alpha", "beta", "gamma"]:

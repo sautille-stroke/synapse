@@ -289,7 +289,12 @@ def _build_direct_fallback(
                 )
                 return False
     else:
-        compiler = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("g++") or shutil.which("c++")
+        compiler = (
+            os.environ.get("CXX")
+            or shutil.which("clang++")
+            or shutil.which("g++")
+            or shutil.which("c++")
+        )
         if not compiler:
             if dry_run:
                 compiler = "clang++"
@@ -314,7 +319,10 @@ def _build_direct_fallback(
             return True
         try:
             res = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired:
             if not quiet:
@@ -332,14 +340,23 @@ def _build_direct_fallback(
 
     if is_windows:
         # --- Step 1a: Compile aether geo sources with /EHs-c- /GR- ---
-        for src in (aether_geo_srcs or []):
+        for src in aether_geo_srcs or []:
             obj_name = src.stem + ".obj"
             obj_path = obj_dir / obj_name
             cmd = [
-                compiler, "/c", "/O2", "/std:c++20", "/utf-8",
-                "/EHs-c-", "/GR-", "/D_HAS_EXCEPTIONS=0",
-                "/DNOMINMAX", "/D_CRT_SECURE_NO_WARNINGS",
-                *includes, str(src), f"/Fo:{obj_path}",
+                compiler,
+                "/c",
+                "/O2",
+                "/std:c++20",
+                "/utf-8",
+                "/EHs-c-",
+                "/GR-",
+                "/D_HAS_EXCEPTIONS=0",
+                "/DNOMINMAX",
+                "/D_CRT_SECURE_NO_WARNINGS",
+                *includes,
+                str(src),
+                f"/Fo:{obj_path}",
             ]
             if not _run_compile(cmd, f"Compiling {src.name} (no-exceptions)"):
                 return False
@@ -348,10 +365,18 @@ def _build_direct_fallback(
         # --- Step 1b: Compile bindings.cc with /EHsc /GR ---
         bindings_obj = obj_dir / "bindings.obj"
         cmd = [
-            compiler, "/c", "/O2", "/std:c++20", "/utf-8",
-            "/EHsc", "/GR",
-            "/DNOMINMAX", "/D_CRT_SECURE_NO_WARNINGS",
-            *includes, str(bindings_src), f"/Fo:{bindings_obj}",
+            compiler,
+            "/c",
+            "/O2",
+            "/std:c++20",
+            "/utf-8",
+            "/EHsc",
+            "/GR",
+            "/DNOMINMAX",
+            "/D_CRT_SECURE_NO_WARNINGS",
+            *includes,
+            str(bindings_src),
+            f"/Fo:{bindings_obj}",
         ]
         if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
             return False
@@ -361,7 +386,8 @@ def _build_direct_fallback(
         python_lib = _find_windows_python_lib()
         lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
         link_cmd = [
-            compiler, "/LD",
+            compiler,
+            "/LD",
             *[str(o) for o in obj_files],
             f"/Fe:{output_file}",
             *lib_args,
@@ -370,17 +396,27 @@ def _build_direct_fallback(
             return False
     else:
         common_flags = [
-            "-O3", "-Wall", "-std=c++20", "-fPIC", "-fvisibility=hidden",
+            "-O3",
+            "-Wall",
+            "-std=c++20",
+            "-fPIC",
+            "-fvisibility=hidden",
         ]
 
         # --- Step 1a: Compile aether geo sources with -fno-exceptions -fno-rtti ---
-        for src in (aether_geo_srcs or []):
+        for src in aether_geo_srcs or []:
             obj_name = src.stem + ".o"
             obj_path = obj_dir / obj_name
             cmd = [
-                compiler, "-c", *common_flags,
-                "-fno-exceptions", "-fno-rtti",
-                *includes, str(src), "-o", str(obj_path),
+                compiler,
+                "-c",
+                *common_flags,
+                "-fno-exceptions",
+                "-fno-rtti",
+                *includes,
+                str(src),
+                "-o",
+                str(obj_path),
             ]
             if not _run_compile(cmd, f"Compiling {src.name} (no-exceptions)"):
                 return False
@@ -389,9 +425,15 @@ def _build_direct_fallback(
         # --- Step 1b: Compile bindings.cc with -fexceptions -frtti ---
         bindings_obj = obj_dir / "bindings.o"
         cmd = [
-            compiler, "-c", *common_flags,
-            "-fexceptions", "-frtti",
-            *includes, str(bindings_src), "-o", str(bindings_obj),
+            compiler,
+            "-c",
+            *common_flags,
+            "-fexceptions",
+            "-frtti",
+            *includes,
+            str(bindings_src),
+            "-o",
+            str(bindings_obj),
         ]
         if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
             return False
@@ -399,9 +441,11 @@ def _build_direct_fallback(
 
         # --- Step 2: Link ---
         link_cmd = [
-            compiler, "-shared",
+            compiler,
+            "-shared",
             *[str(o) for o in obj_files],
-            "-o", str(output_file),
+            "-o",
+            str(output_file),
         ]
         if sys.platform == "darwin":
             link_cmd.extend(["-Wl,-undefined,dynamic_lookup"])
@@ -434,7 +478,9 @@ def _emit_error(exit_code: int, message: str, agent_fix_hint: str, as_json: bool
 def _install_extension(built_artifact: Path, target_dir: Path) -> list[Path]:
     """Copy built shared library to target directory with ABI and generic names."""
     target_dir.mkdir(parents=True, exist_ok=True)
-    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (
+        ".pyd" if sys.platform == "win32" else ".so"
+    )
 
     installed = []
     # 1. ABI-specific filename (e.g., _c_geometry.cpython-312-x86_64-linux-gnu.so)
@@ -463,7 +509,9 @@ def _smoke_test(target_dir: Path | None = None, quiet: bool = False) -> bool:
 
     validate_func = None
     if target_dir:
-        ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
+        ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (
+            ".pyd" if sys.platform == "win32" else ".so"
+        )
         cand_files = [
             target_dir / f"_c_geometry{ext_suffix}",
             target_dir / ("_c_geometry.pyd" if sys.platform == "win32" else "_c_geometry.so"),
@@ -515,7 +563,9 @@ def _smoke_test(target_dir: Path | None = None, quiet: bool = False) -> bool:
         )
         if not res.get("is_manifold") or not res.get("passed"):
             if not quiet:
-                print(f"[build_native] Smoke test returned unexpected result: {res}", file=sys.stderr)
+                print(
+                    f"[build_native] Smoke test returned unexpected result: {res}", file=sys.stderr
+                )
             return False
     except Exception as e:
         if not quiet:
@@ -526,8 +576,12 @@ def _smoke_test(target_dir: Path | None = None, quiet: bool = False) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build and install native C++20 _c_geometry extension.")
-    parser.add_argument("--force-direct", action="store_true", help="Force direct C++ compilation, bypassing Bazel.")
+    parser = argparse.ArgumentParser(
+        description="Build and install native C++20 _c_geometry extension."
+    )
+    parser.add_argument(
+        "--force-direct", action="store_true", help="Force direct C++ compilation, bypassing Bazel."
+    )
     parser.add_argument(
         "--check-only",
         "--check",
@@ -535,8 +589,15 @@ def main() -> int:
         dest="check_only",
         help="Only verify existing extension integrity.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Print compiler commands without executing.")
-    parser.add_argument("--backend", choices=["auto", "bazel", "direct"], default="auto", help="Build backend to use.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print compiler commands without executing."
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "bazel", "direct", "compiler"],
+        default="auto",
+        help="Build backend to use.",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -557,6 +618,8 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = _get_repo_root()
+    if args.backend == "compiler":
+        args.backend = "direct"
     target_dir = args.output_dir if args.output_dir else repo_root / "python" / "synapse"
     quiet = args.json
 
@@ -579,7 +642,9 @@ def main() -> int:
     built_artifact: Path | None = None
     chosen_backend = "unknown"
 
-    use_bazel = (args.backend in ("auto", "bazel")) and not args.force_direct and args.backend != "direct"
+    use_bazel = (
+        (args.backend in ("auto", "bazel")) and not args.force_direct and args.backend != "direct"
+    )
     bazel_bin = _find_bazel() if use_bazel else None
 
     # Step 1: Try Bazel
@@ -588,7 +653,9 @@ def main() -> int:
             print(f"[build_native] Found Bazel at: {bazel_bin}")
         if args.dry_run:
             if not quiet:
-                print(f"[build_native] (dry-run) {bazel_bin} build //:_c_geometry --config={_get_platform_config()}")
+                print(
+                    f"[build_native] (dry-run) {bazel_bin} build //:_c_geometry --config={_get_platform_config()}"
+                )
             if args.json:
                 print(json.dumps({"status": "ok", "backend": "bazel", "dry_run": True}))
             return 0
@@ -612,10 +679,19 @@ def main() -> int:
     if not built_artifact:
         if not quiet:
             print("[build_native] Falling back to direct C++20 compiler...")
-        ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (".pyd" if sys.platform == "win32" else ".so")
+        ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (
+            ".pyd" if sys.platform == "win32" else ".so"
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_out = Path(tmp_dir) / f"_c_geometry{ext_suffix}"
-            if _build_direct_fallback(repo_root, temp_out, dry_run=args.dry_run, quiet=quiet, as_json=False, timeout=args.timeout):
+            if _build_direct_fallback(
+                repo_root,
+                temp_out,
+                dry_run=args.dry_run,
+                quiet=quiet,
+                as_json=False,
+                timeout=args.timeout,
+            ):
                 if args.dry_run:
                     if args.json:
                         print(json.dumps({"status": "ok", "backend": "direct", "dry_run": True}))

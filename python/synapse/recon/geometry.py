@@ -146,7 +146,7 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
         adj: dict[int, set[int]] = defaultdict(set)
         for faces_sharing_edge in edge_to_faces_local.values():
             for i, f1 in enumerate(faces_sharing_edge):
-                for f2 in faces_sharing_edge[i + 1:]:
+                for f2 in faces_sharing_edge[i + 1 :]:
                     adj[f1].add(f2)
                     adj[f2].add(f1)
 
@@ -684,10 +684,7 @@ def check_self_intersections(
             return False
 
         # Coplanar case: 2D SAT on the 6 in-plane edge normals
-        if (
-            float(np.max(np.abs(db))) <= plane_eps
-            and float(np.max(np.abs(da))) <= plane_eps
-        ):
+        if float(np.max(np.abs(db))) <= plane_eps and float(np.max(np.abs(da))) <= plane_eps:
             edges = (
                 t1[1] - t1[0],
                 t1[2] - t1[1],

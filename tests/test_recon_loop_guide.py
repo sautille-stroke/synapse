@@ -34,8 +34,30 @@ from synapse.recon.loop.radiometric import (
 # ---------------------------------------------------------------------------
 
 _VALID_COUNTS = [
-    5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57,
-    61, 65, 69, 73, 77, 81, 85, 89, 93, 97,
+    5,
+    9,
+    13,
+    17,
+    21,
+    25,
+    29,
+    33,
+    37,
+    41,
+    45,
+    49,
+    53,
+    57,
+    61,
+    65,
+    69,
+    73,
+    77,
+    81,
+    85,
+    89,
+    93,
+    97,
 ]
 
 _INVALID_COUNTS = [4, 6, 10, 96, 98, 100]
@@ -128,12 +150,15 @@ def test_acescg_roundtrip() -> None:
 
 def test_acescg_known_values() -> None:
     """Verify known colour transforms (pure red, green, blue, white)."""
-    primaries = np.array([
-        [1.0, 0.0, 0.0],  # sRGB red
-        [0.0, 1.0, 0.0],  # sRGB green
-        [0.0, 0.0, 1.0],  # sRGB blue
-        [1.0, 1.0, 1.0],  # D65 white
-    ], dtype=np.float64)
+    primaries = np.array(
+        [
+            [1.0, 0.0, 0.0],  # sRGB red
+            [0.0, 1.0, 0.0],  # sRGB green
+            [0.0, 0.0, 1.0],  # sRGB blue
+            [1.0, 1.0, 1.0],  # D65 white
+        ],
+        dtype=np.float64,
+    )
 
     acescg = linear_to_acescg(primaries)
 

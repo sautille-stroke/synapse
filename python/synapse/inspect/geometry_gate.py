@@ -79,9 +79,7 @@ def validate_mesh_geometry(
         ValueError: If ``backend`` is not one of the accepted values.
     """
     if backend not in ("native", "python"):
-        raise ValueError(
-            f"Invalid backend {backend!r}; expected 'native' or 'python'."
-        )
+        raise ValueError(f"Invalid backend {backend!r}; expected 'native' or 'python'.")
 
     if backend == "native":
         try:
@@ -134,14 +132,19 @@ def validate_mesh_geometry(
         is_manifold = check_manifold(v, f)
         is_watertight = check_watertight(v, f)
         degen_indices = check_degenerate_faces(
-            v, f, min_area=min_area, max_aspect_ratio=max_aspect_ratio,
+            v,
+            f,
+            min_area=min_area,
+            max_aspect_ratio=max_aspect_ratio,
         )
         si_pairs = check_self_intersections(v, f)
         components = find_connected_components(f) if f.ndim == 2 and len(f) > 0 else []
         num_faces = int(len(f)) if f.ndim == 2 else 0
         num_components = len(components)
         floating_island_indices = _floating_island_indices_from_components(
-            components, num_faces, min_face_ratio,
+            components,
+            num_faces,
+            min_face_ratio,
         )
         degenerate_list = [int(i) for i in degen_indices]
 
@@ -158,9 +161,7 @@ def validate_mesh_geometry(
         )
 
     if len(si_pairs) > 0:
-        failure_reasons.append(
-            f"{len(si_pairs)} self-intersecting face pair(s) detected."
-        )
+        failure_reasons.append(f"{len(si_pairs)} self-intersecting face pair(s) detected.")
 
     if floating_island_indices:
         failure_reasons.append(

@@ -38,10 +38,7 @@ def handle_asset_inspect_3d(
             f"VLM endpoint '{endpoint_url}' was requested, "
             "but remote VLM transport is not available in core runtime. "
             "Silent fallback to MockJevTransport is FORBIDDEN.",
-            agent_fix_hint=(
-                "Omit 'vlm_endpoint_url' in CI mock mode or specify "
-                "defect_overrides."
-            ),
+            agent_fix_hint=("Omit 'vlm_endpoint_url' in CI mock mode or specify defect_overrides."),
         )
 
     transport: JevTransportProtocol = MockJevTransport(

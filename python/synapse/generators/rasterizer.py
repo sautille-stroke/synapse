@@ -107,7 +107,9 @@ class SoftwareRasterizer:
         else:
             rgb = np.zeros((h, w, 3), dtype=np.uint8)
 
-        depth = fgpp_frame.depth if fgpp_frame.depth is not None else np.zeros((h, w), dtype=np.float32)
+        depth = (
+            fgpp_frame.depth if fgpp_frame.depth is not None else np.zeros((h, w), dtype=np.float32)
+        )
 
         if fgpp_frame.world_normal is not None:
             world_normal = np.asarray(fgpp_frame.world_normal, dtype=np.float32)

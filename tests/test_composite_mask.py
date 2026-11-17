@@ -29,9 +29,12 @@ from synapse.fgpp.frame import CameraParams, FGPPFrame
 def _make_camera(w: int = 64, h: int = 64) -> CameraParams:
     """Create a simple pinhole camera for testing."""
     return CameraParams(
-        fx=float(w), fy=float(h),
-        cx=w / 2.0, cy=h / 2.0,
-        width=w, height=h,
+        fx=float(w),
+        fy=float(h),
+        cx=w / 2.0,
+        cy=h / 2.0,
+        width=w,
+        height=h,
     )
 
 
@@ -122,9 +125,7 @@ class TestDetector:
     def test_invalid_video_shape(self) -> None:
         """Non-4D input raises ValueError."""
         with pytest.raises(ValueError, match="Expected video_srgb shape"):
-            detect_video_artifacts(
-                np.zeros((64, 64, 3), dtype=np.uint8), []
-            )
+            detect_video_artifacts(np.zeros((64, 64, 3), dtype=np.uint8), [])
 
 
 # =========================================================================
@@ -144,7 +145,10 @@ class TestSurgicalMask:
         mask_sam2[30:40, 30:40] = True
 
         alpha = generate_surgical_mask(
-            mask_3d, mask_sam2, r_base=0, feather_width=0.0,
+            mask_3d,
+            mask_sam2,
+            r_base=0,
+            feather_width=0.0,
         )
         # Both regions should be fully covered.
         assert np.all(alpha[10:20, 10:20] == 1.0)
@@ -158,7 +162,9 @@ class TestSurgicalMask:
         original_count = int(mask_3d.sum())
 
         alpha = generate_surgical_mask(
-            mask_3d, r_base=4, feather_width=0.0,
+            mask_3d,
+            r_base=4,
+            feather_width=0.0,
         )
         dilated_count = int((alpha > 0).sum())
         assert dilated_count > original_count
@@ -174,8 +180,11 @@ class TestSurgicalMask:
         mv[..., 0] = 20.0  # dx = +20 pixels
 
         alpha = generate_surgical_mask(
-            mask_3d, motion_vectors=mv, r_base=2,
-            motion_scale=1.5, feather_width=0.0,
+            mask_3d,
+            motion_vectors=mv,
+            r_base=2,
+            motion_scale=1.5,
+            feather_width=0.0,
         )
 
         # Count non-zero pixels to the right vs left of original mask.
@@ -253,24 +262,24 @@ class TestCoverageSmokeTest:
         h, w = 128, 128
         mask_new = np.zeros((h, w), dtype=bool)
         mask_old = np.zeros((h, w), dtype=bool)
-        mask_new[40:80, 40:60] = True   # 40×20 block
-        mask_old[40:80, 50:70] = True   # 10px to the right
+        mask_new[40:80, 40:60] = True  # 40×20 block
+        mask_old[40:80, 50:70] = True  # 10px to the right
 
         mv = np.zeros((h, w, 2), dtype=np.float32)
         mv[..., 0] = 12.0  # rightward 12 px/frame
 
         alpha = generate_surgical_mask(
-            mask_new, mask_old,
+            mask_new,
+            mask_old,
             motion_vectors=mv,
-            r_base=4, motion_scale=1.5,
+            r_base=4,
+            motion_scale=1.5,
             feather_width=0.0,
         )
 
         # All old-mask pixels should be covered (alpha > 0).
         coverage = float(alpha[mask_old].sum()) / float(mask_old.sum())
-        assert coverage >= 1.0, (
-            f"Old mask coverage {coverage:.2%} < 100%"
-        )
+        assert coverage >= 1.0, f"Old mask coverage {coverage:.2%} < 100%"
 
     def test_full_pipeline_smoke(self) -> None:
         """Smoke test: detector + mask + composite all execute."""

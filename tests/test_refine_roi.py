@@ -44,8 +44,7 @@ class TestKalmanReducesJitter:
 
         reduction = 1.0 - filt_var / raw_var
         assert reduction >= 0.70, (
-            f"Kalman filter reduced variance by only {reduction * 100:.1f}% "
-            f"(need ≥ 70%)"
+            f"Kalman filter reduced variance by only {reduction * 100:.1f}% (need ≥ 70%)"
         )
 
 
@@ -84,9 +83,7 @@ class TestAffineRoundtripPrecision:
                 dst = M_fwd @ src
                 reconstructed = M_inv @ np.append(dst, 1.0)
                 error = np.max(np.abs(reconstructed - pt))
-                assert error < 1e-4, (
-                    f"Round-trip error {error} exceeds 1e-4 for bbox={bbox}"
-                )
+                assert error < 1e-4, f"Round-trip error {error} exceeds 1e-4 for bbox={bbox}"
 
 
 # ---------------------------------------------------------------------------
@@ -187,9 +184,7 @@ class TestFusionMethodEnumCount:
     """Assert FusionMethod has exactly 5 members."""
 
     def test_fusion_method_enum_count(self) -> None:
-        assert len(FusionMethod) == 5, (
-            f"Expected 5 FusionMethod members, got {len(FusionMethod)}"
-        )
+        assert len(FusionMethod) == 5, f"Expected 5 FusionMethod members, got {len(FusionMethod)}"
 
 
 # ---------------------------------------------------------------------------

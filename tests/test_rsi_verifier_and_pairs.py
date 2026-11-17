@@ -84,15 +84,9 @@ class TestCurriculumSampler:
 
     def test_weakness_weight_is_continuous_at_threshold(self) -> None:
         """Weight approaches 1.0 smoothly as score -> weakness_threshold."""
-        sampler = CurriculumSampler(
-            CurriculumConfig(weakness_threshold=0.7, boost_factor=2.0)
-        )
-        w_just_below = sampler.analyse_weaknesses({"F01_viewpoint": 0.699})[
-            "F01_viewpoint"
-        ]
-        w_at_thresh = sampler.analyse_weaknesses({"F01_viewpoint": 0.700})[
-            "F01_viewpoint"
-        ]
+        sampler = CurriculumSampler(CurriculumConfig(weakness_threshold=0.7, boost_factor=2.0))
+        w_just_below = sampler.analyse_weaknesses({"F01_viewpoint": 0.699})["F01_viewpoint"]
+        w_at_thresh = sampler.analyse_weaknesses({"F01_viewpoint": 0.700})["F01_viewpoint"]
         assert w_at_thresh == 1.0
         assert 1.0 < w_just_below < 1.01
 
@@ -124,14 +118,8 @@ class TestCurriculumSampler:
             "F03_lighting": 0.95,  # very strong
         }
         scenarios = sampler.sample_scenarios(scores)
-        viewpoint_count = sum(
-            1 for s in scenarios
-            if s.factor == "F01_viewpoint"
-        )
-        lighting_count = sum(
-            1 for s in scenarios
-            if s.factor == "F03_lighting"
-        )
+        viewpoint_count = sum(1 for s in scenarios if s.factor == "F01_viewpoint")
+        lighting_count = sum(1 for s in scenarios if s.factor == "F03_lighting")
         # Viewpoint should appear more often
         assert viewpoint_count > lighting_count
 
@@ -173,7 +161,8 @@ class TestDualVerifierEngine:
         """Good metrics pass all physics checks."""
         engine = DualVerifierEngine()
         result = engine.verify_physics(
-            "s001", self._good_metrics(),
+            "s001",
+            self._good_metrics(),
         )
         assert result.passed is True
         assert result.failures == []
@@ -193,11 +182,14 @@ class TestDualVerifierEngine:
         """Partial metrics (missing depth_rmse_m) raise error."""
         engine = DualVerifierEngine()
         with pytest.raises(ContractValidationError):
-            engine.verify_physics("s001", {
-                "silhouette_iou": 0.95,
-                "normal_angular_error_deg": 5.0,
-                # missing depth_rmse_m
-            })
+            engine.verify_physics(
+                "s001",
+                {
+                    "silhouette_iou": 0.95,
+                    "normal_angular_error_deg": 5.0,
+                    # missing depth_rmse_m
+                },
+            )
 
     def test_silhouette_drift_detected(self) -> None:
         """Low silhouette IoU causes SILHOUETTE_DRIFT failure."""
@@ -243,7 +235,9 @@ class TestDualVerifierEngine:
         m["foot_slide_velocity_ms"] = 0.1  # exceeds 0.02
 
         verdict = engine.verify(
-            "s001", m, prm_score=0.99,
+            "s001",
+            m,
+            prm_score=0.99,
         )
 
         assert verdict.verdict == "HARD_NEGATIVE"
@@ -255,7 +249,9 @@ class TestDualVerifierEngine:
         """Good physics + high PRM score = ACCEPT."""
         engine = DualVerifierEngine()
         verdict = engine.verify(
-            "s001", self._good_metrics(), prm_score=0.9,
+            "s001",
+            self._good_metrics(),
+            prm_score=0.9,
         )
         assert verdict.verdict == "ACCEPT"
         assert verdict.physics_passed is True
@@ -264,7 +260,9 @@ class TestDualVerifierEngine:
         """Good physics + low PRM score = REJECT."""
         engine = DualVerifierEngine()
         verdict = engine.verify(
-            "s001", self._good_metrics(), prm_score=0.1,
+            "s001",
+            self._good_metrics(),
+            prm_score=0.1,
         )
         assert verdict.verdict == "REJECT"
 
@@ -272,7 +270,9 @@ class TestDualVerifierEngine:
         """Good physics + medium PRM score = HARD_NEGATIVE."""
         engine = DualVerifierEngine()
         verdict = engine.verify(
-            "s001", self._good_metrics(), prm_score=0.5,
+            "s001",
+            self._good_metrics(),
+            prm_score=0.5,
         )
         assert verdict.verdict == "HARD_NEGATIVE"
 
@@ -454,9 +454,7 @@ class TestPreferenceDatasetBuilder:
         builder.add_golden_pairs(self._golden_pairs(3))
         builder.add_human_pairs(human)
         pairs = builder.build_pairs()
-        human_found = any(
-            p.pair_id == "human_001" for p in pairs
-        )
+        human_found = any(p.pair_id == "human_001" for p in pairs)
         assert human_found
 
     def test_max_oversample_factor_enforced(self) -> None:

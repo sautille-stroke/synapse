@@ -98,10 +98,7 @@ def _cmd_fgpp_validate(args: argparse.Namespace) -> dict[str, Any]:
     if not meta_path.is_file():
         raise AssetNotFoundError(
             f"metadata.json not found in {fgpp_dir}",
-            agent_fix_hint=(
-                "Run the FGPP exporter to generate metadata.json "
-                f"in '{fgpp_dir}'."
-            ),
+            agent_fix_hint=(f"Run the FGPP exporter to generate metadata.json in '{fgpp_dir}'."),
         )
 
     raw = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -110,8 +107,7 @@ def _cmd_fgpp_validate(args: argparse.Namespace) -> dict[str, Any]:
     schema_ver = raw.get("schema_version", "")
     if schema_ver != FGPP_SCHEMA_VERSION:
         raise ContractValidationError(
-            f"Schema version mismatch: expected '{FGPP_SCHEMA_VERSION}', "
-            f"got '{schema_ver}'",
+            f"Schema version mismatch: expected '{FGPP_SCHEMA_VERSION}', got '{schema_ver}'",
             agent_fix_hint=(
                 "Re-export with a compatible FGPP producer "
                 f"(expected schema '{FGPP_SCHEMA_VERSION}')."
@@ -213,8 +209,7 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
         seq = import_fgpp(fgpp_dir, lazy=False)
         if not isinstance(seq, FGPPSequence):
             raise ContractValidationError(
-                "Expected FGPPSequence from import_fgpp(lazy=False), "
-                f"got {type(seq).__name__}",
+                f"Expected FGPPSequence from import_fgpp(lazy=False), got {type(seq).__name__}",
                 agent_fix_hint=(
                     "Ensure the FGPP directory contains valid metadata.json "
                     "and frame_*.exr files. Re-export with fulgur or "
@@ -267,20 +262,28 @@ def register_fgpp_subparser(
     fgpp_sub = fgpp_parser.add_subparsers(dest="fgpp_command")
 
     fgpp_validate = fgpp_sub.add_parser(
-        "validate", help="Validate FGPP output directory", parents=parents,
+        "validate",
+        help="Validate FGPP output directory",
+        parents=parents,
     )
     fgpp_validate.add_argument("dir", help="Path to FGPP directory")
     fgpp_validate.add_argument(
-        "--check-exr", action="store_true", default=False,
+        "--check-exr",
+        action="store_true",
+        default=False,
         help="Deep-validate EXR 15-channel wire format, pixel types, and finite values",
     )
 
     fgpp_inspect = fgpp_sub.add_parser(
-        "inspect", help="Inspect FGPP directory", parents=parents,
+        "inspect",
+        help="Inspect FGPP directory",
+        parents=parents,
     )
     fgpp_inspect.add_argument("dir", help="Path to FGPP directory")
     fgpp_inspect.add_argument(
-        "--export-vis", action="store_true", default=False,
+        "--export-vis",
+        action="store_true",
+        default=False,
         help="Export visualisation images",
     )
     return cast(argparse.ArgumentParser, fgpp_parser)
@@ -296,21 +299,26 @@ def dispatch_fgpp(
     fgpp_cmd = getattr(parsed, "fgpp_command", None)
     if fgpp_cmd == "validate":
         return _run_with_json_mode(
-            _cmd_fgpp_validate, parsed, json_mode, trace_ctx,
+            _cmd_fgpp_validate,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     elif fgpp_cmd == "inspect":
         # Attach json flag for inspect handler
         parsed.json = json_mode
         return _run_with_json_mode(
-            _cmd_fgpp_inspect, parsed, json_mode, trace_ctx,
+            _cmd_fgpp_inspect,
+            parsed,
+            json_mode,
+            trace_ctx,
         )
     else:
         if json_mode:
             err = SynapseError(
                 "Missing fgpp sub-command (validate|inspect)",
                 ExitCode.CONTRACT_ERROR,
-                "Use 'synapse fgpp validate <dir>' or "
-                "'synapse fgpp inspect <dir>'.",
+                "Use 'synapse fgpp validate <dir>' or 'synapse fgpp inspect <dir>'.",
             )
             json.dump(
                 err.to_json_dict(trace_ctx.trace_id),

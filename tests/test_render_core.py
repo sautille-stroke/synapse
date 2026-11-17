@@ -26,6 +26,7 @@ from synapse.telemetry import MemoryForecaster, TraceContext
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_camera(
     width: int = 64,
     height: int = 64,
@@ -61,11 +62,15 @@ def _make_camera(
     fy = fx
 
     return CameraParams(
-        fx=fx, fy=fy,
-        cx=width / 2.0, cy=height / 2.0,
-        width=width, height=height,
+        fx=fx,
+        fy=fy,
+        cx=width / 2.0,
+        cy=height / 2.0,
+        width=width,
+        height=height,
         fov_degrees=fov_deg,
-        z_near=z_near, z_far=z_far,
+        z_near=z_near,
+        z_far=z_far,
         view_matrix=view,
         world_matrix=world,
     )
@@ -73,21 +78,37 @@ def _make_camera(
 
 def _unit_cube_mesh() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return a simple unit cube mesh centered at origin."""
-    vertices = np.array([
-        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5],
-        [0.5,  0.5, -0.5], [-0.5,  0.5, -0.5],
-        [-0.5, -0.5,  0.5], [0.5, -0.5,  0.5],
-        [0.5,  0.5,  0.5], [-0.5,  0.5,  0.5],
-    ], dtype=np.float64)
+    vertices = np.array(
+        [
+            [-0.5, -0.5, -0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, 0.5, -0.5],
+            [-0.5, 0.5, -0.5],
+            [-0.5, -0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [-0.5, 0.5, 0.5],
+        ],
+        dtype=np.float64,
+    )
 
-    faces = np.array([
-        [0, 1, 2], [0, 2, 3],  # front
-        [4, 6, 5], [4, 7, 6],  # back
-        [0, 4, 5], [0, 5, 1],  # bottom
-        [2, 6, 7], [2, 7, 3],  # top
-        [0, 7, 4], [0, 3, 7],  # left
-        [1, 5, 6], [1, 6, 2],  # right
-    ], dtype=np.int32)
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [0, 2, 3],  # front
+            [4, 6, 5],
+            [4, 7, 6],  # back
+            [0, 4, 5],
+            [0, 5, 1],  # bottom
+            [2, 6, 7],
+            [2, 7, 3],  # top
+            [0, 7, 4],
+            [0, 3, 7],  # left
+            [1, 5, 6],
+            [1, 6, 2],  # right
+        ],
+        dtype=np.int32,
+    )
 
     # Face normals for each vertex (simplified)
     normals = np.zeros_like(vertices)
@@ -108,17 +129,23 @@ def _unit_cube_mesh() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 def _simple_triangle() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return a single triangle in front of origin."""
-    vertices = np.array([
-        [-1.0, -1.0, 0.0],
-        [1.0, -1.0, 0.0],
-        [0.0,  1.0, 0.0],
-    ], dtype=np.float64)
+    vertices = np.array(
+        [
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
     faces = np.array([[0, 1, 2]], dtype=np.int32)
-    normals = np.array([
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-    ], dtype=np.float64)
+    normals = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
     return vertices, faces, normals
 
 
@@ -175,20 +202,25 @@ class TestNearClipClipping:
         # Camera at z=5 looking toward origin, near=0.5.
         # Two vertices at z=0 (4.5 units in front), one vertex at z=5.4
         # (behind camera at z=5 → view z = -(5-5.4) = +0.4, behind near)
-        verts = np.array([
-            [-2.0, -2.0, 0.0],   # well in front of camera
-            [2.0, -2.0, 0.0],    # well in front of camera
-            [0.0,  2.0, 5.4],    # behind camera near plane
-        ], dtype=np.float64)
+        verts = np.array(
+            [
+                [-2.0, -2.0, 0.0],  # well in front of camera
+                [2.0, -2.0, 0.0],  # well in front of camera
+                [0.0, 2.0, 5.4],  # behind camera near plane
+            ],
+            dtype=np.float64,
+        )
         faces = np.array([[0, 1, 2]], dtype=np.int32)
-        normals = np.array([
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-        ], dtype=np.float64)
+        normals = np.array(
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
 
-        cam = _make_camera(width=64, height=64, position=(0, 0, 5.0),
-                           look_at=(0, 0, 0), z_near=0.5)
+        cam = _make_camera(width=64, height=64, position=(0, 0, 5.0), look_at=(0, 0, 0), z_near=0.5)
         frame = rast.render(verts, faces, normals, cam)
 
         # Should have some rendered pixels (the two front vertices are visible)
@@ -204,16 +236,18 @@ class TestNearClipClipping:
         """A triangle entirely behind the near plane produces no pixels."""
         rast = SoftwareRasterizer(width=32, height=32)
         # All vertices behind the camera
-        verts = np.array([
-            [-1.0, -1.0, 10.0],
-            [1.0, -1.0, 10.0],
-            [0.0,  1.0, 10.0],
-        ], dtype=np.float64)
+        verts = np.array(
+            [
+                [-1.0, -1.0, 10.0],
+                [1.0, -1.0, 10.0],
+                [0.0, 1.0, 10.0],
+            ],
+            dtype=np.float64,
+        )
         faces = np.array([[0, 1, 2]], dtype=np.int32)
         normals = np.full((3, 3), [0, 0, 1], dtype=np.float64)
 
-        cam = _make_camera(width=32, height=32, position=(0, 0, 5.0),
-                           look_at=(0, 0, -1))
+        cam = _make_camera(width=32, height=32, position=(0, 0, 5.0), look_at=(0, 0, -1))
         frame = rast.render(verts, faces, normals, cam)
 
         # Triangle is behind the camera, should have no foreground pixels
@@ -234,7 +268,10 @@ class TestMotionVectors:
         cam_curr = _make_camera(width=64, height=64, position=(0.5, 0, 5))
 
         frame = rast.render(
-            verts, faces, norms, cam_curr,
+            verts,
+            faces,
+            norms,
+            cam_curr,
             prev_camera=cam_prev,
         )
 
@@ -244,7 +281,7 @@ class TestMotionVectors:
         # Motion vectors should be non-zero for visible pixels
         mv = frame.motion_vector.astype(np.float32)  # type: ignore[union-attr]
         fg_mv = mv[fg_mask]
-        mv_magnitude = np.sqrt(fg_mv[:, 0]**2 + fg_mv[:, 1]**2)
+        mv_magnitude = np.sqrt(fg_mv[:, 0] ** 2 + fg_mv[:, 1] ** 2)
 
         assert np.any(mv_magnitude > 0.01), (
             f"Motion vectors should be non-zero for translated camera. "
@@ -258,7 +295,10 @@ class TestMotionVectors:
 
         cam = _make_camera(width=32, height=32, position=(0, 0, 5))
         frame = rast.render(
-            verts, faces, norms, cam,
+            verts,
+            faces,
+            norms,
+            cam,
             prev_camera=cam,
         )
 
@@ -270,8 +310,7 @@ class TestMotionVectors:
         # With identical cameras, motion vectors should be essentially zero
         max_mv = float(np.max(np.abs(fg_mv)))
         assert max_mv < 0.5, (
-            f"Stationary camera should produce near-zero motion vectors, "
-            f"got max={max_mv:.4f}"
+            f"Stationary camera should produce near-zero motion vectors, got max={max_mv:.4f}"
         )
 
     def test_no_prev_camera_zero_mv(self) -> None:
@@ -288,21 +327,29 @@ class TestMotionVectors:
         valid (non-NaN) motion vectors."""
         rast = SoftwareRasterizer(width=64, height=64)
         # Triangle crossing near plane
-        verts = np.array([
-            [-2.0, -1.0, 0.0],
-            [2.0, -1.0, 0.0],
-            [0.0,  1.0, -1.0],  # behind near plane
-        ], dtype=np.float64)
+        verts = np.array(
+            [
+                [-2.0, -1.0, 0.0],
+                [2.0, -1.0, 0.0],
+                [0.0, 1.0, -1.0],  # behind near plane
+            ],
+            dtype=np.float64,
+        )
         faces = np.array([[0, 1, 2]], dtype=np.int32)
         normals = np.full((3, 3), [0, 0, 1], dtype=np.float64)
 
-        cam_prev = _make_camera(width=64, height=64, position=(0, 0, 2.0),
-                                look_at=(0, 0, 0), z_near=0.5)
-        cam_curr = _make_camera(width=64, height=64, position=(0.3, 0, 2.0),
-                                look_at=(0, 0, 0), z_near=0.5)
+        cam_prev = _make_camera(
+            width=64, height=64, position=(0, 0, 2.0), look_at=(0, 0, 0), z_near=0.5
+        )
+        cam_curr = _make_camera(
+            width=64, height=64, position=(0.3, 0, 2.0), look_at=(0, 0, 0), z_near=0.5
+        )
 
         frame = rast.render(
-            verts, faces, normals, cam_curr,
+            verts,
+            faces,
+            normals,
+            cam_curr,
             prev_camera=cam_prev,
         )
 
@@ -322,11 +369,14 @@ class TestPerspectiveCorrectInterpolation:
         """Depth values are monotonically consistent with vertex ordering."""
         rast = SoftwareRasterizer(width=64, height=64)
         # Triangle with varying depth
-        verts = np.array([
-            [-1.0, -1.0, -1.0],  # closer
-            [1.0, -1.0,  0.0],   # mid
-            [0.0,  1.0,  1.0],   # farther
-        ], dtype=np.float64)
+        verts = np.array(
+            [
+                [-1.0, -1.0, -1.0],  # closer
+                [1.0, -1.0, 0.0],  # mid
+                [0.0, 1.0, 1.0],  # farther
+            ],
+            dtype=np.float64,
+        )
         faces = np.array([[0, 1, 2]], dtype=np.int32)
         normals = np.full((3, 3), [0, 0, 1], dtype=np.float64)
 
@@ -357,7 +407,10 @@ class TestDynamicMotionVectorsAndIntrinsics:
 
         cam = _make_camera(width=64, height=64, position=(0, 0, 3))
         frame = rast.render(
-            verts, faces, norms, cam,
+            verts,
+            faces,
+            norms,
+            cam,
             prev_camera=cam,
             prev_vertices=prev_verts,
         )
@@ -503,7 +556,9 @@ class TestCircuitBreakerAndTelemetryHardening:
     def test_memory_forecaster_custom_layers_and_vram(self) -> None:
         """MemoryForecaster respects num_layers and available_vram_gb."""
         forecast = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=16, height=512, width=512,
+            num_frames=16,
+            height=512,
+            width=512,
             model_variant="wan2.1_14b",
             num_layers=48,
             available_vram_gb=16.0,

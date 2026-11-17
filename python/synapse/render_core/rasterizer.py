@@ -30,6 +30,7 @@ from synapse.fgpp.frame import CameraParams, FGPPFrame
 # MurmurHash3 (32-bit) — pure Python for Cryptomatte entity IDs
 # ---------------------------------------------------------------------------
 
+
 def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
     """MurmurHash3 32-bit finaliser for entity name hashing.
 
@@ -45,7 +46,7 @@ def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
     nblocks = length // 4
 
     for i in range(nblocks):
-        k = int.from_bytes(key[i * 4:(i + 1) * 4], "little") & _M
+        k = int.from_bytes(key[i * 4 : (i + 1) * 4], "little") & _M
         k = (k * c1) & _M
         k = ((k << 15) | (k >> 17)) & _M
         k = (k * c2) & _M
@@ -53,7 +54,7 @@ def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
         h = ((h << 13) | (h >> 19)) & _M
         h = (h * 5 + 0xE6546B64) & _M
 
-    tail = key[nblocks * 4:]
+    tail = key[nblocks * 4 :]
     k1 = 0
     tlen = len(tail)
     if tlen >= 3:
@@ -144,13 +145,15 @@ def _clip_triangle_near_plane(
                 if prev.prev_clip is not None and curr.prev_clip is not None:
                     inter_prev_clip = prev.prev_clip + t * (curr.prev_clip - prev.prev_clip)
 
-                output.append(_ClipVertex(
-                    clip=inter_clip,
-                    normal=inter_norm,
-                    bc=inter_bc,
-                    view_z=inter_vz,
-                    prev_clip=inter_prev_clip,
-                ))
+                output.append(
+                    _ClipVertex(
+                        clip=inter_clip,
+                        normal=inter_norm,
+                        bc=inter_bc,
+                        view_z=inter_vz,
+                        prev_clip=inter_prev_clip,
+                    )
+                )
             output.append(curr)
         elif prev_inside:
             # Leaving: emit intersection only
@@ -168,13 +171,15 @@ def _clip_triangle_near_plane(
             if prev.prev_clip is not None and curr.prev_clip is not None:
                 inter_prev_clip = prev.prev_clip + t * (curr.prev_clip - prev.prev_clip)
 
-            output.append(_ClipVertex(
-                clip=inter_clip,
-                normal=inter_norm,
-                bc=inter_bc,
-                view_z=inter_vz,
-                prev_clip=inter_prev_clip,
-            ))
+            output.append(
+                _ClipVertex(
+                    clip=inter_clip,
+                    normal=inter_norm,
+                    bc=inter_bc,
+                    view_z=inter_vz,
+                    prev_clip=inter_prev_clip,
+                )
+            )
 
     return output
 
@@ -182,6 +187,7 @@ def _clip_triangle_near_plane(
 # ---------------------------------------------------------------------------
 # Software Rasterizer
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SoftwareRasterizer:
@@ -254,13 +260,9 @@ class SoftwareRasterizer:
         """
         W, H = self.width, self.height
         if camera.width > 0 and camera.width != W:
-            raise ValueError(
-                f"Camera width {camera.width} != rasterizer width {W}"
-            )
+            raise ValueError(f"Camera width {camera.width} != rasterizer width {W}")
         if camera.height > 0 and camera.height != H:
-            raise ValueError(
-                f"Camera height {camera.height} != rasterizer height {H}"
-            )
+            raise ValueError(f"Camera height {camera.height} != rasterizer height {H}")
         eid = np.uint32(entity_hash(entity_name))
 
         # Per-vertex base color default
@@ -308,7 +310,8 @@ class SoftwareRasterizer:
         depth_buf = np.full((H, W), np.inf, dtype=np.float64)
         color_buf = np.zeros((H, W, 3), dtype=np.float64)
         normal_buf = np.tile(
-            np.array([0.0, 0.0, 1.0], dtype=np.float64), (H, W, 1),
+            np.array([0.0, 0.0, 1.0], dtype=np.float64),
+            (H, W, 1),
         )
         radiance_buf = np.zeros((H, W, 3), dtype=np.float64)
         bcolor_buf = np.zeros((H, W, 3), dtype=np.float64)
@@ -356,12 +359,25 @@ class SoftwareRasterizer:
             # Triangulate the clipped polygon and rasterise each sub-triangle
             for ti in range(1, len(clipped_poly) - 1):
                 self._rasterize_clipped_triangle(
-                    W, H,
-                    clipped_poly[0], clipped_poly[ti], clipped_poly[ti + 1],
-                    depth_buf, color_buf, normal_buf, radiance_buf,
-                    bcolor_buf, mask_buf, rm_buf, mv_buf,
-                    eid, roughness, metallic,
-                    light_d, light_c, amb,
+                    W,
+                    H,
+                    clipped_poly[0],
+                    clipped_poly[ti],
+                    clipped_poly[ti + 1],
+                    depth_buf,
+                    color_buf,
+                    normal_buf,
+                    radiance_buf,
+                    bcolor_buf,
+                    mask_buf,
+                    rm_buf,
+                    mv_buf,
+                    eid,
+                    roughness,
+                    metallic,
+                    light_d,
+                    light_c,
+                    amb,
                     camera,
                 )
 
@@ -463,7 +479,12 @@ class SoftwareRasterizer:
         ) * w_correct[valid_w]
 
         cur_depth_box = depth_buf[min_y : max_y + 1, min_x : max_x + 1]
-        closer = valid_w & (linear_depth > 0.0) & (linear_depth <= camera.z_far) & (linear_depth < cur_depth_box)
+        closer = (
+            valid_w
+            & (linear_depth > 0.0)
+            & (linear_depth <= camera.z_far)
+            & (linear_depth < cur_depth_box)
+        )
         if not np.any(closer):
             return
 

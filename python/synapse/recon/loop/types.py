@@ -41,8 +41,7 @@ class LoopConfig:
             from synapse.errors import ContractValidationError
 
             raise ContractValidationError(
-                f"n_preroll must be one of {sorted(VALID_PREROLL_COUNTS)}, "
-                f"got {self.n_preroll}.",
+                f"n_preroll must be one of {sorted(VALID_PREROLL_COUNTS)}, got {self.n_preroll}.",
                 agent_fix_hint=(
                     f"Set n_preroll to one of {sorted(VALID_PREROLL_COUNTS)}.  "
                     "These values align with the 3-D Causal VAE block "

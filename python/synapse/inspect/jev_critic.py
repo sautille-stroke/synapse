@@ -109,9 +109,7 @@ class MockJevTransport:
             ConnectionError: If ``raise_on_connect`` is ``True``.
         """
         if self._raise_on_connect:
-            raise ConnectionError(
-                "Mock connection failure: endpoint unreachable"
-            )
+            raise ConnectionError("Mock connection failure: endpoint unreachable")
 
         category = self._extract_category(prompt)
         severity = self._overrides.get(category, 0.05)
@@ -168,11 +166,9 @@ def _extract_yes_no_logprobs(
     for token, lp in logprobs.items():
         if not isinstance(lp, (int, float)) or not math.isfinite(lp):
             raise ContractValidationError(
-                f"Non-finite logprob for token {token!r} in probe "
-                f"'{category}': {lp}",
+                f"Non-finite logprob for token {token!r} in probe '{category}': {lp}",
                 agent_fix_hint=(
-                    "Ensure VLM endpoint returns finite float logprobs "
-                    "for top tokens."
+                    "Ensure VLM endpoint returns finite float logprobs for top tokens."
                 ),
             )
         norm = token.strip().casefold()
@@ -268,12 +264,8 @@ class VisualJevCritic:
         transport: JevTransportProtocol,
         calibration_temperature: float = 1.5,
     ) -> None:
-        if calibration_temperature <= 0.0 or not math.isfinite(
-            calibration_temperature
-        ):
-            raise ValueError(
-                "calibration_temperature must be a positive finite float"
-            )
+        if calibration_temperature <= 0.0 or not math.isfinite(calibration_temperature):
+            raise ValueError("calibration_temperature must be a positive finite float")
         self._transport = transport
         self._tc = calibration_temperature
 
@@ -362,30 +354,31 @@ class VisualJevCritic:
             for i, category in enumerate(self.DEFECT_PROBES):
                 prompt = self._PROBE_PROMPTS.get(
                     category,
-                    f"Is there a {category} defect? "
-                    "Answer Yes or No.",
+                    f"Is there a {category} defect? Answer Yes or No.",
                 )
                 logprobs = self._transport.query_logprobs(
-                    image_uris, prompt,
+                    image_uris,
+                    prompt,
                 )
 
                 z_yes, z_no = _extract_yes_no_logprobs(
-                    logprobs, category,
+                    logprobs,
+                    category,
                 )
                 severity = self.calibrated_probability(
-                    z_yes, z_no,
+                    z_yes,
+                    z_no,
                 )
 
                 if severity > self.SEVERITY_REPORT_THRESHOLD:
                     action = self._route_action(
-                        category, severity,
+                        category,
+                        severity,
                     )
                     confidence = min(1.0, severity * 1.2)
                     defects.append(
                         DefectAnnotation3D(
-                            defect_id=(
-                                f"{asset_id}_defect_{i:03d}"
-                            ),
+                            defect_id=(f"{asset_id}_defect_{i:03d}"),
                             category=category,
                             severity=round(severity, 6),
                             confidence=round(confidence, 6),
@@ -397,16 +390,12 @@ class VisualJevCritic:
                     )
 
             requires_hitl = any(
-                d.severity >= 0.8
-                and d.category == "anatomical_distortion"
-                for d in defects
-            ) or any(
-                d.suggested_action == "manual_hitl"
-                for d in defects
-            )
+                d.severity >= 0.8 and d.category == "anatomical_distortion" for d in defects
+            ) or any(d.suggested_action == "manual_hitl" for d in defects)
 
             max_sev = max(
-                (d.severity for d in defects), default=0.0,
+                (d.severity for d in defects),
+                default=0.0,
             )
             overall = max(0.0, 1.0 - max_sev)
 
@@ -427,8 +416,6 @@ class VisualJevCritic:
             raise BackendUnavailableError(
                 f"Jev transport connection failed: {exc}",
                 agent_fix_hint=(
-                    "Check that the vLLM/OpenAI-compatible "
-                    "endpoint is reachable and responding."
+                    "Check that the vLLM/OpenAI-compatible endpoint is reachable and responding."
                 ),
             ) from exc
-

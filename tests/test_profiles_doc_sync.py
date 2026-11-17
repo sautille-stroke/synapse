@@ -72,15 +72,15 @@ class TestProfilesDocSync:
             "border_ring_ciede2000",
         ]
         for metric in governed_metrics:
-            assert TRACK_B_VIDEO[metric] == pytest.approx(
-                doc_profiles["track_b_video"][metric]
-            ), f"track_b_video.{metric} mismatch"
-            assert TRACK_A_ASSET[metric] == pytest.approx(
-                doc_profiles["track_a_asset"][metric]
-            ), f"track_a_asset.{metric} mismatch"
-            assert RSI_PROMOTION[metric] == pytest.approx(
-                doc_profiles["rsi_promotion"][metric]
-            ), f"rsi_promotion.{metric} mismatch"
+            assert TRACK_B_VIDEO[metric] == pytest.approx(doc_profiles["track_b_video"][metric]), (
+                f"track_b_video.{metric} mismatch"
+            )
+            assert TRACK_A_ASSET[metric] == pytest.approx(doc_profiles["track_a_asset"][metric]), (
+                f"track_a_asset.{metric} mismatch"
+            )
+            assert RSI_PROMOTION[metric] == pytest.approx(doc_profiles["rsi_promotion"][metric]), (
+                f"rsi_promotion.{metric} mismatch"
+            )
 
     def test_rsi_promotion_target_stricter_or_equal(self) -> None:
         from synapse.metrics.profiles import _METRIC_DIRECTIONS
@@ -96,29 +96,17 @@ class TestProfilesDocSync:
     def test_domain_thresholds_derive_from_profiles(self) -> None:
         lora_t = LoRAGateThresholds.from_profile("rsi_promotion")
         assert lora_t.chamfer_mm == RSI_PROMOTION["chamfer_mm"]
-        assert (
-            lora_t.normal_angular_error_deg
-            == RSI_PROMOTION["normal_angular_error_deg"]
-        )
-        assert (
-            lora_t.border_ring_ciede2000
-            == RSI_PROMOTION["border_ring_ciede2000"]
-        )
+        assert lora_t.normal_angular_error_deg == RSI_PROMOTION["normal_angular_error_deg"]
+        assert lora_t.border_ring_ciede2000 == RSI_PROMOTION["border_ring_ciede2000"]
 
         phys_t = PhysicsThresholds.from_profile("rsi_promotion")
         assert phys_t.foot_sliding_cm == RSI_PROMOTION["foot_sliding_cm"]
         assert phys_t.silhouette_iou == RSI_PROMOTION["silhouette_iou"]
         assert phys_t.depth_rmse_m == RSI_PROMOTION["depth_rmse_m"]
-        assert (
-            phys_t.normal_angular_error_deg
-            == RSI_PROMOTION["normal_angular_error_deg"]
-        )
+        assert phys_t.normal_angular_error_deg == RSI_PROMOTION["normal_angular_error_deg"]
 
         rt_gate = RoundtripGate.from_profile("track_a_asset")
-        assert (
-            rt_gate.volume_breathing_pct
-            == TRACK_A_ASSET["volume_breathing_pct"]
-        )
+        assert rt_gate.volume_breathing_pct == TRACK_A_ASSET["volume_breathing_pct"]
 
     def test_dual_verifier_checks_foot_sliding_cm(self) -> None:
         engine = DualVerifierEngine()

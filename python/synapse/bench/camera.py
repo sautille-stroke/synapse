@@ -4,7 +4,7 @@
     Import from ``synapse.render_core.camera`` instead.
 """
 
-__all__ = ['CameraTrajectoryType', 'generate_cameras']
+__all__ = ["CameraTrajectoryType", "generate_cameras"]
 
 from synapse.render_core.camera import (  # noqa: F401
     _GENERATORS,

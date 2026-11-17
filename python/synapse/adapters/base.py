@@ -192,6 +192,7 @@ class VideoModelAdapter(ABC):
         """
         result = self.generate(conditions, config)
         from synapse.metrics.image_quality import validate_output_non_degenerate
+
         validate_output_non_degenerate(result.frames_srgb_u8)
         return result
 
@@ -222,10 +223,7 @@ def register_adapter(
         ValueError: If an adapter with the same ID is already registered.
     """
     if not (isinstance(cls, type) and issubclass(cls, VideoModelAdapter)):
-        raise TypeError(
-            f"register_adapter expects a VideoModelAdapter subclass, "
-            f"got {cls!r}"
-        )
+        raise TypeError(f"register_adapter expects a VideoModelAdapter subclass, got {cls!r}")
 
     # Obtain adapter_id without running full __init__ side effects
     aid: str | None = getattr(cls, "ADAPTER_ID", None)
@@ -271,10 +269,7 @@ def create_adapter(name: str, **kwargs: Any) -> VideoModelAdapter:
     """
     if name not in _ADAPTER_REGISTRY:
         available = ", ".join(sorted(_ADAPTER_REGISTRY)) or "(none)"
-        raise KeyError(
-            f"Unknown adapter {name!r}. "
-            f"Available adapters: {available}"
-        )
+        raise KeyError(f"Unknown adapter {name!r}. Available adapters: {available}")
     return _ADAPTER_REGISTRY[name](**kwargs)
 
 

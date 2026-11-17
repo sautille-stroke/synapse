@@ -121,21 +121,33 @@ def main_synapse(args: list[str] | None = None) -> int:
         return dispatch_view(parsed, json_mode, trace_ctx)
     elif parsed.command == "worker":
         return dispatch_worker(
-            parsed, json_mode, trace_ctx, worker_parser,
+            parsed,
+            json_mode,
+            trace_ctx,
+            worker_parser,
         )
     elif parsed.command == "lora":
         return dispatch_lora(parsed, json_mode, trace_ctx, lora_parser)
     elif parsed.command == "inspect":
         return dispatch_inspect(
-            parsed, json_mode, trace_ctx, inspect_parser,
+            parsed,
+            json_mode,
+            trace_ctx,
+            inspect_parser,
         )
     elif parsed.command == "recon":
         return dispatch_recon(
-            parsed, json_mode, trace_ctx, recon_parser,
+            parsed,
+            json_mode,
+            trace_ctx,
+            recon_parser,
         )
     elif parsed.command == "refine":
         return dispatch_refine(
-            parsed, json_mode, trace_ctx, refine_parser,
+            parsed,
+            json_mode,
+            trace_ctx,
+            refine_parser,
         )
     elif parsed.command == "rsi":
         return dispatch_rsi(parsed, json_mode, trace_ctx, rsi_parser)

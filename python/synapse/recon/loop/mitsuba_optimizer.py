@@ -172,9 +172,9 @@ class AnalyticUVInverseOptimizer:
         # Finalise albedo
         valid = accum_weight > 1e-8
         for c in range(3):
-            albedo[:, :, c][valid] = (
-                accum_color[:, :, c][valid] / accum_weight[valid]
-            ).astype(np.float32)
+            albedo[:, :, c][valid] = (accum_color[:, :, c][valid] / accum_weight[valid]).astype(
+                np.float32
+            )
 
         albedo = np.clip(albedo, 0.0, 1.0)
 
@@ -188,9 +188,7 @@ class AnalyticUVInverseOptimizer:
             # Render current albedo estimate under all views.
             rendered = self._render(albedo, normals, uv_maps, light_dirs)
             # Residual: rendered - target (per pixel, per view)
-            photo_residual = rendered.astype(np.float64) - frames.astype(
-                np.float64
-            )  # (V, H, W, 3)
+            photo_residual = rendered.astype(np.float64) - frames.astype(np.float64)  # (V, H, W, 3)
 
             # Scatter photometric gradient back to texture space.
             # For L = mean((albedo*NdotL - target)²), the gradient w.r.t.
@@ -213,20 +211,14 @@ class AnalyticUVInverseOptimizer:
                 )
 
                 uv = uv_maps[v].astype(np.float64)
-                tx = np.clip(
-                    (uv[..., 0] * (res - 1)).astype(np.intp), 0, res - 1
-                )
-                ty = np.clip(
-                    (uv[..., 1] * (res - 1)).astype(np.intp), 0, res - 1
-                )
+                tx = np.clip((uv[..., 0] * (res - 1)).astype(np.intp), 0, res - 1)
+                ty = np.clip((uv[..., 1] * (res - 1)).astype(np.intp), 0, res - 1)
 
                 # d(loss)/d(albedo_texel) = 2 * residual * NdotL
                 # Mask out background pixels before scatter
-                weighted_residual = (
-                    photo_residual[v] * ndotl_v[..., np.newaxis]
-                )  # (H, W, 3)
+                weighted_residual = photo_residual[v] * ndotl_v[..., np.newaxis]  # (H, W, 3)
                 weighted_residual[~fg_mask] = 0.0
-                ndotl_sq = ndotl_v ** 2  # for Gauss-Newton diagonal
+                ndotl_sq = ndotl_v**2  # for Gauss-Newton diagonal
                 ndotl_sq[~fg_mask] = 0.0
 
                 flat_uv_idx = ty.ravel() * res + tx.ravel()
@@ -255,13 +247,11 @@ class AnalyticUVInverseOptimizer:
             total_grad = photo_grad + tv_grad
 
             # Apply gradient descent step
-            albedo = albedo - self.config.learning_rate * total_grad.astype(
-                np.float32
-            )
+            albedo = albedo - self.config.learning_rate * total_grad.astype(np.float32)
             albedo = np.clip(albedo, 0.0, 1.0)
 
             # Check convergence on total gradient norm
-            grad_norm = float(np.sqrt(np.mean(total_grad ** 2)))
+            grad_norm = float(np.sqrt(np.mean(total_grad**2)))
             if grad_norm < self.config.convergence_threshold:
                 converged = True
                 break
@@ -300,7 +290,8 @@ class AnalyticUVInverseOptimizer:
             n_map = normals[v]
             ndotl = np.clip(
                 np.sum(n_map * l_dir[np.newaxis, np.newaxis, :], axis=-1),
-                0.0, 1.0,
+                0.0,
+                1.0,
             )
 
             uv = uv_maps[v]
@@ -333,8 +324,7 @@ class MitsubaInverseOptimizer:
             from synapse.errors import BackendUnavailableError
 
             raise BackendUnavailableError(
-                "Mitsuba 3 is not installed.  "
-                "Install with: pip install 'synapse[invrender]'",
+                "Mitsuba 3 is not installed.  Install with: pip install 'synapse[invrender]'",
                 agent_fix_hint=(
                     "pip install 'mitsuba>=3.5.0' 'drjit>=0.4.5' or "
                     "use AnalyticUVInverseOptimizer for CPU-only mode."
@@ -362,4 +352,3 @@ class MitsubaInverseOptimizer:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
