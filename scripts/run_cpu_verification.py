@@ -221,18 +221,23 @@ def _verify_e3_long_horizon_scheduler(
     assert bool(np.all(np.isfinite(fused)))
 
     # Inject a synthetic frame-to-frame discontinuity at frame 64 in memory to verify detector
-    f64 = seq_97f.frames[64]
+    # Use deepcopy to avoid corrupting the original sequence for downstream tests
+    import copy
+    test_seq = copy.deepcopy(seq_97f)
+    f64 = test_seq.frames[64]
     if f64.motion_vector is not None:
         f64.motion_vector = f64.motion_vector.copy() + np.float16(25.0)
     if f64.world_normal is not None:
         f64.world_normal = -f64.world_normal.copy()
+    if f64.cryptomatte_id is not None:
+        f64.cryptomatte_id = np.ones_like(f64.cryptomatte_id, dtype=np.uint32)
 
     detector = DiscontinuityDetector(threshold=0.55)
     scheduler = ConditionScheduler(
-        plan=CausalWindowPlan(97, 64, 33, seq_97f.num_frames),
+        plan=CausalWindowPlan(97, 64, 33, test_seq.num_frames),
         detector=detector,
     )
-    scheduled = scheduler.schedule(seq_97f)
+    scheduled = scheduler.schedule(test_seq)
     assert len(scheduled) == 1
     cut_indices = [r.frame_index for r in scheduled[0].reanchor_requests]
     assert 64 in cut_indices, f"Expected shot-cut detected at frame 64, got {cut_indices}"
@@ -372,9 +377,10 @@ def main() -> int:
         help="Root directory of exported Golden FGPP datasets.",
     )
     parser.add_argument(
-        "--report-out",
+        "--report-out", "--output-dir",
         type=Path,
         default=Path("data/manifests/ubuntu24_cpu_verification_report.json"),
+        dest="report_out",
         help="Path to write JSON verification report.",
     )
     args = parser.parse_args()

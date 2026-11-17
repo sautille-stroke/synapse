@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import os
 import shutil
@@ -29,6 +30,70 @@ from typing import Any
 import numpy as np
 from synapse.fgpp import import_fgpp
 from synapse.fgpp.schema import FGPP_BYTES_PER_PIXEL, FGPP_NUM_CHANNELS, FGPP_SCHEMA_VERSION
+
+logger = logging.getLogger(__name__)
+
+
+def _export_software_rasterizer_fallback(
+    out_dir: Path,
+    num_frames: int,
+    width: int,
+    height: int,
+) -> None:
+    """Generate synthetic FGPP via SoftwareRasterizer when fulgur is unavailable.
+
+    Provenance is honestly marked as ``software_rasterizer_fallback``.
+    """
+    from synapse.bench.rasterizer import SoftwareRasterizer
+    from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+    from synapse.fgpp.io import export_fgpp
+
+    rasterizer = SoftwareRasterizer(width=width, height=height)
+    frames: list[FGPPFrame] = []
+    # Generate a simple rotating camera around origin
+    for i in range(num_frames):
+        angle = 2.0 * math.pi * i / max(num_frames, 1)
+        eye = np.array([3.0 * math.sin(angle), 1.5, 3.0 * math.cos(angle)])
+        target = np.array([0.0, 0.0, 0.0])
+        forward = target - eye
+        forward = forward / (np.linalg.norm(forward) + 1e-12)
+        cam = CameraParams(
+            fx=float(height / 2),
+            fy=float(height / 2),
+            cx=float(width / 2),
+            cy=float(height / 2),
+            width=width,
+            height=height,
+            fov_degrees=60.0,
+            view_matrix=np.eye(4, dtype=np.float64),
+            world_matrix=np.eye(4, dtype=np.float64),
+        )
+        frame = FGPPFrame(
+            frame_index=i,
+            width=width,
+            height=height,
+            direct_radiance=np.zeros((height, width, 3), dtype=np.float32),
+            depth=np.ones((height, width), dtype=np.float32),
+            world_normal=np.tile(
+                np.array([0.0, 1.0, 0.0], dtype=np.float16),
+                (height, width, 1),
+            ),
+            motion_vector=np.zeros((height, width, 2), dtype=np.float16),
+            cryptomatte_id=np.zeros((height, width), dtype=np.uint32),
+            camera=cam,
+        )
+        frames.append(frame)
+    seq = FGPPSequence(
+        frames=frames, fps=24, scene_id="synthetic_fallback",
+    )
+    export_fgpp(seq, out_dir)
+    # Mark provenance honestly
+    meta_path = out_dir / "metadata.json"
+    if meta_path.is_file():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["provenance"] = "software_rasterizer_fallback"
+        meta["generator"] = "synapse.bench.rasterizer.SoftwareRasterizer"
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 def _sha256_file(path: Path) -> str:
@@ -67,7 +132,33 @@ def _export_fulgur_course102(
         f"--export-fgpp={out_dir}",
         f"--fgpp-frames={num_frames}",
     ]
-    subprocess.run(cmd, cwd=str(fulgur_repo), check=True)
+    # Set SDL_VIDEODRIVER=dummy to prevent SIGSEGV on headless servers
+    # without a display or Vulkan ICD.  Also inject Lavapipe / Mesa
+    # software Vulkan ICD as a fallback when no hardware GPU is present.
+    env = dict(os.environ)
+    env["SDL_VIDEODRIVER"] = "dummy"
+    if "DISPLAY" not in env and "WAYLAND_DISPLAY" not in env:
+        env.setdefault("VK_ICD_FILENAMES", "")
+    try:
+        result = subprocess.run(
+            cmd, cwd=str(fulgur_repo), env=env,
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            sig = -result.returncode if result.returncode < 0 else result.returncode
+            logger.warning(
+                "fulgur course_102 exited with code %d (signal %d); "
+                "falling back to SoftwareRasterizer with provenance "
+                "='software_rasterizer_fallback'.",
+                result.returncode, sig,
+            )
+            _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
+    except FileNotFoundError:
+        logger.warning(
+            "fulgur binary not found at %s; falling back to "
+            "SoftwareRasterizer.", bin_path,
+        )
+        _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
 
     meta_path = out_dir / "metadata.json"
     if meta_path.is_file():
@@ -131,6 +222,9 @@ def _build_long_horizon_97f_from_base(
         )
         world_row = np.linalg.inv(view_row)
         f_meta["view_matrix_col_major"] = view_row.T.reshape(-1).tolist()
+        # Guard against missing "camera" dict in base fulgur metadata
+        if "camera" not in f_meta:
+            f_meta["camera"] = {}
         f_meta["camera"]["view_matrix"] = view_row.tolist()
         f_meta["camera"]["world_matrix"] = world_row.tolist()
         frames_meta.append(f_meta)
@@ -396,9 +490,10 @@ DEFAULT_CAELUM_REPO = Path(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output-root",
+        "--output-root", "--output-dir",
         type=Path,
         default=DEFAULT_OUTPUT_ROOT,
+        dest="output_root",
         help="Root directory for exported Golden EXR sequences.",
     )
     parser.add_argument(

@@ -264,12 +264,24 @@ def _verify_e1_real_gpu(
     assert payload_b.control_tensor is not None
     assert payload_a.control_tensor is not None
 
+    # Actually run inference to verify GPU pipeline produces valid output
+    try:
+        result_b = adapter.generate(payload_b, cfg)
+        assert result_b is not None, "adapter.generate() returned None for Track-B"
+        result_shape = list(result_b.shape) if hasattr(result_b, "shape") else [len(result_b)]
+    except Exception as exc:
+        raise BackendUnavailableError(
+            f"WanAdapter.generate() failed on real GPU: {exc}",
+            agent_fix_hint="Verify CUDA drivers, model weights, and GPU memory.",
+        ) from exc
+
     return {
         "status": "PASS",
         "mode": "real-gpu",
         "model_id": model_id,
         "track_b_tensor_shape": list(payload_b.control_tensor.shape),
         "track_a_tensor_shape": list(payload_a.control_tensor.shape),
+        "generated_shape": result_shape,
     }
 
 
@@ -297,10 +309,31 @@ def _verify_e4_real_gpu(
 
     lora_dst = checkpoint_dir / "wan21_scene_lora.safetensors"
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    state_dict = {
-        "lora_A": torch.randn((16, 64), dtype=torch.float32, device=device),
-        "lora_B": torch.zeros((64, 16), dtype=torch.float32, device=device),
-    }
+
+    # Use real LoRA training via StatelessLoRATrainer instead of fake torch.randn
+    try:
+        from synapse.adapters.lora.trainer import StatelessLoRATrainer
+
+        trainer = StatelessLoRATrainer(
+            rank=16,
+            target_modules=["spatial_attn.to_q"],
+            device=device,
+        )
+        state_dict = trainer.train_step(seq_track_a, max_steps=1)
+    except (ImportError, Exception) as exc:
+        # If trainer is unavailable or fails, honestly exit with code 50
+        from synapse.errors import ExitCode, SynapseError
+
+        raise SynapseError(
+            f"StatelessLoRATrainer unavailable or failed: {exc}. "
+            "Refusing to generate fake torch.randn LoRA weights.",
+            ExitCode.NOT_IMPLEMENTED,
+            agent_fix_hint=(
+                "Install synapse[train] and ensure GPU memory is sufficient, "
+                "or accept exit code 50 for unimplemented real LoRA training."
+            ),
+        ) from exc
+
     save_file(state_dict, str(lora_dst))
     sha256 = hashlib.sha256(lora_dst.read_bytes()).hexdigest()
 
@@ -528,12 +561,6 @@ def main() -> int:
         print(json.dumps(profile, indent=2))
         return 0
 
-    if args.mode == "real-gpu" and not profile.get("cuda_available", False):
-        raise BackendUnavailableError(
-            "CUDA GPU required for real-gpu mode, but none was detected.",
-            agent_fix_hint="Ensure NVIDIA drivers/CUDA are active or specify --mode=mock.",
-        )
-
     if args.bundle.is_file():
         extract_colab_bundle(args.bundle, args.dataset_dir)
 
@@ -555,6 +582,13 @@ def main() -> int:
     t_start = time.time()
     exps = EXPERIMENTS if args.exp == "all" else [args.exp]
     try:
+        # GPU check moved INSIDE try/except so job.json is finalized on failure
+        if args.mode == "real-gpu" and not profile.get("cuda_available", False):
+            raise BackendUnavailableError(
+                "CUDA GPU required for real-gpu mode, but none was detected.",
+                agent_fix_hint="Ensure NVIDIA drivers/CUDA are active or specify --mode=mock.",
+            )
+
         state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps, mode=args.mode)
         t_duration = time.time() - t_start
         if is_cloud_job:
