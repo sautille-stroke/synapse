@@ -17,7 +17,7 @@
   - **可微闭环 (RFC 0062)**: [docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
-  - **RFC 0043**: 全生态同场景多风格渲染架构与 `aether//style` `StyleProfile` SSOT
+  - **RFC 0043**: 全生态同场景多风格渲染架构与 `aether//style` `StyleProfile` SSOT（规划中；当前由 `synapse.style` 镜像维护 Schema）
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`) 与人机协同 (`HITL`) 跨仓编排规约
   - **RFC 0048**: `aether` 基础底座归一（原 `nexus` 全量合入 Layer 0 `aether`）
   - **RFC 0052**: Forge 工具链矩阵收敛（`grand-studio` / `scene-forge` / `asset-forge`）
@@ -75,7 +75,7 @@ flowchart TD
 
     subgraph L1_L0 ["Layer 1 & 0: 算力底座与跨语言契约 SSOT"]
         FD["foundary (Go)<br/>Wan 2.1 / TRELLIS / SAM2 容器池调度"]
-        AE["@aether//fgpp & @aether//style (C++20 Layer 0)<br/>FGPP 15 通道 EXR 线格式 SSOT & StyleProfile SSOT"]
+        AE["@aether//fgpp (已落地) & @aether//style (规划中)<br/>FGPP 15 通道 EXR 线格式 SSOT & StyleProfile Schema 镜像"]
     end
 
     GS --> FS_SF
@@ -104,7 +104,7 @@ flowchart TD
 | **NG-5** | ❌ **严禁在桌面客户端（`grand-studio` / `scene-forge` / `asset-forge`）内直接 `import synapse` 拉起 PyTorch** | 客户端仅组装 JSON `JobBundle` 发往远端 `render-farm` | **RFC 0044 §3.1**（桌面端零重型 Python 依赖） |
 
 > [!NOTE]
-> **NG-1 豁免声明**：`synapse.viewer` 中的本地 HTTP 预览服务器（`server.py`）属于**离线开发调试辅助工具**，仅在开发者本机通过 `synapse view` 命令手动启动、用于临时预览数据集，不参与任何生产流水线或容器部署，因此不违反 NG-1 的“严禁常驻微服务”约束。
+> **NG-1 落地执行**：原 `synapse.viewer` 本地 HTTP 预览服务器已彻底重构为纯静态自包含 HTML 报告导出器（`export_static_html`），零常驻服务进程，100% 恪守 NG-1 的“Server-side Zero-Python”红线。
 
 ---
 
@@ -260,7 +260,7 @@ synapse/
 │   ├── models/                      # [v1.1 整合规划] 已有 3D 模型加载器 → PR-01 整合至 bench/
 │   │   ├── asset.py                 # 资产数据模型 → bench/model_loader.py
 │   │   └── loader.py                # glTF/OBJ 加载 → bench/model_loader.py
-│   └── viewer/                      # [保留] 离线开发调试工具 (本地 HTTP 预览器，NG-1 豁免)
+│   └── viewer/                      # [已收敛] 纯静态自包含 HTML 报告导出器 (Zero-Server，无常驻微服务)
 │       ├── server.py                # 本地数据集预览 HTTP 服务（仅开发调试用途，绑定 127.0.0.1）
 │       └── static_html.py           # 自包含 HTML 单页预览模板
 ├── data/scenarios/                  # T1-T5 标准化场景定义 JSON (同步挂载进 wheel package-data)
@@ -308,14 +308,14 @@ synapse/
 
 ---
 
-## 8. RFC 编号对照与跨仓别名登记表 (RFC Cross-Reference Registry)
+## 8. RFC 编号对照与仓内专项规约说明 (RFC Specification Registry)
 
-为消除仓内针对性专项 RFC（`SYN-RFC-0060 ~ 0063`）与生态顶层权威标准（`all-overview/rfcs/0060 ~ 0063`）之间的命名冲突，建立如下对应关系与权威映射：
+为消除仓内专项 RFC（`SYN-RFC-0060 ~ 0063`）与生态顶层标准（`all-overview/rfcs/`）之间的混淆，特明确以下定界与上下游对应关系：`SYN-RFC-0060 ~ 0063` 均为 Synapse 仓内专用领域架构规约（Domain-Specific RFCs），非生态全局顶层 RFC 编号，其设计承接并对齐生态顶层标准（如 RFC 0039 `JobBundle`、RFC 0044 神经-物理混合管线）：
 
-| 仓内本地别名 | 生态权威编号 | 规约文档文件名 | 权威状态 | 核心规约职责 |
-|---|---|---|---|---|
-| `SYN-RFC-0060` | `all-overview/rfcs/0060` | [SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) | Accepted | 真实视频逆向 3D 动态数字孪生与联合反演架构规范 |
-| `SYN-RFC-0061` | `all-overview/rfcs/0061` | [SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) | Accepted | 局部解剖智能修正、多模型协同融合与手术刀逆向缝合规范 |
-| `SYN-RFC-0062` | `all-overview/rfcs/0062` | [SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) | Accepted | 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 |
-| `SYN-RFC-0063` | `all-overview/rfcs/0063` | [SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) | Accepted (v1.1) | 质量保障、测试验证机制与行业横向评测基准规范（承接 Horizon-5 落地） |
+| 仓内专项规约 | 规约文档文件名 | 权威状态 | 核心规约职责与生态标准承接 |
+|---|---|---|---|
+| `SYN-RFC-0060` | [SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) | Accepted | 真实视频逆向 3D 动态数字孪生与联合反演架构规范（承接 RFC 0044 §4.1/§4.4 反投防呆与 3D 重建） |
+| `SYN-RFC-0061` | [SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) | Accepted | 局部解剖智能修正、多模型协同融合与手术刀逆向缝合规范（承接 RFC 0044 §4.2 局部精修与 ForgeKit） |
+| `SYN-RFC-0062` | [SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) | Accepted | 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范（承接 RFC 0039 容器作业与 RFC 0044 闭环） |
+| `SYN-RFC-0063` | [SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) | Accepted (v1.1) | 质量保障、测试验证机制与行业横向评测基准规范（承接 Horizon-5 落地与 4 轨道行业评测） |
 

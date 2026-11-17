@@ -70,10 +70,9 @@
 
 #### 输出 (Outputs)
 - **风格配置文件**：`StyleProfile` 字典（符合 `style_profile.v2.0.0` Schema）
-  - `albedo_mean_acescg`: `[R, G, B]`
-  - `key_light_color_temperature_kelvin`: 如 `5600.0`
-  - `shadow_contrast_ratio`: 如 `0.18`
-  - `highlight_rolloff`: 软肩压缩控制曲线参数
+  - `schema_version`: `"style_profile.v2.0.0"`
+  - `shading_config`: `key_light_direction`, `key_light_color`, `ambient_ratio`
+  - `post_process_config`: `color_temp_kelvin`, `tint`, `exposure_ev`, `contrast`, `saturation`, `vignette_strength`
 - **手术刀掩码**：`alpha_mask` `[H, W]` (`float32`, [0.0, 1.0])
   - 膨胀核 $r_{\text{base}} = 6\text{ px}$，羽化边缘 $w_{\text{feather}} = 4.0\text{ px}$
 - **色彩对齐补丁**：`matched_patch`（经 16px 边界环 CIE LAB 均值/方差仿射修正）
@@ -188,3 +187,4 @@
 | **20** | `AssetNotFoundError` | `synapse_colab_bundle_v1.tar.gz` 缺失或 SHA256 校验和失效 | 重新在 `ubuntu24` 运行 `prepare_datasets.py` 导出数据包 |
 | **30** | `BackendUnavailableError` | CUDA OOM 显存耗尽或 Diffusers 后端加载超时 | 启用 `--enable_model_cpu_offload`，或将模型从 14B 降级至 1.3B |
 | **40** | `CircuitBreakerError` / `QualityGateError` | 白模顶点数 $<1500$、合成色差 $>3.0$ 或精修超时 15 分钟 | 触发工程熔断降级，回退至上一版稳定几何资产 |
+| **50** | `FeatureNotImplementedError` | 命令、阶段或后端特性尚未实现（严禁桩代码以 0 静默退出） | 检查特性路线图或切换为已支持的后端与参数 |

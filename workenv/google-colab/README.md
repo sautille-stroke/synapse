@@ -151,9 +151,9 @@ python scripts/colab_runner.py \
 
 | 环节 | 主要输入 (Inputs) | 主要输出 (Outputs) | 关键断言 / 成功准则 |
 | :--- | :--- | :--- | :--- |
-| **E1** | `FGPPSequence` (15 通道 OpenEXR + 相机外参) | 形状为 `[7, T, 480, 832]` 的 `control_tensor`（对数深度、法线、光流、遮挡） | 张量数值全有限 (`np.isfinite`)，深度范围 $[0, 1]$，4 档消融范数单调递增 |
+| **E1** | `FGPPSequence` (15 通道 OpenEXR + 相机外参) | 形状为 `[7, T, 480, 832]` 的 `control_tensor`（对数深度、相机空间法线、ACEScg 直接光照） | 张量数值全有限 (`np.isfinite`)，深度范围 $[0, 1]$，4 档消融范数单调递增 |
 | **E2** | sRGB 视频序列 + `Cryptomatte.ID` + 修复补丁 | `StyleProfile v2.0.0` 字典 + 16px 边界环 LAB 色彩对齐图像 | 边界环平均色差显著降低，拉普拉斯金字塔融合无接缝黑边 |
-| **E3** ⚠️ | 97 帧时序序列 + 不连续性扰动 | 2 窗口划分切片 + 潜空间重叠 Sigmoid 融合张量 + 切镜重锚定请求 | *Colab 暂不支持，仅在 `ubuntu24` 通过 `run_cpu_verification.py` 验证* |
+| **E3** | 97 帧时序序列 + 不连续性扰动 | 2 窗口划分切片 + 潜空间重叠 Sigmoid 融合张量 + 切镜重锚定请求 | 重叠潜变量能量衰减 $< 0.5\%$，切镜点 $\kappa > 0.65$ 自动触发重锚定关键帧（Colab 与 `ubuntu24` 均支持） |
 | **E4** | 16 通道潜变量 + 5 段式 Caption + 实体掩码 | `shard_000000.tar` (WebDataset) + `adapter_model.safetensors` | 跨实体注意力掩码非正交泄露率 $< 3.0\%$，权重通过 SHA256 安全清单检验 |
 | **E5** ⚠️ | 30 个 `Synapse-Bench` 标准场景 + 白模代理 | 软光栅真值集 + `synapse_bench_results.json` + HTML 诊断报告 | *CPU 软光栅评测，仅在 `ubuntu24` 通过 `run_cpu_verification.py` 验证* |
 
@@ -162,7 +162,7 @@ python scripts/colab_runner.py \
 ## 8. 会话保护与容错机制 (Fault Tolerance)
 
 1. **Google Drive 断点续跑 (`colab_experiment_state.json`)**：
-   每次单项实验（E1/E2/E4）完成，立即原子写入 Google Drive。若 Colab 90 分钟闲置断开或 GPU 抢占，重连后再次执行命令会自动检测已完成阶段并输出 `[SKIP]`，仅执行未完成部分。
+   每次单项实验（E1–E4）完成，立即原子写入 Google Drive。若 Colab 90 分钟闲置断开或 GPU 抢占，重连后再次执行命令会自动检测已完成阶段并输出 `[SKIP]`，仅执行未完成部分。
 2. **显存 OOM 防御与自动降级**：
 - 显存 $< 35\text{ GB}$（如 T4/L4）：强制使用 `Wan2.1-1.3B` 并启用 CPU Offload，LoRA Rank 设为 16（T4）或 32（L4，VRAM $\ge 22\text{ GB}$）；
    - 显存 $\ge 35\text{ GB}$（如 A100）：切换至 `Wan2.1-14B`，LoRA Rank 设为 32。
