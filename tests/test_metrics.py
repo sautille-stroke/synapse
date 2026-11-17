@@ -268,9 +268,12 @@ class TestTemporal:
         assert fvd > 0.0
         assert np.isfinite(fvd)
 
-    def test_compute_fvd_from_videos_proxy(self) -> None:
+    def test_compute_fvd_from_videos_proxy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """compute_fvd_from_videos with allow_statistical_proxy returns FVDResult."""
+        import synapse.metrics.temporal as temporal_mod
         from synapse.metrics import compute_fvd_from_videos
+
+        monkeypatch.setattr(temporal_mod, "_build_r3d18_extractor", lambda **kwargs: None)
 
         rng = np.random.default_rng(42)
         real = rng.random((3, 4, 8, 8, 3)).astype(np.float32)

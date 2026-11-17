@@ -377,6 +377,8 @@ def compute_fvd_from_videos(
             from synapse.errors import BackendUnavailableError
 
             feature_extractor = _build_r3d18_extractor()
+            if feature_extractor is None:
+                raise BackendUnavailableError("No neural feature extractor available.")
         except (ImportError, BackendUnavailableError):
             if require_pretrained or not allow_statistical_proxy:
                 from synapse.errors import BackendUnavailableError

@@ -122,6 +122,34 @@ class TestFvdVideoBridge:
             fvd_feature_distance(f1, f2)
         assert exc_info.value.exit_code == 10
 
+    def test_r3d18_unmocked_t4_feature_extraction(self) -> None:
+        """Verify unmocked PyTorch 3D feature extraction handles fast T=4 and uint8 normalization."""
+        import torch
+
+        class Tiny3DCNN(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = torch.nn.Conv3d(3, 512, kernel_size=3, padding=1)
+                self.pool = torch.nn.AdaptiveAvgPool3d((1, 1, 1))
+                self.fc = torch.nn.Linear(512, 10)
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                out: torch.Tensor = self.fc(self.pool(self.conv(x)).flatten(1))
+                return out
+
+        model = Tiny3DCNN()
+        extractor = _build_r3d18_extractor(model=model)
+
+        rng = np.random.default_rng(42)
+        vids = rng.integers(0, 256, (2, 4, 16, 16, 3), dtype=np.uint8)
+        feats = extractor(vids)
+        assert feats.shape == (2, 512)
+        assert np.all(np.isfinite(feats))
+
+        dist = fvd_feature_distance(feats, feats)
+        assert dist == pytest.approx(0.0, abs=1e-3)
+
+    @pytest.mark.slow
     def test_r3d18_unmocked_t16_feature_extraction(self) -> None:
         """Verify unmocked PyTorch 3D feature extraction handles T=16 and uint8 normalization."""
         import torch

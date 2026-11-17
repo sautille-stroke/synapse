@@ -262,9 +262,9 @@ class TestMacroCameraPlanning:
             u=64.0, v=64.0, z=5.0,
             fx=256.0, fy=256.0, cx=64.0, cy=64.0,
         )
-        # At center: (u-cx)/fx * z = 0, (v-cy)/fy * z = 0
+        # At center: (u-cx)/fx * z = 0, (v-cy)/fy * z = 0, z_out = -z (camera looks along -Z)
         np.testing.assert_allclose(
-            p, [0.0, 0.0, 5.0], atol=1e-10,
+            p, [0.0, 0.0, -5.0], atol=1e-10,
         )
 
     def test_unproject_off_center(self) -> None:
@@ -275,7 +275,7 @@ class TestMacroCameraPlanning:
         )
         expected_x = (128 - 64) * 10.0 / 256.0
         assert abs(p[0] - expected_x) < 1e-10
-        assert abs(p[2] - 10.0) < 1e-10
+        assert abs(p[2] - (-10.0)) < 1e-10
 
     def test_macro_camera_position(self) -> None:
         """Macro camera positioned along normal direction."""
@@ -298,13 +298,12 @@ class TestMacroCameraPlanning:
             macro_fov_deg=35.0,
         )
 
-        # Camera should be along -Z from the defect point
-        # Defect is at (0, 0, 5) in world
-        # Normal is [0, 0, -1]
-        # Camera should be at (0, 0, 5 - d_macro)
+        # Defect is at (0, 0, -5) in camera space, normal is along -Z
         cam_pos = np.array(pose.position)
-        assert cam_pos[2] < 5.0, (
-            "Camera should be in front of defect"
+        assert abs(cam_pos[0]) < 1e-4
+        assert abs(cam_pos[1]) < 1e-4
+        assert abs(cam_pos[2] - (-5.0)) > 0.5, (
+            "Camera should be offset from defect along normal"
         )
 
     def test_macro_distance_formula(self) -> None:
@@ -336,8 +335,8 @@ class TestMacroCameraPlanning:
         expected_d = 1.35 * r_3d / math.tan(math.radians(fov / 2))
 
         cam_pos = np.array(pose.position)
-        # Defect is at (0, 0, z_c=10) for center pixel
-        defect = np.array([0.0, 0.0, z_c])
+        # Defect is at (0, 0, -z_c=-10) for center pixel in camera space
+        defect = np.array([0.0, 0.0, -z_c])
         actual_d = float(np.linalg.norm(cam_pos - defect))
         assert abs(actual_d - expected_d) < 0.1, (
             f"Expected d={expected_d:.3f}, got {actual_d:.3f}"

@@ -424,8 +424,8 @@ def stage_from_remote_huggingface(
             raise AssetNotFoundError(
                 f"Failed to download benchmark asset '{pkg_name}' from HuggingFace: {e}",
                 agent_fix_hint=(
-                    f"Check network connectivity and HF credentials, or use "
-                    f"--allow-synthetic-smoke for minimal CI smoke testing."
+                    "Check network connectivity and HF credentials, or use "
+                    "--allow-synthetic-smoke for minimal CI smoke testing."
                 ),
             ) from e
 

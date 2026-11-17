@@ -11,17 +11,23 @@ from synapse.pipeline.bench_runner import BenchPipelineRunner
 
 pytestmark = pytest.mark.slow
 
+_SCENARIO_NAMES = [s.id for s in list_scenarios()]
+
 
 class TestBenchFullSuite:
     """Validate that every built-in scenario executes cleanly end-to-end."""
 
-    def test_all_scenarios_asset_resolution_and_execution(
-        self, shared_rasterizer_cache: dict[str, Any],
+    def test_scenario_count(self) -> None:
+        """Suite must contain at least 16 scenarios (30 total in standard suite)."""
+        assert len(_SCENARIO_NAMES) >= 16, f"Expected at least 16 scenarios, found {len(_SCENARIO_NAMES)}"
+
+    @pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES)
+    def test_scenario_asset_resolution_and_execution(
+        self,
+        scenario_name: str,
+        shared_rasterizer_cache: dict[str, Any],
     ) -> None:
         """Every built-in scenario must run without error (0 asset resolution failures)."""
-        scenarios = list_scenarios()
-        assert len(scenarios) >= 16, f"Expected at least 16 scenarios, found {len(scenarios)}"
-
         adapter = MockVideoAdapter()
         runner = BenchPipelineRunner(
             adapter,
@@ -29,26 +35,15 @@ class TestBenchFullSuite:
             rasterizer_cache=shared_rasterizer_cache,
         )
 
-        reports = runner.run_all(
+        report = runner.run_scenario(
+            scenario_name,
             seed=42,
             resolution=(32, 32),
             num_frames=4,
         )
-        assert len(reports) == len(scenarios)
-
-        failed_scenarios: list[tuple[str, str | None]] = []
-        for r in reports:
-            if r.error is not None:
-                failed_scenarios.append((r.scenario_name, r.error))
-
-        assert not failed_scenarios, (
-            f"Expected 0 scenario failures, but {len(failed_scenarios)} failed:\n"
-            + "\n".join(f"  - {name}: {err}" for name, err in failed_scenarios)
-        )
-
-        for r in reports:
-            assert r.num_frames > 0
-            d = r.to_dict()
-            assert d["metrics"]["depth_rmse_m"] == "N/A (not_produced)"
-            assert d["metrics"]["normal_angular_error_deg"] == "N/A (not_produced)"
-            assert "flicker_score" in d["metrics"]
+        assert report.error is None, f"Scenario '{scenario_name}' failed: {report.error}"
+        assert report.num_frames > 0
+        d = report.to_dict()
+        assert d["metrics"]["depth_rmse_m"] == "N/A (not_produced)"
+        assert d["metrics"]["normal_angular_error_deg"] == "N/A (not_produced)"
+        assert "flicker_score" in d["metrics"]
