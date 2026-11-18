@@ -118,21 +118,6 @@ ipcMain.handle('open-bundle-dialog', async () => {
   return result.filePaths[0];
 });
 
-ipcMain.handle('save-screenshot-dialog', async () => {
-  if (!mainWindow) return null;
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Export Viewport Screenshot',
-    defaultPath: 'viewport_screenshot.ppm',
-    filters: [
-      { name: 'PPM Image', extensions: ['ppm'] },
-      { name: 'All Files', extensions: ['*'] },
-    ],
-  });
-  if (result.canceled || !result.filePath) return null;
-  return result.filePath;
-});
-
-
 ipcMain.handle('export-screenshot', async () => {
   if (!mainWindow) return { ok: false, error: 'No window' };
   const result = await dialog.showSaveDialog(mainWindow, {
@@ -144,15 +129,13 @@ ipcMain.handle('export-screenshot', async () => {
     ],
   });
   if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
-  // Write the screenshot via native process stdin (safe: path comes from
-  // main-process dialog, not from the renderer).
-  if (nativeProc._proc && nativeProc._proc.stdin && !nativeProc._proc.stdin.destroyed) {
-    try {
-      const cmd = JSON.stringify({ type: 'export_screenshot', path: result.filePath });
-      nativeProc._proc.stdin.write(cmd + '\n');
-    } catch (_) { /* ignore write errors */ }
+  // Write the screenshot via native process with synchronous ACK wait.
+  try {
+    const ack = await nativeProc.exportScreenshot(result.filePath);
+    return ack;
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
   }
-  return { ok: true, path: result.filePath };
 });
 
 ipcMain.handle('load-bundle', async (_event, bundlePath) => {

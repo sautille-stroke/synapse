@@ -681,3 +681,167 @@ TEST(InspectorApp, GlbNegativeByteStride) {
 
   (void)aether::fs::removeAll(bundleDir);
 }
+
+
+// ---------------------------------------------------------------------------
+// PR-146: Multi-Entity, Tabs, Resize, Export ACK Tests
+// ---------------------------------------------------------------------------
+
+TEST(InspectorApp, MultiEntitySlots) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-multi-entity";
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  // Default: no custom entities.
+  EXPECT_EQ(app.entityCount(), 0u);
+  EXPECT_EQ(app.findEntity("source"), nullptr);
+  EXPECT_FALSE(app.isEntityVisible("source"));
+
+  // After loading a bundle with a source mesh, an entity should exist.
+  const std::string bundleDir = ::testing::TempDir() + "/test_multi_entity";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  auto glbData = createMinimalGlb();
+  std::ofstream ofs(bundleDir + "/source/model.glb", std::ios::binary);
+  ofs.write(reinterpret_cast<const char*>(glbData.data()),
+            static_cast<std::streamsize>(glbData.size()));
+  ofs.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"source_model":"source/model.glb"}})");
+
+  app.handleCommand(R"({"type":"load_bundle","path":")" + bundleDir + R"("})");
+  EXPECT_GE(app.entityCount(), 1u);
+  EXPECT_NE(app.findEntity("source"), nullptr);
+  EXPECT_TRUE(app.isEntityVisible("source"));
+
+  // Toggle visibility.
+  EXPECT_TRUE(app.setEntityVisible("source", false));
+  EXPECT_FALSE(app.isEntityVisible("source"));
+  EXPECT_TRUE(app.setEntityVisible("source", true));
+  EXPECT_TRUE(app.isEntityVisible("source"));
+
+  // Non-existent entity.
+  EXPECT_FALSE(app.setEntityVisible("nonexistent", false));
+
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, ActiveTabSwitching) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-tabs";
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  EXPECT_EQ(app.activeTab(), "source");
+
+  app.setActiveTab("animation");
+  EXPECT_EQ(app.activeTab(), "animation");
+
+  app.setActiveTab("video");
+  EXPECT_EQ(app.activeTab(), "video");
+
+  app.setActiveTab("comparison");
+  EXPECT_EQ(app.activeTab(), "comparison");
+
+  // Invalid tab: stays at current.
+  app.setActiveTab("invalid_tab");
+  EXPECT_EQ(app.activeTab(), "comparison");
+
+  app.setActiveTab("source");
+  EXPECT_EQ(app.activeTab(), "source");
+}
+
+TEST(InspectorApp, ResizeViewport) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-resize";
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  // Same size: should succeed without reopening.
+  EXPECT_TRUE(app.resizeViewport(64, 64));
+
+  // Valid resize.
+  EXPECT_TRUE(app.resizeViewport(128, 96));
+
+  // After resize, rendering should not crash.
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+
+  // Invalid resize: zero or too large.
+  EXPECT_FALSE(app.resizeViewport(0, 100));
+  EXPECT_FALSE(app.resizeViewport(100, 0));
+  EXPECT_FALSE(app.resizeViewport(9000, 100));
+}
+
+TEST(InspectorApp, HandleCommandSelectTab) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-cmd-tab";
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  app.handleCommand(R"({"type":"select_tab","tab":"video"})");
+  EXPECT_EQ(app.activeTab(), "video");
+
+  app.handleCommand(R"({"type":"select_tab","tab":"comparison"})");
+  EXPECT_EQ(app.activeTab(), "comparison");
+}
+
+TEST(InspectorApp, HandleCommandResize) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-cmd-resize";
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  app.handleCommand(R"({"type":"resize","width":256,"height":128})");
+  // After resize, renderFrame should work without crash.
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+}
+
+TEST(InspectorApp, ExportScreenshotPpmAck) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-screenshot-ack";
+  cfg.width = 32;
+  cfg.height = 32;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  app.renderFrame(0.016f);
+  app.shmServer().publishFrame(60.0f, 0.016f);
+
+  const std::string outPath = ::testing::TempDir() + "/test_screenshot.ppm";
+  EXPECT_TRUE(app.exportScreenshotPpm(outPath));
+
+  // Verify the file exists and has PPM header.
+  std::ifstream ifs(outPath, std::ios::binary);
+  ASSERT_TRUE(ifs.is_open());
+  std::string header;
+  std::getline(ifs, header);
+  EXPECT_EQ(header, "P6");
+  ifs.close();
+  std::filesystem::remove(outPath);
+}

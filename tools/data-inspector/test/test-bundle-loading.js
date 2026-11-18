@@ -638,6 +638,52 @@ test('end-to-end native C++ binary renders into @aether//pal SHM and handles std
   }
 });
 
+// ── Section: PR-146 New Command Validation ───────────────────────
+
+test('validateNativeCommand accepts select_tab with valid tabs', () => {
+  for (const tab of ['source', 'animation', 'video', 'comparison']) {
+    const result = validateNativeCommand({ type: 'select_tab', tab });
+    assert.strictEqual(result.ok, true, `Expected ok=true for tab '${tab}'`);
+    assert.strictEqual(result.command.tab, tab);
+  }
+  // Invalid tab.
+  assert.strictEqual(
+    validateNativeCommand({ type: 'select_tab', tab: 'invalid' }).ok,
+    false,
+  );
+});
+
+test('validateNativeCommand accepts resize with valid dimensions', () => {
+  const result = validateNativeCommand({ type: 'resize', width: 1280, height: 720 });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.command.width, 1280);
+  assert.strictEqual(result.command.height, 720);
+});
+
+test('validateNativeCommand rejects resize with invalid dimensions', () => {
+  assert.strictEqual(
+    validateNativeCommand({ type: 'resize', width: 0, height: 100 }).ok,
+    false,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'resize', width: 100, height: -1 }).ok,
+    false,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'resize', width: 9000, height: 100 }).ok,
+    false,
+  );
+  assert.strictEqual(
+    validateNativeCommand({ type: 'resize', width: 100.5, height: 200 }).ok,
+    false,
+  );
+});
+
+test('InspectorProcessManager has exportScreenshot method', () => {
+  const mgr2 = new InspectorProcessManager(path.join(__dirname, '..'));
+  assert.strictEqual(typeof mgr2.exportScreenshot, 'function');
+});
+
 // ─── Summary ─────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

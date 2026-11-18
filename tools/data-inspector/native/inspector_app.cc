@@ -8,6 +8,7 @@
 #include <aether/pal/console.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -21,6 +22,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <aether/io/exr_io.h>
 
 #ifdef SYNAPSE_HAS_TINYEXR
 #include "tinyexr.h"
@@ -122,9 +125,11 @@ void InspectorApp::initDefaultMesh() {
     m_mesh.faceNormals.push_back(nz);
   }
   m_hasCustomMesh = false;
+  m_entities.clear();
+  m_fgppAov = FgppAovData{};
 }
 
-bool InspectorApp::loadObjMesh(std::string_view objPath) {
+bool InspectorApp::loadObjMesh(std::string_view objPath, InspectorMesh& outMesh) {
   const std::string pathStr(objPath);
   std::ifstream ifs(pathStr);
   if (!ifs.is_open()) return false;
@@ -213,32 +218,32 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
     loadedVerts[i + 2] = (loadedVerts[i + 2] - center[2]) * scale;
   }
 
-  m_mesh.vertices = std::move(loadedVerts);
-  m_mesh.faces = std::move(loadedFaces);
-  m_mesh.faceNormals.clear();
+  outMesh.vertices = std::move(loadedVerts);
+  outMesh.faces = std::move(loadedFaces);
+  outMesh.faceNormals.clear();
 
-  const auto vertexCount = m_mesh.vertices.size();
-  for (size_t f = 0; f < m_mesh.faces.size(); f += 3) {
-    const uint32_t i0 = m_mesh.faces[f + 0];
-    const uint32_t i1 = m_mesh.faces[f + 1];
-    const uint32_t i2 = m_mesh.faces[f + 2];
+  const auto vertexCount = outMesh.vertices.size();
+  for (size_t f = 0; f < outMesh.faces.size(); f += 3) {
+    const uint32_t i0 = outMesh.faces[f + 0];
+    const uint32_t i1 = outMesh.faces[f + 1];
+    const uint32_t i2 = outMesh.faces[f + 2];
     if (i0 * 3 + 2 >= vertexCount ||
         i1 * 3 + 2 >= vertexCount ||
         i2 * 3 + 2 >= vertexCount) {
-      m_mesh.faceNormals.push_back(0.0f);
-      m_mesh.faceNormals.push_back(1.0f);
-      m_mesh.faceNormals.push_back(0.0f);
+      outMesh.faceNormals.push_back(0.0f);
+      outMesh.faceNormals.push_back(1.0f);
+      outMesh.faceNormals.push_back(0.0f);
       continue;
     }
-    const float v0x = m_mesh.vertices[i0 * 3 + 0];
-    const float v0y = m_mesh.vertices[i0 * 3 + 1];
-    const float v0z = m_mesh.vertices[i0 * 3 + 2];
-    const float e1x = m_mesh.vertices[i1 * 3 + 0] - v0x;
-    const float e1y = m_mesh.vertices[i1 * 3 + 1] - v0y;
-    const float e1z = m_mesh.vertices[i1 * 3 + 2] - v0z;
-    const float e2x = m_mesh.vertices[i2 * 3 + 0] - v0x;
-    const float e2y = m_mesh.vertices[i2 * 3 + 1] - v0y;
-    const float e2z = m_mesh.vertices[i2 * 3 + 2] - v0z;
+    const float v0x = outMesh.vertices[i0 * 3 + 0];
+    const float v0y = outMesh.vertices[i0 * 3 + 1];
+    const float v0z = outMesh.vertices[i0 * 3 + 2];
+    const float e1x = outMesh.vertices[i1 * 3 + 0] - v0x;
+    const float e1y = outMesh.vertices[i1 * 3 + 1] - v0y;
+    const float e1z = outMesh.vertices[i1 * 3 + 2] - v0z;
+    const float e2x = outMesh.vertices[i2 * 3 + 0] - v0x;
+    const float e2y = outMesh.vertices[i2 * 3 + 1] - v0y;
+    const float e2z = outMesh.vertices[i2 * 3 + 2] - v0z;
     float nx = e1y * e2z - e1z * e2y;
     float ny = e1z * e2x - e1x * e2z;
     float nz = e1x * e2y - e1y * e2x;
@@ -248,16 +253,16 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
       ny /= len;
       nz /= len;
     }
-    m_mesh.faceNormals.push_back(nx);
-    m_mesh.faceNormals.push_back(ny);
-    m_mesh.faceNormals.push_back(nz);
+    outMesh.faceNormals.push_back(nx);
+    outMesh.faceNormals.push_back(ny);
+    outMesh.faceNormals.push_back(nz);
   }
 
   m_hasCustomMesh = true;
   return true;
 }
 
-bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
+bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh) {
   // --- Overflow safety constants ---
   // Maximum allowed mesh element counts to prevent integer overflow in byte calculations.
   constexpr size_t kMaxMeshVertices = 16u * 1024u * 1024u;  // 16M vertices
@@ -567,32 +572,32 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
     loadedVerts[i + 2] = (loadedVerts[i + 2] - center[2]) * scale;
   }
 
-  m_mesh.vertices = std::move(loadedVerts);
-  m_mesh.faces = std::move(loadedFaces);
-  m_mesh.faceNormals.clear();
+  outMesh.vertices = std::move(loadedVerts);
+  outMesh.faces = std::move(loadedFaces);
+  outMesh.faceNormals.clear();
 
-  const auto vertexCount = m_mesh.vertices.size();
-  for (size_t f = 0; f < m_mesh.faces.size(); f += 3) {
-    const uint32_t i0 = m_mesh.faces[f + 0];
-    const uint32_t i1 = m_mesh.faces[f + 1];
-    const uint32_t i2 = m_mesh.faces[f + 2];
+  const auto vertexCount = outMesh.vertices.size();
+  for (size_t f = 0; f < outMesh.faces.size(); f += 3) {
+    const uint32_t i0 = outMesh.faces[f + 0];
+    const uint32_t i1 = outMesh.faces[f + 1];
+    const uint32_t i2 = outMesh.faces[f + 2];
     if (i0 * 3 + 2 >= vertexCount ||
         i1 * 3 + 2 >= vertexCount ||
         i2 * 3 + 2 >= vertexCount) {
-      m_mesh.faceNormals.push_back(0.0f);
-      m_mesh.faceNormals.push_back(1.0f);
-      m_mesh.faceNormals.push_back(0.0f);
+      outMesh.faceNormals.push_back(0.0f);
+      outMesh.faceNormals.push_back(1.0f);
+      outMesh.faceNormals.push_back(0.0f);
       continue;
     }
-    const float v0x = m_mesh.vertices[i0 * 3 + 0];
-    const float v0y = m_mesh.vertices[i0 * 3 + 1];
-    const float v0z = m_mesh.vertices[i0 * 3 + 2];
-    const float e1x = m_mesh.vertices[i1 * 3 + 0] - v0x;
-    const float e1y = m_mesh.vertices[i1 * 3 + 1] - v0y;
-    const float e1z = m_mesh.vertices[i1 * 3 + 2] - v0z;
-    const float e2x = m_mesh.vertices[i2 * 3 + 0] - v0x;
-    const float e2y = m_mesh.vertices[i2 * 3 + 1] - v0y;
-    const float e2z = m_mesh.vertices[i2 * 3 + 2] - v0z;
+    const float v0x = outMesh.vertices[i0 * 3 + 0];
+    const float v0y = outMesh.vertices[i0 * 3 + 1];
+    const float v0z = outMesh.vertices[i0 * 3 + 2];
+    const float e1x = outMesh.vertices[i1 * 3 + 0] - v0x;
+    const float e1y = outMesh.vertices[i1 * 3 + 1] - v0y;
+    const float e1z = outMesh.vertices[i1 * 3 + 2] - v0z;
+    const float e2x = outMesh.vertices[i2 * 3 + 0] - v0x;
+    const float e2y = outMesh.vertices[i2 * 3 + 1] - v0y;
+    const float e2z = outMesh.vertices[i2 * 3 + 2] - v0z;
     float nx = e1y * e2z - e1z * e2y;
     float ny = e1z * e2x - e1x * e2z;
     float nz = e1x * e2y - e1y * e2x;
@@ -602,9 +607,9 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
       ny /= len;
       nz /= len;
     }
-    m_mesh.faceNormals.push_back(nx);
-    m_mesh.faceNormals.push_back(ny);
-    m_mesh.faceNormals.push_back(nz);
+    outMesh.faceNormals.push_back(nx);
+    outMesh.faceNormals.push_back(ny);
+    outMesh.faceNormals.push_back(nz);
   }
 
   m_hasCustomMesh = true;
@@ -612,40 +617,192 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
 }
 
 bool InspectorApp::loadExrAov(const std::string& path) {
-#ifdef SYNAPSE_HAS_TINYEXR
-  float* out = nullptr;
-  int width = 0, height = 0;
-  const char* err = nullptr;
-  int ret = LoadEXR(&out, &width, &height, path.c_str(), &err);
-  if (ret != TINYEXR_SUCCESS) {
-    if (err) {
-      std::cerr << "[inspector] EXR load error: " << err << "\n";
-      FreeEXRErrorMessage(err);
+  auto result = aether::io::ExrIO::loadExr(std::filesystem::path(path));
+  if (result.isError()) {
+    std::cerr << "[inspector] EXR load error: " << result.error() << "\n";
+    return false;
+  }
+
+  const auto& img = result.value();
+  if (img.width == 0 || img.height == 0) return false;
+
+  const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
+
+  // Helper: extract float channel data (handles Half→Float conversion).
+  auto extractFloat = [&](const std::string& chName) -> std::vector<float> {
+    const auto* ch = img.findChannel(chName);
+    if (!ch) return {};
+    std::vector<float> out(pixelCount);
+    if (ch->pixelType == aether::io::ExrPixelType::Float) {
+      const float* src = ch->asFloat();
+      if (src) std::memcpy(out.data(), src, pixelCount * sizeof(float));
+    } else if (ch->pixelType == aether::io::ExrPixelType::Half) {
+      const uint16_t* src = ch->asHalf();
+      if (src) {
+        for (size_t i = 0; i < pixelCount; ++i) {
+          out[i] = aether::io::float16ToFloat32(src[i]);
+        }
+      }
     }
-    return false;
+    return out;
+  };
+
+  // Helper: extract uint32 channel data.
+  auto extractUint32 = [&](const std::string& chName) -> std::vector<uint32_t> {
+    const auto* ch = img.findChannel(chName);
+    if (!ch || ch->pixelType != aether::io::ExrPixelType::Uint32) return {};
+    std::vector<uint32_t> out(pixelCount);
+    const uint32_t* src = ch->asUint32();
+    if (src) std::memcpy(out.data(), src, pixelCount * sizeof(uint32_t));
+    return out;
+  };
+
+  // Populate 15-channel FGPP AOV container.
+  m_fgppAov = FgppAovData{};
+  m_fgppAov.width = img.width;
+  m_fgppAov.height = img.height;
+
+  // DirectRadiance (R, G, B) → radiance
+  auto radR = extractFloat("DirectRadiance.R");
+  auto radG = extractFloat("DirectRadiance.G");
+  auto radB = extractFloat("DirectRadiance.B");
+  if (!radR.empty() && !radG.empty() && !radB.empty()) {
+    m_fgppAov.radiance.resize(pixelCount * 3);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_fgppAov.radiance[i * 3 + 0] = radR[i];
+      m_fgppAov.radiance[i * 3 + 1] = radG[i];
+      m_fgppAov.radiance[i * 3 + 2] = radB[i];
+    }
   }
 
-  if (width <= 0 || height <= 0 || !out) {
-    if (out) free(out);
-    return false;
+  // CameraLinearDepth.Z → depth
+  m_fgppAov.depth = extractFloat("CameraLinearDepth.Z");
+
+  // WorldNormal (X, Y, Z) → normal
+  auto normX = extractFloat("WorldNormal.X");
+  auto normY = extractFloat("WorldNormal.Y");
+  auto normZ = extractFloat("WorldNormal.Z");
+  if (!normX.empty() && !normY.empty() && !normZ.empty()) {
+    m_fgppAov.normal.resize(pixelCount * 3);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_fgppAov.normal[i * 3 + 0] = normX[i];
+      m_fgppAov.normal[i * 3 + 1] = normY[i];
+      m_fgppAov.normal[i * 3 + 2] = normZ[i];
+    }
   }
 
-  const size_t pixelCount = static_cast<size_t>(width) * height;
-  m_exrAovData.assign(out, out + pixelCount * 4);  // RGBA float
-  m_exrAovWidth = static_cast<uint32_t>(width);
-  m_exrAovHeight = static_cast<uint32_t>(height);
-  m_hasExrAov = true;
-  free(out);
+  // MotionVector (X, Y) → motion
+  auto motX = extractFloat("MotionVector.X");
+  auto motY = extractFloat("MotionVector.Y");
+  if (!motX.empty() && !motY.empty()) {
+    m_fgppAov.motion.resize(pixelCount * 2);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_fgppAov.motion[i * 2 + 0] = motX[i];
+      m_fgppAov.motion[i * 2 + 1] = motY[i];
+    }
+  }
+
+  // BaseColor (R, G, B) → baseColor
+  auto bcR = extractFloat("BaseColor.R");
+  auto bcG = extractFloat("BaseColor.G");
+  auto bcB = extractFloat("BaseColor.B");
+  if (!bcR.empty() && !bcG.empty() && !bcB.empty()) {
+    m_fgppAov.baseColor.resize(pixelCount * 3);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_fgppAov.baseColor[i * 3 + 0] = bcR[i];
+      m_fgppAov.baseColor[i * 3 + 1] = bcG[i];
+      m_fgppAov.baseColor[i * 3 + 2] = bcB[i];
+    }
+  }
+
+  // RoughnessMetallic (R, G) → roughnessMetallic
+  auto rmR = extractFloat("RoughnessMetallic.R");
+  auto rmG = extractFloat("RoughnessMetallic.G");
+  if (!rmR.empty() && !rmG.empty()) {
+    m_fgppAov.roughnessMetallic.resize(pixelCount * 2);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_fgppAov.roughnessMetallic[i * 2 + 0] = rmR[i];
+      m_fgppAov.roughnessMetallic[i * 2 + 1] = rmG[i];
+    }
+  }
+
+  // Cryptomatte.ID → cryptomatte
+  m_fgppAov.cryptomatte = extractUint32("Cryptomatte.ID");
+
+  m_fgppAov.hasData = !m_fgppAov.radiance.empty() || !m_fgppAov.depth.empty();
+
+  // Backward-compatible RGBA overlay from DirectRadiance.
+  if (!radR.empty()) {
+    m_exrAovData.resize(pixelCount * 4);
+    for (size_t i = 0; i < pixelCount; ++i) {
+      m_exrAovData[i * 4 + 0] = radR[i];
+      m_exrAovData[i * 4 + 1] = !radG.empty() ? radG[i] : 0.0f;
+      m_exrAovData[i * 4 + 2] = !radB.empty() ? radB[i] : 0.0f;
+      m_exrAovData[i * 4 + 3] = 1.0f;
+    }
+    m_exrAovWidth = img.width;
+    m_exrAovHeight = img.height;
+    m_hasExrAov = true;
+  }
 
   std::cerr << "[inspector] Loaded EXR AOV: " << path
-            << " (" << width << "x" << height << ")\n";
+            << " (" << img.width << "x" << img.height
+            << ", " << img.channels.size() << " channels)\n";
   return true;
-#else
-  std::cerr << "[inspector] EXR loading not available (tinyexr not linked): "
-            << path << "\n";
-  (void)path;
-  return false;
-#endif
+}
+
+const MeshEntity* InspectorApp::findEntity(std::string_view name) const noexcept {
+  for (const auto& e : m_entities) {
+    if (e.name == name) return &e;
+  }
+  return nullptr;
+}
+
+MeshEntity* InspectorApp::findEntity(std::string_view name) noexcept {
+  for (auto& e : m_entities) {
+    if (e.name == name) return &e;
+  }
+  return nullptr;
+}
+
+bool InspectorApp::setEntityVisible(std::string_view name, bool visible) noexcept {
+  auto* e = findEntity(name);
+  if (!e) return false;
+  e->visible = visible;
+  return true;
+}
+
+bool InspectorApp::isEntityVisible(std::string_view name) const noexcept {
+  const auto* e = findEntity(name);
+  return e ? e->visible : false;
+}
+
+void InspectorApp::setActiveTab(std::string_view tab) noexcept {
+  static const std::array<std::string_view, 4> kValidTabs = {
+      "source", "animation", "video", "comparison"};
+  for (const auto& t : kValidTabs) {
+    if (t == tab) {
+      m_activeTab = std::string(tab);
+      return;
+    }
+  }
+}
+
+bool InspectorApp::resizeViewport(uint32_t width, uint32_t height) {
+  if (width == 0 || height == 0 || width > 8192 || height > 8192) return false;
+  if (width == m_config.width && height == m_config.height) return true;
+  m_config.width = width;
+  m_config.height = height;
+  m_zBuffer.resize(static_cast<size_t>(width) * height);
+  // Reopen SHM with new dimensions.
+  m_shm.close();
+  bool shmOk = false;
+  if (m_config.useShmFile && !m_config.shmFilePath.empty()) {
+    shmOk = m_shm.openFile(m_config.shmFilePath, width, height);
+  } else {
+    shmOk = m_shm.open(m_config.shmName, width, height, !m_config.keepShm);
+  }
+  return shmOk;
 }
 
 bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
@@ -696,17 +853,41 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
     }
 
     const std::string ext = resolved.extension().string();
-    if (ext == ".glb") {
-      if (loadGlbMesh(resolved.string())) {
-        std::cerr << "[inspector] Loaded GLB mesh: " << resolved.string() << "\n";
+    const std::string resolvedStr = resolved.string();
+    if (ext == ".glb" || ext == ".obj") {
+      // Derive entity name from path segments.
+      std::string entityName = resolved.stem().string();
+      const std::string pathLower = resolvedStr;
+      if (pathLower.find("source") != std::string::npos) {
+        entityName = "source";
+      } else if (pathLower.find("reconstruct") != std::string::npos) {
+        entityName = "reconstructed";
+      } else if (pathLower.find("anim") != std::string::npos) {
+        entityName = "animation";
       }
-    } else if (ext == ".obj") {
-      if (loadObjMesh(resolved.string())) {
-        std::cerr << "[inspector] Loaded OBJ mesh: " << resolved.string() << "\n";
+
+      MeshEntity entity;
+      entity.name = entityName;
+      entity.filePath = resolvedStr;
+      bool loaded = false;
+      if (ext == ".glb") {
+        loaded = loadGlbMesh(resolvedStr, entity.mesh);
+      } else {
+        loaded = loadObjMesh(resolvedStr, entity.mesh);
+      }
+      if (loaded) {
+        std::cerr << "[inspector] Loaded " << ext.substr(1)
+                  << " mesh entity '" << entityName << "': "
+                  << resolvedStr << "\n";
+        m_entities.push_back(std::move(entity));
+        // Set primary mesh from first loaded entity (backward compat).
+        if (m_entities.size() == 1) {
+          m_mesh = m_entities[0].mesh;
+        }
       }
     } else if (ext == ".exr") {
-      if (loadExrAov(resolved.string())) {
-        std::cerr << "[inspector] Loaded EXR AOV: " << resolved.string() << "\n";
+      if (loadExrAov(resolvedStr)) {
+        std::cerr << "[inspector] Loaded EXR AOV: " << resolvedStr << "\n";
       }
     }
   };
@@ -1274,9 +1455,24 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
     ok = validateAndLoadBundle(path);
   } else if (type == "set_entity_visible") {
     const std::string name = std::string(jsonStringOr(j, "name", ""));
-    m_entityVisible = jsonBoolOr(j, "visible", true);
+    const bool visible = jsonBoolOr(j, "visible", true);
+    ok = setEntityVisible(name, visible);
+    // Also update legacy global flag for backward compat.
+    m_entityVisible = visible;
     std::cerr << "[inspector] Entity '" << name
-              << "' visible=" << (m_entityVisible ? "true" : "false") << "\n";
+              << "' visible=" << (visible ? "true" : "false") << "\n";
+  } else if (type == "select_tab") {
+    const std::string tab = std::string(jsonStringOr(j, "tab", ""));
+    setActiveTab(tab);
+    std::cerr << "[inspector] Active tab: " << m_activeTab << "\n";
+  } else if (type == "resize") {
+    const int64_t rw = j["width"].getIntOr(0);
+    const int64_t rh = j["height"].getIntOr(0);
+    if (rw > 0 && rh > 0 && rw <= 8192 && rh <= 8192) {
+      ok = resizeViewport(static_cast<uint32_t>(rw), static_cast<uint32_t>(rh));
+    } else {
+      ok = false;
+    }
   } else if (type == "export_screenshot") {
     const std::string path = std::string(jsonStringOr(j, "path", ""));
     ok = exportScreenshotPpm(path);
@@ -1290,6 +1486,18 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   ackResp.write("type", "ack");
   ackResp.write("command", type.empty() ? "unknown" : type);
   ackResp.write("ok", ok);
+  // Include extra fields for specific commands.
+  if (type == "export_screenshot") {
+    ackResp.write("path", std::string(jsonStringOr(j, "path", "")));
+  } else if (type == "resize") {
+    ackResp.write("width", static_cast<int64_t>(m_config.width));
+    ackResp.write("height", static_cast<int64_t>(m_config.height));
+  } else if (type == "select_tab") {
+    ackResp.write("tab", m_activeTab);
+  } else if (type == "set_entity_visible") {
+    ackResp.write("name", std::string(jsonStringOr(j, "name", "")));
+    ackResp.write("visible", jsonBoolOr(j, "visible", true));
+  }
   ackResp.endObject();
   std::cout << ackResp.toString(false) << "\n";
   std::cout.flush();

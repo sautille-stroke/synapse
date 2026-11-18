@@ -18,6 +18,8 @@ const ALLOWED_COMMAND_TYPES = new Set([
   'switch_view',
   'set_entity_visible',
   'load_bundle',
+  'select_tab',
+  'resize',
   'quit',
 ]);
 
@@ -100,6 +102,22 @@ function validateNativeCommand(cmd) {
         return { ok: false, error: `Invalid path for ${type}` };
       }
       return { ok: true, command: { type, path: cmd.path } };
+    }
+    case 'select_tab': {
+      const ALLOWED_TABS = new Set(['source', 'animation', 'video', 'comparison']);
+      if (typeof cmd.tab !== 'string' || !ALLOWED_TABS.has(cmd.tab)) {
+        return { ok: false, error: `Invalid tab: '${String(cmd.tab)}'` };
+      }
+      return { ok: true, command: { type: 'select_tab', tab: cmd.tab } };
+    }
+    case 'resize': {
+      if (typeof cmd.width !== 'number' || typeof cmd.height !== 'number' ||
+          !Number.isFinite(cmd.width) || !Number.isFinite(cmd.height) ||
+          cmd.width < 1 || cmd.height < 1 || cmd.width > 8192 || cmd.height > 8192 ||
+          !Number.isInteger(cmd.width) || !Number.isInteger(cmd.height)) {
+        return { ok: false, error: 'Resize width and height must be integers in [1, 8192]' };
+      }
+      return { ok: true, command: { type: 'resize', width: cmd.width, height: cmd.height } };
     }
     case 'quit':
       return { ok: true, command: { type: 'quit' } };
@@ -301,6 +319,44 @@ class InspectorProcessManager extends EventEmitter {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  }
+
+  /**
+   * Export a screenshot via the native process and wait for synchronous ACK.
+   * @param {string} outputPath - Absolute path for the PPM screenshot.
+   * @param {number} [timeoutMs=5000] - Timeout in milliseconds.
+   * @returns {Promise<{ ok: boolean, path?: string, error?: string }>}
+   */
+  exportScreenshot(outputPath, timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      if (!this._proc || !this._proc.stdin || this._proc.stdin.destroyed) {
+        resolve({ ok: false, error: 'Native process is not running' });
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        this.removeListener('native-event', onEvent);
+        resolve({ ok: false, error: 'Timeout waiting for screenshot ACK' });
+      }, timeoutMs);
+
+      const onEvent = (event) => {
+        if (event && event.type === 'ack' && event.command === 'export_screenshot') {
+          clearTimeout(timer);
+          this.removeListener('native-event', onEvent);
+          resolve({ ok: !!event.ok, path: event.path || outputPath });
+        }
+      };
+      this.on('native-event', onEvent);
+
+      try {
+        const cmd = JSON.stringify({ type: 'export_screenshot', path: outputPath });
+        this._proc.stdin.write(cmd + '\n');
+      } catch (err) {
+        clearTimeout(timer);
+        this.removeListener('native-event', onEvent);
+        resolve({ ok: false, error: err.message });
+      }
+    });
   }
 
   /**
