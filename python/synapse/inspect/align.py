@@ -148,6 +148,30 @@ def compute_silhouette(
     sy = (1.0 - (verts_ndc[:, 1] * 0.5 + 0.5)) * H
     sz = verts_view[:, 2]  # negative = in front of camera
 
+    # Fast path: vectorized triangle projection + cv2.fillPoly rasterisation
+    try:
+        import cv2
+
+        faces_arr = np.asarray(faces, dtype=np.int32)
+        if faces_arr.shape[0] == 0:
+            return np.zeros((H, W), dtype=bool)
+
+        z_faces = sz[faces_arr]  # [F, 3]
+        # Skip triangles fully behind camera
+        valid_tri_mask = ~((z_faces[:, 0] > -0.1) & (z_faces[:, 1] > -0.1) & (z_faces[:, 2] > -0.1))
+        valid_faces = faces_arr[valid_tri_mask]
+        if valid_faces.shape[0] == 0:
+            return np.zeros((H, W), dtype=bool)
+
+        pts_2d = np.stack([sx, sy], axis=-1)  # [N, 2]
+        tri_pts = np.round(pts_2d[valid_faces]).astype(np.int32)
+
+        mask_u8 = np.zeros((H, W), dtype=np.uint8)
+        cv2.fillPoly(mask_u8, list(tri_pts), 1)
+        return mask_u8.astype(bool)
+    except (ImportError, Exception):
+        pass
+
     depth_buf = np.full((H, W), np.inf, dtype=np.float64)
     mask = np.zeros((H, W), dtype=bool)
 
@@ -198,8 +222,6 @@ def compute_silhouette(
         if np.any(closer):
             sub_depth[closer] = linear_depth[closer]
             mask[min_y : max_y + 1, min_x : max_x + 1][closer] = True
-
-    return mask
 
     return mask
 
@@ -302,7 +324,7 @@ def align_reference_image_to_mesh(
 
     # Stage 1A: coarse search across center hypotheses
     coarse_candidates: list[tuple[CameraPose, np.ndarray, float]] = []
-    n_per_center = max(4, n_coarse // len(centers_to_test))
+    n_per_center = max(48, n_coarse)
     for c_point in centers_to_test:
         cams = generate_fibonacci_sphere_cameras(
             n_cameras=n_per_center,
@@ -316,7 +338,7 @@ def align_reference_image_to_mesh(
             coarse_candidates.append((cam, c_point, iou))
 
     coarse_candidates.sort(key=lambda x: x[2], reverse=True)
-    top_k = min(3, len(coarse_candidates))
+    top_k = min(5, len(coarse_candidates))
     candidates = coarse_candidates[:top_k]
 
     # Stage 1B: refine each candidate around its respective look-at center

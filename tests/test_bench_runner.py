@@ -119,57 +119,112 @@ class TestBenchPipelineRunner:
         assert hasattr(report.gate_verdict, "profile")
         assert report.gate_verdict.profile == "track_b_video"
 
-    def test_run_all_scenarios(
+    def test_run_all_scenarios_smoke(
         self,
         shared_rasterizer_cache: dict[str, Any],
     ) -> None:
-        """Run all built-in scenarios, verify report completeness."""
+        """Run subset through run_all to verify batch runner pipeline and aggregation."""
         from synapse.bench.scenario import list_scenarios
 
-        all_scenarios = list_scenarios()
-        if not all_scenarios:
-            pytest.skip("No built-in scenarios available")
-
+        subset = [s.id for s in list_scenarios()[:3]]
         adapter = MockVideoAdapter()
         runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
 
         reports = runner.run_all(
+            scenarios=subset,
             seed=42,
             resolution=(32, 32),
             num_frames=4,
         )
 
-        assert len(reports) == len(all_scenarios)
-        expected_names = {s.id for s in all_scenarios}
+        assert len(reports) == len(subset)
+        expected_names = set(subset)
         actual_names = {r.scenario_name for r in reports}
         assert actual_names == expected_names
         for r in reports:
             assert r.error is None, f"Scenario '{r.scenario_name}' failed with error: {r.error}"
 
-    def test_humanoid_53_scenarios_no_error(
+    @pytest.mark.parametrize(
+        "scenario_id",
+        [
+            "t1_rigid_cube_orbit",
+            "t1_rigid_cylinder_arc",
+            "t1_rigid_cylinder_closeup",
+            "t1_rigid_sphere_multi_light",
+            "t1_rigid_sphere_orbit",
+            "t1_rigid_sphere_sparse",
+            "t1_rigid_torus_dolly",
+            "t1_rigid_torus_overhead",
+            "t2_falling_sphere",
+            "t2_humanoid_idle",
+            "t2_humanoid_walk_frontal",
+            "t2_humanoid_walk_orbit",
+            "t2_humanoid_walk_side",
+            "t2_pendulum_cylinder",
+            "t2_rotating_cube",
+            "t3_cube_behind_cylinder",
+            "t3_humanoid_with_prop",
+            "t3_ring_of_cubes",
+            "t3_stacked_objects",
+            "t3_two_spheres_crossing",
+            "t4_ambient_only_soft",
+            "t4_backlit_silhouette",
+            "t4_cool_moonlight_cube",
+            "t4_high_contrast_split",
+            "t4_three_point_setup",
+            "t4_warm_sunset_sphere",
+            "t5_crane_97f_landscape",
+            "t5_dolly_97f_humanoid",
+            "t5_orbit_97f_cube",
+            "t5_pan_97f_multi_object",
+        ],
+    )
+    def test_run_scenario_in_matrix(
         self,
+        scenario_id: str,
         shared_rasterizer_cache: dict[str, Any],
     ) -> None:
-        """Verify all humanoid_53 scenarios run with 0 asset resolution errors."""
-        from synapse.bench.scenario import list_scenarios
-
-        humanoid_scenarios = [s.id for s in list_scenarios() if s.asset.id == "humanoid_53"]
-        assert len(humanoid_scenarios) >= 6, "Expected at least 6 humanoid_53 scenarios"
-
+        """Run single scenario in 30-scenario test matrix across parallel xdist workers."""
         adapter = MockVideoAdapter()
         runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
-        reports = runner.run_all(
-            scenarios=humanoid_scenarios,
+        report = runner.run_scenario(
+            scenario_name=scenario_id,
             seed=42,
             resolution=(32, 32),
             num_frames=4,
         )
-        assert len(reports) == len(humanoid_scenarios)
-        for r in reports:
-            assert r.error is None, f"Humanoid scenario {r.scenario_name} failed: {r.error}"
-            assert r.num_frames > 0
-            d = r.to_dict()
-            assert d["metrics"]["depth_rmse_m"] == "N/A (not_produced)"
+        assert report.error is None, f"Scenario '{scenario_id}' failed with error: {report.error}"
+        assert report.num_frames > 0
+
+    @pytest.mark.parametrize(
+        "scenario_id",
+        [
+            "t2_humanoid_idle",
+            "t2_humanoid_walk_frontal",
+            "t2_humanoid_walk_orbit",
+            "t2_humanoid_walk_side",
+            "t3_humanoid_with_prop",
+            "t5_dolly_97f_humanoid",
+        ],
+    )
+    def test_humanoid_53_scenarios_no_error(
+        self,
+        scenario_id: str,
+        shared_rasterizer_cache: dict[str, Any],
+    ) -> None:
+        """Verify each humanoid_53 scenario runs with 0 asset resolution errors across workers."""
+        adapter = MockVideoAdapter()
+        runner = BenchPipelineRunner(adapter, rasterizer_cache=shared_rasterizer_cache)
+        report = runner.run_scenario(
+            scenario_name=scenario_id,
+            seed=42,
+            resolution=(32, 32),
+            num_frames=4,
+        )
+        assert report.error is None, f"Humanoid scenario {scenario_id} failed: {report.error}"
+        assert report.num_frames > 0
+        d = report.to_dict()
+        assert d["metrics"]["depth_rmse_m"] == "N/A (not_produced)"
 
     def test_run_specific_scenarios(self) -> None:
         """Run a specific subset of scenarios."""

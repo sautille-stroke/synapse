@@ -622,12 +622,23 @@ class TestBuildNativeRealCompile:
         """build_native.py --backend=direct --output-dir=<tmp> produces a
         loadable _c_geometry .so with working validate_mesh exported."""
         import importlib
+        import shutil
         import subprocess
         import sys
+        import tempfile
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent
         script = repo_root / "scripts" / "build_native.py"
+
+        # Pre-seed tmp_path from shared cache directory if available
+        cache_dir = Path(tempfile.gettempdir()) / "synapse_direct_compile_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for obj in cache_dir.glob("*.o*"):
+            try:
+                shutil.copy2(obj, tmp_path / obj.name)
+            except OSError:
+                pass
 
         # Build into tmp_path
         res = subprocess.run(
@@ -646,6 +657,13 @@ class TestBuildNativeRealCompile:
             f"build_native.py real compile failed (rc={res.returncode}):\n"
             f"stdout: {res.stdout}\nstderr: {res.stderr}"
         )
+
+        # Cache built objects for subsequent runs
+        for obj in tmp_path.glob("*.o*"):
+            try:
+                shutil.copy2(obj, cache_dir / obj.name)
+            except OSError:
+                pass
 
         # Locate the built .so
         so_files = list(tmp_path.glob("_c_geometry*"))

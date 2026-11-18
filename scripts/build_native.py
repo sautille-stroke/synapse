@@ -343,6 +343,9 @@ def _build_direct_fallback(
         for src in aether_geo_srcs or []:
             obj_name = src.stem + ".obj"
             obj_path = obj_dir / obj_name
+            if obj_path.is_file() and obj_path.stat().st_mtime >= src.stat().st_mtime:
+                obj_files.append(obj_path)
+                continue
             cmd = [
                 compiler,
                 "/c",
@@ -366,37 +369,42 @@ def _build_direct_fallback(
 
         # --- Step 1b: Compile bindings.cc with /EHsc /GR ---
         bindings_obj = obj_dir / "bindings.obj"
-        cmd = [
-            compiler,
-            "/c",
-            "/O2",
-            "/std:c++20",
-            "/utf-8",
-            "/EHsc",
-            "/GR",
-            "/DNOMINMAX",
-            "/D_CRT_SECURE_NO_WARNINGS",
-            "/DSYNAPSE_NO_XATLAS",
-            *includes,
-            str(bindings_src),
-            f"/Fo:{bindings_obj}",
-        ]
-        if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
-            return False
+        if not (bindings_obj.is_file() and bindings_obj.stat().st_mtime >= bindings_src.stat().st_mtime):
+            cmd = [
+                compiler,
+                "/c",
+                "/O2",
+                "/std:c++20",
+                "/utf-8",
+                "/EHsc",
+                "/GR",
+                "/DNOMINMAX",
+                "/D_CRT_SECURE_NO_WARNINGS",
+                "/DSYNAPSE_NO_XATLAS",
+                *includes,
+                str(bindings_src),
+                f"/Fo:{bindings_obj}",
+            ]
+            if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
+                return False
         obj_files.append(bindings_obj)
 
         # --- Step 2: Link ---
-        python_lib = _find_windows_python_lib()
-        lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
-        link_cmd = [
-            compiler,
-            "/LD",
-            *[str(o) for o in obj_files],
-            f"/Fe:{output_file}",
-            *lib_args,
-        ]
-        if not _run_compile(link_cmd, "Linking shared library"):
-            return False
+        need_link = (not output_file.is_file()) or any(
+            o.stat().st_mtime > output_file.stat().st_mtime for o in obj_files
+        )
+        if need_link:
+            python_lib = _find_windows_python_lib()
+            lib_args = ["/link", f"/LIBPATH:{python_lib.parent}", python_lib.name] if python_lib else []
+            link_cmd = [
+                compiler,
+                "/LD",
+                *[str(o) for o in obj_files],
+                f"/Fe:{output_file}",
+                *lib_args,
+            ]
+            if not _run_compile(link_cmd, "Linking shared library"):
+                return False
     else:
         common_flags = [
             "-O3",
@@ -410,6 +418,9 @@ def _build_direct_fallback(
         for src in aether_geo_srcs or []:
             obj_name = src.stem + ".o"
             obj_path = obj_dir / obj_name
+            if obj_path.is_file() and obj_path.stat().st_mtime >= src.stat().st_mtime:
+                obj_files.append(obj_path)
+                continue
             cmd = [
                 compiler,
                 "-c",
@@ -429,34 +440,39 @@ def _build_direct_fallback(
 
         # --- Step 1b: Compile bindings.cc with -fexceptions -frtti ---
         bindings_obj = obj_dir / "bindings.o"
-        cmd = [
-            compiler,
-            "-c",
-            *common_flags,
-            "-fexceptions",
-            "-frtti",
-            "-DSYNAPSE_NO_XATLAS",
-            *includes,
-            str(bindings_src),
-            "-o",
-            str(bindings_obj),
-        ]
-        if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
-            return False
+        if not (bindings_obj.is_file() and bindings_obj.stat().st_mtime >= bindings_src.stat().st_mtime):
+            cmd = [
+                compiler,
+                "-c",
+                *common_flags,
+                "-fexceptions",
+                "-frtti",
+                "-DSYNAPSE_NO_XATLAS",
+                *includes,
+                str(bindings_src),
+                "-o",
+                str(bindings_obj),
+            ]
+            if not _run_compile(cmd, "Compiling bindings.cc (exceptions+rtti)"):
+                return False
         obj_files.append(bindings_obj)
 
         # --- Step 2: Link ---
-        link_cmd = [
-            compiler,
-            "-shared",
-            *[str(o) for o in obj_files],
-            "-o",
-            str(output_file),
-        ]
-        if sys.platform == "darwin":
-            link_cmd.extend(["-Wl,-undefined,dynamic_lookup"])
-        if not _run_compile(link_cmd, "Linking shared library"):
-            return False
+        need_link = (not output_file.is_file()) or any(
+            o.stat().st_mtime > output_file.stat().st_mtime for o in obj_files
+        )
+        if need_link:
+            link_cmd = [
+                compiler,
+                "-shared",
+                *[str(o) for o in obj_files],
+                "-o",
+                str(output_file),
+            ]
+            if sys.platform == "darwin":
+                link_cmd.extend(["-Wl,-undefined,dynamic_lookup"])
+            if not _run_compile(link_cmd, "Linking shared library"):
+                return False
 
     if dry_run:
         if not quiet:

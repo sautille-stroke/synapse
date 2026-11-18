@@ -6,6 +6,7 @@ any future import cycle, tier violation, or lazy import leak.
 
 from __future__ import annotations
 
+import functools
 import subprocess
 import sys
 from pathlib import Path
@@ -31,11 +32,16 @@ def _load_guard() -> Any:
     return mod
 
 
+@functools.lru_cache(maxsize=1)
+def _get_validation_result() -> tuple[Any, Any, Any, Any]:
+    """Cache full AST graph validation result across tests in this module."""
+    mod = _load_guard()
+    return mod.validate(_repo_root())
+
+
 def test_no_import_cycles() -> None:
     """Assert that the synapse import DAG contains no circular dependencies."""
-    mod = _load_guard()
-
-    cycles, tier_violations, _edges, errors = mod.validate(_repo_root())
+    cycles, tier_violations, _edges, errors = _get_validation_result()
 
     if errors:
         raise AssertionError(
@@ -51,9 +57,7 @@ def test_no_import_cycles() -> None:
 
 def test_no_tier_violations() -> None:
     """Assert that no import crosses upward in the 5-tier architecture."""
-    mod = _load_guard()
-
-    _cycles, tier_violations, _edges, errors = mod.validate(_repo_root())
+    _cycles, tier_violations, _edges, errors = _get_validation_result()
 
     if errors:
         raise AssertionError(

@@ -366,7 +366,7 @@ def _verify_e4_real_gpu(
         alpha=16.0,
         adapter_path=lora_dst.name,  # Use relative path, not absolute
         adapter_sha256=sha256,
-        target_modules=["cross_attn.to_q", "cross_attn.to_k", "cross_attn.to_v"],
+        target_modules=["cross_attn.to_k", "cross_attn.to_v"],
     )
     manager = MultiLoRAManager([(manifest, 1.0)])
     assert any(m.name == "scene_style_cuda" for m, _ in manager._bundles)

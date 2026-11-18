@@ -35,7 +35,7 @@ from synapse.metrics.roundtrip import (
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group(name="roundtrip")]
 
 # ---------------------------------------------------------------------------
 # Synthetic data generators
@@ -292,7 +292,7 @@ def clean_recon(
     frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
     pipe = ReconPipeline(
         target_quad_faces=500,
-        geometry_backend="python",
+        geometry_backend="native",
         voxel_size=0.05,
         sdf_trunc=0.1,
         volume_bounds=(1.2, 1.2, 1.2),
@@ -338,7 +338,7 @@ def corrupted_cd_a(gt_surface: np.ndarray) -> float:
     frames = np.zeros((12, 32, 32, 3), dtype=np.float32)
     pipe = ReconPipeline(
         target_quad_faces=500,
-        geometry_backend="python",
+        geometry_backend="native",
         voxel_size=0.05,
         sdf_trunc=0.1,
         volume_bounds=(1.2, 1.2, 1.2),
@@ -365,7 +365,7 @@ def corrupted_cd_b(
     frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
     pipe = ReconPipeline(
         target_quad_faces=500,
-        geometry_backend="python",
+        geometry_backend="native",
         voxel_size=0.05,
         sdf_trunc=0.1,
         volume_bounds=(1.2, 1.2, 1.2),
@@ -391,7 +391,7 @@ def corrupted_cd_c(
     frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
     pipe = ReconPipeline(
         target_quad_faces=500,
-        geometry_backend="python",
+        geometry_backend="native",
         voxel_size=0.05,
         sdf_trunc=0.1,
         volume_bounds=(1.2, 1.2, 1.2),

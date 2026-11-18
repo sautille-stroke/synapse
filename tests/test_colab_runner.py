@@ -266,10 +266,7 @@ def test_colab_runner_e4_real_gpu_hierarchical_module(tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        result = _verify_e4_real_gpu(dummy_seq_a, checkpoint_dir)
-    except Exception:
-        pytest.skip("StatelessLoRATrainer not fully available in test environment")
+    result = _verify_e4_real_gpu(dummy_seq_a, checkpoint_dir)
 
     assert result["status"] == "PASS"
     assert result["mode"] == "real-gpu"
