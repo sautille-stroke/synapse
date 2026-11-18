@@ -693,7 +693,7 @@ class TestPR96BlendHardening:
         assert 0 <= blended.min() <= blended.max() <= 255
 
     def test_cryptomatte_boundary_guide_preserves_edges_for_max_id(self) -> None:
-        """_cryptomatte_boundary_guide must preserve boundary edges even for max_id entity."""
+        """_cryptomatte_boundary_guide must produce distinct 3-ch golden-ratio hash per entity."""
         from synapse.composite.blend import _cryptomatte_boundary_guide
 
         h, w = 32, 32
@@ -703,10 +703,17 @@ class TestPR96BlendHardening:
         cid[:, 16:] = 2000  # max_id
 
         guide = _cryptomatte_boundary_guide(cid)
-        # Boundary between the two entities should be 1.0
-        assert guide[:, 15].mean() == 1.0 or guide[:, 16].mean() == 1.0
-        # Interior of max_id entity should be 0.0 (high edge contrast)
-        assert guide[:, 25].mean() == 0.0
+        # Now returns [H,W,3] golden-ratio hash embedding
+        assert guide.shape == (h, w, 3)
+        # Background (ID==0) should map to [0,0,0] — no background here
+        # Different entities should have different colors
+        color_1000 = guide[0, 0]  # left half
+        color_2000 = guide[0, 16]  # right half
+        assert not np.allclose(color_1000, color_2000), "Different entities must have different guide colors"
+        # All pixels in left half should have same color
+        assert np.allclose(guide[:, :16], color_1000)
+        # All pixels in right half should have same color
+        assert np.allclose(guide[:, 16:], color_2000)
 
     def test_forward_warp_bilinear_subpixel_accuracy(self) -> None:
         """_forward_warp_bilinear backward mapping shifts pixels smoothly with subpixel accuracy."""
