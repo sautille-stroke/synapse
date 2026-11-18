@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -428,6 +429,7 @@ class TestHttpSecurityAndLedger:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from unittest.mock import MagicMock
+
         from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
 
         transport = HttpFoundaryTransport(base_url="http://localhost:8080")

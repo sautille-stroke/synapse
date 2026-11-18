@@ -550,6 +550,7 @@ class TestWanSlidingWindowAndGuards:
     def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
         """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""
         from unittest.mock import MagicMock
+
         from synapse.adapters.wan_diffusers import DiffusersWanBackend
 
         mock_pipe = MagicMock()
