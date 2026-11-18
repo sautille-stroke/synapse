@@ -89,10 +89,11 @@ def _get_dev_launch_viewer() -> Any:
 
 def main_data_gen(args: list[str] | None = None) -> int:
     """CLI tool: Generate multi-angle video & FGPP datasets."""
+    from synapse.cli.common import SynapseArgumentParser
     from synapse.models.loader import list_builtin_models
     from synapse.telemetry import TraceContext
 
-    parser = argparse.ArgumentParser(
+    parser = SynapseArgumentParser(
         prog="synapse-data-gen",
         description=("Generate multi-angle video & FGPP ground-truth dataset from 3D models."),
     )
@@ -170,9 +171,10 @@ def main_data_gen(args: list[str] | None = None) -> int:
 
 def main_viewer(args: list[str] | None = None) -> int:
     """CLI tool: Launch interactive web viewer or export static HTML."""
+    from synapse.cli.common import SynapseArgumentParser
     from synapse.viewer.server import export_static_html
 
-    parser = argparse.ArgumentParser(
+    parser = SynapseArgumentParser(
         prog="synapse-viewer",
         description=(
             "View a Synapse multi-angle dataset (default: static HTML export; "

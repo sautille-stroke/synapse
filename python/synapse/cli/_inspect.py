@@ -64,7 +64,7 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
     )
     result_dict = result.model_dump()
 
-    if not args.json:
+    if not getattr(args, "json", False):
         status = "PASS" if result.passed else "FAIL"
         print(f"[Tier 0 Geometry Gate] {mesh_path.name}: {status}")
         for lbl, val in [
@@ -91,7 +91,7 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
             json.dumps(result_dict, indent=2, default=str),
             encoding="utf-8",
         )
-        if not args.json:
+        if not getattr(args, "json", False):
             print(f"  Report: {report_file}")
 
     if not result.passed:
