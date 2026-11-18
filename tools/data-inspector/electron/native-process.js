@@ -124,10 +124,9 @@ class InspectorProcessManager extends EventEmitter {
     this._proc = null;
     this._stdoutRl = null;
     this._stderrRl = null;
-    this._shmReader = new ShmFrameReader(this._shmName);
-    this._shmReader.on('frame', (frame) => {
-      this.emit('frame', frame);
-    });
+    // File-backed SHM path: unified across --shm-file arg and ShmFrameReader target.
+    this._shmFilePath = null;
+    this._shmReader = null;  // Deferred until start() determines shmTarget
   }
 
   /**
@@ -206,11 +205,20 @@ class InspectorProcessManager extends EventEmitter {
     // Auto-inject --shm-file on macOS and Windows where POSIX shm_open is
     // unavailable or unreliable.  The native process will memory-map this
     // file instead of using /dev/shm.
+    // Unified: _shmFilePath is set once and shared between --shm-file arg
+    // and ShmFrameReader target to prevent path inconsistency.
+    let shmTarget = this._shmName;
     if (process.platform === 'darwin' || process.platform === 'win32') {
-      const shmFilePath = path.join(os.tmpdir(), `synapse-shm-${process.pid}`);
-      args.push(`--shm-file=${shmFilePath}`);
-      this._shmFilePath = shmFilePath;
+      this._shmFilePath = path.join(os.tmpdir(), `synapse-shm-${process.pid}`);
+      args.push(`--shm-file=${this._shmFilePath}`);
+      shmTarget = this._shmFilePath;
     }
+
+    // Create ShmFrameReader with the correct target path (unified).
+    this._shmReader = new ShmFrameReader(shmTarget);
+    this._shmReader.on('frame', (frame) => {
+      this.emit('frame', frame);
+    });
     if (bundlePath) {
       args.push(`--bundle=${bundlePath}`);
     }
@@ -299,7 +307,15 @@ class InspectorProcessManager extends EventEmitter {
    * Stop the native process and close SHM reader.
    */
   stop() {
-    this._shmReader.close();
+    if (this._shmReader) {
+      this._shmReader.close();
+    }
+
+    // Clean up file-backed SHM temporary file.
+    if (this._shmFilePath) {
+      try { fs.unlinkSync(this._shmFilePath); } catch (_) { /* ignore */ }
+      this._shmFilePath = null;
+    }
 
     if (this._stdoutRl) {
       try { this._stdoutRl.close(); } catch (_) { /* ignore */ }

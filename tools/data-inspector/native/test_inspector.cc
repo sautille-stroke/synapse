@@ -132,25 +132,26 @@ TEST(InspectorShmServer, SeqlockTransitions) {
   EXPECT_EQ(server.sequenceNumber(), 0u);
   EXPECT_EQ(server.sequenceNumber() & 1u, 0u);
 
-  // frontBuffer() starts write: increments to odd (1) -> write in progress
+  // frontBuffer() no longer calls beginFrame() — seqlock stays at 0 (stable)
   uint8_t* buf1 = server.frontBuffer();
   ASSERT_NE(buf1, nullptr);
-  EXPECT_EQ(server.sequenceNumber(), 1u);
-  EXPECT_EQ(server.sequenceNumber() & 1u, 1u);  // odd!
+  EXPECT_EQ(server.sequenceNumber(), 0u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 0u);  // still even (stable)
 
-  // publishFrame completes write: increments to next even (2) -> stable
+  // publishFrame() calls beginFrame() internally then transitions to next even.
+  // Sequence: 0 -> 1 (odd/write) -> 2 (even/stable)
   uint64_t f1 = server.publishFrame(60.0f, 0.016f, 0);
   EXPECT_EQ(f1, 1u);
   EXPECT_EQ(server.sequenceNumber(), 2u);
   EXPECT_EQ(server.sequenceNumber() & 1u, 0u);  // even!
 
-  // Frame 2: frontBuffer() increments to odd (3)
+  // Frame 2: frontBuffer() stays stable
   uint8_t* buf2 = server.frontBuffer();
   ASSERT_NE(buf2, nullptr);
-  EXPECT_EQ(server.sequenceNumber(), 3u);
-  EXPECT_EQ(server.sequenceNumber() & 1u, 1u);  // odd!
+  EXPECT_EQ(server.sequenceNumber(), 2u);
+  EXPECT_EQ(server.sequenceNumber() & 1u, 0u);  // still even
 
-  // Frame 2 publish: increments to next even (4)
+  // Frame 2 publish: 2 -> 3 (odd) -> 4 (even)
   uint64_t f2 = server.publishFrame(59.9f, 0.016f, 1);
   EXPECT_EQ(f2, 2u);
   EXPECT_EQ(server.sequenceNumber(), 4u);
@@ -486,4 +487,197 @@ TEST(InspectorApp, CleanFastDestruction) {
   auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
   EXPECT_LT(elapsedMs, 500) << "Destructor took too long (> 500ms), possible deadlock";
+}
+
+// ---------------------------------------------------------------------------
+// GLB Loader: Integer Overflow & Malicious Input Tests (PR-136)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Helper: build a GLB with crafted JSON accessor fields to test overflow guards.
+/// The BIN chunk is a small valid buffer; the JSON declares oversized counts
+/// that would cause heap OOB reads if not checked.
+std::vector<uint8_t> createMaliciousGlb(const std::string& accessorJson) {
+  // Minimal BIN chunk: 48 bytes (enough for 4 floats of VEC3 + 6 uint16 indices)
+  std::vector<uint8_t> binData(48, 0);
+  // Write 1 valid triangle vertex at offset 0
+  const float verts[3] = {0.0f, 0.0f, 0.0f};
+  std::memcpy(binData.data(), verts, sizeof(verts));
+
+  std::string jsonStr = accessorJson;
+  // Pad JSON to 4-byte alignment
+  while (jsonStr.size() % 4 != 0) jsonStr.push_back(' ');
+
+  const uint32_t jsonLen = static_cast<uint32_t>(jsonStr.size());
+  const uint32_t binLen = static_cast<uint32_t>(binData.size());
+  const uint32_t totalLen = 12u + (8u + jsonLen) + (8u + binLen);
+
+  std::vector<uint8_t> glb(totalLen);
+  uint8_t* ptr = glb.data();
+
+  const uint32_t magic = 0x46546C67u;
+  const uint32_t version = 2u;
+  std::memcpy(ptr, &magic, 4);
+  std::memcpy(ptr + 4, &version, 4);
+  std::memcpy(ptr + 8, &totalLen, 4);
+  ptr += 12;
+
+  const uint32_t jsonType = 0x4E4F534Au;
+  std::memcpy(ptr, &jsonLen, 4);
+  std::memcpy(ptr + 4, &jsonType, 4);
+  std::memcpy(ptr + 8, jsonStr.data(), jsonLen);
+  ptr += 8 + jsonLen;
+
+  const uint32_t binType = 0x004E4942u;
+  std::memcpy(ptr, &binLen, 4);
+  std::memcpy(ptr + 4, &binType, 4);
+  std::memcpy(ptr + 8, binData.data(), binLen);
+
+  return glb;
+}
+
+}  // namespace
+
+TEST(InspectorApp, GlbOverflowIdxCount0x40000001) {
+  // rawIdxCount = 0x40000001: multiplied by 4 (sizeof uint32) in uint32_t
+  // yields 0x00000004 (wraps around), which would pass a naive size check.
+  // The fix must reject this via kMaxMeshIndices (48M) upper bound.
+  const std::string json = R"({
+    "asset": {"version": "2.0"},
+    "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+    "accessors": [
+      {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 1, "type": "VEC3"},
+      {"bufferView": 1, "byteOffset": 0, "componentType": 5125, "count": 1073741825, "type": "SCALAR"}
+    ],
+    "bufferViews": [
+      {"buffer": 0, "byteOffset": 0, "byteLength": 12},
+      {"buffer": 0, "byteOffset": 12, "byteLength": 4}
+    ],
+    "buffers": [{"byteLength": 48}]
+  })";
+
+  const std::string bundleDir = ::testing::TempDir() + "/test_glb_overflow_idx";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  auto glbBytes = createMaliciousGlb(json);
+  std::ofstream ofs(bundleDir + "/source/evil.glb", std::ios::binary);
+  ofs.write(reinterpret_cast<const char*>(glbBytes.data()),
+            static_cast<std::streamsize>(glbBytes.size()));
+  ofs.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":"source/evil.glb"}})");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-overflow-idx";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init()) << "init must not crash on overflow GLB";
+  // Overflow GLB should be rejected -> falls back to default cube
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);  // default cube
+
+  // Rendering must not SIGSEGV
+  app.renderFrame(0.016f);
+  app.shmServer().publishFrame(60.0f, 0.016f);
+  EXPECT_NE(app.shmServer().publishedBuffer(), nullptr);
+
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, GlbOverflowByteOffsetWraparound) {
+  // 64-bit byteOffset wraparound: posViewOffset + posAccOffset overflows
+  // when both are near SIZE_MAX/2. The fix must use overflow-safe addition.
+  const std::string json = R"({
+    "asset": {"version": "2.0"},
+    "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+    "accessors": [
+      {"bufferView": 0, "byteOffset": 9223372036854775807, "componentType": 5126, "count": 3, "type": "VEC3"}
+    ],
+    "bufferViews": [
+      {"buffer": 0, "byteOffset": 9223372036854775807, "byteLength": 36}
+    ],
+    "buffers": [{"byteLength": 48}]
+  })";
+
+  const std::string bundleDir = ::testing::TempDir() + "/test_glb_offset_wrap";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  auto glbBytes = createMaliciousGlb(json);
+  std::ofstream ofs(bundleDir + "/source/evil.glb", std::ios::binary);
+  ofs.write(reinterpret_cast<const char*>(glbBytes.data()),
+            static_cast<std::streamsize>(glbBytes.size()));
+  ofs.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":"source/evil.glb"}})");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-offset-wrap";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init()) << "init must not crash on byteOffset wraparound GLB";
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);
+
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, GlbNegativeByteStride) {
+  // Negative byteStride: must be rejected (the fix checks rawByteStride < 0).
+  const std::string json = R"({
+    "asset": {"version": "2.0"},
+    "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+    "accessors": [
+      {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 3, "type": "VEC3"}
+    ],
+    "bufferViews": [
+      {"buffer": 0, "byteOffset": 0, "byteLength": 36, "byteStride": -12}
+    ],
+    "buffers": [{"byteLength": 48}]
+  })";
+
+  const std::string bundleDir = ::testing::TempDir() + "/test_glb_neg_stride";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  auto glbBytes = createMaliciousGlb(json);
+  std::ofstream ofs(bundleDir + "/source/evil.glb", std::ios::binary);
+  ofs.write(reinterpret_cast<const char*>(glbBytes.data()),
+            static_cast<std::streamsize>(glbBytes.size()));
+  ofs.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":"source/evil.glb"}})");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-neg-stride";
+  cfg.bundlePath = bundleDir;
+  cfg.width = 64;
+  cfg.height = 64;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init()) << "init must not crash on negative byteStride GLB";
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);
+
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+
+  (void)aether::fs::removeAll(bundleDir);
 }

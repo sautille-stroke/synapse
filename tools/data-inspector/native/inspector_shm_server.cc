@@ -88,6 +88,15 @@ void InspectorShmServer::close() noexcept {
   if (m_unlinkOnClose && !shmName.empty()) {
     (void)aether::pal::SharedMemory::unlink(shmName);
   }
+  // Clean up file-backed SHM temporary file on exit.
+  if (!m_shmFilePath.empty()) {
+#if defined(_WIN32)
+    (void)::DeleteFileA(m_shmFilePath.c_str());
+#else
+    (void)::unlink(m_shmFilePath.c_str());
+#endif
+    m_shmFilePath.clear();
+  }
   m_width = 0;
   m_height = 0;
   m_stagingIdx = 0;
@@ -129,7 +138,7 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
       aether::pal::PlatformHandle(hMapping, aether::pal::HandleType::SharedMemory),
       requiredSize, aether::pal::ShmAccess::ReadWrite);
 #else
-  int fd = ::open(pathStr.c_str(), O_RDWR | O_CREAT, 0666);
+  int fd = ::open(pathStr.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW, 0600);
   if (fd < 0) {
     return false;
   }
@@ -151,6 +160,7 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
   m_height = height;
   m_stagingIdx = 0;
   m_unlinkOnClose = false;  // File-backed: do not unlink (file persists)
+  m_shmFilePath = pathStr;  // Store path for cleanup on close/destructor
 
   void* base = m_shm.data();
   if (!base || m_shm.size() < requiredSize) {
@@ -191,7 +201,8 @@ void InspectorShmServer::beginFrame() noexcept {
 
 uint8_t* InspectorShmServer::frontBuffer() noexcept {
   if (!m_shm.isValid()) return nullptr;
-  beginFrame();
+  // No longer calls beginFrame() here — the Seqlock odd transition is deferred
+  // to publishFrame() to avoid blocking the CPU rasterizer under the lock.
   const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
   return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) +
                            frameBytes * m_stagingIdx);
@@ -210,6 +221,12 @@ uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime,
                                           uint8_t debugView) noexcept {
   if (!m_shm.isValid()) return 0;
   auto* hdr = m_shm.as<InspectorShmHeader>(0);
+
+  // Seqlock: transition to odd (write-in-progress) just before publishing
+  // metadata and writeIdx. This shrinks the lock window to just the pointer
+  // switch / metadata write, so the CPU rasterizer runs entirely outside
+  // the seqlock, eliminating reader starvation from long raster frames.
+  beginFrame();
 
   // Store metadata with relaxed ordering — visibility is guaranteed by the
   // release fence and release store on frameReady below.

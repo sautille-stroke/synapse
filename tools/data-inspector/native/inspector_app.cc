@@ -258,6 +258,11 @@ bool InspectorApp::loadObjMesh(std::string_view objPath) {
 }
 
 bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
+  // --- Overflow safety constants ---
+  // Maximum allowed mesh element counts to prevent integer overflow in byte calculations.
+  constexpr size_t kMaxMeshVertices = 16u * 1024u * 1024u;  // 16M vertices
+  constexpr size_t kMaxMeshIndices = 48u * 1024u * 1024u;   // 48M indices
+
   const std::string pathStr(glbPath);
   std::ifstream ifs(pathStr, std::ios::binary | std::ios::ate);
   if (!ifs.is_open()) return false;
@@ -366,6 +371,12 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
 
       if (rawPosCount <= 0 || rawPosCompType < 0 || rawPosViewIdx < 0 || rawPosAccOffset < 0) continue;
 
+      // Overflow-safe upper bound check: reject before narrowing cast.
+      if (static_cast<uint64_t>(rawPosCount) > kMaxMeshVertices) {
+        std::cerr << "[inspector] GLB vertex count exceeds 16M limit: " << rawPosCount << "\n";
+        continue;
+      }
+
       const uint32_t posCount = static_cast<uint32_t>(rawPosCount);
       const uint32_t posCompType = static_cast<uint32_t>(rawPosCompType);
       const uint32_t posViewIdx = static_cast<uint32_t>(rawPosViewIdx);
@@ -382,13 +393,18 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
       if (rawPosViewOffset < 0 || rawPosViewByteLength < 0) continue;
 
       const size_t posViewOffset = static_cast<size_t>(rawPosViewOffset);
-      const size_t posByteOffset = posViewOffset + posAccOffset;
-      const size_t posByteLength = static_cast<size_t>(posCount) * 3u * sizeof(float);
 
-      if (binChunk.empty() || posByteOffset + posByteLength > binChunk.size()) continue;
+      // Overflow-safe addition: posViewOffset + posAccOffset
+      if (posViewOffset > binChunk.size() || posAccOffset > binChunk.size() - posViewOffset) continue;
+      const size_t posByteOffset = posViewOffset + posAccOffset;
+
+      // Compute byte length with size_t to prevent 32-bit overflow
+      const size_t posByteLength = static_cast<size_t>(posCount) * 3u * sizeof(float);
+      if (posByteOffset > binChunk.size() || posByteLength > binChunk.size() - posByteOffset) continue;
 
       // Parse byteStride for interleaved vertex buffers (0 means tightly packed).
       const int64_t rawByteStride = posView["byteStride"].getIntOr(0);
+      if (rawByteStride < 0) continue;  // Reject negative byteStride
       const size_t byteStride = (rawByteStride > 0) ? static_cast<size_t>(rawByteStride) : (3u * sizeof(float));
       if (byteStride < 3u * sizeof(float)) continue;  // stride too small for VEC3
 
@@ -397,7 +413,18 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
       // Use std::memcpy instead of reinterpret_cast to avoid alignment UB on ARM64.
       bool vertsOk = true;
       for (size_t vi = 0; vi < posCount; ++vi) {
-        const size_t srcOffset = posByteOffset + vi * byteStride;
+        // Overflow-safe multiplication: vi * byteStride
+        if (byteStride != 0 && vi > (binChunk.size() / byteStride)) {
+          vertsOk = false;
+          break;
+        }
+        const size_t strideOffset = vi * byteStride;
+        // Overflow-safe addition: posByteOffset + strideOffset
+        if (strideOffset > binChunk.size() || posByteOffset > binChunk.size() - strideOffset) {
+          vertsOk = false;
+          break;
+        }
+        const size_t srcOffset = posByteOffset + strideOffset;
         if (srcOffset + 3u * sizeof(float) > binChunk.size()) {
           vertsOk = false;
           break;
@@ -436,6 +463,12 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
 
           if (rawIdxCount <= 0 || rawIdxCompType < 0 || rawIdxViewIdx < 0 || rawIdxAccOffset < 0) continue;
 
+          // Overflow-safe upper bound check for index count.
+          if (static_cast<uint64_t>(rawIdxCount) > kMaxMeshIndices) {
+            std::cerr << "[inspector] GLB index count exceeds 48M limit: " << rawIdxCount << "\n";
+            continue;
+          }
+
           const uint32_t idxCount = static_cast<uint32_t>(rawIdxCount);
           const uint32_t idxCompType = static_cast<uint32_t>(rawIdxCompType);
           const uint32_t idxViewIdx = static_cast<uint32_t>(rawIdxViewIdx);
@@ -446,10 +479,17 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
             const int64_t rawIdxViewOffset = idxView["byteOffset"].getIntOr(0);
             if (rawIdxViewOffset < 0) continue;
             const size_t idxViewOffset = static_cast<size_t>(rawIdxViewOffset);
+
+            // Overflow-safe addition: idxViewOffset + idxAccOffset
+            if (idxViewOffset > binChunk.size() || idxAccOffset > binChunk.size() - idxViewOffset) continue;
             const size_t idxByteOffset = idxViewOffset + idxAccOffset;
 
-            if (idxCompType == 5121u && idxByteOffset + idxCount <= binChunk.size()) {
-              // UNSIGNED_BYTE — no alignment concern
+            // Compute total index byte size with size_t to prevent uint32_t wraparound.
+            // Cast idxCount to size_t BEFORE multiplying by element size.
+            if (idxCompType == 5121u) {
+              // UNSIGNED_BYTE — 1 byte per index, no overflow concern
+              const size_t totalIdxBytes = static_cast<size_t>(idxCount);
+              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
               const uint8_t* idxData = binChunk.data() + idxByteOffset;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
@@ -458,8 +498,10 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
                   loadedFaces.push_back(baseVertex + idxData[i + 2]);
                 }
               }
-            } else if (idxCompType == 5123u && idxByteOffset + idxCount * 2 <= binChunk.size()) {
-              // UNSIGNED_SHORT — use memcpy to avoid alignment UB on ARM64
+            } else if (idxCompType == 5123u) {
+              // UNSIGNED_SHORT — cast to size_t BEFORE multiply to prevent uint32_t overflow
+              const size_t totalIdxBytes = static_cast<size_t>(idxCount) * sizeof(uint16_t);
+              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 uint16_t idx0, idx1, idx2;
                 std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 2, sizeof(uint16_t));
@@ -471,8 +513,10 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath) {
                   loadedFaces.push_back(baseVertex + idx2);
                 }
               }
-            } else if (idxCompType == 5125u && idxByteOffset + idxCount * 4 <= binChunk.size()) {
-              // UNSIGNED_INT — use memcpy to avoid alignment UB on ARM64
+            } else if (idxCompType == 5125u) {
+              // UNSIGNED_INT — cast to size_t BEFORE multiply to prevent uint32_t overflow
+              const size_t totalIdxBytes = static_cast<size_t>(idxCount) * sizeof(uint32_t);
+              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 uint32_t idx0, idx1, idx2;
                 std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 4, sizeof(uint32_t));
