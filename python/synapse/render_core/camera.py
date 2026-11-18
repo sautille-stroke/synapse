@@ -267,8 +267,23 @@ def _generate_static(
     **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a static (or slow-drift) camera."""
-    pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
+    if position is None:
+        dist = kwargs.get("distance", kwargs.get("radius", None))
+        elev = kwargs.get("elevation_deg", None)
+        azim = kwargs.get("azimuth_deg", None)
+        if dist is not None or elev is not None or azim is not None:
+            r = float(dist) if dist is not None else 3.0  # type: ignore[arg-type]
+            el_rad = math.radians(float(elev) if elev is not None else 15.0)  # type: ignore[arg-type]
+            az_rad = math.radians(float(azim) if azim is not None else 0.0)  # type: ignore[arg-type]
+            x = r * math.cos(el_rad) * math.sin(az_rad)
+            y = r * math.sin(el_rad)
+            z = r * math.cos(el_rad) * math.cos(az_rad)
+            pos = target_pt + np.array([x, y, z], dtype=np.float64)
+        else:
+            pos = np.array([0.0, 1.5, 3.0], dtype=np.float64)
+    else:
+        pos = np.array(position, dtype=np.float64)
     cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
@@ -333,7 +348,33 @@ def _generate_pan(
     **kwargs: object,
 ) -> list[CameraParams]:
     """Generate a horizontal pan (camera rotates in place)."""
-    pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
+    if "azimuth_start_deg" in kwargs and kwargs["azimuth_start_deg"] is not None:
+        pan_start_deg = float(kwargs["azimuth_start_deg"])  # type: ignore[arg-type]
+    elif "azimuth_start" in kwargs and kwargs["azimuth_start"] is not None:
+        pan_start_deg = float(kwargs["azimuth_start"])  # type: ignore[arg-type]
+    if "azimuth_end_deg" in kwargs and kwargs["azimuth_end_deg"] is not None:
+        pan_end_deg = float(kwargs["azimuth_end_deg"])  # type: ignore[arg-type]
+    elif "azimuth_end" in kwargs and kwargs["azimuth_end"] is not None:
+        pan_end_deg = float(kwargs["azimuth_end"])  # type: ignore[arg-type]
+
+    target_pt = np.array(kwargs.get("target") or [0.0, 0.0, 0.0], dtype=np.float64)  # type: ignore[arg-type]
+    if position is None:
+        dist = kwargs.get("distance", kwargs.get("radius", None))
+        elev = kwargs.get("elevation_deg", None)
+        azim = kwargs.get("azimuth_deg", None)
+        if dist is not None or elev is not None or azim is not None:
+            r = float(dist) if dist is not None else 3.0  # type: ignore[arg-type]
+            el_rad = math.radians(float(elev) if elev is not None else 15.0)  # type: ignore[arg-type]
+            az_rad = math.radians(float(azim) if azim is not None else 0.0)  # type: ignore[arg-type]
+            x = r * math.cos(el_rad) * math.sin(az_rad)
+            y = r * math.sin(el_rad)
+            z = r * math.cos(el_rad) * math.cos(az_rad)
+            pos = target_pt + np.array([x, y, z], dtype=np.float64)
+        else:
+            pos = np.array([0.0, 1.5, 3.0], dtype=np.float64)
+    else:
+        pos = np.array(position, dtype=np.float64)
+
     cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
@@ -341,12 +382,13 @@ def _generate_pan(
         t = i / max(num_frames - 1, 1)
         pan_deg = pan_start_deg + t * (pan_end_deg - pan_start_deg)
         pan_rad = math.radians(pan_deg)
+        el_rad = math.radians(float(kwargs.get("elevation_deg", 0.0)))  # type: ignore[arg-type]
 
         target = pos + np.array(
             [
-                math.sin(pan_rad) * 5.0,
-                0.0,
-                -math.cos(pan_rad) * 5.0,
+                math.sin(pan_rad) * math.cos(el_rad) * 5.0,
+                math.sin(el_rad) * 5.0,
+                -math.cos(pan_rad) * math.cos(el_rad) * 5.0,
             ]
         )
         cameras.append(_make_camera(pos, target, width, height, fov_deg, **cam_kw))

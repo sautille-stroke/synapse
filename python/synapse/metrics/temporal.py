@@ -453,45 +453,55 @@ def _build_r3d18_extractor(
         model.fc = torch.nn.Identity()
     model.eval()
 
-    # Normalization parameters on [3, 1, 1, 1] channel axis
-    mean = torch.tensor([0.43216, 0.394666, 0.37645], dtype=torch.float32).view(3, 1, 1, 1)
-    std = torch.tensor([0.22803, 0.22145, 0.216989], dtype=torch.float32).view(3, 1, 1, 1)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
 
-    def _extract(vids: np.ndarray | list[np.ndarray]) -> np.ndarray:
+    # Normalization parameters on [3, 1, 1, 1] channel axis
+    mean = torch.tensor([0.43216, 0.394666, 0.37645], dtype=torch.float32).view(3, 1, 1, 1).to(device)
+    std = torch.tensor([0.22803, 0.22145, 0.216989], dtype=torch.float32).view(3, 1, 1, 1).to(device)
+
+    def _extract(vids: np.ndarray | list[np.ndarray], batch_size: int = 4) -> np.ndarray:
         arr = np.asarray(vids)
         if arr.ndim == 4:
             arr = arr[np.newaxis, ...]
 
-        all_feats = []
+        all_feats: list[np.ndarray] = []
+        n_videos = arr.shape[0]
         with torch.no_grad():
-            for i in range(arr.shape[0]):
-                v = arr[i]  # [T, H, W, C]
-                t_video = torch.from_numpy(v.copy() if not v.flags.writeable else v)
-                if t_video.dtype == torch.uint8:
-                    t_video = t_video.float() / 255.0
-                else:
-                    t_video = t_video.float()
+            for b_start in range(0, n_videos, batch_size):
+                b_end = min(b_start + batch_size, n_videos)
+                batch_tensors = []
+                for i in range(b_start, b_end):
+                    v = arr[i]  # [T, H, W, C]
+                    t_video = torch.from_numpy(v.copy() if not v.flags.writeable else v)
+                    if t_video.dtype == torch.uint8:
+                        t_video = t_video.float() / 255.0
+                    else:
+                        t_video = t_video.float()
 
-                # Permute to [C, T, H, W]
-                t_video = t_video.permute(3, 0, 1, 2)  # [3, T, H, W]
+                    # Permute to [C, T, H, W]
+                    t_video = t_video.permute(3, 0, 1, 2)  # [3, T, H, W]
 
-                # Resize spatial dims to 112x112 via trilinear interpolation if needed
-                if t_video.shape[2] != 112 or t_video.shape[3] != 112:
-                    t_video = torch.nn.functional.interpolate(
-                        t_video.unsqueeze(0),
-                        size=(t_video.shape[1], 112, 112),
-                        mode="trilinear",
-                        align_corners=False,
-                    ).squeeze(0)
+                    # Resize spatial dims to 112x112 via trilinear interpolation if needed
+                    if t_video.shape[2] != 112 or t_video.shape[3] != 112:
+                        t_video = torch.nn.functional.interpolate(
+                            t_video.unsqueeze(0),
+                            size=(t_video.shape[1], 112, 112),
+                            mode="trilinear",
+                            align_corners=False,
+                        ).squeeze(0)
 
-                # Channel-wise normalization along dim=0
-                t_video = (t_video - mean) / std
+                    # Channel-wise normalization along dim=0
+                    t_video = (t_video.to(device) - mean) / std
+                    batch_tensors.append(t_video)
 
-                # Forward pass: shape [1, C, T, H, W]
-                feats = model(t_video.unsqueeze(0))
-                all_feats.append(feats.squeeze(0).cpu().numpy())
+                batch_input = torch.stack(batch_tensors, dim=0)  # [B, C, T, H, W]
+                feats = model(batch_input)
+                all_feats.append(feats.cpu().numpy())
 
-        return np.array(all_feats, dtype=np.float64)
+        if not all_feats:
+            return np.zeros((0, 512), dtype=np.float64)
+        return np.concatenate(all_feats, axis=0).astype(np.float64)
 
     return _extract
 

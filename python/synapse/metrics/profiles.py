@@ -60,6 +60,7 @@ _METRIC_DIRECTIONS: dict[str, str] = {
     "lpips": _LOWER,
     "style_color_de": _LOWER,
     "style_light_error_deg": _LOWER,
+    "histogram_intersection": _HIGHER,
 }
 
 # Bidirectional metric name aliases between scenario JSONs and canonical profiles
@@ -254,8 +255,12 @@ def evaluate_metrics_gate(
         elif canonical in resolved_measured and alias not in resolved_measured:
             resolved_measured[alias] = resolved_measured[canonical]
 
+    seen_canonical: set[str] = set()
     violations: list[GateViolation] = []
     for name, thresh in resolved_thresholds.items():
+        canonical_name = METRIC_ALIASES.get(name, name)
+        if canonical_name in seen_canonical:
+            continue
         if name not in resolved_measured:
             continue
         value = float(resolved_measured[name])
@@ -268,6 +273,7 @@ def evaluate_metrics_gate(
         ):
             violated = True
         if violated:
+            seen_canonical.add(canonical_name)
             violations.append(
                 GateViolation(
                     metric_name=name,

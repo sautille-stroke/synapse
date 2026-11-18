@@ -269,6 +269,7 @@ def f_score_1mm(
     faces_b: Any = None,
     num_samples: int = 10000,
     seed: int = 42,
+    seed_b: int | None = None,
 ) -> float:
     """F-score at a given distance threshold (default 1 mm).
 
@@ -280,12 +281,31 @@ def f_score_1mm(
         faces_b: Optional face indices for mesh B.
         num_samples: Sample count for surface sampling.
         seed: RNG seed for surface sampling.
+        seed_b: Optional separate RNG seed for mesh B. When omitted, uses
+            ``seed`` for self-comparison (identical objects) or ``seed + 1``
+            for independent sampling of distinct meshes.
 
     Returns:
         F-score in [0, 1] (harmonic mean of precision and recall).
     """
+    is_self = (
+        points_a is points_b
+        or (
+            isinstance(points_a, (tuple, list))
+            and isinstance(points_b, (tuple, list))
+            and len(points_a) == 2
+            and len(points_b) == 2
+            and points_a[0] is points_b[0]
+            and points_a[1] is points_b[1]
+        )
+    )
+    if is_self and seed_b is None:
+        eff_seed_b = seed
+    else:
+        eff_seed_b = (seed + 1 if seed is not None else None) if seed_b is None else seed_b
+
     a = _extract_or_sample_points(points_a, faces_a, num_samples=num_samples, seed=seed)
-    b = _extract_or_sample_points(points_b, faces_b, num_samples=num_samples, seed=seed)
+    b = _extract_or_sample_points(points_b, faces_b, num_samples=num_samples, seed=eff_seed_b)
     if len(a) == 0 or len(b) == 0:
         return 0.0
 
@@ -311,6 +331,7 @@ def f_score_5mm(
     faces_b: Any = None,
     num_samples: int = 10000,
     seed: int = 42,
+    seed_b: int | None = None,
 ) -> float:
     """F-score at 5 mm distance threshold (RFC-0063 Track 1/Track 3 standard).
 
@@ -322,6 +343,7 @@ def f_score_5mm(
         faces_b: Optional face indices for mesh B.
         num_samples: Sample count for surface sampling.
         seed: RNG seed for surface sampling.
+        seed_b: Optional separate RNG seed for mesh B.
 
     Returns:
         F-score in [0, 1] (harmonic mean of precision and recall).
@@ -334,6 +356,7 @@ def f_score_5mm(
         faces_b=faces_b,
         num_samples=num_samples,
         seed=seed,
+        seed_b=seed_b,
     )
 
 
@@ -447,15 +470,25 @@ def watertight_pct(
     watertight_count = 0
     for m in meshes:
         if hasattr(m, "is_watertight") and isinstance(m.is_watertight, bool):
-            if m.is_watertight:
+            v = getattr(m, "vertices", None)
+            v_finite = True
+            if v is not None:
+                v_arr = np.asarray(v, dtype=np.float64)
+                v_finite = bool(np.all(np.isfinite(v_arr)))
+            if m.is_watertight and v_finite:
                 watertight_count += 1
         elif isinstance(m, (tuple, list)) and len(m) >= 2:
+            v = np.asarray(m[0], dtype=np.float64)
             f = np.asarray(m[1], dtype=np.int64)
-            if _is_mesh_watertight(f):
+            if _is_mesh_watertight(v, f):
                 watertight_count += 1
         elif hasattr(m, "faces"):
+            v = getattr(m, "vertices", None)
             f = np.asarray(m.faces, dtype=np.int64)
-            if _is_mesh_watertight(f):
+            if v is not None:
+                if _is_mesh_watertight(v, f):
+                    watertight_count += 1
+            elif _is_mesh_watertight(f):
                 watertight_count += 1
 
     return float((watertight_count / len(meshes)) * 100.0)
@@ -612,6 +645,13 @@ def albedo_delta_e00(
 
     p = np.asarray(pred_albedo, dtype=np.float64)
     g = np.asarray(gt_albedo, dtype=np.float64)
+    if hasattr(pred_albedo, "dtype") and pred_albedo.dtype == np.uint8:
+        p /= 255.0
+    if hasattr(gt_albedo, "dtype") and gt_albedo.dtype == np.uint8:
+        g /= 255.0
+
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred_albedo={p.shape} vs gt_albedo={g.shape}")
 
     if input_space == "srgb":
         lab_p = rgb_to_cielab(srgb_to_linear(p))

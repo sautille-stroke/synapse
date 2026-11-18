@@ -18,6 +18,7 @@ All functions accept single images ``[H, W]`` / ``[H, W, C]`` or frame batches
 from __future__ import annotations
 
 import math
+import os
 from typing import Literal
 
 import numpy as np
@@ -173,6 +174,21 @@ def ssim(
     else:
         raise ValueError(f"Unsupported input ndim={orig_ndim}; expected 2, 3, or 4.")
 
+    # Stream multi-frame sequences frame-by-frame in float32/float64 to cap memory to <100MB
+    if p4.shape[0] > 1:
+        frame_ssims: list[float] = []
+        for i in range(p4.shape[0]):
+            frame_mask = None
+            if mask is not None:
+                m_arr = np.asarray(mask, dtype=bool)
+                if m_arr.ndim == 3 and m_arr.shape[0] == p4.shape[0]:
+                    frame_mask = m_arr[i]
+                elif m_arr.ndim == 2:
+                    frame_mask = m_arr
+            frame_ssim = ssim(p4[i], g4[i], mask=frame_mask, data_range=eff_range)
+            frame_ssims.append(frame_ssim)
+        return float(np.mean(frame_ssims))
+
     h, w = p4.shape[1], p4.shape[2]
     min_dim = min(h, w)
     win_size = min(11, min_dim if min_dim % 2 == 1 else max(min_dim - 1, 1))
@@ -309,6 +325,8 @@ def lpips(
     pred: np.ndarray,
     gt: np.ndarray,
     mask: np.ndarray | None = None,
+    backend: str = "auto",
+    noise_suppression_thresh: float = 1e-4,
 ) -> float:
     """Compute perceptual patch distance in ``[0, 1]`` (lower is better).
 
@@ -321,10 +339,40 @@ def lpips(
         pred: sRGB image ``[H, W, 3]`` or sequence ``[T, H, W, 3]``.
         gt: Ground-truth sRGB image/sequence of identical shape.
         mask: Optional foreground mask ``[H, W]`` or ``[T, H, W]``.
+        backend: ``"auto"`` (proxy fallback), ``"torch"`` (requires torch & lpips), or ``"proxy"``.
+        noise_suppression_thresh: Gradient magnitude below which local noise differences are suppressed.
 
     Returns:
         Perceptual distance in ``[0, 1]``.
     """
+    if backend == "torch" or (
+        backend == "auto" and os.environ.get("SYNAPSE_USE_TORCH_LPIPS") == "1"
+    ):
+        try:
+            import lpips as torch_lpips  # type: ignore[import-not-found]
+            import torch
+
+            # Prepare torch tensors [N, 3, H, W] scaled to [-1, 1]
+            p_f, g_f, _ = _to_float_images(pred, gt, data_range=1.0)
+            if p_f.ndim == 3:
+                p_f = p_f[np.newaxis, ...]
+                g_f = g_f[np.newaxis, ...]
+            # Transpose [N, H, W, 3] -> [N, 3, H, W]
+            t_p = torch.from_numpy(p_f.transpose(0, 3, 1, 2)).float() * 2.0 - 1.0
+            t_g = torch.from_numpy(g_f.transpose(0, 3, 1, 2)).float() * 2.0 - 1.0
+            loss_fn = torch_lpips.LPIPS(net="alex", verbose=False)
+            with torch.no_grad():
+                dist = loss_fn(t_p, t_g).mean().item()
+            return float(np.clip(dist, 0.0, 1.0))
+        except (ImportError, Exception) as exc:
+            if backend == "torch":
+                from synapse.errors import BackendUnavailableError
+
+                raise BackendUnavailableError(
+                    f"Torch LPIPS backend unavailable: {exc}",
+                    agent_fix_hint="pip install lpips torch",
+                ) from exc
+
     p, g, _ = _to_float_images(pred, gt, data_range=1.0)
     if p.size == 0:
         return 0.0
@@ -394,13 +442,30 @@ def lpips(
             gy_g = cur_g[:, 1:, :, :] - cur_g[:, :-1, :, :]
 
             # Unit-normalise local feature vectors (analogous to LPIPS channel norm)
-            norm_xp = gx_p / (np.linalg.norm(gx_p, axis=-1, keepdims=True) + 1e-6)
-            norm_xg = gx_g / (np.linalg.norm(gx_g, axis=-1, keepdims=True) + 1e-6)
-            norm_yp = gy_p / (np.linalg.norm(gy_p, axis=-1, keepdims=True) + 1e-6)
-            norm_yg = gy_g / (np.linalg.norm(gy_g, axis=-1, keepdims=True) + 1e-6)
+            mag_xp = np.linalg.norm(gx_p, axis=-1, keepdims=True)
+            mag_xg = np.linalg.norm(gx_g, axis=-1, keepdims=True)
+            mag_yp = np.linalg.norm(gy_p, axis=-1, keepdims=True)
+            mag_yg = np.linalg.norm(gy_g, axis=-1, keepdims=True)
+
+            norm_xp = gx_p / (mag_xp + 1e-6)
+            norm_xg = gx_g / (mag_xg + 1e-6)
+            norm_yp = gy_p / (mag_yp + 1e-6)
+            norm_yg = gy_g / (mag_yg + 1e-6)
 
             diff_x_sq = (norm_xp - norm_xg) ** 2
             diff_y_sq = (norm_yp - norm_yg) ** 2
+
+            # Flat-region noise suppression
+            diff_x_sq = np.where(
+                (mag_xp < noise_suppression_thresh) & (mag_xg < noise_suppression_thresh),
+                0.0,
+                diff_x_sq,
+            )
+            diff_y_sq = np.where(
+                (mag_yp < noise_suppression_thresh) & (mag_yg < noise_suppression_thresh),
+                0.0,
+                diff_y_sq,
+            )
 
             if _has_mask and cur_mask is not None:
                 mask_x = cur_mask[:, :, 1:, :] & cur_mask[:, :, :-1, :]
@@ -461,6 +526,9 @@ def lpips(
     return float(np.clip(score, 0.0, 1.0))
 
 
+lpips.is_proxy_metric = True  # type: ignore[attr-defined]
+
+
 def validate_output_non_degenerate(
     frames: np.ndarray,
     min_variance: float = 1e-4,
@@ -516,29 +584,28 @@ def validate_output_non_degenerate(
 
     n_channels = arr_norm.shape[-1]
 
-    # Check 1: Per-channel spatial variance across all frames
-    # Flatten spatial+temporal dims per channel: [T*H*W]
-    flat = arr_norm.reshape(-1, n_channels)
-    channel_variances = np.var(flat, axis=0)  # [C]
-
-    for ch_idx in range(n_channels):
-        ch_var = float(channel_variances[ch_idx])
-        if ch_var <= min_variance:
-            raise QualityGateError(
-                f"Generated video frames are degenerate: channel {ch_idx} "
-                f"spatial variance {ch_var:.6e} <= floor {min_variance:.6e}. "
-                f"Possible single-color constant output.",
-                agent_fix_hint=(
-                    "Ensure model produces varied textures and per-channel diversity "
-                    "instead of constant color (e.g. pure red)."
-                ),
-                details={
-                    "channel": ch_idx,
-                    "channel_variance": ch_var,
-                    "min_variance": min_variance,
-                    "all_channel_variances": [float(v) for v in channel_variances],
-                },
-            )
+    # Check 1: Per-channel spatial variance on every individual frame
+    for t_idx in range(arr_norm.shape[0]):
+        frame_t = arr_norm[t_idx]
+        frame_vars = np.var(frame_t.reshape(-1, n_channels), axis=0)
+        for ch_idx in range(n_channels):
+            ch_var = float(frame_vars[ch_idx])
+            if ch_var <= min_variance:
+                raise QualityGateError(
+                    f"Generated video frame {t_idx} is degenerate: channel {ch_idx} "
+                    f"spatial variance {ch_var:.6e} <= floor {min_variance:.6e}. "
+                    f"Possible single-color constant frame in sequence.",
+                    agent_fix_hint=(
+                        "Ensure every generated frame produces varied textures and spatial diversity "
+                        "instead of flat constant color."
+                    ),
+                    details={
+                        "frame": t_idx,
+                        "channel": ch_idx,
+                        "channel_variance": ch_var,
+                        "min_variance": min_variance,
+                    },
+                )
 
     # Check 2: Cross-frame temporal diff variance (frozen-still detection)
     if arr_norm.shape[0] >= 2:

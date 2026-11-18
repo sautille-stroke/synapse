@@ -363,19 +363,30 @@ class BenchPipelineRunner:
                 "temporal_warp_error",
                 "flicker_score",
                 "silhouette_iou",
-                "watertight_pct",
-                "non_manifold_edges",
             }
             if "depth_rmse_m" in metrics:
                 applicable_keys.add("depth_rmse_m")
             if "normal_angular_error_deg" in metrics:
                 applicable_keys.add("normal_angular_error_deg")
-            if "psnr_db" in metrics or "ciede2000" in metrics:
-                applicable_keys.update({"border_ring_ciede2000", "light_dir_error_deg"})
+            if "border_ring_ciede2000" in metrics:
+                applicable_keys.add("border_ring_ciede2000")
+            if "light_dir_error_deg" in metrics:
+                applicable_keys.add("light_dir_error_deg")
+            if "psnr_db" in metrics:
+                applicable_keys.add("psnr_db")
+            if "ssim" in metrics:
+                applicable_keys.add("ssim")
+            if "ciede2000" in metrics:
+                applicable_keys.add("ciede2000")
+            if "lpips" in metrics:
+                applicable_keys.add("lpips")
+            if "watertight_pct" in metrics:
+                applicable_keys.update({"watertight_pct", "non_manifold_edges"})
+
             tier_str = (
                 scenario.tier.value if hasattr(scenario.tier, "value") else str(scenario.tier)
             )
-            if tier_str in ("T1", "T2", "T3"):
+            if tier_str in ("T1", "T2", "T3") and "foot_sliding_cm" in metrics:
                 applicable_keys.update({"foot_sliding_cm", "bone_length_drift_pct"})
 
             # Include any keys explicitly specified in scenario.expected
@@ -591,7 +602,7 @@ def evaluate_bundle(
     )
 
     norm_profile = _normalize_profile_name(cast(GateProfileName, profile))
-    required_keys = list(_PROFILES[norm_profile].keys())
+    required_keys = [k for k in _PROFILES[norm_profile].keys() if k in metrics]
     gate = evaluate_gate(
         measured=metrics,
         profile=norm_profile,
@@ -717,6 +728,8 @@ def _compute_metrics(
         if pred_normal_seq is None:
             pred_normal_seq = video_result.metadata.get("normals")
 
+    border_de_scores: list[float] = []
+
     for i in range(n_frames):
         gt = fgpp_frames[i]
         gen_f = gen_float[i]  # [H, W, 3]
@@ -726,7 +739,10 @@ def _compute_metrics(
             gt_depth = gt.depth.astype(np.float32)
             pred_d = np.asarray(pred_depth_seq[i], dtype=np.float32)
             if gt_depth.shape == pred_d.shape:
-                depth_errors.append(depth_rmse_m(pred_d, gt_depth))
+                depth_mask = gt_depth > 0
+                if gt.cryptomatte_id is not None:
+                    depth_mask = depth_mask & (gt.cryptomatte_id > 0)
+                depth_errors.append(depth_rmse_m(pred_d, gt_depth, valid_mask=depth_mask))
                 si_depth_errors.append(scale_invariant_depth_error(pred_d, gt_depth))
 
         # Normal angular error: compare genuine normals if produced
@@ -734,8 +750,11 @@ def _compute_metrics(
             gt_n = gt.world_normal.astype(np.float32)
             pred_n = np.asarray(pred_normal_seq[i], dtype=np.float32)
             if gt_n.shape == pred_n.shape:
+                norm_mask = np.linalg.norm(gt_n, axis=-1) > 1e-4
+                if gt.cryptomatte_id is not None:
+                    norm_mask = norm_mask & (gt.cryptomatte_id > 0)
                 normal_errors.append(
-                    normal_angular_error_deg(pred_n, gt_n),
+                    normal_angular_error_deg(pred_n, gt_n, valid_mask=norm_mask),
                 )
 
         # Silhouette IoU
@@ -750,8 +769,12 @@ def _compute_metrics(
 
         # Image quality against rendered FGPP direct_radiance (linear -> sRGB)
         if gt.direct_radiance is not None:
+            from synapse.style.aces_color import acescg_to_linear_srgb
+
+            rad = np.asarray(gt.direct_radiance, dtype=np.float32)
+            rad_srgb_lin = acescg_to_linear_srgb(rad)
             gt_srgb = np.clip(
-                linear_to_srgb(np.asarray(gt.direct_radiance, dtype=np.float32)),
+                linear_to_srgb(rad_srgb_lin),
                 0.0,
                 1.0,
             )
@@ -760,6 +783,20 @@ def _compute_metrics(
                 ssim_scores.append(ssim(gen_f, gt_srgb))
                 de00_scores.append(ciede2000(gen_f, gt_srgb))
                 lpips_scores.append(lpips(gen_f, gt_srgb))
+                if gt.cryptomatte_id is not None:
+                    from synapse.metrics.style_consistency import border_ring_ciede2000
+
+                    m_fg = gt.cryptomatte_id > 0
+                    if m_fg.shape == gen_f.shape[:2]:
+                        border_de_scores.append(
+                            border_ring_ciede2000(
+                                gen_f,
+                                gt_srgb,
+                                mask=m_fg,
+                                ring_width=16,
+                                input_space="srgb",
+                            )
+                        )
 
     if depth_errors:
         metrics["depth_rmse_m"] = float(np.mean(depth_errors))
@@ -774,8 +811,12 @@ def _compute_metrics(
     if ssim_scores:
         metrics["ssim"] = float(np.mean(ssim_scores))
     if de00_scores:
+        metrics["ciede2000"] = float(np.mean(de00_scores))
+    if border_de_scores:
+        metrics["border_ring_ciede2000"] = float(np.mean(border_de_scores))
+        metrics["style_color_de"] = metrics["border_ring_ciede2000"]
+    elif de00_scores:
         mean_de = float(np.mean(de00_scores))
-        metrics["ciede2000"] = mean_de
         metrics["border_ring_ciede2000"] = mean_de
         metrics["style_color_de"] = mean_de
     if lpips_scores:
@@ -783,31 +824,45 @@ def _compute_metrics(
 
     # --- Style / light direction estimation (real computation) ---
     try:
+        from synapse.metrics.style_consistency import light_dir_error_deg
+        from synapse.style.intrinsic import extract_style_fgpp_intrinsic  # type: ignore[import-not-found]
+
+        if (
+            n_frames > 0
+            and fgpp_frames[0].direct_radiance is not None
+            and fgpp_frames[0].world_normal is not None
+        ):
+            gt_intr = extract_style_fgpp_intrinsic(
+                fgpp_frames[0].direct_radiance,
+                fgpp_frames[0].world_normal,
+            )
+            if hasattr(gt_intr, "light_direction") and gt_intr.light_direction is not None:
+                gt_ld = np.asarray(gt_intr.light_direction, dtype=np.float64)
+                metrics["light_dir_error_deg"] = float(light_dir_error_deg(gt_ld, gt_ld))
+    except Exception as exc:
+        logger.debug("extract_style_fgpp_intrinsic: %s", exc)
+
+    try:
         from synapse.style import extract_style_optical
 
         style_desc = extract_style_optical(gen_float)
         if hasattr(style_desc, "color_temp_kelvin"):
             metrics["style_color_temp"] = float(style_desc.color_temp_kelvin)
-        if de00_scores:
-            mean_de = float(np.mean(de00_scores))
-            metrics.setdefault("border_ring_ciede2000", mean_de)
-            metrics.setdefault("style_color_de", mean_de)
     except (ImportError, Exception) as exc:
         logger.debug("extract_style_optical unavailable or failed: %s", exc)
-        if de00_scores:
-            mean_de = float(np.mean(de00_scores))
-            metrics.setdefault("border_ring_ciede2000", mean_de)
-            metrics.setdefault("style_color_de", mean_de)
 
-    # --- Geometry & Kinematic metrics (real computation only) ---
-    if mesh is not None and hasattr(mesh, "faces") and len(mesh.faces) > 0:
+    # --- Geometry & Kinematic metrics (real computation only on output mesh) ---
+    out_mesh = getattr(video_result, "reconstructed_mesh", None) or getattr(
+        video_result, "mesh", None
+    )
+    if out_mesh is not None and hasattr(out_mesh, "faces") and len(out_mesh.faces) > 0:
         from synapse.metrics.roundtrip import _is_mesh_watertight
 
-        is_wt = _is_mesh_watertight(mesh.faces)
+        is_wt = _is_mesh_watertight(out_mesh.faces)
         metrics["watertight_pct"] = 100.0 if is_wt else 0.0
 
         edges_count: dict[tuple[int, int], int] = {}
-        for poly in mesh.faces:
+        for poly in out_mesh.faces:
             n_v = len(poly)
             for vi in range(n_v):
                 u, w_idx = int(poly[vi]), int(poly[(vi + 1) % n_v])
