@@ -65,7 +65,7 @@ def _cmd_recon_invert_video(
     if fgpp_dir and Path(fgpp_dir).is_dir():
         output_info["fgpp_dir"] = fgpp_dir
 
-    if not args.json:
+    if not getattr(args, "json", False):
         print("[Recon] Video-to-3D inverse reconstruction complete")
         for k, v in output_info.items():
             print(f"  {k}: {v}")
@@ -185,7 +185,7 @@ def _cmd_recon_closed_loop(
         **diag,
     }
 
-    if not args.json:
+    if not getattr(args, "json", False):
         print("[Recon] Closed-loop inverse rendering complete")
         for k, v in output_info.items():
             if isinstance(v, dict):

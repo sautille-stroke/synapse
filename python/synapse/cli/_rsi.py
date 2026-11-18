@@ -166,6 +166,26 @@ def _cmd_rsi_gate_promote(
     baseline_report_raw = getattr(args, "baseline_report", None)
     candidate_report_raw = getattr(args, "candidate_report", None)
 
+    # Reject deprecated --scenarios argument
+    deprecated_scenarios = getattr(args, "scenarios", None)
+    if deprecated_scenarios is not None:
+        raise ContractValidationError(
+            "The '--scenarios' argument is deprecated and must not be used. "
+            "Use '--baseline-scenarios' and '--candidate-scenarios' separately "
+            "to prevent data bleeding between baseline and candidate.",
+            agent_fix_hint=(
+                "Replace '--scenarios <path>' with "
+                "'--baseline-scenarios <path> --candidate-scenarios <path>'."
+            ),
+        )
+
+    # Wire --strict to raise_on_reject
+    strict_mode = bool(getattr(args, "strict", False))
+
+    # Initialize scenario variables to prevent UnboundLocalError
+    base_scenarios_raw: Any = None
+    cand_scenarios_raw: Any = None
+
     if baseline_report_raw and candidate_report_raw:
         base_p = Path(baseline_report_raw)
         cand_p = Path(candidate_report_raw)
@@ -264,7 +284,7 @@ def _cmd_rsi_gate_promote(
     promote_kwargs: dict[str, Any] = {
         "baseline": baseline,
         "candidate": candidate,
-        "raise_on_reject": True,
+        "raise_on_reject": strict_mode,
     }
     if not base_scenarios_raw and not cand_scenarios_raw:
         promote_kwargs["min_scenarios"] = 0
@@ -421,7 +441,10 @@ def register_rsi_subparser(
     rsi_gate.add_argument(
         "--scenarios",
         default=None,
-        help="Optional JSON string or path to JSON file with scenario scores list",
+        help=(
+            "[DEPRECATED] Use --baseline-scenarios and --candidate-scenarios instead. "
+            "Passing this argument will raise an error."
+        ),
     )
     rsi_gate.add_argument(
         "--baseline-scenarios",
