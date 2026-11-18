@@ -67,14 +67,13 @@ class DiffusersWanBackend(WanBackendTransport):
         """Check whether Diffusers and PyTorch dependencies are importable."""
         if self._pipeline is not None or self._transformer is not None:
             return True
-        try:
-            import diffusers  # noqa: F401
-            import torch  # noqa: F401
-            import transformers  # type: ignore[import-not-found]  # noqa: F401
+        import importlib.util
 
-            return True
-        except ImportError:
-            return False
+        return bool(
+            importlib.util.find_spec("diffusers")
+            and importlib.util.find_spec("torch")
+            and importlib.util.find_spec("transformers")
+        )
 
     def _ensure_initialized(self) -> None:
         """Lazy-import and initialize Diffusers pipeline and models."""
