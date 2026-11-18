@@ -268,7 +268,8 @@ def clean_recon() -> np.ndarray:
     init_mesh = MeshGeometry(vertices=v, faces=f)
     frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
     pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=init_mesh)
+    # Test-only: bypass Redline #3 gate for synthetic icosphere (< 1500 verts).
+    res = pipe.run(frames, initial_mesh=init_mesh, has_gen3d_highpoly=True)
     assert res.mesh is not None
     return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=8192, seed=42)
 
@@ -289,7 +290,7 @@ def corrupted_cd_a(gt_surface: np.ndarray) -> float:
     mesh_a = MeshGeometry(vertices=v_a, faces=f)
     frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
     pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_a)
+    res = pipe.run(frames, initial_mesh=mesh_a, has_gen3d_highpoly=True)
     assert res.mesh is not None
     pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
@@ -305,7 +306,7 @@ def corrupted_cd_b(gt_surface: np.ndarray) -> float:
     mesh_b = MeshGeometry(vertices=v_b, faces=f)
     frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
     pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_b)
+    res = pipe.run(frames, initial_mesh=mesh_b, has_gen3d_highpoly=True)
     assert res.mesh is not None
     pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
@@ -327,7 +328,7 @@ def corrupted_cd_c(gt_surface: np.ndarray) -> float:
     mesh_c = MeshGeometry(vertices=v_c, faces=f_c)
     frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
     pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_c)
+    res = pipe.run(frames, initial_mesh=mesh_c, has_gen3d_highpoly=True)
     assert res.mesh is not None
     pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
