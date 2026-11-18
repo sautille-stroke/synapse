@@ -65,6 +65,8 @@ class DiffusersWanBackend(WanBackendTransport):
 
     def is_available(self) -> bool:
         """Check whether Diffusers and PyTorch dependencies are importable."""
+        if self._pipeline is not None or self._transformer is not None:
+            return True
         try:
             import diffusers  # noqa: F401
             import torch  # noqa: F401
@@ -77,6 +79,14 @@ class DiffusersWanBackend(WanBackendTransport):
     def _ensure_initialized(self) -> None:
         """Lazy-import and initialize Diffusers pipeline and models."""
         if self._initialized:
+            return
+
+        if self._pipeline is not None or self._transformer is not None:
+            if self._transformer is None and self._pipeline is not None:
+                self._transformer = getattr(self._pipeline, "transformer", None)
+            if self._vae is None and self._pipeline is not None:
+                self._vae = getattr(self._pipeline, "vae", None)
+            self._initialized = True
             return
 
         try:
@@ -160,8 +170,15 @@ class DiffusersWanBackend(WanBackendTransport):
         negative_prompt = payload.negative_prompt or getattr(config, "negative_prompt", None)
 
         # Prepare generator RNG
-        generator = torch.Generator(device=self._pipeline.device)
-        generator.manual_seed(config.seed)
+        generator = None
+        try:
+            import torch
+
+            device = getattr(self._pipeline, "device", "cpu")
+            generator = torch.Generator(device=device)
+            generator.manual_seed(config.seed)
+        except Exception:
+            generator = None
 
         call_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -177,11 +194,22 @@ class DiffusersWanBackend(WanBackendTransport):
 
         # If control tensor is present, pass to pipeline
         if payload.control_tensor is not None:
-            ctrl = torch.from_numpy(payload.control_tensor).to(
-                device=self._pipeline.device,
-                dtype=self._pipeline.transformer.dtype if hasattr(self._pipeline, "transformer") else torch.float32,
-            )
-            call_kwargs["control_tensor"] = ctrl
+            try:
+                import torch
+
+                device = getattr(self._pipeline, "device", "cpu")
+                dtype = (
+                    self._pipeline.transformer.dtype
+                    if hasattr(self._pipeline, "transformer")
+                    else torch.float32
+                )
+                ctrl = torch.from_numpy(payload.control_tensor).to(
+                    device=device,
+                    dtype=dtype,
+                )
+                call_kwargs["control_tensor"] = ctrl
+            except Exception:
+                call_kwargs["control_tensor"] = payload.control_tensor
 
         # If warm start frames are present
         warm_start = payload.extra.get("warm_start_frames") or payload.keyframe_images

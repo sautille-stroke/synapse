@@ -434,7 +434,7 @@ class TestHttpSecurityAndLedger:
         captured_reqs: list[Any] = []
 
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b'{"status": "success", "result": {}}'
+        mock_resp.read.return_value = b'{"status": "ok", "result": {}}'
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.__exit__.return_value = None
 
