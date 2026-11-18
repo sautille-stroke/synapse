@@ -24,15 +24,15 @@
 #### 输入 (Inputs)
 - `fulgur` 二进制：`bazel-bin/course/102-pbr-direct`（Linux / Vulkan 无头渲染）
 - `caelum-core` 渲染资产：`cornell_spheres_17f`（离线路径追踪真值对）
-- 命令行参数：`--fulgur-repo <path>`, `--out-dir <path>`, `--num-frames 17`
+- 命令行参数：`--fulgur-repo <path>`, `--output-root <path>` (alias `--output-dir`), `--manifest-out <path>`, `--bundle-out <path>`
 
 #### 输出 (Outputs)
-- **Track-B 实时序列**：`data/datasets/track_b_fulgur/course_102_pbr_17f/`
+- **Track-B 实时序列**：`${SYNAPSE_DATASET_ROOT}/track_b_fulgur/course_102_pbr_17f/`
   - `frame_000000.exr` .. `frame_000016.exr`：15 标量通道 OpenEXR (`34 B/px`, HALF/UINT32)
   - `metadata.json`：符合 `fgpp.v1.0` Schema，包含相机外参/内参、近远裁切面、渲染轨迹标签
-- **Track-B 97 帧长时序序列**：`data/datasets/track_b_fulgur/course_102_pbr_97f/`
+- **Track-B 97 帧长时序序列**：`${SYNAPSE_DATASET_ROOT}/track_b_fulgur/course_102_pbr_97f/`
   - 包含 0..63 帧平滑运镜、第 64 帧切镜突变点，以及 t=0, 48, 96 处的物理重锚定关键帧
-- **Track-A 离线真值对**：`data/datasets/track_a_caelum/cornell_spheres_17f/`
+- **Track-A 离线真值对**：`${SYNAPSE_DATASET_ROOT}/track_a_caelum/cornell_spheres_17f/`
   - `frame_XXXXXX.exr` (15 通道 FGPP) + `beauty_XXXXXX.exr` (离线路径追踪 Ground Truth)
 - **校验清单**：`data/manifests/golden_dataset_manifest.json`（各文件 SHA256 与字节大小）
 - **Colab 独立数据包**：`synapse_colab_bundle_v1.tar.gz`（解压即用，大小约 300–450 MB）
@@ -46,7 +46,7 @@
 - `cfg`: `VideoGenerationConfig(width=832, height=480, num_frames=T, fps=24.0)`
 
 #### 输出 (Outputs)
-- `payload`: `ConditionPayload`
+- `payload`: `PreparedConditionPayload`
   - `control_tensor`: 形状为 **`[7, T, H, W]`** 的 `float32` 张量：
     - `ch 0`: 对数归一化线性深度 $d_{\log} \in [0.0, 1.0]$（源自 `CameraLinearDepth.Z`）
     - `ch 1..3`: 相机空间单位法线 $(n_x, n_y, n_z) \in [-1.0, 1.0]$（由 `WorldNormal.XYZ` 经当前帧 `view_matrix[:3, :3]` 旋转得到，背景无几何区为 `[0, 0, 1]`）

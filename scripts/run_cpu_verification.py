@@ -81,6 +81,56 @@ from synapse.training import (
 )
 
 
+def _verify_sha256(file_path: Path, expected_sha: str) -> bool:
+    """Verify SHA-256 checksum of a file against an expected digest."""
+    h = hashlib.sha256()
+    with file_path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest() == expected_sha
+
+
+def _check_manifest_sha256(dataset_dir: Path) -> dict[str, Any]:
+    """Verify SHA-256 checksums of EXR frame files against the manifest.
+
+    Looks for ``metadata.json`` in *dataset_dir* and checks every file listed
+    in the ``"frames"`` array that includes a ``"sha256"`` field.
+
+    Returns:
+        dict with ``"checked"``, ``"passed"``, ``"failed"`` counts and
+        ``"mismatches"`` list of filenames that did not match.
+    """
+    manifest_path = dataset_dir / "metadata.json"
+    result: dict[str, Any] = {
+        "checked": 0,
+        "passed": 0,
+        "failed": 0,
+        "mismatches": [],
+    }
+    if not manifest_path.is_file():
+        return result
+
+    with manifest_path.open("r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    frames = manifest.get("frames", [])
+    for entry in frames:
+        fname = entry.get("file") or entry.get("filename")
+        expected_sha = entry.get("sha256")
+        if not fname or not expected_sha:
+            continue
+        fpath = dataset_dir / fname
+        if not fpath.is_file():
+            continue
+        result["checked"] += 1
+        if _verify_sha256(fpath, expected_sha):
+            result["passed"] += 1
+        else:
+            result["failed"] += 1
+            result["mismatches"].append(fname)
+    return result
+
+
 def _verify_e1_conditioning_ablation(
     seq_track_b: FGPPSequence,
     seq_track_a: FGPPSequence,
@@ -379,6 +429,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Auto-resolve directory path to default report filename
+    report_out: Path = args.report_out
+    if report_out.is_dir():
+        report_out = report_out / "cpu_verification_report.json"
+
     t0 = time.time()
     dir_b_17f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_17f"
     dir_b_97f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_97f"
@@ -397,6 +452,21 @@ def main() -> int:
     assert isinstance(seq_b_17f, FGPPSequence)
     assert isinstance(seq_b_97f, FGPPSequence)
     assert isinstance(seq_a_17f, FGPPSequence)
+
+    # SHA-256 manifest verification of EXR frame files
+    sha_results: dict[str, dict[str, Any]] = {}
+    for label, ddir in [
+        ("track_b_17f", dir_b_17f),
+        ("track_b_97f", dir_b_97f),
+        ("track_a_17f", dir_a_17f),
+    ]:
+        sha_res = _check_manifest_sha256(ddir)
+        sha_results[label] = sha_res
+        if sha_res["checked"] > 0:
+            print(
+                f"  [SHA-256] {label}: {sha_res['passed']}/{sha_res['checked']} passed"
+                + (f", MISMATCHES: {sha_res['mismatches']}" if sha_res["failed"] else "")
+            )
 
     print("[E1] Verifying 7-ch conditioning ablation & MockVideoAdapter ...")
     res_e1 = _verify_e1_conditioning_ablation(seq_b_17f, seq_a_17f)
@@ -417,6 +487,7 @@ def main() -> int:
         "environment": "ubuntu24_cpu_headless",
         "elapsed_sec": round(time.time() - t0, 3),
         "all_passed": True,
+        "sha256_verification": sha_results,
         "experiments": {
             "E1_fgpp_conditioning_ablation": res_e1,
             "E2_acescg_style_and_surgical_composite": res_e2,
@@ -426,9 +497,9 @@ def main() -> int:
         },
     }
 
-    args.report_out.parent.mkdir(parents=True, exist_ok=True)
-    args.report_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"ALL E1-E5 CPU BASELINE VERIFICATIONS PASSED! Report -> {args.report_out}")
+    report_out.parent.mkdir(parents=True, exist_ok=True)
+    report_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"ALL E1-E5 CPU BASELINE VERIFICATIONS PASSED! Report -> {report_out}")
     return 0
 
 

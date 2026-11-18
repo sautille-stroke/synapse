@@ -24,11 +24,20 @@ sudo apt-get update -y -qq
 sudo apt-get install -y -qq \
     libopenexr-dev \
     openexr \
-    libgl1-mesa-glx \
     libglib2.0-0 \
     ffmpeg \
     tar \
     gzip
+# libgl1 is the modern package name; fall back to libgl1-mesa-glx on older distros
+sudo apt-get install -y libgl1 2>/dev/null || sudo apt-get install -y libgl1-mesa-glx
+
+# Optional: shallow-clone aether for native geometry compilation
+SYNAPSE_ROOT="$(pwd)"
+if [ ! -d "${SYNAPSE_ROOT}/../aether" ]; then
+  echo "[setup_colab] Cloning aether (shallow) for native _c_geometry build..."
+  git clone --depth 1 https://github.com/dervgen/aether.git "${SYNAPSE_ROOT}/../aether" 2>/dev/null || \
+    echo "[setup_colab] WARNING: Could not clone aether. Native geometry build may not work."
+fi
 
 echo ""
 echo "======================================================================"
