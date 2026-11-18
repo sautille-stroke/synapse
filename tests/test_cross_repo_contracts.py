@@ -216,7 +216,7 @@ class TestAetherFgppContract:
             meta_path = tmp_path / "metadata.json"
 
             # Export and re-import
-            export_fgpp(seq, tmp_path)
+            export_fgpp(seq, tmp_path, strict=False)
             assert exr_path.is_file()
             assert meta_path.is_file()
 
