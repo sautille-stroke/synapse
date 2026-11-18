@@ -123,3 +123,16 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 | **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
 | **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
 | **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |
+
+---
+
+## 7. 生态导航与工具链分发
+
+| 资源 | 路径 |
+|------|------|
+| 生态元仓库 | `../all-overview/` |
+| 全仓库路由表 | `../all-overview/repos/routing.json` |
+| 技能索引 | `../all-overview/devenv-skills/skills/index.yaml` |
+| 架构规范 | `../all-overview/architecture/` |
+| 私有 BCR 与分级工具链镜像规范 (三级地址) | `../all-overview/architecture/bcr-and-tooling-distribution-matrix.md` |
+| 全平台工具链与快速启动全景指南 | `../all-overview/architecture/cross-platform-toolchains-and-quickstart.md` |

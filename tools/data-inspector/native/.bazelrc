@@ -4,9 +4,11 @@
 
 try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
-# 1. Bzlmod Registries — public BCR has priority, DervGen private BCR as fallback
+# 1. Bzlmod Registries (三级分发架构，详见 all-overview/architecture/bcr-and-tooling-distribution-matrix.md)
+# Tier 1 (默认主力优先): 阿里云 8443 高位端口直连 (绕过未备案拦截)
+common --registry=https://8.138.167.168:8443/bcr
+# Tier 3 (开源兜底): 官方中央仓库
 common --registry=https://bcr.bazel.build
-common --registry=https://bcr.dervgen.com/bcr
 common --enable_platform_specific_config
 
 # 2. Build mode & RelWithDebInfo baseline
