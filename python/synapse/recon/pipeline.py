@@ -57,6 +57,8 @@ class ReconPipeline:
         initial_mesh: MeshGeometry | None = None,
         skeleton_template: dict[str, Any] | None = None,
         fps: float = 30.0,
+        track: str = "track_b_whitebox",
+        has_gen3d_highpoly: bool = True,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -103,8 +105,8 @@ class ReconPipeline:
             from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
 
             enforce_distillation_geometry_gate(
-                track="track_b_whitebox",
-                has_gen3d_highpoly=initial_mesh.vertex_count >= 1500,
+                track=track,
+                has_gen3d_highpoly=has_gen3d_highpoly,
                 vertex_count=initial_mesh.vertex_count,
                 has_articulated_limbs=(skeleton_template is not None),
                 is_character=(skeleton_template is not None),
