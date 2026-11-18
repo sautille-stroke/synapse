@@ -1,7 +1,7 @@
 # M33–M36 Post-Horizon-8 全域复盘整改、原生扩围与真白盒演进计划 (Actionable Horizon-9 Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.7`**）
-> - **触发审计基线**: [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)（`main` @ `df93ac7`）
+> - **触发审计基线**: [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)（`main` @ `df93ac7`）
 > - **规划模型**: `[gemini4]`
 > - **当前状态**: 🚀 **Wave 33 (M34) 已完成 — PR-133 ~ PR-142 已合入 `main`，`ubuntu24` 全量测试通过**
 > - **目标周期**: 4 个里程碑（`M33` – `M36`）、4 个并发 Execution Waves（`Wave 32` – `Wave 35`）、**20 个原子 PR**（`PR-133` – `PR-152`，紧接整体审查与规划 PR `#132`，实现 GitHub PR 号 1:1 严格对齐）
@@ -18,7 +18,7 @@
 
 ## 1. 全景概览、战略支柱映射与 Wave 32–35 调度拓扑
 
-[`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 在 `main` @ `df93ac7`（`v3.6.0`）上经过五切片逐行复审、跨仓 SSOT 核对（`../aether`、`../render-farm`、`../grand-studio`、`../fulgur`、`../caelum-core`）及 `ubuntu24` 无竞争独立复测 12 项门禁后确认：虽然静态工程基线显著改善（`209` 文件 `mypy --strict` 零错、Ruff 8 条核心规则解禁零报错、`1,156` 条文档链接零断链），但仍存在 **`18×P0 + 24×P1 + 12×P2 + 4×P3 = 58`** 项实证缺陷（含 **4 项 Horizon-8 新引入的必崩回归**），且测试 SLA（单进程快测 `38.60s` > `25s`，慢测 `90.75s` > `45s`）、`.github/workflows/ci.yml` 缺失与核心算子代差（`0` `diffusers` 接线、`32³` 玩具体素、`38.6 GB` `float64` 内存爆炸）尚未真正闭合。
+[`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 在 `main` @ `df93ac7`（`v3.6.0`）上经过五切片逐行复审、跨仓 SSOT 核对（`../aether`、`../render-farm`、`../grand-studio`、`../fulgur`、`../caelum-core`）及 `ubuntu24` 无竞争独立复测 12 项门禁后确认：虽然静态工程基线显著改善（`209` 文件 `mypy --strict` 零错、Ruff 8 条核心规则解禁零报错、`1,156` 条文档链接零断链），但仍存在 **`18×P0 + 24×P1 + 12×P2 + 4×P3 = 58`** 项实证缺陷（含 **4 项 Horizon-8 新引入的必崩回归**），且测试 SLA（单进程快测 `38.60s` > `25s`，慢测 `90.75s` > `45s`）、`.github/workflows/ci.yml` 缺失与核心算子代差（`0` `diffusers` 接线、`32³` 玩具体素、`38.6 GB` `float64` 内存爆炸）尚未真正闭合。
 
 **Horizon 9 (`M33–M36`, `PR-133 ~ PR-152`)** 将“止血回归清零”与“七大战略级架构进化支柱”合龙为四个递进里程碑，将全仓健康度从 **`67/100`** 推进至 **`>= 95/100`**（`Release v4.0.0`）。
 

@@ -286,7 +286,7 @@ RSI 是跨越 Layer 0 至 Layer 4 的全生态协同工程，各系统职责分�
 
 ## 6. 与工程实施总计划 (`IMPLEMENTATION_PLAN.md` v2.0) 的落地映射
 
-> 详细类/函数级实施规范见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
+> 详细类/函数级实施规范见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](archive/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
 
 | RSI 飞轮能力 | 支撑 PR 矩阵 | 权威代码承载路径 | 验收里程碑 |
 | :--- | :--- | :--- | :---: |

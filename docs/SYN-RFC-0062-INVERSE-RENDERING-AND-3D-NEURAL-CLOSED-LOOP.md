@@ -7,7 +7,7 @@
 - **文档状态**: `Accepted (v1.1 — Aligned with M11)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`, `foundary`)
 - **关联设计文档 (Layer B)**: [DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md](DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
-- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
+- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
 - **关联生态规约**:
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`)
   - **SYN-RFC-0060**: 真实视频逆向 3D 动态数字孪生与联合反演
@@ -218,7 +218,7 @@ python/synapse/recon/loop/
 
 ## 7. 实施规划绑定 (`M11: PR-38 ~ PR-40`)
 
-完整文件、测试断言与验收脚本见 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M11` 里程碑）**：
+完整文件、测试断言与验收脚本见 **[PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M11` 里程碑）**：
 
 | PR 编号 | 交付范围 | 核心验证门禁 |
 |---|---|---|

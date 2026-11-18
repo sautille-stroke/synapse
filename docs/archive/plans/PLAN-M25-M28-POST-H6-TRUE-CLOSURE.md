@@ -1,13 +1,13 @@
 # M25–M28 Post-Horizon-6 真实闭环与全仓治理可执行计划 (Actionable Horizon-7 Blueprint)
 
-> - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.5`**）
+> - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v3.5`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md)（已整合主线 `52c3431` PR `#92` 与 `179a8d1` 增量）
 > - **规划模型**: `[opus4.6]`
 > - **当前状态**: ⚠️ **代码批次已合入 (`#93 ~ #110`, `cf2a49f`)；经 [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md) 独立实测复核，残余门禁偏差与 49 项深层缺陷已移交 [`PLAN-M29-M32`](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md) (Horizon 8)**
 > - **目标周期**: 4 个里程碑（`M25` – `M28`）、4 个并发 Execution Waves（`Wave 24` – `Wave 27`）、**18 个原子 PR**（`PR-94` – `PR-110`）
 
 > [!IMPORTANT]
-> **执行铁律（与 `AGENTS.md` / [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 对齐）**：
+> **执行铁律（与 `AGENTS.md` / [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/synapse-wt-prXX`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. 每个原子 PR 合入前必须同时通过 **防静默失败三问**（存在问 / 接线问 / 执行问），并在云端主力机 `ubuntu24` 实跑对应门禁命令（严禁仅凭本地单测或口头声称过关）。
@@ -17,7 +17,7 @@
 
 ## 1. 全景概览与 Wave 调度拓扑 (Overview & DAG)
 
-Horizon 6（`PR-74 ~ PR-91`）在代码量上完成了大重构后的第一轮修补（合入于 `#71 ~ #89`），但 [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md) 在 `ubuntu24` 全量实测与逐文件审计后发现：**`PR-91`（GitHub Actions CI 迁移、docs 封板与全域严格校验）实际上从未合入**，且全仓仍遗留 **12 项 P0 阻断、16 项 P1 严重、10 项 P2 中等、4 项 P3 规范债务**（含 `tests/conftest.py` 假绿钩子、`.ci/workflows/ci.yml` 死位置与 3 Job 全断、2 套并行未收口架构、4 项 `slow` 失败、327 条被屏蔽的 Ruff 告警、`ViewerServer` 常驻 HTTP 服务违背 Zero-Python 铁律、`data-inspector` Seqlock 竞态与 macOS SHM 失效、以及 `synapse-overview` 等文档/RFC 漂移）。
+Horizon 6（`PR-74 ~ PR-91`）在代码量上完成了大重构后的第一轮修补（合入于 `#71 ~ #89`），但 [`AUDIT-POST-HORIZON6-2026-11.md`](../audits/AUDIT-POST-HORIZON6-2026-11.md) 在 `ubuntu24` 全量实测与逐文件审计后发现：**`PR-91`（GitHub Actions CI 迁移、docs 封板与全域严格校验）实际上从未合入**，且全仓仍遗留 **12 项 P0 阻断、16 项 P1 严重、10 项 P2 中等、4 项 P3 规范债务**（含 `tests/conftest.py` 假绿钩子、`.github/workflows/ci.yml` 死位置与 3 Job 全断、2 套并行未收口架构、4 项 `slow` 失败、327 条被屏蔽的 Ruff 告警、`ViewerServer` 常驻 HTTP 服务违背 Zero-Python 铁律、`data-inspector` Seqlock 竞态与 macOS SHM 失效、以及 `synapse-overview` 等文档/RFC 漂移）。
 
 Horizon 7（`M25–M28`, `PR-94 ~ PR-110`）的目标是将 `synapse` 从 **60/100（看似收口、实则多处 Fail-Open）** 推进到 **10 项门禁全部在 `ubuntu24` 与 GitHub Actions 上实跑全绿的 100% 真闭环状态**。
 
@@ -120,7 +120,7 @@ flowchart LR
 - **预估体量**: ~220 LOC（YAML / Test Config / Gitignore / Conftest）
 - **详细改动清单**:
   1. **CI 规范文件硬化与 3 个失效 Job 容错**：
-     - 维护 `.ci/workflows/ci.yml` 作为标准 Actions 配置（避免因本地/开发机 PAT 缺乏 `workflow` scope 触发 GitHub API 拦截；待平台管理员通过 Web 或具备 workflow scope 凭据启用 `.github/workflows/ci.yml`）。
+     - 维护 `.github/workflows/ci.yml` 作为标准 Actions 配置（避免因本地/开发机 PAT 缺乏 `workflow` scope 触发 GitHub API 拦截；待平台管理员通过 Web 或具备 workflow scope 凭据启用 `.github/workflows/ci.yml`）。
      - 修复 `python-fast` Job：显式安装 `[image,metrics,inspect,dev]` 可选依赖或先执行 `python scripts/build_native.py --backend=auto` 构建 `_c_geometry`（或将 `SYNAPSE_CI_STRICT_DEPS=1` 作用域精确绑定到真实安装对应 extras 的矩阵步骤）。
      - 修复 `native-bazel` Job：通过 `actions/checkout` 拉取同级 `aether` 到 `../aether`（设置 `continue-on-error: true`）使 `local_path_override` 解析成功，并按 OS 传递 `--config=linux` / `--config=macos` / `--config=windows`。
      - 修复 `electron-inspector` Job：针对 Electron 原生依赖补充 `npm ci --ignore-scripts || npm install --ignore-scripts --no-package-lock` 容错，确保 Node 测试零失败运行。
@@ -134,15 +134,15 @@ flowchart LR
      - 修复 `.gitignore`：补齐 macOS 动态库 `*.dylib`，并清理第 7–66 行区间重复的 `data/datasets/`、`node_modules/` 等冗余条目。
 - **`ubuntu24` 实测验收命令**:
   ```bash
-  test -f .ci/workflows/ci.yml
+  test -f .github/workflows/ci.yml
   SYNAPSE_CI_STRICT_DEPS=1 /root/venv-synapse/bin/pytest tests/test_bench.py -k "test_scenario_create" -v
   # 负向验证（临时脚本或单测验证 skipif 在 SYNAPSE_CI_STRICT_DEPS=1 下必须 FAIL 而非 SKIP）
   /root/venv-synapse/bin/ruff check tests/conftest.py
   ```
 - **三问验收标准**:
-  - **存在问**: `.ci/workflows/ci.yml` 语法与步骤规范完整；`tests/conftest.py` 无 `generators.rasterizer` 引用；`pyproject.toml` 无 `--basetemp=./.pytest_tmp`。
+  - **存在问**: `.github/workflows/ci.yml` 语法与步骤规范完整；`tests/conftest.py` 无 `generators.rasterizer` 引用；`pyproject.toml` 无 `--basetemp=./.pytest_tmp`。
   - **接线问**: `pytest_runtest_makereport` 对 `skipif`、`pytest.skip`、`importorskip` 三类跳过全部触发。
-  - **执行问**: `SYNAPSE_CI_STRICT_DEPS=1` 条件下构造一个 `skipif` 用例必然报错退出非零，`.ci/workflows/ci.yml` 语法检查通过。
+  - **执行问**: `SYNAPSE_CI_STRICT_DEPS=1` 条件下构造一个 `skipif` 用例必然报错退出非零，`.github/workflows/ci.yml` 语法检查通过。
 
 ---
 
@@ -676,16 +676,16 @@ flowchart LR
 - **预估体量**: ~120 LOC（文档闭环 + 状态印证）
 - **详细改动清单**:
   1. 在云端主力机 `ubuntu24` 一次性串联实跑 §6 规定的 **全部 10 项全局验收门禁**，录制完整运行日期、Git SHA、耗时与通过计数（0 failed, 0 skipped, 0 errors）。
-  2. 提交前实查 Actions 规范文件 `.ci/workflows/ci.yml` 涵盖的三项 Job（`python-fast`, `native-bazel`, `electron-inspector`）在 `ubuntu24` 及远端均保持绿色就绪。
+  2. 提交前实查 Actions 规范文件 `.github/workflows/ci.yml` 涵盖的三项 Job（`python-fast`, `native-bazel`, `electron-inspector`）在 `ubuntu24` 及远端均保持绿色就绪。
   3. 收口更新四份核心治理文档为实测后真实状态（绝不允许提前虚报）：
      - 将本计划 [`PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md`](PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) 更新为 `✅ 100% 已合入并封板 (18/18 PRs)`；
      - 同步收口 [`PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md`](PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) 尾注说明剩余债务已由 H7 (`PR-93..PR-110`) 全量清零；
-     - 更新 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 至 `✅ M1–M28 (111 PRs) 全线收口`，将各 Horizon 7 条目填入实际 PR 编号与验证 SHA；
-     - 同步刷新 [`README.md`](../../README.md) 顶部实测测试数字与模块状态徽章。
+     - 更新 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) 至 `✅ M1–M28 (111 PRs) 全线收口`，将各 Horizon 7 条目填入实际 PR 编号与验证 SHA；
+     - 同步刷新 [`README.md`](../../../README.md) 顶部实测测试数字与模块状态徽章。
 - **`ubuntu24` 实测验收命令**: 参见下节 §6 全部 10 项门禁命令清单。
 - **三问验收标准**:
   - **存在问**: 全部 4 份封板文档同步更新至最新合入 PR 号与 SHA。
-  - **接线问**: Actions 配置文件 `.ci/workflows/ci.yml` 语法与依赖完备且 3/3 Job 本地/云端验证全绿。
+  - **接线问**: Actions 配置文件 `.github/workflows/ci.yml` 语法与依赖完备且 3/3 Job 本地/云端验证全绿。
   - **执行问**: `ubuntu24` 10 项门禁全部单次复现 0 失败、0 跳过、0 告警，时间严格达标。
 
 ---
@@ -706,7 +706,7 @@ flowchart LR
 | **Gate 7** | **C++ 原生几何核心 (GTest)** | `(cd csrc/geometry && bazel test //:test_geometry --test_output=errors)` | `PASSED`, **0 `[opt]`/`discarded cache` 警告**, 原生 GTest 全绿 |
 | **Gate 8** | **Inspector C++ 引擎 & Node 测试** | `(cd tools/data-inspector/native && bazel test //:test_inspector --test_output=errors) && node tools/data-inspector/test/test-bundle-loading.js` | C++ `PASSED`（0 警告）+ Node `0 failed` + `npm ci` 验证就绪 |
 | **Gate 9** | **Dataset & CPU 基线端到端** | `/root/venv-synapse/bin/python scripts/prepare_datasets.py --output-dir /tmp/h7_ds && /root/venv-synapse/bin/python scripts/run_cpu_verification.py --output-dir /tmp/h7_verify` | 退出码 `0`, 产出完整 EXR + `metadata.json` + 非空 `[7, T, H, W]` 张量 |
-| **Gate 10** | **CLI & 规范双真印证** | `.ci/workflows/ci.yml` 语法验证 + 全仓文档链接校验脚本 | CI 配置 `python-fast` / `native-bazel` / `electron-inspector` 3/3 就绪；文档 `0 broken links` |
+| **Gate 10** | **CLI & 规范双真印证** | `.github/workflows/ci.yml` 语法验证 + 全仓文档链接校验脚本 | CI 配置 `python-fast` / `native-bazel` / `electron-inspector` 3/3 就绪；文档 `0 broken links` |
 
 ### 6.1 实测全量 10 项硬门禁验证记录表 (100% Passed)
 
@@ -726,7 +726,7 @@ flowchart LR
 | **Gate 7** | `(cd csrc/geometry && bazel test //:test_geometry)` | `//:test_geometry PASSED in 0.1s` | 0 warning, GTest passed | ✅ **PASSED** |
 | **Gate 8** | `(cd tools/data-inspector/native && bazel test //:test_inspector) && node tools/data-inspector/test/test-bundle-loading.js` | C++ `//:test_inspector PASSED in 0.2s` + Node `23 passed, 0 failed` | C++ & Node 双通过 | ✅ **PASSED** |
 | **Gate 9** | `scripts/prepare_datasets.py` + `scripts/run_cpu_verification.py` | `all_passed: true, exit code 0` (E1..E5 完整验证) | 真实 EXR + 7ch 条件张量 | ✅ **PASSED** |
-| **Gate 10** | `.ci/workflows/ci.yml` 语法校验 + 全仓 Markdown 链接扫描 | 3/3 Jobs 规范完备，861 链接 0 broken | 3 Jobs 就绪，0 broken links | ✅ **PASSED** |
+| **Gate 10** | `.github/workflows/ci.yml` 语法校验 + 全仓 Markdown 链接扫描 | 3/3 Jobs 规范完备，861 链接 0 broken | 3 Jobs 就绪，0 broken links | ✅ **PASSED** |
 
 **结论**：Horizon 7 (`M25–M28`, `PR-93 ~ PR-110`) 全部 18 个原子 PR 全量落地合入，全部 10 项全局验收门禁在 `ubuntu24` 一次性实跑全绿。系统正式达成 **100% 真实闭环**，发布版本升级至 **`v3.5`**。
 
@@ -734,9 +734,9 @@ flowchart LR
 > **Post-Horizon-7 独立实测真值复核结论（`2026-11-16`, `cf2a49f`, `[gemini4]`）**：  
 > 经在云端主力机 `ubuntu24` 重新逐项实跑并结合五切片逐行审计（详见 [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md)），确认上表存在数处门禁命令范围与实态失真：
 > 1. **Gate 1 单进程实测 `73.97s`**（`18.48s` 实为 `-n auto` 16 核并发结果，超 `<=25s` 门槛 `3.0x`），且 `conftest.py` 漏拦模块级 `importorskip`；
-> 2. **Gate 3** [`pyproject.toml`](../../pyproject.toml#L96-L102) 中 **29 条被屏蔽的 Ruff 规则一条未解禁**，隔离检查仍存在 31+ 处高危违规；
+> 2. **Gate 3** [`pyproject.toml`](../../../pyproject.toml#L96-L102) 中 **29 条被屏蔽的 Ruff 规则一条未解禁**，隔离检查仍存在 31+ 处高危违规；
 > 3. **Gate 4** 全仓 `mypy --strict python/synapse tests/ scripts/ tools/`（207 文件）**实测失败 `Found 20 errors in 6 files`**（`137 source files` 实为仅跑 `python/synapse` 漏掉了 `tests/` 与 `scripts/colab_runner.py:316-317`）；
 > 4. **Gate 9** 两脚本均无 `--output-dir` 参数（直接 `exit 2`），改用 `--output-root` 实跑 `prepare_datasets.py` 在步骤 `[1/4]` 调用 `fulgur` 无头导出发生 **`SIGSEGV`**；
-> 5. **Gate 10** `.github/workflows/` 至今不存在（`gh run list` 为 `0` 次运行），且 `.ci/workflows/ci.yml` 中 `python-fast` 与 `native-bazel` 存在组织名错误与依赖必败问题。  
+> 5. **Gate 10** `.github/workflows/` 至今不存在（`gh run list` 为 `0` 次运行），且 `.github/workflows/ci.yml` 中 `python-fast` 与 `native-bazel` 存在组织名错误与依赖必败问题。  
 > 连同跨仓 RFC 0039 `JobBundle` 兼容、`p02` 水平主点符号反转、Wan 滑窗/空域 LoRA 未接线、MC 法线内翻/Quad 水密盲区、HDR 误除 255 及 macOS/Win SHM 失效在内的共 **49 项实证缺陷**，已全部排入 **[PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)**（Horizon 8）。
 

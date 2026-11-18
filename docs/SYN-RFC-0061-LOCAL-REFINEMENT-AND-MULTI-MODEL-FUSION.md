@@ -9,7 +9,7 @@
 - **关联设计文档 (Layer B)**:
   - [DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md](DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
   - [DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
-- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M10: PR-33 ~ PR-37`)
+- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M10: PR-33 ~ PR-37`)
 - **关联生态规约**:
   - **RFC 0039**: 资产解耦、自洽作业闭包 (`JobBundle`) 与 DCC 连接器架构
   - **RFC 0044**: 神经-物理混合工业流水线、特征引导协议 (`FGPP`)、白模粒度守护与 15 分钟 HITL 工程熔断机制（复用 `synapse.bridge.hitl.evaluate_hitl_circuit_breaker`）
@@ -174,7 +174,7 @@ $$\mathcal{T}_{\text{failure}} = \langle \text{Prompt}, I_{\text{defect}}, I_{\t
 
 ## 6. 实施规划绑定与 CLI 入口 (`M10: PR-33 ~ PR-37`)
 
-完整文件清单、函数签名与测试验证方案见 Layer C 实施总览 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M10` 里程碑）**，统一废除早期 `PR-REFINE-01..06` 离散编号并严格复用 `synapse.bridge.hitl` 熔断器（不新建 `hitl_meltdown.py`）：
+完整文件清单、函数签名与测试验证方案见 Layer C 实施总览 **[PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md)（`M10` 里程碑）**，统一废除早期 `PR-REFINE-01..06` 离散编号并严格复用 `synapse.bridge.hitl` 熔断器（不新建 `hitl_meltdown.py`）：
 
 | PR 编号 | 核心交付范畴 | 目标模块 / CLI Stage |
 |---|---|---|

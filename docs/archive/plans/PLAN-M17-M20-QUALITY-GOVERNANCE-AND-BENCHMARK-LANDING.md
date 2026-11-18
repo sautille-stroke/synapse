@@ -1,9 +1,9 @@
 # 细分实施计划：Horizon-5 质量治理、架构收口与 RFC-0063 基准落地 (M17–M20: PR-58 ~ PR-73)
 
 - **计划版本**: `Completed Horizon-5 Landing Blueprint (v1.1) - 100% Merged & Verified`
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 5 / Waves 16–19，**M17–M20** 共 4 大里程碑、**16 个原子 PR**，已全量收官）
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md)（Horizon 5 / Waves 16–19，**M17–M20** 共 4 大里程碑、**16 个原子 PR**，已全量收官）
 - **问题源头审计**: [docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](../audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)（基线 `b98c6e5`，全量 `5×P0 + 8×P1 + 5×P2` 缺陷已 100% 修复闭环）
-- **关联规范**: [docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（状态已更新为 `Implemented`）
+- **关联规范**: [docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](../../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md)（状态已更新为 `Implemented`）
 - **修订日期**: `2026-11-15`
 - **操作模型标识**: `[gemini3.8]`
 
@@ -11,7 +11,7 @@
 
 ## 1. 阶段总览、依赖拓扑与并行波次
 
-Horizon 5 承接 Horizon 4 的未闭环欠账（尤其是完全未实施的 `PR-55`、`#47` 破坏的原生编译链路、`#48/#50` 的 Colab/L-Asset 数据集基建缺陷），并系统性兑现 [SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) 的 5 层测试金字塔与 4 轨道行业横向评测规范。
+Horizon 5 承接 Horizon 4 的未闭环欠账（尤其是完全未实施的 `PR-55`、`#47` 破坏的原生编译链路、`#48/#50` 的 Colab/L-Asset 数据集基建缺陷），并系统性兑现 [SYN-RFC-0063](../../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) 的 5 层测试金字塔与 4 轨道行业横向评测规范。
 
 ```mermaid
 flowchart LR
@@ -123,7 +123,7 @@ flowchart LR
   - `python/synapse/refine/fusion.py`
   - `tests/test_recon_invert_cli.py`, `tests/test_refine_cli_wire.py`
 - **核心变更**：
-  1. 移除 [cli/_recon.py:92-109](../../python/synapse/cli/_recon.py#L92-L109) 与 [cli/_refine.py:63-92](../../python/synapse/cli/_refine.py#L63-L92) 中缺失 `--video` 或路径不存在时的 `np.random.default_rng(42)` 伪帧合成，改为严格抛出 `ContractValidationError (10)`（缺失必需参数）或 `AssetNotFoundError (20)`（路径不存在），携带结构化 `agent_fix_hint`。
+  1. 移除 [cli/_recon.py:92-109](../../../python/synapse/cli/_recon.py#L92-L109) 与 [cli/_refine.py:63-92](../../../python/synapse/cli/_refine.py#L63-L92) 中缺失 `--video` 或路径不存在时的 `np.random.default_rng(42)` 伪帧合成，改为严格抛出 `ContractValidationError (10)`（缺失必需参数）或 `AssetNotFoundError (20)`（路径不存在），携带结构化 `agent_fix_hint`。
   2. 删除 `cli/_refine.py:89` 伪造的 `confidence=0.9` 默认 ROI（避免静默触发 `TiledBypassExecutor` `roi.confidence > 0.8` 旁路），改为从传入 `--roi-meta` / FGPP 提取或强制校验后以合理初始置信度（如 `<= 0.5`）进入真实精修分支。
   3. 修复 `refine/pipeline.py:317-362`：向 `evaluate_refinement_gates` 传入真实的 `original_patch` 与 `refined_patch` 计算 $\Delta E_{00}$ / LPIPS / PSNR，移除非严格模式静默复制原始输入帧作输出的后门（降级时显式标注 `bypassed=True` 并记录原因，严格门禁失败必须抛出 `QualityGateError`）。
   4. 清理 `refine/fusion.py:184` 无意义裸除法语句。
@@ -197,7 +197,7 @@ flowchart LR
      - 同步检测 `importlib.import_module("synapse....")` 与 `__import__("synapse....")` 字符串常量调用；
      - 移除 `len(parts) < 2`（第 97 行）豁免，纳入 `python/synapse/__init__.py` 顶层导出边界检查；
      - 审查并收紧 `201` 行白名单（将跨层共享 DTO 下沉至 `synapse.render_core` 或 `synapse.metrics`，禁止通过白名单隐藏反转依赖）。
-  2. 消除 [vg_bridge.py:181-215](../../python/synapse/bridge/vg_bridge.py#L181-L215) 与 [closed_loop_runner.py:226-229,352-357](../../python/synapse/recon/loop/closed_loop_runner.py#L226-L229) 中的 `importlib.import_module` 绕过：将 `StitchConfig` / `AnatomicalRegion` / 轻量裁剪拼接协议或 `BackendResult` 下沉至公共基础层，令全仓静态 + 动态导入均满足严格单向 DAG。
+  2. 消除 [vg_bridge.py:181-215](../../../python/synapse/bridge/vg_bridge.py#L181-L215) 与 [closed_loop_runner.py:226-229,352-357](../../../python/synapse/recon/loop/closed_loop_runner.py#L226-L229) 中的 `importlib.import_module` 绕过：将 `StitchConfig` / `AnatomicalRegion` / 轻量裁剪拼接协议或 `BackendResult` 下沉至公共基础层，令全仓静态 + 动态导入均满足严格单向 DAG。
 - **验收门禁 (`ubuntu24`)**：
   - `/root/venv-synapse/bin/python tools/import_dag_guard.py --check`
   - `/root/venv-synapse/bin/pytest tests/test_architecture_dag.py -v`

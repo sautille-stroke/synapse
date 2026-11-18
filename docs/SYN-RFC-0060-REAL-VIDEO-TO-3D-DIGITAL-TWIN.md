@@ -6,7 +6,7 @@
 - **文档状态**: `Accepted (v1.1 — Aligned with M9)`
 - **责任体系**: sautille-stroke / DervGen 核心架构组 (`synapse`, `fulgur`, `caelum-core`, `aether`)
 - **关联设计文档 (Layer B)**: [DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md](DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
-- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M9: PR-30 ~ PR-32`)
+- **关联实施计划 (Layer C)**: [PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M9: PR-30 ~ PR-32`)
 - **关联下游闭环**: [SYN-RFC-0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环规范](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
 - **跨仓 SSOT 契约**: `@aether//fgpp` (`fgpp.v1.0`), `@aether//style`, RFC 0039 (`JobBundle`), RFC 0044 (白模粗糙度底线)
 
@@ -86,7 +86,7 @@
 
 ## 6. 实施计划绑定 (`M9: PR-30 ~ PR-32`)
 
-本 RFC 的工程落地完全绑定于 [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 的 **M9 里程碑**：
+本 RFC 的工程落地完全绑定于 [PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) 的 **M9 里程碑**：
 
 | PR | 目标范围 | 核心交付物 |
 |---|---|---|

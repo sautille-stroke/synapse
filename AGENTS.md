@@ -86,14 +86,14 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 
 - **整体设计深度评审与跨文档契约对齐（必读 SSOT）**：[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](docs/DESIGN_REVIEW_AND_ALIGNMENT.md)
 - **全景可落地实施总计划（M1–M36, 149 PRs, `v3.7` — `v3.6.0` 代码批次已合入，Horizon 9 规划就绪）**：[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
-  - 细分执行蓝图：[PLAN-M1-M2](docs/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) · [PLAN-M25-M28](docs/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) · [PLAN-M29-M32](docs/plans/PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md) · [PLAN-M33-M36](docs/plans/PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)
+  - 细分执行蓝图：[PLAN-M1-M2](docs/archive/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md) · [PLAN-M3-M4](docs/archive/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md) · [PLAN-M5](docs/archive/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md) · [PLAN-M6-M7](docs/archive/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) · [PLAN-M8](docs/archive/plans/PLAN-M8-DATA-INSPECTOR-DESKTOP.md) · [PLAN-M9-M12](docs/archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) · [PLAN-M13-M16](docs/archive/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md) · [PLAN-M17-M20](docs/archive/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md) · [PLAN-M21-M24](docs/archive/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md) · [PLAN-M25-M28](docs/archive/plans/PLAN-M25-M28-POST-H6-TRUE-CLOSURE.md) · [PLAN-M29-M32](docs/archive/plans/PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md) · [PLAN-M33-M36](docs/plans/PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)
 - **架构审查与跨仓边界定界**：[docs/AUDIT_AND_ARCHITECTURE.md](docs/AUDIT_AND_ARCHITECTURE.md)
-- **重构后全库架构、工程实现与技术债务深度审计报告（2026-11）**：[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](docs/audits/AUDIT-POST-REFACTOR-2026-11.md)
-- **RFC-0063 与全库质量基线深度评审报告（`b98c6e5`）**：[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
-- **Horizon-5 后全库深度复审与生产硬化审计报告（`e37bfa6`）**：[docs/audits/AUDIT-POST-HORIZON5-2026-11.md](docs/audits/AUDIT-POST-HORIZON5-2026-11.md)
-- **Horizon-6 后全库深度复审报告（`46b3bda`）**：[docs/audits/AUDIT-POST-HORIZON6-2026-11.md](docs/audits/AUDIT-POST-HORIZON6-2026-11.md)
-- **Horizon-7 后全库深度复审报告（`cf2a49f`）**：[docs/audits/AUDIT-POST-HORIZON7-2026-11.md](docs/audits/AUDIT-POST-HORIZON7-2026-11.md)
-- **Horizon-8 后全库整体审查、改进战略与真值复核报告（`df93ac7`）**：[docs/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md](docs/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)
+- **重构后全库架构、工程实现与技术债务深度审计报告（2026-11）**：[docs/audits/AUDIT-POST-REFACTOR-2026-11.md](docs/archive/audits/AUDIT-POST-REFACTOR-2026-11.md)
+- **RFC-0063 与全库质量基线深度评审报告（`b98c6e5`）**：[docs/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md](docs/archive/audits/AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
+- **Horizon-5 后全库深度复审与生产硬化审计报告（`e37bfa6`）**：[docs/audits/AUDIT-POST-HORIZON5-2026-11.md](docs/archive/audits/AUDIT-POST-HORIZON5-2026-11.md)
+- **Horizon-6 后全库深度复审报告（`46b3bda`）**：[docs/audits/AUDIT-POST-HORIZON6-2026-11.md](docs/archive/audits/AUDIT-POST-HORIZON6-2026-11.md)
+- **Horizon-7 后全库深度复审报告（`cf2a49f`）**：[docs/audits/AUDIT-POST-HORIZON7-2026-11.md](docs/archive/audits/AUDIT-POST-HORIZON7-2026-11.md)
+- **Horizon-8 后全库整体审查、改进战略与真值复核报告（`df93ac7`）**：[docs/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md](docs/archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)
 - **行业成熟流水线对比差距与代偿设计规范**：[docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)
 - **行业前沿技术追踪、演进趋势与架构启示录**：[docs/INDUSTRY_TRACKING_AND_TRENDS.md](docs/INDUSTRY_TRACKING_AND_TRENDS.md)
 - **全系统工程设计增强规范**：[docs/DESIGN_SYSTEM_ENHANCEMENT.md](docs/DESIGN_SYSTEM_ENHANCEMENT.md)
@@ -109,7 +109,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **局部解剖智能修正与多模型融合设计规范 (SYN-RFC-0061)**：[SYN-RFC-0061 规范](docs/SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) · [详细设计](docs/DESIGN_LOCAL_REFINEMENT_AND_MULTI_MODEL_FUSION.md)
 - **ForgeKit 解剖局部精修工具链设计规范**：[docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md](docs/DESIGN_FORGEKIT_ANATOMICAL_REFINE_TOOLING.md)
 - **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (SYN-RFC-0062)**：[SYN-RFC-0062 规范](docs/SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
-- **质量保障、测试验证机制与行业横向评测基准规范 (SYN-RFC-0063)**：[SYN-RFC-0063 规范](docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [落地计划 (PLAN-M17-M20)](docs/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)
+- **质量保障、测试验证机制与行业横向评测基准规范 (SYN-RFC-0063)**：[SYN-RFC-0063 规范](docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [落地计划 (PLAN-M17-M20)](docs/archive/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
@@ -123,3 +123,16 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 | **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
 | **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
 | **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |
+
+---
+
+## 7. 生态导航与工具链分发
+
+| 资源 | 路径 |
+|------|------|
+| 生态元仓库 | `../all-overview/` |
+| 全仓库路由表 | `../all-overview/repos/routing.json` |
+| 技能索引 | `../all-overview/devenv-skills/skills/index.yaml` |
+| 架构规范 | `../all-overview/architecture/` |
+| 私有 BCR 与分级工具链镜像规范 (三级地址) | `../all-overview/architecture/bcr-and-tooling-distribution-matrix.md` |
+| 全平台工具链与快速启动全景指南 | `../all-overview/architecture/cross-platform-toolchains-and-quickstart.md` |

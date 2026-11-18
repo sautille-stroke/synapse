@@ -1,7 +1,7 @@
 # 细分执行计划 4：Phase M6–M7 3D 智能微距质检、Visual Jev 判别与物理驱动 RSI 自演进飞轮 (`PR-20` ~ `PR-25`)
 
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M6–M7)
-- **前置设计文档**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) · [docs/DESIGN_RSI_FLYWHEEL.md](../DESIGN_RSI_FLYWHEEL.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-04`, `RV-09`)
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M6–M7)
+- **前置设计文档**: [docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md](../../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) · [docs/DESIGN_RSI_FLYWHEEL.md](../../DESIGN_RSI_FLYWHEEL.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../../DESIGN_REVIEW_AND_ALIGNMENT.md) (`RV-04`, `RV-09`)
 - **覆盖范围**: `PR-20` ~ `PR-25`（共 6 个原子 PR，预估 8.5 人天）
 - **跨仓边界红线**:
   - Tier 0 确定性几何拓扑、退化面、共面+MT 自穿插与连通域门禁统一由本仓自包含的 **`csrc/geometry/` C++20 原生算子 + `synapse.recon.geometry` Python Oracle** 双轨承载（由 `tests/test_geometry_oracle_parity.py` 锁死 100% 一致）；重型四边面重拓扑（QuadWild）、关节刚体 IK 与 Graph-Cut 多视角贴图缝合通过 `synapse.bridge.vg_bridge` 调用 C++20/CUDA 算子，严禁在业务流中手写低效 Python 网格变形循环；

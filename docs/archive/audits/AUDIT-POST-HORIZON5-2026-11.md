@@ -5,7 +5,7 @@
 - **审计日期**: `2026-11-15`
 - **操作模型标识**: `[opus4.6]`
 - **关联修复计划**: [docs/plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md](../plans/PLAN-M21-M24-POST-H5-PRODUCTION-HARDENING.md)（Horizon 6: `M21–M24` / `PR-74 ~ PR-91`）
-- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)
+- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md)
 - **前序基线审计**: [AUDIT-POST-REFACTOR-2026-11.md](AUDIT-POST-REFACTOR-2026-11.md) · [AUDIT-RFC0063-AND-CODEBASE-2026-11.md](AUDIT-RFC0063-AND-CODEBASE-2026-11.md)
 
 ---
@@ -43,8 +43,8 @@
 
 1. **包边界重构与 CLI 模块化基本成型**：原先 2,211 行的单体 `cli/__init__.py` 已拆分为 11 个职责清晰的领域子模块；`synapse.render_core`（2,381 LOC）成功从 `bench/` 剥离了软光栅器、相机与基础几何生成器。
 2. **顶层零重型依赖纪律稳固**：全量 `python/synapse/` 源文件均保持 `torch`、`openexr`、`cv2`、`mitsuba`、`safetensors` 函数内按需懒加载，基础导入无显存/权重隐式分配。
-3. **Agent-Native 错误编码体系完备**：[errors.py](../../python/synapse/errors.py) 与 [telemetry.py](../../python/synapse/telemetry.py) 统一实现了确定性退出码 `ExitCode (0/10/20/30/40/50)`、`agent_fix_hint` 与 W3C `TraceContext`。
-4. **C++20 原生几何核减重完成**：[csrc/geometry](../../csrc/geometry/) 已将底层几何检查去重委托给 `@aether//geo`，补齐了 N-gon 扇形剖分与 pybind11 `gil_scoped_release`。
+3. **Agent-Native 错误编码体系完备**：[errors.py](../../../python/synapse/errors.py) 与 [telemetry.py](../../../python/synapse/telemetry.py) 统一实现了确定性退出码 `ExitCode (0/10/20/30/40/50)`、`agent_fix_hint` 与 W3C `TraceContext`。
+4. **C++20 原生几何核减重完成**：[csrc/geometry](../../../csrc/geometry/) 已将底层几何检查去重委托给 `@aether//geo`，补齐了 N-gon 扇形剖分与 pybind11 `gil_scoped_release`。
 
 ### 1.4 多维健康度评分卡（Post-Horizon-5 真值校准）
 
@@ -91,8 +91,8 @@
 
 #### `[H6-P0-01]` `Cryptomatte.ID` 在 OpenEXR 头中误写为 `FLOAT` 导致 `UINT32` 实体哈希位损坏，且 `cli/_fgpp` 放行并缺依赖假绿
 - **精确位置**:
-  - [python/synapse/fgpp/io.py:134-142](../../python/synapse/fgpp/io.py#L134-L142)
-  - [python/synapse/cli/_fgpp.py:25-28, 55-60, 158](../../python/synapse/cli/_fgpp.py#L25-L60)
+  - [python/synapse/fgpp/io.py:134-142](../../../python/synapse/fgpp/io.py#L134-L142)
+  - [python/synapse/cli/_fgpp.py:25-28, 55-60, 158](../../../python/synapse/cli/_fgpp.py#L25-L60)
   - 上游 SSOT: `aether/fgpp/include/aether/fgpp/fgpp_types.h:85` (`PixelType::Uint32`)
 - **代码实证与根因**:
   - `export_fgpp()` 将 `uint32` 数组通过 `.view(np.float32)` 位重解释并以 `Imath.PixelType(Imath.PixelType.FLOAT)` 写入 OpenEXR 头；当 MurmurHash3 产生的实体哈希高 9 位落在 IEEE-754 signaling NaN 区间（概率约 `1/128`）时，底层 OpenEXR/NumPy 位拷贝或 FPU 读写可能将静默触发 NaN 规范化篡改 bit22，直接违反 `AGENTS.md §1` 红线 #2（`Cryptomatte.ID` `UINT32` 严禁插值与位失真）。
@@ -102,9 +102,9 @@
 
 #### `[H6-P0-02]` `MultiLoRAManager` 注入伪随机噪声、`Cryptomatte` 掩膜丢弃及 `FoundaryHttpTransport` 丢失全部 3D 条件
 - **精确位置**:
-  - [python/synapse/adapters/lora/manager.py:212-240](../../python/synapse/adapters/lora/manager.py#L212-L240)
-  - [python/synapse/adapters/lora/patcher.py:22-76](../../python/synapse/adapters/lora/patcher.py#L22-L76)
-  - [python/synapse/adapters/wan.py:130-141, 471, 579-582](../../python/synapse/adapters/wan.py#L130-L141)
+  - [python/synapse/adapters/lora/manager.py:212-240](../../../python/synapse/adapters/lora/manager.py#L212-L240)
+  - [python/synapse/adapters/lora/patcher.py:22-76](../../../python/synapse/adapters/lora/patcher.py#L22-L76)
+  - [python/synapse/adapters/wan.py:130-141, 471, 579-582](../../../python/synapse/adapters/wan.py#L130-L141)
 - **代码实证与根因**:
   - `MultiLoRAManager._compute_delta()`（`manager.py:212-240`）完全不读取 `manifest.adapter_path` 或校验 `adapter_sha256`，直接依据 `hash(manifest.name)` 用 `torch.randn(...) * 0.01` 生成伪随机权重矩阵；
   - `wan.py:579-580` 调用 `build_spatial_lora_masks(...)` 后立即丢弃返回值，`LoRAPatchHook`（且 `patcher.py:52` 硬编码 `torch.float32`，遇到 `bf16/fp16` 权重直接报错）与 `orthogonalize_conflicting_loras` 零生产调用，`conditions.cryptomatte_id` 在链路中始终为 `None`；
@@ -114,9 +114,9 @@
 
 #### `[H6-P0-03]` `JobBundleWorker` 零像素空跑、`bench_runner.evaluate_bundle` 崩溃与 CLI `bench run` 误返退出码 `10`
 - **精确位置**:
-  - [python/synapse/pipeline/bundle_worker.py:372-375, 856-940](../../python/synapse/pipeline/bundle_worker.py#L372-L375)
-  - [python/synapse/pipeline/bench_runner.py:259, 360](../../python/synapse/pipeline/bench_runner.py#L259-L360)
-  - [python/synapse/cli/_bench.py:119](../../python/synapse/cli/_bench.py#L119) · [python/synapse/cli/_app.py:138](../../python/synapse/cli/_app.py#L138)
+  - [python/synapse/pipeline/bundle_worker.py:372-375, 856-940](../../../python/synapse/pipeline/bundle_worker.py#L372-L375)
+  - [python/synapse/pipeline/bench_runner.py:259, 360](../../../python/synapse/pipeline/bench_runner.py#L259-L360)
+  - [python/synapse/cli/_bench.py:119](../../../python/synapse/cli/_bench.py#L119) · [python/synapse/cli/_app.py:138](../../../python/synapse/cli/_app.py#L138)
 - **代码实证与根因**:
   - `bundle_worker.py:372` 在 `neural_video_generate` 阶段调用 `FGPPSequence.load_metadata()` 而非 `import_fgpp()`，向生成器传入全零像素帧；`run_worker_cli`（`856` 行起）对损坏 JSON 或 Schema 不匹配未包裹结构化错误处理，直接未捕获崩溃返回 `exit 1`；
   - `bench_runner.py:360` 在 `evaluate_bundle()` 中写出 `np.ndarray or np.ndarray` 布尔求值表达式，遇到数组输入必抛 `ValueError: The truth value of an array with more than one element is ambiguous`，且 `run_scenario()` 未传全量 `required_keys` 导致缺项跳过；
@@ -126,10 +126,10 @@
 
 #### `[H6-P0-04]` `FeatureStoreBuilder` 100% 误拒真实样本，且 `training/losses.py` 断梯度未接入训练器
 - **精确位置**:
-  - [python/synapse/training/feature_store.py:299-381](../../python/synapse/training/feature_store.py#L299-L381)
-  - [python/synapse/training/losses.py:34-210](../../python/synapse/training/losses.py#L34-L210)
-  - [python/synapse/training/trainer.py:149-503](../../python/synapse/training/trainer.py#L149-L503)
-  - [python/synapse/training/packager.py:140-300](../../python/synapse/training/packager.py#L140-L300)
+  - [python/synapse/training/feature_store.py:299-381](../../../python/synapse/training/feature_store.py#L299-L381)
+  - [python/synapse/training/losses.py:34-210](../../../python/synapse/training/losses.py#L34-L210)
+  - [python/synapse/training/trainer.py:149-503](../../../python/synapse/training/trainer.py#L149-L503)
+  - [python/synapse/training/packager.py:140-300](../../../python/synapse/training/packager.py#L140-L300)
 - **代码实证与根因**:
   - `FeatureStoreBuilder._validate_ingestion_quality()`（`feature_store.py:322-380`）把 `fgpp_cond` 按 `[T, H, W, 16]` 切片并读取像素列 `flat[0, 7:16]` 校验 `|det(R) - 1| < 1e-5`——实际控制条件通道与相机矩阵维度完全不符，导致任何真实 FGPP 序列 100% 被门禁拒绝，写出 0 样本 `.tar` 分片；
   - `training/losses.py` 使用 `np.asarray` 计算指标并在物理上截断 PyTorch `autograd` 梯度图，且从未被 `StatelessLoRATrainer` 导入调用；
@@ -139,10 +139,10 @@
 
 #### `[H6-P0-05]` `SoftwareRasterizer` 零运动矢量与负 `w_clip` 倒投影 + `composite` 全图模糊与假逆色调映射
 - **精确位置**:
-  - [python/synapse/render_core/rasterizer.py:181-183, 215, 286-316](../../python/synapse/render_core/rasterizer.py#L181-L316)
-  - [python/synapse/composite/blend.py:198-290, 408-455, 581-636](../../python/synapse/composite/blend.py#L198-L636)
-  - [python/synapse/composite/detector.py:293-331](../../python/synapse/composite/detector.py#L293-L331)
-  - [python/synapse/style/aces_color.py:119-129](../../python/synapse/style/aces_color.py#L119-L129)
+  - [python/synapse/render_core/rasterizer.py:181-183, 215, 286-316](../../../python/synapse/render_core/rasterizer.py#L181-L316)
+  - [python/synapse/composite/blend.py:198-290, 408-455, 581-636](../../../python/synapse/composite/blend.py#L198-L636)
+  - [python/synapse/composite/detector.py:293-331](../../../python/synapse/composite/detector.py#L293-L331)
+  - [python/synapse/style/aces_color.py:119-129](../../../python/synapse/style/aces_color.py#L119-L129)
 - **代码实证与根因**:
   - `SoftwareRasterizer` 从未向 `mv_buf` 写入像素（`line 303` `_pts_world` 标注 `# noqa: F841`，导出运动矢量全 0），跨越近裁剪面三角形未裁剪即除以负 `w_clip` 造成屏幕倒投影与非透视线性深度插值；
   - `composite_optical_increments()`（`blend.py:581`）用分段常数 Cryptomatte 作为 `_guided_filter_box` 引导对**整幅视频底片 RGB** 进行 `9×9` 双盒滤波（造成背景全局糊化），且调用的 `_fallback_soft_knee_inverse_tonemap`（`aces_color.py:123-129`，`threshold=4.0` 叠加 `tanh` 压缩）实为前向非线性压缩器，在 `[0,1]` 上恒等无逆色调映射展开效果；
@@ -152,11 +152,11 @@
 
 #### `[H6-P0-06]` `recon/delight.py` 恒等相除空操作与多视角逆向管线断裂
 - **精确位置**:
-  - [python/synapse/recon/delight.py:148, 160, 185-216, 288-359](../../python/synapse/recon/delight.py#L148-L359)
-  - [python/synapse/recon/tracking.py:16-133](../../python/synapse/recon/tracking.py#L16-L133)
-  - [python/synapse/recon/multiview.py:115-117, 429, 522](../../python/synapse/recon/multiview.py#L115-L522)
-  - [python/synapse/pipeline/stages/recon.py:64-65](../../python/synapse/pipeline/stages/recon.py#L64-L65)
-  - [python/synapse/inspect/geometry_gate.py:125-180](../../python/synapse/inspect/geometry_gate.py#L125-L180) · [python/synapse/recon/geometry.py:292-394](../../python/synapse/recon/geometry.py#L292-L394)
+  - [python/synapse/recon/delight.py:148, 160, 185-216, 288-359](../../../python/synapse/recon/delight.py#L148-L359)
+  - [python/synapse/recon/tracking.py:16-133](../../../python/synapse/recon/tracking.py#L16-L133)
+  - [python/synapse/recon/multiview.py:115-117, 429, 522](../../../python/synapse/recon/multiview.py#L115-L522)
+  - [python/synapse/pipeline/stages/recon.py:64-65](../../../python/synapse/pipeline/stages/recon.py#L64-L65)
+  - [python/synapse/inspect/geometry_gate.py:125-180](../../../python/synapse/inspect/geometry_gate.py#L125-L180) · [python/synapse/recon/geometry.py:292-394](../../../python/synapse/recon/geometry.py#L292-L394)
 - **代码实证与根因**:
   - `decompose_intrinsic()` 与 `delight_multiview_albedo()`（`delight.py:185, 288`）都将 `rad` 同时作为 `albedo` 与 `radiance` 传入 `delight(rad, norm, rad)`（本质计算 `rad / rad == 1.0`，高光与阴影 100% 原封不动），对 2D 视角图片不做相机反投 UV 直接平均，还对 `max > 1.5` 的线性 HDR 浮点输入执行 `/ 255.0` 压黑，并用 `A * (I / A) == I` 计算恒零 $\Delta E$ 残差；
   - `solve_point_tracks()` 使用全局 R/G 强度均值差代替真实点追踪；`tracking.py` 输出 `c2w` 而 `multiview.py` 当作 `w2c`；空体素 Marching Cubes 返回 `zeros((3,3))` 退化面；`stages/recon.py:64` 仅写盘 `vertices` 丢失 `faces`；`geometry_gate.py:125-180` 访问 `_c_geometry` 返回字典的 `.is_manifold` 属性触发 `AttributeError` 后静默回退 Python；`quad_remesh` 对奇数剩余三角形生成 `[a,b,c,c]` 非流形退化边。
@@ -165,11 +165,11 @@
 
 #### `[H6-P0-07]` `refine/` 默认原图直通空操作与 `ScalpelStitcher` 纯黑光晕 / HDR 截断
 - **精确位置**:
-  - [python/synapse/refine/hand.py:50, 141-195](../../python/synapse/refine/hand.py#L50-L195)
-  - [python/synapse/refine/face.py:190, 213-254](../../python/synapse/refine/face.py#L190-L254)
-  - [python/synapse/refine/stitcher.py:143-178, 287, 328, 402](../../python/synapse/refine/stitcher.py#L143-L287)
-  - [python/synapse/refine/fusion.py:183, 314](../../python/synapse/refine/fusion.py#L183-L314)
-  - [python/synapse/refine/pipeline.py:194, 260, 301](../../python/synapse/refine/pipeline.py#L194-L301)
+  - [python/synapse/refine/hand.py:50, 141-195](../../../python/synapse/refine/hand.py#L50-L195)
+  - [python/synapse/refine/face.py:190, 213-254](../../../python/synapse/refine/face.py#L190-L254)
+  - [python/synapse/refine/stitcher.py:143-178, 287, 328, 402](../../../python/synapse/refine/stitcher.py#L143-L287)
+  - [python/synapse/refine/fusion.py:183, 314](../../../python/synapse/refine/fusion.py#L183-L314)
+  - [python/synapse/refine/pipeline.py:194, 260, 301](../../../python/synapse/refine/pipeline.py#L194-L301)
 - **代码实证与根因**:
   - 当 `priors=None` 或 `gallery=None` 时，`HandRefiner.refine()` 与 `FaceRefiner.refine()` 不做像素修改即返回“成功”；
   - `ScalpelStitcher` 在 `stitcher.py:143` 将前景裁切粘贴进全零画布 `fg_full`，随后通过 `generate_surgical_mask` 向外膨胀 `8–24px`，使全零（纯黑）外圈像素参与 `border_ring_lab_match` 与 `laplacian_pyramid_blend`，在精修 ROI 四周引入永久性纯黑光晕，且 `_acescg_to_srgb_f32` 在拼合前后把全幅线性 ACEScg HDR 强行截断至 `[0,1]`；
@@ -179,8 +179,8 @@
 
 #### `[H6-P0-08]` 9 维 RGB 均值冒充 FVD 与 3D 关键指标门禁方向反转
 - **精确位置**:
-  - [python/synapse/metrics/temporal.py:222, 237-290](../../python/synapse/metrics/temporal.py#L222-L290)
-  - [python/synapse/metrics/profiles.py:31-59, 230](../../python/synapse/metrics/profiles.py#L31-L59)
+  - [python/synapse/metrics/temporal.py:222, 237-290](../../../python/synapse/metrics/temporal.py#L222-L290)
+  - [python/synapse/metrics/profiles.py:31-59, 230](../../../python/synapse/metrics/profiles.py#L31-L59)
 - **代码实证与根因**:
   - `compute_fvd_from_videos()`（`temporal.py:237-290`）在函数内导入 `torch` 与 `torchvision`（标记 `# noqa: F401` 并丢弃），转而提取每帧 RGB 均值/标准差/帧间差共 **9 维纯颜色统计量**充当 I3D 时空特征，对形状变化和时序闪屏完全盲区；同时 `fvd_feature_distance()`（`222` 行）未给协方差加 $\epsilon I$ 正则，全套测试运行稳定触发 `LinAlgWarning: Matrix is singular`；
   - `profiles.py:31-59` 的 `_METRIC_DIRECTIONS` 遗漏 `f_score_5mm` 与 `watertight_pct`；第 `230` 行 `.get(name, _LOWER)` 默认回落至 `lower_is_better`——**结果导致 `watertight_pct = 100.0%` 与阈值比较为 `100 > 95 -> FAIL`，而 `0%` 破洞模型 `0 <= 95 -> PASS`**！
@@ -189,8 +189,8 @@
 
 #### `[H6-P0-09]` `inspector_app.cc` 泄露 POSIX 头文件 + Windows 死锁 + OBJ 越界读 `SIGSEGV` + `-DNDEBUG` 测试断言全蒸发
 - **精确位置**:
-  - [tools/data-inspector/native/inspector_app.cc:8-11, 42-45, 113-174, 220-237, 474-578](../../tools/data-inspector/native/inspector_app.cc#L8-L45)
-  - [tools/data-inspector/native/test_inspector.cc:7, 25-185](../../tools/data-inspector/native/test_inspector.cc#L7-L185)
+  - [tools/data-inspector/native/inspector_app.cc:8-11, 42-45, 113-174, 220-237, 474-578](../../../tools/data-inspector/native/inspector_app.cc#L8-L45)
+  - [tools/data-inspector/native/test_inspector.cc:7, 25-185](../../../tools/data-inspector/native/test_inspector.cc#L7-L185)
 - **代码实证与根因**:
   - 直接 `#include <poll.h>` / `<unistd.h>`，直接违反生态 Always-On Rule #9（OS 差异必须收敛至 `@aether//pal`）；在 Windows 上 `poll()` 被宏屏蔽后 `std::getline(std::cin, ...)` 永久阻塞，导致析构阶段 `m_stdinThread.join()` 死锁；
   - OBJ 解析虽跳过越界索引的面法线计算，但未把非法面从 `m_mesh.faces` 删除，使 `renderFrame()`（`line 479`）发生堆越界读 `SIGSEGV`；渲染器缺少 Z-Buffer（正背面直接覆盖）、不支持负相对索引及 Quad 第 4 顶点、完全不解析 `.glb` 与 `.exr`（加载真实 Bundle 静默画 8 顶点方块）；
@@ -200,9 +200,9 @@
 
 #### `[H6-P0-10]` Electron SHM 读取在 macOS/Windows 100% 失效 + `InspectionBundle` 四方契约分裂
 - **精确位置**:
-  - [tools/data-inspector/electron/shm-reader.js:36-49, 114-156](../../tools/data-inspector/electron/shm-reader.js#L36-L156) · [electron/main.js:134](../../tools/data-inspector/electron/main.js#L134)
-  - [schemas/bundle.v1.0.schema.json:14](../../schemas/bundle.v1.0.schema.json#L14) · [python/synapse/bench/bundle_exporter.py:36, 95-98](../../python/synapse/bench/bundle_exporter.py#L36-L98)
-  - [tools/data-inspector/renderer/src/app.js:67-69, 113-122, 193-196](../../tools/data-inspector/renderer/src/app.js#L67-L196)
+  - [tools/data-inspector/electron/shm-reader.js:36-49, 114-156](../../../tools/data-inspector/electron/shm-reader.js#L36-L156) · [electron/main.js:134](../../../tools/data-inspector/electron/main.js#L134)
+  - [schemas/bundle.v1.0.schema.json:14](../../../schemas/bundle.v1.0.schema.json#L14) · [python/synapse/bench/bundle_exporter.py:36, 95-98](../../../python/synapse/bench/bundle_exporter.py#L36-L98)
+  - [tools/data-inspector/renderer/src/app.js:67-69, 113-122, 193-196](../../../tools/data-inspector/renderer/src/app.js#L67-L196)
 - **代码实证与根因**:
   - `shm-reader.js` 在非 Linux 平台查找 `os.tmpdir()/shmName` 磁盘文件，而 `@aether//pal:shm` 调用内核 `shm_open` / `CreateFileMappingW` 从不写入 `/tmp` 或 `%TEMP%`，导致 macOS/Windows 下 `fs.existsSync` 恒返回 `false`（且 macOS `PSHMNAMLEN=31`）；Linux 仍每帧拷贝整块 RGBA 经 Electron IPC 发送；
   - `bundle.v1.0.schema.json` 锁死 `"const": "synapse.bundle.v1.0"`，`bundle_exporter.py` 锁死 `"inspection.v1.0"`，而 `test/fixtures/*/bundle.json` 使用裸字符串 `sources` 令两者都失败；UI `app.js` 直接字符串化 `SourceEntry` 显示 `[object Object]`，点击视图 Tab 向 `validateNativeCommand` 发送 `'source'|'animation'` 必然触发未捕获 Promise 异常。
