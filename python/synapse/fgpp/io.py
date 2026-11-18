@@ -503,7 +503,7 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
         zero_mask = norms.squeeze(-1) < 1e-8
         # Avoid division by zero
         safe_norms = np.where(norms > 1e-8, norms, 1.0)
-        normal = normal / safe_norms
+        normal = (normal / safe_norms).astype(np.float32)
         normal[zero_mask] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
         normal = normal.astype(frame.world_normal.dtype)
 

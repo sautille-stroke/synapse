@@ -97,7 +97,7 @@ def handle_video_to_3d_invert(
 
     # De-light albedo if geometry available
     if result.mesh is not None and result.mesh.normals is not None:
-        albedo = delight_multiview_albedo(
+        albedo_res = delight_multiview_albedo(
             frames=frames,
             cameras=result.camera_trajectory.extrinsics if result.camera_trajectory else [],
             mesh=result.mesh,
@@ -108,7 +108,7 @@ def handle_video_to_3d_invert(
         )
         p_albedo = Path(albedo_path)
         p_albedo.parent.mkdir(parents=True, exist_ok=True)
-        np.save(str(p_albedo), albedo)
+        np.save(str(p_albedo), albedo_res.albedo)
         output_paths["albedo"] = str(p_albedo)
 
     return {"output_paths": output_paths}
@@ -272,7 +272,7 @@ def handle_delight_albedo(
             ),
         )
 
-    albedo = delight_multiview_albedo(
+    albedo_res = delight_multiview_albedo(
         frames=frames,
         cameras=(result.camera_trajectory.extrinsics if result.camera_trajectory else []),
         mesh=result.mesh,
@@ -288,6 +288,6 @@ def handle_delight_albedo(
         p_albedo = p_albedo.with_suffix(p_albedo.suffix + ".npy")
     p_albedo.parent.mkdir(parents=True, exist_ok=True)
     with open(p_albedo, "wb") as f_out:
-        np.save(f_out, albedo)
+        np.save(f_out, albedo_res.albedo)
 
     return {"output_paths": {"albedo": str(p_albedo)}}

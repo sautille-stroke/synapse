@@ -38,7 +38,7 @@ def gaussian_kernel_1d(sigma: float, radius: int) -> np.ndarray:
     """
     x = np.arange(-radius, radius + 1, dtype=np.float64)
     k = np.exp(-0.5 * (x / max(sigma, _EPS)) ** 2)
-    return k / k.sum()
+    return np.asarray(k / k.sum())
 
 
 # ---------------------------------------------------------------------------

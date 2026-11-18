@@ -350,7 +350,7 @@ class HandRefiner:
         # horizontal cluster in the topmost rows is a finger.
         labels, n_components = _label_connected_components(finger_zone)
         # Filter out tiny components (noise)
-        min_finger_pixels = max(2, finger_zone.sum() // 20)
+        min_finger_pixels = max(2, int(finger_zone.sum()) // 20)
         finger_count = 0
         for lab in range(1, n_components + 1):
             if int(np.sum(labels == lab)) >= min_finger_pixels:
