@@ -778,9 +778,8 @@ class MultiViewInitializer:
 
             in_bounds = valid_z & (ui >= 0) & (ui < w) & (vi_arr >= 0) & (vi_arr < h)
 
-            # Carve: voxels NOT in the frustum are carved (assumed outside),
-            # and voxels that project onto background are also carved.
-            carve = ~in_bounds  # Out-of-frustum voxels are outside
+            # Carve: only carve voxels within the camera frustum that project onto background!
+            carve = np.zeros(len(cam_pts), dtype=bool)
             if np.any(in_bounds):
                 carve[in_bounds] = mask[vi_arr[in_bounds], ui[in_bounds]] <= 0.5
 
