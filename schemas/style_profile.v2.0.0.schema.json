@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapse.dervgen.dev/schemas/style_profile.v2.0.0.schema.json",
+  "title": "StyleProfile v2.0.0",
+  "description": "Schema for Synapse StyleDescriptor / StyleProfile v2.0.0 wire format.",
+  "type": "object",
+  "required": ["working_colorspace"],
+  "properties": {
+    "working_colorspace": {
+      "type": "string",
+      "default": "ACEScg",
+      "description": "Working colorspace for the style pipeline."
+    },
+    "color_temp_kelvin": {
+      "type": "number",
+      "minimum": 1000,
+      "maximum": 40000,
+      "default": 6500,
+      "description": "Color temperature in Kelvin."
+    },
+    "tint": {
+      "type": "number",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "default": 0.0,
+      "description": "Green-magenta tint shift."
+    },
+    "exposure_ev": {
+      "type": "number",
+      "minimum": -10.0,
+      "maximum": 10.0,
+      "default": 0.0,
+      "description": "Exposure compensation in EV."
+    },
+    "contrast": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "default": 1.0,
+      "description": "Contrast multiplier."
+    },
+    "saturation": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "default": 1.0,
+      "description": "Saturation multiplier."
+    },
+    "key_light_dir_world": {
+      "type": "array",
+      "items": {"type": "number"},
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Key light direction in world space [x, y, z]."
+    },
+    "key_light_rgb": {
+      "type": "array",
+      "items": {"type": "number", "minimum": 0.0},
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Key light RGB color [r, g, b]."
+    },
+    "ambient_ratio": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.3,
+      "description": "Ambient to key light ratio."
+    },
+    "grain_sigma": {
+      "type": "number",
+      "minimum": 0.0,
+      "default": 0.0,
+      "description": "Film grain sigma."
+    },
+    "vignette_strength": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.0,
+      "description": "Vignette effect strength."
+    },
+    "tone_curve_lut_1d": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "items": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+        }
+      ],
+      "default": null,
+      "description": "Optional 1D tone curve LUT."
+    }
+  }
+}

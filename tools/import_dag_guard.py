@@ -164,6 +164,13 @@ class _ImportVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self._record(alias.name)
+            # Intercept bare `import synapse` in non-__init__.py modules
+            # to prevent PEP 562 __getattr__ DAG bypass
+            if alias.name == "synapse" and self.source_pkg != "__init__":
+                self.errors.append(
+                    f"Bare 'import synapse' at line {node.lineno} "
+                    f"(bypasses DAG via PEP 562 __getattr__)"
+                )
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -433,6 +440,17 @@ def validate(
         Fatal errors (SyntaxError, non-constant dynamic imports, unregistered packages).
     """
     all_edges, toplevel_edges, pkg_files, errors = scan_import_dag(root)
+
+    # Verify all discovered sub-packages in pkg_files are registered in TIER_MAP
+    for pkg_name in sorted(pkg_files.keys()):
+        if pkg_name == "__init__" or pkg_name.startswith(_PRIVATE_PREFIX):
+            continue
+        if pkg_name not in TIER_MAP:
+            errors.append(
+                f"Discovered sub-package {pkg_name!r} (files: {sorted(pkg_files[pkg_name])[:3]}) "
+                f"is not registered in TIER_MAP"
+            )
+
     all_pkgs = set()
     for u, v in all_edges:
         all_pkgs.add(u)

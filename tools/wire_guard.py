@@ -411,6 +411,22 @@ def _check_json_schemas() -> list[str]:
                         f"Python {cls_name} fields: {sorted(missing_in_py)}"
                     )
 
+                # Bidirectional: compare with Pydantic model_json_schema()
+                if hasattr(cls, "model_json_schema"):
+                    try:
+                        pydantic_schema = cls.model_json_schema()
+                        pydantic_props = set(pydantic_schema.get("properties", {}).keys())
+                        schema_diff = pydantic_props.symmetric_difference(schema_props)
+                        if schema_diff:
+                            errors.append(
+                                f"Schema '{filename}': Pydantic model_json_schema() <-> "
+                                f"JSON Schema properties drift: {sorted(schema_diff)}"
+                            )
+                    except Exception as e:
+                        errors.append(
+                            f"Schema '{filename}': model_json_schema() failed: {e}"
+                        )
+
                 # Validate default instantiated schema_version
                 inst = None
                 try:
@@ -462,6 +478,23 @@ def _check_json_schemas() -> list[str]:
                     _validate_sub_constraints(def_spec, f"$defs.{def_name}")
 
         _validate_sub_constraints(schema, "")
+
+    # Scan for any unregistered schema files
+    if _SCHEMA_DIR.is_dir():
+        all_schema_files = {f.name for f in _SCHEMA_DIR.iterdir() if f.suffix == ".json"}
+        registered = set(_SCHEMA_FILES.keys())
+        unregistered = all_schema_files - registered
+        for uf in sorted(unregistered):
+            # Validate basic JSON Schema structure for unregistered files
+            uf_path = _SCHEMA_DIR / uf
+            try:
+                uf_schema = json.loads(uf_path.read_text(encoding="utf-8"))
+                if "$schema" not in uf_schema:
+                    errors.append(f"Unregistered schema '{uf}' missing '$schema' meta-field")
+                if uf_schema.get("type") != "object":
+                    errors.append(f"Unregistered schema '{uf}' top-level type is not 'object'")
+            except (json.JSONDecodeError, OSError) as e:
+                errors.append(f"Unregistered schema '{uf}' is not valid JSON: {e}")
 
     return errors
 
