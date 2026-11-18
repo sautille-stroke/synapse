@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
+import numpy as np
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -77,7 +79,7 @@ def _cmd_recon_invert_video(
             try:
                 from synapse.recon.loop.texture_extractor import extract_and_pack_pbr_textures
 
-                pbr = extract_and_pack_pbr_textures(
+                extract_and_pack_pbr_textures(
                     result.delight.albedo,
                     output_dir=str(output_dir / "textures"),
                 )
@@ -108,20 +110,20 @@ def _load_fgpp_exr_dir(fgpp_dir: Path) -> dict[str, Any]:
     """Load FGPP OpenEXR channel files from a directory.
 
     Reads ``*.exr`` files from the given directory and returns them
-    as numpy arrays keyed by stem name.  Falls back to an empty dict
+    as FGPP frames keyed by stem name.  Falls back to an empty dict
     if ``OpenEXR`` is not available.
     """
     result: dict[str, Any] = {}
     try:
-        from synapse.fgpp.reader import read_fgpp_exr
+        from synapse.fgpp.io import import_fgpp
     except ImportError:
         # OpenEXR not available — return empty conditioning
         return result
 
     for exr_file in sorted(fgpp_dir.glob("*.exr")):
         try:
-            channels = read_fgpp_exr(str(exr_file))
-            result[exr_file.stem] = channels
+            frame = import_fgpp(exr_file)
+            result[exr_file.stem] = frame
         except Exception:
             continue
     return result
@@ -129,13 +131,11 @@ def _load_fgpp_exr_dir(fgpp_dir: Path) -> dict[str, Any]:
 
 def _write_obj(
     path: Path,
-    vertices: "np.ndarray",
-    faces: "np.ndarray",
-    uvs: "np.ndarray | None" = None,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray | None = None,
 ) -> None:
     """Write a simple Wavefront OBJ file."""
-    import numpy as np
-
     with open(path, "w", encoding="utf-8") as f:
         f.write("# Synapse reconstructed mesh\n")
         for v in np.asarray(vertices):

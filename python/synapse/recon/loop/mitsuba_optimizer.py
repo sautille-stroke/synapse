@@ -523,6 +523,13 @@ class MitsubaInverseOptimizer:
                     "use AnalyticUVInverseOptimizer for CPU-only mode."
                 ),
             )
+        return self.optimize_material_from_video(
+            frames=kwargs["frames"],
+            normals=kwargs["normals"],
+            uv_maps=kwargs["uv_maps"],
+            light_dirs=kwargs.get("light_dirs"),
+            config=kwargs.get("config"),
+        )
 
 
 # ---------------------------------------------------------------------------

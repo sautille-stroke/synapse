@@ -9,7 +9,6 @@ from synapse.cli.common import (
     AssetNotFoundError,
     ContractValidationError,
     ExitCode,
-    NotImplementedStageError,
     Path,
     QualityGateError,
     SynapseError,
@@ -125,13 +124,13 @@ def _cmd_lora_train(
     # Wire to StatelessLoRATrainer with a small test model
     try:
         import torch
-    except ImportError:
+    except ImportError as err:
         from synapse.errors import BackendUnavailableError
 
         raise BackendUnavailableError(
             "PyTorch is required for 'synapse lora train'",
             agent_fix_hint="Install torch via 'pip install torch'.",
-        )
+        ) from err
 
     from synapse.training.feature_store import (
         iter_feature_shards,

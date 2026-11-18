@@ -23,7 +23,10 @@ __all__ = [
     "soft_knee_forward_tonemap",
     "soft_knee_tonemap",
     "rgb_to_cielab",
+    "rgb_to_lab",
     "ciede2000_delta_e",
+    "SRGB_TO_AP1",
+    "AP1_TO_SRGB",
 ]
 
 # ---------------------------------------------------------------------------
@@ -112,6 +115,10 @@ _M_SRGB_TO_ACESCG: np.ndarray = np.array(
 )
 
 _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
+
+# Public colour-space transformation matrices
+SRGB_TO_AP1: np.ndarray = _M_SRGB_TO_ACESCG
+AP1_TO_SRGB: np.ndarray = _M_ACESCG_TO_SRGB
 
 
 def _fallback_linear_srgb_to_acescg(rgb: np.ndarray) -> np.ndarray:
@@ -427,6 +434,20 @@ def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
         return cast(np.ndarray, _native_rgb_to_cielab(rgb_linear))
     _warn_fallback()
     return _fallback_rgb_to_cielab(rgb_linear)
+
+
+def rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
+    """Convert RGB to CIE L*a*b*, accepting either linear or non-linear sRGB.
+
+    Args:
+        rgb: Color array, values in [0, 1], shape (..., 3).
+        is_linear: If True, input is already linear (skips sRGB expansion).
+
+    Returns:
+        CIE Lab array with shape (..., 3) where channels are [L, a, b].
+    """
+    lin = np.asarray(rgb, dtype=np.float64) if is_linear else srgb_to_linear(rgb)
+    return rgb_to_cielab(lin)
 
 
 def ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:

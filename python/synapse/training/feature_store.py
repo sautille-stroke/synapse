@@ -343,7 +343,7 @@ class FeatureStoreBuilder:
             if self._stream_tar is None:
                 name = f"shard-{self._stream_shard_idx:05d}.tar"
                 self._stream_path = self._stream_output_dir / name
-                self._stream_tar = tarfile.open(self._stream_path, "w")
+                self._stream_tar = tarfile.open(self._stream_path, "w")  # noqa: SIM115
                 self._stream_shard_idx += 1
                 self._stream_shard_paths.append(self._stream_path)
                 self._stream_shard_size = 0

@@ -579,26 +579,31 @@ class TestReconPipelineEndToEnd:
         )
 
         for _ in range(n_subdivisions):
-            edge_midpoints: dict = {}
+            edge_midpoints: dict[tuple[int, int], int] = {}
             new_faces = []
             new_verts_list = list(verts)
 
-            def _get_mid(a: int, b: int) -> int:
+            def _get_mid(
+                a: int,
+                b: int,
+                verts_list: list[np.ndarray],
+                midpoints: dict[tuple[int, int], int],
+            ) -> int:
                 key = (min(a, b), max(a, b))
-                if key in edge_midpoints:
-                    return edge_midpoints[key]
-                mid = (new_verts_list[a] + new_verts_list[b]) / 2.0
+                if key in midpoints:
+                    return midpoints[key]
+                mid = (verts_list[a] + verts_list[b]) / 2.0
                 mid = mid / np.linalg.norm(mid)  # project to sphere
-                idx = len(new_verts_list)
-                new_verts_list.append(mid)
-                edge_midpoints[key] = idx
+                idx = len(verts_list)
+                verts_list.append(mid)
+                midpoints[key] = idx
                 return idx
 
             for tri in faces:
                 v0, v1, v2 = int(tri[0]), int(tri[1]), int(tri[2])
-                a = _get_mid(v0, v1)
-                b = _get_mid(v1, v2)
-                c = _get_mid(v0, v2)
+                a = _get_mid(v0, v1, new_verts_list, edge_midpoints)
+                b = _get_mid(v1, v2, new_verts_list, edge_midpoints)
+                c = _get_mid(v0, v2, new_verts_list, edge_midpoints)
                 new_faces.extend([
                     [v0, a, c], [a, v1, b], [c, b, v2], [a, b, c],
                 ])

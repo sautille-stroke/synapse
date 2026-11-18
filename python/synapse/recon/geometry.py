@@ -22,6 +22,7 @@ alignment, and quad-dominant remeshing — utilities used by the recon pipeline.
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 import numpy as np
 
@@ -280,7 +281,7 @@ def refine_pose_6dof(
     _has_scipy_tree = False
     if not _has_cg_bvh:
         try:
-            from scipy.spatial import cKDTree  # noqa: F811
+            from scipy.spatial import cKDTree
 
             _has_scipy_tree = True
         except ImportError:
@@ -291,7 +292,7 @@ def refine_pose_6dof(
     ) -> tuple[np.ndarray, np.ndarray]:
         """Find nearest-neighbor indices and distances from source to target."""
         if _has_cg_bvh:
-            return _cg.bvh_closest_points(target, source)
+            return cast(tuple[np.ndarray, np.ndarray], _cg.bvh_closest_points(target, source))
         elif _has_scipy_tree:
             tree = cKDTree(target)
             d, idx = tree.query(source, k=1)

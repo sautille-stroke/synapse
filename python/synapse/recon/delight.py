@@ -17,6 +17,8 @@ and edge-preserving Retinex reflectance recovery.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 from synapse.recon.types import CameraExtrinsics, DelightResult, MeshGeometry
@@ -460,7 +462,7 @@ def _rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
     try:
         from synapse.style.aces_color import rgb_to_lab as _style_rgb_to_lab
 
-        return _style_rgb_to_lab(rgb, is_linear=is_linear)
+        return cast(np.ndarray, _style_rgb_to_lab(rgb, is_linear=is_linear))
     except (ImportError, AttributeError):
         pass
 
