@@ -46,8 +46,16 @@ _SRGB_TO_AP1_INLINE: np.ndarray = np.array(
 _AP1_TO_SRGB_INLINE: np.ndarray = np.linalg.inv(_SRGB_TO_AP1_INLINE)
 
 # Select active matrices
-_SRGB_TO_AP1: np.ndarray = _SRGB_TO_AP1_EXT if _USE_STYLE_MODULE else _SRGB_TO_AP1_INLINE
-_AP1_TO_SRGB: np.ndarray = _AP1_TO_SRGB_EXT if _USE_STYLE_MODULE else _AP1_TO_SRGB_INLINE
+_SRGB_TO_AP1: np.ndarray = (
+    _SRGB_TO_AP1_EXT
+    if (_USE_STYLE_MODULE and _SRGB_TO_AP1_EXT is not None)
+    else _SRGB_TO_AP1_INLINE
+)
+_AP1_TO_SRGB: np.ndarray = (
+    _AP1_TO_SRGB_EXT
+    if (_USE_STYLE_MODULE and _AP1_TO_SRGB_EXT is not None)
+    else _AP1_TO_SRGB_INLINE
+)
 
 
 # -- Phase-locking -----------------------------------------------------------
