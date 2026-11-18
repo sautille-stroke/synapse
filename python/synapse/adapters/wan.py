@@ -716,8 +716,12 @@ class WanAdapter(VideoModelAdapter):
                 if len(depth_maps) == len(fgpp_frames):
                     depth = np.stack(depth_maps, axis=0)
             if mv is None and fgpp_frames:
-                mv_maps = [getattr(f, "motion_vector", None) for f in fgpp_frames]
-                if all(m is not None for m in mv_maps):
+                mv_maps = [
+                    m
+                    for f in fgpp_frames
+                    if (m := getattr(f, "motion_vector", None)) is not None
+                ]
+                if len(mv_maps) == len(fgpp_frames):
                     mv = np.stack(mv_maps, axis=0)
 
             if (

@@ -68,9 +68,9 @@ class DiffusersWanBackend(WanBackendTransport):
         if self._pipeline is not None or self._transformer is not None:
             return True
         try:
-            import diffusers  # noqa: F401
+            import diffusers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
             import torch  # noqa: F401
-            import transformers  # noqa: F401
+            import transformers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
 
             return True
         except ImportError:
@@ -98,8 +98,8 @@ class DiffusersWanBackend(WanBackendTransport):
             ) from exc
 
         try:
-            import diffusers
-            import transformers  # noqa: F401
+            import diffusers  # type: ignore[import-not-found,import-untyped]
+            import transformers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
         except ImportError as exc:
             raise BackendUnavailableError(
                 "diffusers and transformers are required for DiffusersWanBackend.",
@@ -219,7 +219,9 @@ class DiffusersWanBackend(WanBackendTransport):
         try:
             output = self._pipeline(**call_kwargs)
             frames = output.frames[0]  # [T, H, W, 3] in [0, 1] float
-            frames_u8 = np.clip(np.rint(frames * 255.0), 0, 255).astype(np.uint8)
+            frames_u8: np.ndarray = np.asarray(
+                np.clip(np.rint(frames * 255.0), 0, 255).astype(np.uint8)
+            )
             return frames_u8
         except Exception as exc:
             raise BackendUnavailableError(
