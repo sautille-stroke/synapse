@@ -145,6 +145,7 @@ class InspectorShmServer {
   uint32_t m_height = 0;
   uint32_t m_stagingIdx = 0;
   bool m_unlinkOnClose = true;
+  std::string m_shmFilePath;  ///< File path for file-backed SHM cleanup.
 };
 
 }  // namespace synapse::inspector

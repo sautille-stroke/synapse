@@ -158,9 +158,11 @@ class ShmFrameReader extends EventEmitter {
     this._lastFrameReady = 0;
     this._headerBuf = Buffer.alloc(HEADER_SIZE);
     this._headerBuf2 = Buffer.alloc(HEADER_SIZE);
-    // Pre-allocated pixel buffers for zero-copy frame reuse.
-    // Only reallocated when frame dimensions change.
-    this._pixelBuf = null;
+    // 3-slot buffer rotation pool: ensures that a pendingFrame.pixels held by
+    // main.js 33ms throttle is never overwritten by the next pollOnce() call.
+    // Slot 0 is returned by pollOnce(), slot 1 and 2 are available for reuse.
+    this._bufferPool = [null, null, null];
+    this._bufferPoolIdx = 0;
     this._pixelBufSize = 0;
   }
 
@@ -225,12 +227,20 @@ class ShmFrameReader extends EventEmitter {
         const slot = header1.writeIdx % header1.bufferCount;
         const pixelOffset = HEADER_SIZE + slot * frameBytes;
 
-        // Reuse pixel buffer if size matches, otherwise reallocate
-        if (!this._pixelBuf || this._pixelBufSize !== frameBytes) {
-          this._pixelBuf = Buffer.allocUnsafe(frameBytes);
+        // 3-slot buffer rotation: pick the next slot so that a previously
+        // returned pixels Buffer (still held by main.js throttle) is never
+        // overwritten by this read.
+        if (this._pixelBufSize !== frameBytes) {
+          this._bufferPool = [
+            Buffer.allocUnsafe(frameBytes),
+            Buffer.allocUnsafe(frameBytes),
+            Buffer.allocUnsafe(frameBytes),
+          ];
+          this._bufferPoolIdx = 0;
           this._pixelBufSize = frameBytes;
         }
-        const pixels = this._pixelBuf;
+        const pixels = this._bufferPool[this._bufferPoolIdx];
+        this._bufferPoolIdx = (this._bufferPoolIdx + 1) % 3;
         const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
         if (pixRead < frameBytes) {
           return null;

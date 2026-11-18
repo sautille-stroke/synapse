@@ -12,6 +12,7 @@
 ///   --height=<H>          Frame height (default: 720)
 ///   --frames=<N>          Exit after rendering N frames (default: 0 = continuous)
 ///   --shm-name=<name>     SHM region name (default: /inspector-frame)
+///   --shm-file=<path>     File-backed SHM path (macOS/Windows; overrides shm_open)
 ///   --keep-shm            Do not unlink SHM region on exit (for CLI/test inspection)
 ///   --bundle=<path>       Path to the InspectionBundle directory
 
@@ -74,6 +75,13 @@ int main(int argc, char** argv) {
   config.shmName =
       getArg(argc, argv, "shm-name", std::string(kDefaultShmName));
   config.bundlePath = getArg(argc, argv, "bundle", "");
+
+  // Parse --shm-file=<path> for file-backed shared memory (macOS / Windows).
+  const std::string shmFileArg = getArg(argc, argv, "shm-file", "");
+  if (!shmFileArg.empty()) {
+    config.shmFilePath = shmFileArg;
+    config.useShmFile = true;
+  }
 
   const std::string wStr = getArg(argc, argv, "width", "1280");
   const std::string hStr = getArg(argc, argv, "height", "720");
