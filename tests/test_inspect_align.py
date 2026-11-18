@@ -436,3 +436,47 @@ class TestAlignPose:
 
         for i, s in enumerate(top3):
             assert s > 0.05, f"Top-{i + 1} coarse IoU {s:.4f} is not above random chance"
+
+    def test_fibonacci_cameras_with_custom_center(self) -> None:
+        """Fibonacci cameras are placed around and look at custom center."""
+        center = [5.0, -2.0, 3.0]
+        radius = 4.0
+        cameras = generate_fibonacci_sphere_cameras(
+            n_cameras=16,
+            radius_scale=radius,
+            center=center,
+        )
+        c_arr = np.array(center)
+        for cam in cameras:
+            pos = np.array(cam.position)
+            dist = float(np.linalg.norm(pos - c_arr))
+            assert abs(dist - radius) < 1e-5
+
+    def test_quaternion_normalized_in_camera_pose(self) -> None:
+        """CameraPose normalizes 4-element quaternion."""
+        pose = CameraPose(
+            position=[0.0, 0.0, 1.0],
+            rotation=[0.0, 0.0, 2.0, 0.0],  # unnormalized
+            fov_deg=50.0,
+        )
+        assert len(pose.rotation) == 4
+        norm = sum(x * x for x in pose.rotation) ** 0.5
+        assert abs(norm - 1.0) < 1e-6
+        assert pose.rotation[2] == 1.0
+
+    def test_compute_silhouette_non_square(self) -> None:
+        """compute_silhouette handles (H, W) non-square resolution."""
+        mesh = generate_procedural_mesh("cube", size=1.0)
+        cam = CameraPose(
+            position=[0.0, 0.0, 3.0],
+            rotation=[1, 0, 0, 0, 1, 0, 0, 0, 1],
+            fov_deg=60.0,
+        )
+        mask = compute_silhouette(
+            mesh.vertices,
+            mesh.faces,
+            cam,
+            resolution=(64, 96),
+        )
+        assert mask.shape == (64, 96)
+        assert mask.any()

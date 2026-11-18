@@ -158,13 +158,16 @@ def evaluate_profile_gates(
     metrics: dict[str, float],
     profile_name: str,
     required_keys: set[str] | list[str] | tuple[str, ...] | None = None,
+    require_reference: bool = True,
 ) -> dict[str, bool]:
     """Evaluate gate thresholds from *profile_name* against *metrics* (fail-closed)."""
     canonical = normalize_eval_profile(profile_name)
     profile = GATE_PROFILES[canonical]
     results: dict[str, bool] = {}
 
-    base_required = {"is_manifold", "chamfer_mm"}
+    base_required = {"is_manifold"}
+    if require_reference:
+        base_required.add("chamfer_mm")
     if canonical != "TRACK_B_VIDEO":
         base_required.update({"is_watertight", "num_degenerate_faces", "self_intersecting_pairs"})
     if required_keys is not None:
@@ -303,6 +306,7 @@ def evaluate_single_model(
     log_fn: Callable[[str], None] | None = None,
     geometry_backend: Literal["native", "python"] = "native",
     mesh_loader_fn: Callable[[str], Any] | None = None,
+    require_reference: bool = True,
 ) -> ModelEvalResult:
     """Evaluate a single 3D model file against *profile_name*.
 
@@ -401,8 +405,12 @@ def evaluate_single_model(
     if log_fn:
         log_fn(f"  Rendering {num_views} views at {resolution}x{resolution}...")
     try:
+        v_center = verts.mean(axis=0)
+        v_centered = verts - v_center
+        max_r = float(np.max(np.linalg.norm(v_centered, axis=-1)))
+        v_render = v_centered / max_r if max_r > 1e-8 else v_centered
         pred_rgb, screenshots, labels = render_orbit_views(
-            verts,
+            v_render,
             faces_arr,
             norms,
             resolution,
@@ -435,8 +443,14 @@ def evaluate_single_model(
 
         if len(pred_rgb) > 0:
             try:
+                ref_v_center = reference_mesh.vertices.mean(axis=0)
+                ref_v_centered = reference_mesh.vertices - ref_v_center
+                ref_max_r = float(np.max(np.linalg.norm(ref_v_centered, axis=-1)))
+                ref_v_render = (
+                    ref_v_centered / ref_max_r if ref_max_r > 1e-8 else ref_v_centered
+                )
                 ref_rgb, _, _ = render_orbit_views(
-                    reference_mesh.vertices,
+                    ref_v_render,
                     reference_mesh.faces,
                     reference_mesh.normals,
                     resolution,
@@ -458,7 +472,12 @@ def evaluate_single_model(
         if log_fn:
             log_fn("  No reference mesh provided; restricting to self-topology metrics only.")
 
-    gate_results = evaluate_profile_gates(metrics, canonical_profile)
+    req_ref = require_reference if reference_mesh is None else True
+    gate_results = evaluate_profile_gates(
+        metrics,
+        canonical_profile,
+        require_reference=req_ref,
+    )
     overall_passed = bool(gate_results) and all(gate_results.values())
 
     return ModelEvalResult(
@@ -483,6 +502,7 @@ def evaluate_3d_models_directory(
     num_views: int = 8,
     log_fn: Callable[[str], None] | None = None,
     geometry_backend: Literal["native", "python"] = "native",
+    require_reference: bool | None = None,
 ) -> dict[str, Any]:
     """Evaluate all 3D models in *input_dir* and generate HTML + JSON reports."""
     canonical_profile = normalize_eval_profile(profile_name)
@@ -541,6 +561,7 @@ def evaluate_3d_models_directory(
     if log_fn:
         log_fn(f"Evaluating {len(model_files)} models (profile: {canonical_profile})...")
 
+    req_ref = (reference_dir is not None) if require_reference is None else require_reference
     for i, model_path in enumerate(model_files, 1):
         rel_posix = model_path.relative_to(input_dir).as_posix()
         rel_stem = model_path.relative_to(input_dir).with_suffix("").as_posix()
@@ -565,6 +586,7 @@ def evaluate_3d_models_directory(
             model_name=rel_stem,
             log_fn=log_fn,
             geometry_backend=geometry_backend,
+            require_reference=req_ref,
         )
         results.append(res)
 
@@ -656,6 +678,7 @@ class ModelEvaluator:
         output_dir: Path,
         reference_dir: Path | None = None,
         log_fn: Callable[[str], None] | None = None,
+        require_reference: bool | None = None,
     ) -> dict[str, Any]:
         """Evaluate all models in directory."""
         return evaluate_3d_models_directory(
@@ -667,6 +690,7 @@ class ModelEvaluator:
             num_views=self.num_views,
             log_fn=log_fn,
             geometry_backend=self.geometry_backend,
+            require_reference=require_reference,
         )
 
     def evaluate_model(

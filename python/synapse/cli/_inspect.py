@@ -184,6 +184,7 @@ def _cmd_inspect_evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
 def _cmd_inspect_refine(args: argparse.Namespace) -> dict[str, Any]:
     """Run targeted refinement from an InspectionReport."""
+    from synapse.errors import NotImplementedStageError
     from synapse.inspect.flywheel_exporter import run_targeted_refinement
 
     report_path = getattr(args, "report", None)
@@ -200,7 +201,14 @@ def _cmd_inspect_refine(args: argparse.Namespace) -> dict[str, Any]:
             f"Invalid JSON in InspectionReport '{report_path}': {exc}",
             agent_fix_hint="Ensure --report points to a valid JSON file.",
         ) from exc
-    return run_targeted_refinement(report=report)
+    result = run_targeted_refinement(report=report)
+    if result.get("unfixed_auto_count", 0) > 0:
+        raise NotImplementedStageError(
+            f"inspect refine found {result['unfixed_auto_count']} defect(s) requiring automated repair, "
+            "but standalone CLI lacks an automated mesh/texture repair backend.",
+            agent_fix_hint="Register an auto_fix_fn or route defects to manual HITL refinement.",
+        )
+    return result
 
 
 def _cmd_inspect_export_rl_data(args: argparse.Namespace) -> dict[str, Any]:

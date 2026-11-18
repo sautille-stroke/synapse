@@ -28,12 +28,13 @@ def generate_fibonacci_sphere_cameras(
     n_cameras: int = 48,
     radius_scale: float = 2.0,
     fov_deg: float = 50.0,
+    center: list[float] | None = None,
 ) -> list[CameraPose]:
     """Generate uniformly distributed cameras on a sphere.
 
     Uses the Fibonacci spiral (golden-angle) method to place *n_cameras*
-    points on a unit sphere, scaled by *radius_scale*.  Every camera
-    looks at the origin.
+    points on a sphere of radius *radius_scale* centered at *center*.
+    Every camera looks at *center*.
 
     Parameters
     ----------
@@ -43,6 +44,8 @@ def generate_fibonacci_sphere_cameras(
         Multiplier applied to the unit sphere radius.
     fov_deg:
         Vertical field of view in degrees for each camera.
+    center:
+        Optional center point ``[cx, cy, cz]``. Defaults to origin.
 
     Returns
     -------
@@ -51,6 +54,7 @@ def generate_fibonacci_sphere_cameras(
     """
     golden_ratio = (1.0 + math.sqrt(5.0)) / 2.0
     cameras: list[CameraPose] = []
+    center_arr = np.array(center if center is not None else [0.0, 0.0, 0.0], dtype=np.float64)
 
     for i in range(n_cameras):
         # Latitude: arccosine of linearly spaced z in [-1, 1]
@@ -58,16 +62,16 @@ def generate_fibonacci_sphere_cameras(
         # Longitude: golden-angle increment
         phi = 2.0 * math.pi * i / golden_ratio
 
-        x = radius_scale * math.sin(theta) * math.cos(phi)
-        y = radius_scale * math.cos(theta)
-        z = radius_scale * math.sin(theta) * math.sin(phi)
+        x = center_arr[0] + radius_scale * math.sin(theta) * math.cos(phi)
+        y = center_arr[1] + radius_scale * math.cos(theta)
+        z = center_arr[2] + radius_scale * math.sin(theta) * math.sin(phi)
 
         position = [x, y, z]
 
-        # Build look-at rotation (camera looks at origin, Y-up)
+        # Build look-at rotation (camera looks at center, Y-up)
         rot = _look_at_rotation(
             np.array(position, dtype=np.float64),
-            np.array([0.0, 0.0, 0.0], dtype=np.float64),
+            center_arr,
             np.array([0.0, 1.0, 0.0], dtype=np.float64),
         )
         # Store as column-major 3x3 (9 floats)
@@ -93,7 +97,7 @@ def compute_silhouette(
     vertices: np.ndarray,
     faces: np.ndarray,
     camera_pose: CameraPose,
-    resolution: int = 128,
+    resolution: int | tuple[int, int] = 128,
 ) -> np.ndarray:
     """Render a binary silhouette mask via Z-buffer rasterisation.
 
@@ -106,16 +110,21 @@ def compute_silhouette(
     camera_pose:
         Camera from which to render.
     resolution:
-        Output square image size.
+        Output image size: square ``resolution`` or ``(height, width)``.
 
     Returns
     -------
     np.ndarray
-        ``[resolution, resolution]`` binary mask (``True`` where mesh
-        is visible).
+        ``[H, W]`` binary mask (``True`` where mesh is visible).
     """
+    if isinstance(resolution, (tuple, list)):
+        H = int(resolution[0])
+        W = int(resolution[1])
+    else:
+        H = W = int(resolution)
+
     view = _camera_pose_to_view_matrix(camera_pose)
-    proj = _build_projection(camera_pose.fov_deg, resolution, resolution)
+    proj = _build_projection(camera_pose.fov_deg, W, H)
 
     verts = np.asarray(vertices, dtype=np.float64)
     n = verts.shape[0]
@@ -135,11 +144,10 @@ def compute_silhouette(
     verts_ndc = verts_clip[:, :3] / w_clip
 
     # Screen coords
-    sx = (verts_ndc[:, 0] * 0.5 + 0.5) * resolution
-    sy = (1.0 - (verts_ndc[:, 1] * 0.5 + 0.5)) * resolution
+    sx = (verts_ndc[:, 0] * 0.5 + 0.5) * W
+    sy = (1.0 - (verts_ndc[:, 1] * 0.5 + 0.5)) * H
     sz = verts_view[:, 2]  # negative = in front of camera
 
-    W = H = resolution
     depth_buf = np.full((H, W), np.inf, dtype=np.float64)
     mask = np.zeros((H, W), dtype=bool)
 
@@ -169,25 +177,29 @@ def compute_silhouette(
             continue
         inv_denom = 1.0 / denom
 
-        for py in range(min_y, max_y + 1):
-            for px in range(min_x, max_x + 1):
-                w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) * inv_denom
-                w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) * inv_denom
-                w2 = 1.0 - w0 - w1
+        px_diff = np.arange(min_x, max_x + 1, dtype=np.float64) - x2
+        py_diff = (np.arange(min_y, max_y + 1, dtype=np.float64) - y2)[:, None]
 
-                if w0 < 0 or w1 < 0 or w2 < 0:
-                    continue
+        w0 = ((y1 - y2) * px_diff + (x2 - x1) * py_diff) * inv_denom
+        w1 = ((y2 - y0) * px_diff + (x0 - x2) * py_diff) * inv_denom
+        w2 = 1.0 - w0 - w1
 
-                z_interp = w0 * z0 + w1 * z1 + w2 * z2
-                linear_depth = -z_interp
+        inside = (w0 >= 0.0) & (w1 >= 0.0) & (w2 >= 0.0)
+        if not np.any(inside):
+            continue
 
-                if linear_depth <= 0:
-                    continue
-                if linear_depth >= depth_buf[py, px]:
-                    continue
+        linear_depth = -(w0 * z0 + w1 * z1 + w2 * z2)
+        valid = inside & (linear_depth > 0.0)
+        if not np.any(valid):
+            continue
 
-                depth_buf[py, px] = linear_depth
-                mask[py, px] = True
+        sub_depth = depth_buf[min_y : max_y + 1, min_x : max_x + 1]
+        closer = valid & (linear_depth < sub_depth)
+        if np.any(closer):
+            sub_depth[closer] = linear_depth[closer]
+            mask[min_y : max_y + 1, min_x : max_x + 1][closer] = True
+
+    return mask
 
     return mask
 
@@ -231,6 +243,7 @@ def align_reference_image_to_mesh(
     faces: np.ndarray,
     n_coarse: int = 48,
     n_refine_iters: int = 50,
+    center: list[float] | None = None,
 ) -> tuple[CameraPose, float]:
     """Align a reference silhouette to a 3D mesh via Fibonacci search.
 
@@ -254,6 +267,9 @@ def align_reference_image_to_mesh(
         Number of Fibonacci-sphere cameras for coarse search.
     n_refine_iters:
         Maximum optimiser iterations per candidate.
+    center:
+        Optional camera sphere center ``[cx, cy, cz]``. If None,
+        evaluates origin and mesh centroid hypotheses.
 
     Returns
     -------
@@ -268,59 +284,69 @@ def align_reference_image_to_mesh(
     from scipy.optimize import minimize  # lazy import
 
     ref = np.asarray(reference_silhouette, dtype=bool)
-    res = ref.shape[0]  # assume square
+    H, W = ref.shape[:2]
+    res: tuple[int, int] = (H, W)
 
-    # Compute mesh bounding sphere for radius scale
     centroid = vertices.mean(axis=0)
     radii = np.linalg.norm(vertices - centroid, axis=1)
     bbox_radius = float(np.max(radii))
     radius_scale = bbox_radius * 2.5
 
-    # Stage 1A: coarse search
-    coarse_cameras = generate_fibonacci_sphere_cameras(
-        n_cameras=n_coarse,
-        radius_scale=radius_scale,
-        fov_deg=50.0,
-    )
+    origin = np.zeros(3, dtype=np.float64)
+    if center is not None:
+        centers_to_test = [np.array(center, dtype=np.float64)]
+    else:
+        centers_to_test = [origin]
+        if float(np.linalg.norm(centroid - origin)) > 1e-3:
+            centers_to_test.append(centroid)
 
-    coarse_scores: list[tuple[float, int]] = []
-    for idx, cam in enumerate(coarse_cameras):
-        sil = compute_silhouette(vertices, faces, cam, resolution=res)
-        iou = compute_silhouette_iou(ref, sil)
-        coarse_scores.append((iou, idx))
+    # Stage 1A: coarse search across center hypotheses
+    coarse_candidates: list[tuple[CameraPose, np.ndarray, float]] = []
+    n_per_center = max(4, n_coarse // len(centers_to_test))
+    for c_point in centers_to_test:
+        cams = generate_fibonacci_sphere_cameras(
+            n_cameras=n_per_center,
+            radius_scale=radius_scale,
+            fov_deg=50.0,
+            center=c_point.tolist(),
+        )
+        for cam in cams:
+            sil = compute_silhouette(vertices, faces, cam, resolution=res)
+            iou = compute_silhouette_iou(ref, sil)
+            coarse_candidates.append((cam, c_point, iou))
 
-    coarse_scores.sort(key=lambda x: x[0], reverse=True)
-    top_k = min(3, len(coarse_scores))
-    candidates = [coarse_cameras[coarse_scores[i][1]] for i in range(top_k)]
+    coarse_candidates.sort(key=lambda x: x[2], reverse=True)
+    top_k = min(3, len(coarse_candidates))
+    candidates = coarse_candidates[:top_k]
 
-    # Stage 1B: refine each candidate
+    # Stage 1B: refine each candidate around its respective look-at center
     best_iou = -1.0
-    best_pose: CameraPose = candidates[0]
+    best_pose: CameraPose = candidates[0][0]
 
-    for ci, cam in enumerate(candidates):
+    for ci, (cam, c_point, _) in enumerate(candidates):
         cam_fov = cam.fov_deg
-        # Parameterise as spherical coords (theta, phi, radius)
-        pos = np.array(cam.position, dtype=np.float64)
+        # Parameterise as spherical coords relative to c_point (theta, phi, radius)
+        pos = np.array(cam.position, dtype=np.float64) - c_point
         r = float(np.linalg.norm(pos))
         theta = math.acos(np.clip(pos[1] / max(r, 1e-10), -1, 1))
         phi = math.atan2(pos[2], pos[0])
 
-        def _neg_iou(params: np.ndarray, fov: float = cam_fov) -> float:
+        def _neg_iou(params: np.ndarray, fov: float = cam_fov, cur_c: np.ndarray = c_point) -> float:
             th, ph, rad = params
-            x = rad * math.sin(th) * math.cos(ph)
-            y = rad * math.cos(th)
-            z = rad * math.sin(th) * math.sin(ph)
+            x = cur_c[0] + rad * math.sin(th) * math.cos(ph)
+            y = cur_c[1] + rad * math.cos(th)
+            z = cur_c[2] + rad * math.sin(th) * math.sin(ph)
             trial_pose = CameraPose(
                 position=[x, y, z],
                 rotation=_look_at_rotation(
                     np.array([x, y, z], dtype=np.float64),
-                    np.zeros(3, dtype=np.float64),
+                    cur_c,
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 )
                 .T.flatten()
                 .tolist(),
                 fov_deg=fov,
-                resolution=(res, res),
+                resolution=(W, H),
             )
             sil = compute_silhouette(
                 vertices,
@@ -346,20 +372,20 @@ def align_reference_image_to_mesh(
         if refined_iou > best_iou:
             best_iou = refined_iou
             th, ph, rad = result.x
-            bx = rad * math.sin(th) * math.cos(ph)
-            by = rad * math.cos(th)
-            bz = rad * math.sin(th) * math.sin(ph)
+            bx = c_point[0] + rad * math.sin(th) * math.cos(ph)
+            by = c_point[1] + rad * math.cos(th)
+            bz = c_point[2] + rad * math.sin(th) * math.sin(ph)
             best_pose = CameraPose(
                 position=[bx, by, bz],
                 rotation=_look_at_rotation(
                     np.array([bx, by, bz], dtype=np.float64),
-                    np.zeros(3, dtype=np.float64),
+                    c_point,
                     np.array([0.0, 1.0, 0.0], dtype=np.float64),
                 )
                 .T.flatten()
                 .tolist(),
                 fov_deg=cam_fov,
-                resolution=(res, res),
+                resolution=(W, H),
             )
 
     # Quality gate

@@ -29,8 +29,8 @@ def handle_rsi_dual_verify(
         raise ContractValidationError(
             "rsi_dual_verify stage requires non-empty 'physics_metrics' dict in manifest.params.",
             agent_fix_hint=(
-                "Provide physics_metrics with at least 'foot_slip_cm_s', "
-                "'penetration_mm', and 'joint_torque_nm' values."
+                "Provide physics_metrics with at least 'silhouette_iou', "
+                "'depth_rmse_m', and 'normal_angular_error_deg' values."
             ),
         )
 

@@ -504,10 +504,9 @@ def _build_dpo_records(
                     return False
                 if c.final_state_uri == r.final_state_uri and c.final_state_uri != "":
                     return False
-                # If both specify initial_state_uri, they MUST match exactly
-                if r.initial_state_uri and c.initial_state_uri:
-                    return r.initial_state_uri == c.initial_state_uri
-                # Only allow empty initial_state_uri when both are empty
+                # Reject matching when initial_state_uri is empty across sessions
+                if not r.initial_state_uri.strip() or not c.initial_state_uri.strip():
+                    return False
                 return r.initial_state_uri == c.initial_state_uri
 
             # Prefer a subsequent passing intent in chronological order that hasn't been used yet
@@ -521,13 +520,6 @@ def _build_dpo_records(
             if matched_ch is None:
                 for ch in chosen_intents:
                     if ch.intent_id not in used_chosen_ids and _matches_initial_state(rej, ch):
-                        matched_ch = ch
-                        break
-
-            # Fallback 2: any passing intent on the same initial_state_uri
-            if matched_ch is None:
-                for ch in chosen_intents:
-                    if _matches_initial_state(rej, ch):
                         matched_ch = ch
                         break
 

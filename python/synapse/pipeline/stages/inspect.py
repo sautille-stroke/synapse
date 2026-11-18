@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from synapse.errors import BackendUnavailableError
+from synapse.errors import NotImplementedStageError
 from synapse.inspect.flywheel_exporter import (
     export_rl_flywheel_dataset,
     run_targeted_refinement,
 )
 from synapse.inspect.jev_critic import (
+    HttpJevTransport,
     JevTransportProtocol,
     MockJevTransport,
     VisualJevCritic,
@@ -34,16 +35,15 @@ def handle_asset_inspect_3d(
 
     endpoint_url = params.get("vlm_endpoint_url")
     if endpoint_url:
-        raise BackendUnavailableError(
-            f"VLM endpoint '{endpoint_url}' was requested, "
-            "but remote VLM transport is not available in core runtime. "
-            "Silent fallback to MockJevTransport is FORBIDDEN.",
-            agent_fix_hint=("Omit 'vlm_endpoint_url' in CI mock mode or specify defect_overrides."),
+        transport: JevTransportProtocol = HttpJevTransport(
+            endpoint_url=str(endpoint_url),
+            model=str(params.get("vlm_model", "default")),
+            api_key=str(params.get("vlm_api_key", "")),
         )
-
-    transport: JevTransportProtocol = MockJevTransport(
-        defect_overrides=params.get("defect_overrides"),
-    )
+    else:
+        transport = MockJevTransport(
+            defect_overrides=params.get("defect_overrides"),
+        )
     critic = VisualJevCritic(transport=transport)
     report = critic.evaluate(
         asset_id,
@@ -85,6 +85,12 @@ def handle_inspect_refine(
         )
 
     result = run_targeted_refinement(report=report)
+    if result.get("unfixed_auto_count", 0) > 0:
+        raise NotImplementedStageError(
+            f"inspect_refine stage found {result['unfixed_auto_count']} auto-fixable defect(s), "
+            "but no auto_fix_fn was provided in runtime.",
+            agent_fix_hint="Provide an auto_fix_fn backend or escalate to manual HITL.",
+        )
 
     output_paths: dict[str, str] = {}
     refined_target = manifest.outputs.get("refined_mesh") or manifest.outputs.get("refinement")

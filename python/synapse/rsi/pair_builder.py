@@ -63,6 +63,10 @@ class PreferencePair(BaseModel):
                 f"PreferencePair '{self.pair_id}' has identical "
                 f"chosen_uri and rejected_uri ({self.chosen_uri!r})."
             )
+        if self.is_golden and (not self.chosen_uri.strip() or not self.rejected_uri.strip()):
+            raise ValueError(
+                f"Golden PreferencePair '{self.pair_id}' requires non-empty chosen_uri and rejected_uri."
+            )
         return self
 
     @classmethod
@@ -81,6 +85,18 @@ class PreferencePair(BaseModel):
             or data.get("source_intent_id")
             or f"dpo_{data.get('asset_id', 'asset')}"
         )
+        rec_golden = data.get("is_golden")
+        final_is_golden = bool(rec_golden if rec_golden is not None else is_golden)
+
+        rec_source = data.get("source")
+        if rec_source in ("self", "human", "golden"):
+            final_source = rec_source
+        else:
+            final_source = "golden" if final_is_golden else source
+
+        if final_is_golden:
+            final_source = "golden"
+
         return cls(
             pair_id=pair_id,
             prompt=str(data.get("prompt", "")),
@@ -89,9 +105,9 @@ class PreferencePair(BaseModel):
             condition_key=str(data.get("condition_key") or data.get("state_before", "")),
             asset_id=str(data.get("asset_id", "")),
             source_intent_id=str(data.get("source_intent_id", "")),
-            source="golden" if is_golden else source,
+            source=final_source,
             category=str(data.get("category", category)),
-            is_golden=is_golden or source == "golden",
+            is_golden=final_is_golden,
         )
 
 
@@ -183,6 +199,12 @@ class PreferenceDatasetBuilder:
     ) -> None:
         """Add L0 golden expert baseline pairs."""
         for p in pairs:
+            if not p.chosen_uri.strip() or not p.rejected_uri.strip():
+                raise ContractValidationError(
+                    f"Golden pair '{p.pair_id}' has empty chosen_uri or rejected_uri. "
+                    "Empty URI pairs are forbidden from the 20% L0 golden pool.",
+                    agent_fix_hint="Ensure all golden preference pairs specify non-empty chosen_uri and rejected_uri.",
+                )
             golden = p.model_copy(
                 update={"is_golden": True, "source": "golden"},
             )

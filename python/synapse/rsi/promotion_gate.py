@@ -32,12 +32,16 @@ class BenchScenarioScore(BaseModel):
         overall: Overall quality score for this scenario.
         geom: Geometry sub-score.
         temporal: Temporal consistency sub-score.
+        style: Style consistency sub-score.
+        fgpp_fidelity: Physical FGPP fidelity sub-score.
     """
 
     scenario_id: str
     overall: float = Field(default=0.0, ge=0.0)
     geom: float = Field(default=0.0, ge=0.0)
     temporal: float = Field(default=0.0, ge=0.0)
+    style: float = Field(default=0.0, ge=0.0)
+    fgpp_fidelity: float = Field(default=0.0, ge=0.0)
 
 
 class BenchReport(BaseModel):
@@ -47,6 +51,8 @@ class BenchReport(BaseModel):
         overall_score: Aggregate overall score.
         geom_score: Aggregate geometry score.
         temporal_score: Aggregate temporal score.
+        style_score: Aggregate style score.
+        fgpp_fidelity_score: Aggregate physical FGPP fidelity score.
         scenarios: Per-scenario score breakdown.
         lora_sha256: SHA256 of the LoRA weights evaluated.
     """
@@ -54,6 +60,8 @@ class BenchReport(BaseModel):
     overall_score: float = Field(default=0.0, ge=0.0)
     geom_score: float = Field(default=0.0, ge=0.0)
     temporal_score: float = Field(default=0.0, ge=0.0)
+    style_score: float = Field(default=0.0, ge=0.0)
+    fgpp_fidelity_score: float = Field(default=0.0, ge=0.0)
     scenarios: list[BenchScenarioScore] = Field(
         default_factory=list,
     )
@@ -110,7 +118,7 @@ def _validate_finite_report(
     label: str,
 ) -> None:
     """Ensure all aggregate and scenario scores are finite."""
-    for name in ("overall_score", "geom_score", "temporal_score"):
+    for name in ("overall_score", "geom_score", "temporal_score", "style_score", "fgpp_fidelity_score"):
         val = getattr(report, name)
         if not math.isfinite(val):
             raise ContractValidationError(
@@ -120,7 +128,7 @@ def _validate_finite_report(
                 ),
             )
     for sc in report.scenarios:
-        for name in ("overall", "geom", "temporal"):
+        for name in ("overall", "geom", "temporal", "style", "fgpp_fidelity"):
             val = getattr(sc, name)
             if not math.isfinite(val):
                 raise ContractValidationError(
@@ -185,18 +193,42 @@ def evaluate_monotonic_promotion(
             agent_fix_hint="Pass a non-negative finite value for noise_tolerance.",
         )
 
-    # Deduplicate scenario_id entries within each report
-    def _dedup_scenarios(scenarios: list[BenchScenarioScore]) -> list[BenchScenarioScore]:
+    # Reject duplicate scenario_id entries within each report
+    def _check_no_duplicate_scenarios(scenarios: list[BenchScenarioScore], label: str) -> None:
         seen: set[str] = set()
-        result: list[BenchScenarioScore] = []
+        duplicates: list[str] = []
         for s in scenarios:
-            if s.scenario_id not in seen:
-                seen.add(s.scenario_id)
-                result.append(s)
-        return result
+            if s.scenario_id in seen:
+                duplicates.append(s.scenario_id)
+            seen.add(s.scenario_id)
+        if duplicates:
+            raise ContractValidationError(
+                f"Duplicate scenario_id detected in {label} BenchReport: {duplicates}. "
+                "Silent deduplication is FORBIDDEN.",
+                agent_fix_hint="Ensure each scenario_id appears exactly once in the scenarios list.",
+            )
 
-    baseline_scenarios = _dedup_scenarios(baseline.scenarios)
-    candidate_scenarios = _dedup_scenarios(candidate.scenarios)
+    _check_no_duplicate_scenarios(baseline.scenarios, "baseline")
+    _check_no_duplicate_scenarios(candidate.scenarios, "candidate")
+
+    baseline_scenarios = baseline.scenarios
+    candidate_scenarios = candidate.scenarios
+
+    # Cross-verify BenchReport aggregate scores with scenario means
+    def _verify_consistency(report: BenchReport, label: str) -> None:
+        if not report.scenarios:
+            return
+        n = len(report.scenarios)
+        mean_overall = sum(s.overall for s in report.scenarios) / n
+        if abs(report.overall_score - mean_overall) > 0.25:
+            raise ContractValidationError(
+                f"Inconsistent overall_score in {label} BenchReport: aggregate {report.overall_score:.4f} "
+                f"diverges from scenario mean {mean_overall:.4f}.",
+                agent_fix_hint="Ensure aggregate overall_score accurately reflects scenario mean.",
+            )
+
+    _verify_consistency(baseline, "baseline")
+    _verify_consistency(candidate, "candidate")
 
     baseline_ids = {s.scenario_id for s in baseline_scenarios}
     candidate_ids = {s.scenario_id for s in candidate_scenarios}
@@ -265,18 +297,40 @@ def evaluate_monotonic_promotion(
             f"{baseline.temporal_score:.4f}"
         )
 
+    # Condition 5: Style score non-regression (if populated)
+    if baseline.style_score > 0.0 or candidate.style_score > 0.0:
+        style_ok = candidate.style_score >= baseline.style_score
+        conditions["style_non_regression"] = style_ok
+        if not style_ok:
+            failures.append(
+                f"Condition 5 failed: StyleScore {candidate.style_score:.4f} < {baseline.style_score:.4f}"
+            )
+
+    # Condition 6: FGPP fidelity score non-regression (if populated)
+    if baseline.fgpp_fidelity_score > 0.0 or candidate.fgpp_fidelity_score > 0.0:
+        fgpp_ok = candidate.fgpp_fidelity_score >= baseline.fgpp_fidelity_score
+        conditions["fgpp_fidelity_non_regression"] = fgpp_ok
+        if not fgpp_ok:
+            failures.append(
+                f"Condition 6 failed: FgppFidelityScore {candidate.fgpp_fidelity_score:.4f} < {baseline.fgpp_fidelity_score:.4f}"
+            )
+
     # Condition 4: Zero per-scenario regression
     baseline_by_id = {s.scenario_id: s for s in baseline_scenarios}
     per_scenario_ok = True
 
     for cs in candidate_scenarios:
         bs = baseline_by_id[cs.scenario_id]
-        # Evaluate 3-axis per-scenario regressions
+        # Evaluate per-scenario regressions across all pillars
         regressions: list[tuple[str, float, float, float]] = [
             ("overall", bs.overall - cs.overall, bs.overall, cs.overall),
             ("geom", bs.geom - cs.geom, bs.geom, cs.geom),
             ("temporal", bs.temporal - cs.temporal, bs.temporal, cs.temporal),
         ]
+        if bs.style > 0.0 or cs.style > 0.0:
+            regressions.append(("style", bs.style - cs.style, bs.style, cs.style))
+        if bs.fgpp_fidelity > 0.0 or cs.fgpp_fidelity > 0.0:
+            regressions.append(("fgpp_fidelity", bs.fgpp_fidelity - cs.fgpp_fidelity, bs.fgpp_fidelity, cs.fgpp_fidelity))
         active_regs = [r for r in regressions if r[1] > noise_tolerance]
         if active_regs:
             per_scenario_ok = False

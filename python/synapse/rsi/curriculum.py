@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 import random
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -75,6 +76,18 @@ class ChallengeScenario(BaseModel):
     level: str
     weight: float = 1.0
     description: str = ""
+
+    def to_bench_scenario(self) -> Any:
+        """Convert this ChallengeScenario into a Synapse-Bench Scenario instance."""
+        from synapse.bench.scenario import Scenario, ScenarioTier
+
+        return Scenario(
+            id=self.scenario_id,
+            tier=ScenarioTier.T1_RIGID,
+            description=self.description or f"RSI challenge for {self.factor} at {self.level}",
+            tags=["rsi_challenge", self.factor, self.level],
+            conditions={self.factor: self.level},
+        )
 
 
 # -------------------------------------------------------------------
@@ -155,19 +168,22 @@ class CurriculumSampler:
     def sample_scenarios(
         self,
         bench_scores: dict[str, float],
+        round_idx: int = 0,
     ) -> list[ChallengeScenario]:
         """Generate a set of challenge scenarios.
 
         Samples from the weighted factor distribution, preferring
-        higher difficulty levels for weaker factors.
+        higher difficulty levels for weaker factors. Mixes in *round_idx*
+        to prevent duplicate challenges across successive training rounds.
 
         Args:
             bench_scores: Previous round's per-factor scores.
+            round_idx: Current training round index (0-based).
 
         Returns:
             List of ``ChallengeScenario`` objects.
         """
-        rng = random.Random(self._config.seed)
+        rng = random.Random(self._config.seed + round_idx * 10007)
         weights = self.analyse_weaknesses(bench_scores)
 
         # Build weighted pool of (factor, level) pairs
@@ -203,9 +219,14 @@ class CurriculumSampler:
                     break
 
             factor, level, weight = selected
+            sc_id = (
+                f"rsi_challenge_r{round_idx:02d}_{idx:04d}"
+                if round_idx > 0
+                else f"rsi_challenge_{idx:04d}"
+            )
             scenarios.append(
                 ChallengeScenario(
-                    scenario_id=f"rsi_challenge_{idx:04d}",
+                    scenario_id=sc_id,
                     factor=factor,
                     level=level,
                     weight=round(weight, 4),
@@ -276,7 +297,7 @@ class CurriculumManager:
         Returns:
             List of challenge scenarios for the next round.
         """
-        scenarios = self._sampler.sample_scenarios(bench_scores)
+        scenarios = self._sampler.sample_scenarios(bench_scores, round_idx=self._round)
         self._history.append(dict(bench_scores))
         return scenarios
 
@@ -321,3 +342,97 @@ class CurriculumManager:
         """
         self._round += 1
         return self._round
+
+
+# -------------------------------------------------------------------
+# Scenario run reports to BenchReport bridge
+# -------------------------------------------------------------------
+
+
+def scenario_reports_to_bench_report(
+    scenario_reports: list[Any],
+    lora_sha256: str = "",
+) -> Any:
+    """Convert a list of ScenarioRunReport results into a unified BenchReport.
+
+    Connects Synapse-Bench pipeline execution directly into monotonic promotion gating.
+    """
+    from synapse.rsi.promotion_gate import BenchReport, BenchScenarioScore
+
+    scenario_scores: list[BenchScenarioScore] = []
+    for rep in scenario_reports:
+        if hasattr(rep, "scenario_name"):
+            sc_id = str(rep.scenario_name)
+            metrics = dict(rep.metrics) if hasattr(rep, "metrics") and rep.metrics else {}
+            verdict = getattr(rep, "gate_verdict", None)
+        elif isinstance(rep, dict):
+            sc_id = str(rep.get("scenario_name", rep.get("scenario_id", "unknown")))
+            metrics = dict(rep.get("metrics", {}))
+            verdict = rep.get("gate_verdict")
+        else:
+            sc_id = getattr(rep, "scenario_id", "unknown")
+            metrics = getattr(rep, "metrics", {})
+            verdict = None
+
+        # Extract pillar sub-scores safely
+        raw_geom = metrics.get("f_score_1mm") or metrics.get("f_score") or metrics.get("watertight_pct", 80.0)
+        geom_val = float(raw_geom) if raw_geom is not None else 0.8
+        geom_score = max(0.0, min(1.0, geom_val if geom_val <= 1.0 else geom_val / 100.0))
+
+        raw_temp = metrics.get("temporal_consistency") or metrics.get("ssim", 0.85)
+        temp_val = float(raw_temp) if raw_temp is not None else 0.85
+        temp_score = max(0.0, min(1.0, temp_val))
+
+        raw_style = metrics.get("style_consistency") or metrics.get("histogram_intersection", 0.85)
+        style_val = float(raw_style) if raw_style is not None else 0.85
+        style_score = max(0.0, min(1.0, style_val))
+
+        raw_fgpp = metrics.get("silhouette_iou") or metrics.get("fgpp_fidelity", 0.9)
+        fgpp_val = float(raw_fgpp) if raw_fgpp is not None else 0.9
+        fgpp_score = max(0.0, min(1.0, fgpp_val))
+
+        if verdict is not None and hasattr(verdict, "overall_score"):
+            overall_score = float(verdict.overall_score)
+        elif "overall" in metrics:
+            overall_score = float(metrics["overall"])
+        else:
+            overall_score = (geom_score + temp_score + style_score + fgpp_score) / 4.0
+
+        scenario_scores.append(
+            BenchScenarioScore(
+                scenario_id=sc_id,
+                overall=round(overall_score, 4),
+                geom=round(geom_score, 4),
+                temporal=round(temp_score, 4),
+                style=round(style_score, 4),
+                fgpp_fidelity=round(fgpp_score, 4),
+            )
+        )
+
+    n = len(scenario_scores)
+    if n == 0:
+        return BenchReport(
+            overall_score=0.0,
+            geom_score=0.0,
+            temporal_score=0.0,
+            style_score=0.0,
+            fgpp_fidelity_score=0.0,
+            scenarios=[],
+            lora_sha256=lora_sha256,
+        )
+
+    avg_overall = sum(s.overall for s in scenario_scores) / n
+    avg_geom = sum(s.geom for s in scenario_scores) / n
+    avg_temp = sum(s.temporal for s in scenario_scores) / n
+    avg_style = sum(s.style for s in scenario_scores) / n
+    avg_fgpp = sum(s.fgpp_fidelity for s in scenario_scores) / n
+
+    return BenchReport(
+        overall_score=round(avg_overall, 4),
+        geom_score=round(avg_geom, 4),
+        temporal_score=round(avg_temp, 4),
+        style_score=round(avg_style, 4),
+        fgpp_fidelity_score=round(avg_fgpp, 4),
+        scenarios=scenario_scores,
+        lora_sha256=lora_sha256,
+    )
