@@ -24,6 +24,8 @@ from synapse.adapters.base import (
 from synapse.adapters.cloud import (
     CloudApiTransport,
     DegradedSegment,
+    HttpCloudTransport,
+    HttpSegmentTransport,
     KlingAdapter,
     MockCloudTransport,
     SeedanceAdapter,
@@ -49,6 +51,7 @@ from synapse.adapters.scheduler import (
     ScheduledWindow,
     WindowSlice,
     compute_latent_flow_operator,
+    cross_dissolve_pixels,
     fuse_overlapping_latents,
 )
 
@@ -59,6 +62,7 @@ from synapse.adapters.wan import (
     WanAdapter,
     WanBackendTransport,
 )
+from synapse.adapters.wan_diffusers import DiffusersWanBackend
 
 __all__ = [
     "AdapterTier",
@@ -67,8 +71,11 @@ __all__ = [
     "ConditionScheduler",
     "DefectInjectionConfig",
     "DegradedSegment",
+    "DiffusersWanBackend",
     "DiscontinuityDetector",
     "FoundaryHttpTransport",
+    "HttpCloudTransport",
+    "HttpSegmentTransport",
     "KlingAdapter",
     "LoRAManifest",
     "LoRAPatchHook",
@@ -89,6 +96,7 @@ __all__ = [
     "WindowSlice",
     "compute_latent_flow_operator",
     "create_adapter",
+    "cross_dissolve_pixels",
     "degrade_fgpp_for_blackbox",
     "fuse_overlapping_latents",
     "list_adapters",

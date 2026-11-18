@@ -502,3 +502,72 @@ class TestWanSlidingWindowAndGuards:
 
         assert "flow_meta" in captured_extra
         assert "occlusion_mask" in captured_extra["flow_meta"]
+
+    def test_cross_dissolve_pixels_preserves_mean_brightness(self) -> None:
+        """PR-139: cross_dissolve_pixels prevents 1.41x brightness blowup on gray pixels."""
+        from synapse.adapters.scheduler import cross_dissolve_pixels
+
+        h, w = 16, 16
+        overlap = 33
+        gray_prev = np.full((97, h, w, 3), 128, dtype=np.uint8)
+        gray_curr = np.full((97, h, w, 3), 128, dtype=np.uint8)
+
+        fused = cross_dissolve_pixels(gray_prev, gray_curr, overlap_steps=overlap)
+        assert fused.shape == (overlap, h, w, 3)
+        # All blended pixels across the overlap must stay exactly 128 (+- 1 rounding)
+        np.testing.assert_allclose(fused, 128, atol=1.0)
+
+    def test_wan_161_frames_warmup_slice_correctness(self) -> None:
+        """PR-139: Window 1 receives warmup frames [61:64] from window 0, not future [-3:]."""
+        h, w = 8, 8
+        total_frames = 161
+        control = np.ones((7, total_frames, h, w), dtype=np.float32)
+        payload = PreparedConditionPayload(control_tensor=control)
+        config = VideoGenerationConfig(num_frames=total_frames, width=w, height=h)
+        seq = _make_fgpp_sequence(n_frames=total_frames, h=h, w=w)
+
+        captured_warmup: list[list[np.ndarray]] = []
+
+        def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
+            captured_warmup.append(list(p.keyframe_images))
+            # Return distinct frames where frame i has value i
+            frames = np.zeros((c.num_frames, h, w, 3), dtype=np.uint8)
+            for idx in range(c.num_frames):
+                frames[idx] = (idx % 256)
+            return frames
+
+        adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
+        adapter.generate(payload, config, fgpp_frames=seq.frames)
+
+        # Window 0: no warmup
+        assert len(captured_warmup[0]) == 0
+        # Window 1: warmup must come from stride - 3 : stride (indices 61, 62, 63)
+        assert len(captured_warmup[1]) == 3
+        np.testing.assert_array_equal(captured_warmup[1][0], np.full((h, w, 3), 61, dtype=np.uint8))
+        np.testing.assert_array_equal(captured_warmup[1][1], np.full((h, w, 3), 62, dtype=np.uint8))
+        np.testing.assert_array_equal(captured_warmup[1][2], np.full((h, w, 3), 63, dtype=np.uint8))
+
+    def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
+        """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""
+        from unittest.mock import MagicMock
+        from synapse.adapters.wan_diffusers import DiffusersWanBackend
+
+        mock_pipe = MagicMock()
+        mock_pipe.device = "cpu"
+        mock_transformer = MagicMock()
+        mock_pipe.transformer = mock_transformer
+
+        out_mock = MagicMock()
+        out_mock.frames = [np.ones((4, 16, 16, 3), dtype=np.float32)]
+        mock_pipe.return_value = out_mock
+
+        backend = DiffusersWanBackend(pipeline=mock_pipe, transformer=mock_transformer)
+        assert backend.model is mock_transformer
+
+        payload = PreparedConditionPayload(text_prompt="test prompt")
+        config = VideoGenerationConfig(num_frames=4, width=16, height=16)
+        frames = backend.submit(payload, config)
+        assert frames.shape == (4, 16, 16, 3)
+        assert frames.dtype == np.uint8
+        assert mock_pipe.called
+

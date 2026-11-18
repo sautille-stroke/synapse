@@ -20,24 +20,43 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 _CATEGORY_WHITELIST: dict[str, list[str]] = {
     "style": [
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_k",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_v",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn2\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
         r"cross_attn\.to_k",
         r"cross_attn\.to_v",
+        r"attn2\..*",
         r"ffn\..*",
     ],
     "identity": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_k",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_v",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"cross_attn\.to_k",
         r"cross_attn\.to_v",
     ],
     "control": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"ffn\..*",
     ],
     "whitebox": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"ffn\..*",
     ],
     "motion": [
+        r"(?:blocks\.(?:\d+|\*)\.)?temporal_attn\..*",
         r"temporal_attn\..*",
     ],
 }
@@ -45,7 +64,10 @@ _CATEGORY_WHITELIST: dict[str, list[str]] = {
 
 def _matches_any_pattern(module_name: str, patterns: list[str]) -> bool:
     """Return True if *module_name* fully matches any regex in *patterns*."""
-    return any(re.fullmatch(p, module_name) for p in patterns)
+    if any(re.fullmatch(p, module_name) for p in patterns):
+        return True
+    sample = re.sub(r"\*", "0", module_name)
+    return any(re.fullmatch(p, sample) for p in patterns)
 
 
 # ---------------------------------------------------------------------------

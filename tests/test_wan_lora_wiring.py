@@ -154,8 +154,10 @@ class TestWanAdapterLoRAGenerate:
 
     def test_wan_adapter_generate_calls_lora_methods(self) -> None:
         """When LoRA is active and frames have Cryptomatte IDs,
-        ``build_spatial_lora_masks``, ``apply_merged_weights``, and
-        ``restore_base_weights`` must all be called."""
+        ``manage_spatial_hooks`` is called without global unmasked
+        ``apply_merged_weights`` (avoiding 2x scaling and style leakage)."""
+        import contextlib
+
         manifests = _make_lora_manifests()
         adapter = WanAdapter(
             backend=_fake_backend(),
@@ -165,7 +167,7 @@ class TestWanAdapterLoRAGenerate:
 
         # Patch the manager methods
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr]
         mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
         mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
 
@@ -181,14 +183,13 @@ class TestWanAdapterLoRAGenerate:
             fgpp_frames=frames,
         )
 
-        mgr.build_spatial_lora_masks.assert_called()  # type: ignore[union-attr]
-        mgr.apply_merged_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
-        mgr.restore_base_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks.assert_called_once()  # type: ignore[union-attr]
+        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_restores_on_error(self) -> None:
-        """``restore_base_weights`` must be called even when the backend
-        transport raises an exception."""
+        """``manage_spatial_hooks`` context must exit cleanly even when
+        the backend transport raises an exception."""
         manifests = _make_lora_manifests()
 
         def exploding_fn(
@@ -204,9 +205,10 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = None
+        mock_cm.__exit__.return_value = False
+        mgr.manage_spatial_hooks = MagicMock(return_value=mock_cm)  # type: ignore[union-attr]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_with_cryptomatte()
@@ -221,12 +223,14 @@ class TestWanAdapterLoRAGenerate:
                 fgpp_frames=frames,
             )
 
-        # restore MUST still be called despite the error
-        mgr.restore_base_weights.assert_called_once_with(mock_model)  # type: ignore[union-attr]
+        # Context manager __exit__ MUST still be called despite the error
+        assert mock_cm.__exit__.called
 
     def test_wan_adapter_generate_skips_lora_without_cryptomatte(self) -> None:
-        """When frames lack ``cryptomatte_id``, LoRA methods must NOT
-        be called even if a manager is present."""
+        """When frames lack ``cryptomatte_id``, ``manage_spatial_hooks`` is called
+        with ``cryptomatte_ids=None``."""
+        import contextlib
+
         manifests = _make_lora_manifests()
         adapter = WanAdapter(
             backend=_fake_backend(),
@@ -235,9 +239,7 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_without_cryptomatte()
@@ -251,9 +253,12 @@ class TestWanAdapterLoRAGenerate:
             fgpp_frames=frames,
         )
 
-        mgr.build_spatial_lora_masks.assert_not_called()  # type: ignore[union-attr]
-        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
-        mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks.assert_called_once_with(  # type: ignore[union-attr]
+            mock_model,
+            cryptomatte_ids=None,
+            target_entity_ids=None,
+        )
+        assert isinstance(result, VideoResult)
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_skips_lora_without_model(self) -> None:
@@ -346,3 +351,53 @@ class TestWanAdapterLoRAGenerate:
         # Exited context cleanly: hooks must be detached
         assert len(model.spatial_attn.to_q._forward_hooks) == 0
         assert len(model.cross_attn.to_k._forward_hooks) == 0
+
+    def test_lora_patch_hook_odd_resolution_540p(self) -> None:
+        """PR-139: LoRAPatchHook handles odd spatial latent dimensions (e.g. 540p -> 67)."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.adapters.lora.patcher import LoRAPatchHook
+
+        linear = torch.nn.Linear(16, 16, bias=False)
+        delta = np.zeros((16, 16), dtype=np.float32)
+        hook = LoRAPatchHook(delta)
+
+        # 540p -> H=540, H//8 = 67, W=960, W//8 = 120.
+        # tau = (9-1)//4 + 1 = 3.
+        # h16 = 67 // 2 = 33, w16 = 120 // 2 = 60.
+        # expected_l = 3 * 33 * 60 = 5940 visual tokens.
+        t_m, h_m, w_m = 9, 67, 120
+        mask_3d = np.ones((t_m, h_m, w_m), dtype=np.float32)
+        hook.attach(linear, mask=mask_3d, module_name="blocks.0.attn1.to_q")
+
+        # Visual tokens input [B=1, L=5940, D=16]
+        inp = torch.randn(1, 3 * 33 * 60, 16)
+        out = linear(inp)
+        assert out.shape == (1, 3 * 33 * 60, 16)
+        hook.detach(linear)
+
+    def test_lora_manifest_diffusers_layer_whitelist(self) -> None:
+        """PR-139: LoRAManifest allows Diffusers layer names and wildcards."""
+        from synapse.adapters.lora.manifest import LoRAManifest
+
+        m_style = LoRAManifest(
+            name="style-diffusers",
+            category="style",
+            rank=8,
+            alpha=8.0,
+            adapter_path="style.safetensors",
+            adapter_sha256="c" * 64,
+            target_modules=["blocks.*.attn2.*", "blocks.0.attn2.to_k", "add_k_proj"],
+        )
+        assert len(m_style.target_modules) == 3
+
+        m_id = LoRAManifest(
+            name="id-diffusers",
+            category="identity",
+            rank=8,
+            alpha=8.0,
+            adapter_path="id.safetensors",
+            adapter_sha256="d" * 64,
+            target_modules=["blocks.*.attn1.*", "blocks.3.attn1.to_q"],
+        )
+        assert len(m_id.target_modules) == 2

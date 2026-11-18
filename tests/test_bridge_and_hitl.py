@@ -405,16 +405,48 @@ class TestHttpSecurityAndLedger:
     def test_http_rejects_cloud_metadata_ip(self) -> None:
         from synapse.bridge.http_security import validate_safe_url
 
-        with pytest.raises(ContractValidationError) as exc_info:
-            validate_safe_url("http://169.254.169.254/latest/meta-data")
-        assert exc_info.value.exit_code == 10
+        for target in (
+            "http://169.254.169.254/latest/meta-data",
+            "http://[::ffff:169.254.169.254]/",
+            "http://[fd00:ec2::254]/",
+            "http://100.100.100.200/",
+            "http://metadata.google.internal/",
+        ):
+            with pytest.raises(ContractValidationError) as exc_info:
+                validate_safe_url(target)
+            assert exc_info.value.exit_code == 10
 
     def test_foundary_transport_rejects_ssrf(self) -> None:
         from synapse.bridge.foundary_client import HttpFoundaryTransport
 
-        with pytest.raises(ContractValidationError) as exc_info:
-            HttpFoundaryTransport(base_url="http://169.254.169.254")
-        assert exc_info.value.exit_code == 10
+        for target in ("http://169.254.169.254", "http://[::ffff:169.254.169.254]"):
+            with pytest.raises(ContractValidationError) as exc_info:
+                HttpFoundaryTransport(base_url=target)
+            assert exc_info.value.exit_code == 10
+
+    def test_foundary_transport_submits_with_idempotency_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import MagicMock
+        from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
+
+        transport = HttpFoundaryTransport(base_url="http://localhost:8080")
+        captured_reqs: list[Any] = []
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"status": "success", "result": {}}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+
+        def mock_safe_urlopen(req: Any, **kwargs: Any) -> Any:
+            captured_reqs.append(req)
+            return mock_resp
+
+        monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", mock_safe_urlopen)
+        transport.submit(FoundaryRequest(service="trellis", inputs={"prompt": "test"}))
+
+        assert len(captured_reqs) == 1
+        assert "Idempotency-key" in captured_reqs[0].headers or "Idempotency-Key" in captured_reqs[0].headers
 
     def test_foundary_error_status_raises_backend_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
