@@ -8,6 +8,7 @@ parity is enforced by ``tools/wire_guard.py --check``.
 
 from __future__ import annotations
 
+import math
 from enum import IntEnum
 from typing import Final
 
@@ -136,6 +137,11 @@ def linear_to_log_normalized_depth(
         z_arr = np.asarray(z_m, dtype=np.float64)
         return np.zeros_like(z_arr)
 
+    # Guard: non-finite parameters → return 0.0 (aether/fgpp/fgpp_types.h:143-145)
+    if not math.isfinite(z_near_m) or not math.isfinite(z_far_m):
+        z_arr = np.asarray(z_m, dtype=np.float64)
+        return np.zeros_like(z_arr)
+
     z = np.asarray(z_m, dtype=np.float64)
     # Clamp NaN/Inf to z_far before the log
     z = np.where(np.isfinite(z), z, z_far_m)
@@ -171,6 +177,11 @@ def log_normalized_to_linear_depth(
         Linear depth in metres.
     """
     if z_near_m <= 0.0 or z_far_m <= z_near_m:
+        z_arr = np.asarray(z_norm, dtype=np.float64)
+        return np.zeros_like(z_arr)
+
+    # Guard: non-finite parameters → return 0.0 (aether/fgpp/fgpp_types.h:143-145)
+    if not math.isfinite(z_near_m) or not math.isfinite(z_far_m):
         z_arr = np.asarray(z_norm, dtype=np.float64)
         return np.zeros_like(z_arr)
 

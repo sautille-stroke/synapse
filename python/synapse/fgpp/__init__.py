@@ -4,7 +4,7 @@ Re-exports the core data classes and schema constants for convenient
 single-import access.
 """
 
-from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+from synapse.fgpp.frame import CameraConvention, CameraParams, FGPPFrame, FGPPSequence
 from synapse.fgpp.io import (
     export_fgpp,
     import_fgpp,
@@ -30,6 +30,7 @@ from synapse.fgpp.torch_bridge import frame_to_tensors, tensors_to_frame
 
 __all__ = [
     # Frame types
+    "CameraConvention",
     "CameraParams",
     "FGPPFrame",
     "FGPPSequence",

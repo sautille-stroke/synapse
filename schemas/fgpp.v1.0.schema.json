@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapse.dervgen.dev/schemas/fgpp.v1.0.schema.json",
+  "title": "FGPP Metadata v1.0",
+  "description": "Schema for FGPP (Feature Guidance Package Protocol) metadata.json files following the fgpp.v1.0 wire format.",
+  "type": "object",
+  "required": ["schema_version", "scene_id", "fps", "total_frames", "resolution", "frames"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "fgpp.v1.0",
+      "description": "FGPP schema version identifier."
+    },
+    "scene_id": {
+      "type": "string",
+      "description": "Unique scene identifier."
+    },
+    "fps": {
+      "type": "number",
+      "minimum": 0.001,
+      "description": "Frames per second."
+    },
+    "total_frames": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of frames in the sequence."
+    },
+    "num_frames": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Alias for total_frames."
+    },
+    "resolution": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 1},
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Resolution as [width, height]."
+    },
+    "z_near_meters": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Near plane distance in metres."
+    },
+    "z_far_meters": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Far plane distance in metres."
+    },
+    "anchor_interval_frames": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Physical anchor frame interval."
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frame_index"],
+        "properties": {
+          "frame_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timestamp_sec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "is_physical_anchor": {
+            "type": "boolean"
+          },
+          "fov_y_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 180
+          },
+          "view_matrix_col_major": {
+            "type": "array",
+            "items": {"type": "number"},
+            "minItems": 16,
+            "maxItems": 16
+          },
+          "proj_matrix_col_major": {
+            "type": "array",
+            "items": {"type": "number"},
+            "minItems": 16,
+            "maxItems": 16
+          },
+          "camera": {
+            "type": "object",
+            "properties": {
+              "fx": {"type": "number"},
+              "fy": {"type": "number"},
+              "cx": {"type": "number"},
+              "cy": {"type": "number"},
+              "width": {"type": "integer", "minimum": 1},
+              "height": {"type": "integer", "minimum": 1},
+              "fov_degrees": {"type": "number"},
+              "z_near": {"type": "number"},
+              "z_far": {"type": "number"},
+              "view_matrix": {
+                "type": "array",
+                "items": {"type": "array", "items": {"type": "number"}},
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "world_matrix": {
+                "type": "array",
+                "items": {"type": "array", "items": {"type": "number"}},
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}
