@@ -440,7 +440,6 @@ class FGPPSequence:
                     p00, p11 = proj_row[0, 0], proj_row[1, 1]
                     p02, p12 = proj_row[0, 2], proj_row[1, 2]
                     p22, p23 = proj_row[2, 2], proj_row[2, 3]
-                    p32 = proj_row[3, 2]
                     convention = CameraConvention.detect(proj_row)
 
                     if abs(p00) > 1e-6 and width > 0:

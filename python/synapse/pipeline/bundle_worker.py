@@ -22,7 +22,6 @@ Exit codes follow AGENTS.md section 3::
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os

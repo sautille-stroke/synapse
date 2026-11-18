@@ -122,7 +122,7 @@ def export_fgpp(
 
     # Strict mode: require all 15 channels and sanitize boundary values
     if strict:
-        from synapse.fgpp.schema import FGPP_NUM_CHANNELS, get_channel_names
+        from synapse.fgpp.schema import get_channel_names
 
         required_channels = set(get_channel_names())
         for frame in seq.frames:
