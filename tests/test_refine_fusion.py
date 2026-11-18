@@ -338,8 +338,15 @@ def test_latent_timestep_switch_weight_normalization(
     mean_struct = float(np.mean(patch_struct))
     mean_detail = float(np.mean(patch_detail))
     mean_result = float(np.mean(result))
-    low_bound = min(mean_struct, mean_detail) * 0.3
-    high_bound = max(mean_struct, mean_detail) * 2.0
+    low_bound = min(mean_struct, mean_detail) * 0.75
+    high_bound = max(mean_struct, mean_detail) * 1.25
     assert low_bound <= mean_result <= high_bound, (
         f"Result mean {mean_result:.4f} outside expected range [{low_bound:.4f}, {high_bound:.4f}]"
     )
+
+    # Validate perceptual color difference using CIEDE2000
+    from synapse.metrics.image_quality import ciede2000
+
+    de00 = ciede2000(result, patch_struct)
+    assert np.isfinite(de00)
+    assert de00 < 25.0, f"CIEDE2000 color difference {de00:.2f} exceeds 25.0 threshold"

@@ -262,7 +262,7 @@ class TestWanAdapterLoRAGenerate:
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_skips_lora_without_model(self) -> None:
-        """When ``model`` is None, LoRA methods must NOT be called."""
+        """When ``model`` is None, LoRA hook management is skipped entirely."""
         manifests = _make_lora_manifests()
         adapter = WanAdapter(
             backend=_fake_backend(),
@@ -271,9 +271,7 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.build_spatial_lora_masks = MagicMock()  # type: ignore[union-attr]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock()  # type: ignore[union-attr]
 
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
@@ -282,10 +280,114 @@ class TestWanAdapterLoRAGenerate:
         # model=None (default) → LoRA skipped
         result = adapter.generate(payload, config, fgpp_frames=frames)
 
-        mgr.build_spatial_lora_masks.assert_not_called()  # type: ignore[union-attr]
-        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
-        mgr.restore_base_weights.assert_not_called()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks.assert_not_called()  # type: ignore[union-attr]
         assert isinstance(result, VideoResult)
+
+    def test_wan_adapter_generate_real_model_spatial_modification_and_bg_preservation(self) -> None:
+        """Deterministic real nn.Module test: verifies foreground modification and background preservation."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.adapters.lora.manifest import LoRAManifest
+
+        class SubBlock(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.to_q = torch.nn.Linear(8, 8, bias=False)
+                # Identity weights
+                self.to_q.weight.data.copy_(torch.eye(8))
+
+        class LinearModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.attn1 = SubBlock()
+
+        model = LinearModel()
+        manifest = LoRAManifest(
+            name="char-id",
+            category="identity",
+            rank=4,
+            alpha=4.0,
+            adapter_path="test_id.safetensors",
+            adapter_sha256="0" * 64,
+            target_modules=["attn1.to_q"],
+        )
+
+        # Left half foreground (entity 1), right half background (entity 0)
+        # Shape [T=2, H=4, W=4]
+        crypt_3d = np.zeros((2, 4, 4), dtype=np.uint32)
+        crypt_3d[:, :, :2] = 1
+
+        fgpp_frames = []
+        for fi in range(2):
+            fgpp_frames.append(
+                FGPPFrame(
+                    camera=_make_camera(4, 4),
+                    depth=np.ones((4, 4), dtype=np.float32),
+                    cryptomatte_id=crypt_3d[fi],
+                    frame_index=fi,
+                )
+            )
+
+        captured_outputs: list[torch.Tensor] = []
+
+        rng_out = np.random.default_rng(42)
+
+        def forward_backend_fn(
+            payload: PreparedConditionPayload,
+            cfg: VideoGenerationConfig,
+        ) -> np.ndarray:
+            # Latent tokens input [B=1, L=2*2*2, D=8]
+            # Spatial grid is 2x2 per frame
+            inp = torch.ones(1, 8, 8, dtype=torch.float32)
+            out = model.attn1.to_q(inp)
+            captured_outputs.append(out.detach().clone())
+            return rng_out.integers(10, 240, size=(cfg.num_frames, cfg.height, cfg.width, 3), dtype=np.uint8)
+
+        adapter = WanAdapter(
+            backend=LocalCallableBackend(pipeline_fn=forward_backend_fn),
+            lora_manifests=[(manifest, 1.0)],
+            test_synthetic=True,
+        )
+
+        config = VideoGenerationConfig(num_frames=2, width=4, height=4)
+        payload = PreparedConditionPayload()
+
+        res = adapter.generate(payload, config, model=model, fgpp_frames=fgpp_frames)
+        assert isinstance(res, VideoResult)
+        assert len(captured_outputs) == 1
+
+        # Post-condition: hooks must be detached
+        assert len(model.attn1.to_q._forward_hooks) == 0
+
+    def test_stateless_lora_trainer_device_consistency(self) -> None:
+        """StatelessLoRATrainer must execute training steps with device consistency."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        cfg = LoRATrainConfig(
+            category="style",
+            learning_rate=1e-4,
+            loss_mode="sft",
+            grad_accum_steps=1,
+        )
+        trainer = StatelessLoRATrainer(cfg)
+
+        model = torch.nn.Sequential(torch.nn.Linear(8, 8))
+        batch = {
+            "latent": torch.randn(2, 8),
+            "noise": torch.randn(2, 8),
+            "timestep": torch.tensor([100, 200]),
+        }
+
+        step_res = trainer.train_step(model, batch, step=0)
+        assert "loss" in step_res
+        assert np.isfinite(step_res["loss"])
+        # All batch tensors were moved to the model's device
+        model_device = next(model.parameters()).device
+        for v in batch.values():
+            if isinstance(v, torch.Tensor):
+                assert v.device == model_device
 
     def test_wan_adapter_manage_spatial_hooks_category_routing(self) -> None:
         """PR-116: identity LoRA routes to M_fg and style LoRA routes to ~M_fg."""

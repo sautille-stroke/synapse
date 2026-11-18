@@ -19,6 +19,7 @@ from synapse.recon.geometry import (
 from synapse.recon.kinematics import solve_zero_slip_ik
 from synapse.recon.tracking import solve_camera_trajectory, solve_point_tracks
 from synapse.recon.types import (
+    CameraExtrinsics,
     MeshGeometry,
     MocapKinematics,
     ReconResult,
@@ -40,6 +41,9 @@ class ReconPipeline:
         self,
         target_quad_faces: int = 1500,
         geometry_backend: Literal["native", "python"] = "native",
+        voxel_size: float = 0.02,
+        sdf_trunc: float = 0.04,
+        volume_bounds: tuple[float, float, float] = (1.5, 1.5, 1.5),
     ) -> None:
         """Initialize the reconstruction pipeline.
 
@@ -47,9 +51,15 @@ class ReconPipeline:
             target_quad_faces: Desired target face count for quad remeshing.
             geometry_backend: Execution backend for topology gate validation
                 ('native' in production, 'python' Oracle for dual-track testing).
+            voxel_size: Edge length of a single voxel in metres for TSDF fusion.
+            sdf_trunc: Truncation distance in metres for TSDF fusion.
+            volume_bounds: (x, y, z) extent of reconstruction volume in metres.
         """
         self.target_quad_faces = target_quad_faces
         self.geometry_backend = geometry_backend
+        self.voxel_size = voxel_size
+        self.sdf_trunc = sdf_trunc
+        self.volume_bounds = volume_bounds
 
     def run(
         self,
@@ -59,6 +69,9 @@ class ReconPipeline:
         fps: float = 30.0,
         track: str = "track_b_whitebox",
         has_gen3d_highpoly: bool | None = None,
+        depths: np.ndarray | None = None,
+        masks: np.ndarray | None = None,
+        cameras: list[CameraExtrinsics] | None = None,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -73,6 +86,12 @@ class ReconPipeline:
                 high-poly reconstruction.  When *None* (default), auto-
                 computed as ``initial_mesh.vertex_count >= 1500`` to
                 enforce Redline #3.
+            depths: Optional metric depth maps for multi-view TSDF reconstruction
+                when ``initial_mesh is None``.
+            masks: Optional silhouette masks for visual hull reconstruction
+                when ``initial_mesh is None``.
+            cameras: Optional explicit camera extrinsics overriding or supplementing
+                solved trajectory when ``initial_mesh is None``.
 
         Returns:
             ReconResult containing mesh, camera trajectory, kinematics,
@@ -96,13 +115,24 @@ class ReconPipeline:
 
         # 3. Surface Geometry & Quad Remeshing
         if initial_mesh is None:
-            # Multi-view reconstruction from solved camera trajectory
+            # Multi-view reconstruction from solved or explicit camera trajectory
             from synapse.recon.multiview import MultiViewInitializer
 
-            initializer = MultiViewInitializer()
+            cams = (
+                cameras
+                if cameras is not None
+                else [ext for ext in (camera_traj.extrinsics if camera_traj else [])]
+            )
+            initializer = MultiViewInitializer(
+                voxel_size=self.voxel_size,
+                sdf_trunc=self.sdf_trunc,
+                volume_bounds=self.volume_bounds,
+            )
             active_mesh = initializer.reconstruct(
                 frames=frames,
-                cameras=[ext for ext in (camera_traj.extrinsics if camera_traj else [])],
+                cameras=cams,
+                masks=masks,
+                depths=depths,
             )
         else:
             # Enforce Track-B distillation geometry gate (Redline #3):
@@ -173,12 +203,17 @@ class ReconPipeline:
             kinematics = None
 
         # 5. Intrinsic Albedo De-lighting
-        if camera_traj is not None and len(camera_traj.extrinsics) == num_frames:
+        active_cams = (
+            cameras
+            if (cameras is not None and len(cameras) == num_frames)
+            else (camera_traj.extrinsics if (camera_traj is not None and len(camera_traj.extrinsics) == num_frames) else None)
+        )
+        if active_cams is not None:
             from synapse.recon.delight import delight_multiview_albedo
 
             delight_result = delight_multiview_albedo(
                 frames=frames,
-                cameras=camera_traj.extrinsics,
+                cameras=active_cams,
                 mesh=final_mesh,
             )
         else:

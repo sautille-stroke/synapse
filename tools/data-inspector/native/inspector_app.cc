@@ -798,7 +798,7 @@ bool InspectorApp::resizeViewport(uint32_t width, uint32_t height) {
   m_shm.close();
   bool shmOk = false;
   if (m_config.useShmFile && !m_config.shmFilePath.empty()) {
-    shmOk = m_shm.openFile(m_config.shmFilePath, width, height);
+    shmOk = m_shm.openFile(m_config.shmFilePath, width, height, !m_config.keepShm);
   } else {
     shmOk = m_shm.open(m_config.shmName, width, height, !m_config.keepShm);
   }
@@ -926,7 +926,8 @@ bool InspectorApp::init() {
   // Open SHM: file-backed or POSIX shm_open depending on config.
   bool shmOk = false;
   if (m_config.useShmFile && !m_config.shmFilePath.empty()) {
-    shmOk = m_shm.openFile(m_config.shmFilePath, m_config.width, m_config.height);
+    shmOk = m_shm.openFile(m_config.shmFilePath, m_config.width, m_config.height,
+                            !m_config.keepShm);
     if (!shmOk) {
       std::cerr << "[inspector] Failed to open file-backed SHM: " << m_config.shmFilePath << "\n";
       return false;

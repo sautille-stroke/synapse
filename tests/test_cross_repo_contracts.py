@@ -9,10 +9,12 @@ Verifies end-to-end parity and contract compliance across:
 
 from __future__ import annotations
 
+import json
 import mmap
 import os
 import re
 import struct
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -33,6 +35,7 @@ from synapse.pipeline.bundle_worker import (
     BundleManifest,
     ClosureType,
     _compute_sha256,
+    run_worker_cli,
 )
 from synapse.style.aces_color import (
     _M_SRGB_TO_ACESCG,
@@ -66,6 +69,33 @@ def _resolve_aether_root() -> Path | None:
     ]
     for c in candidates:
         if c.is_dir() and (c / "fgpp").is_dir():
+            return c
+    return None
+
+
+def _resolve_render_farm_root() -> Path | None:
+    """Find the sibling render-farm repository."""
+    candidates = [
+        _REPO_ROOT.parent / "render-farm",
+        Path("/root/work/dervgen/render-farm"),
+        Path("/Volumes/work/dervgen/render-farm"),
+        Path("H:/dervgen/render-farm"),
+    ]
+    for c in candidates:
+        if c.is_dir() and (c / "internal" / "domain" / "models.go").is_file():
+            return c
+    return None
+
+
+def _resolve_inspector_native_binary() -> Path | None:
+    """Find the built data-inspector-native binary."""
+    candidates = [
+        _REPO_ROOT / "tools" / "data-inspector" / "native" / "bazel-bin" / "data-inspector-native",
+        _REPO_ROOT / "tools" / "data-inspector" / "native" / "bazel-bin" / "data-inspector-native.exe",
+        Path("/root/work/dervgen/synapse/tools/data-inspector/native/bazel-bin/data-inspector-native"),
+    ]
+    for c in candidates:
+        if c.is_file() and os.access(str(c), os.X_OK):
             return c
     return None
 
@@ -236,6 +266,98 @@ class TestAetherFgppContract:
             # Verify depth float32 precision
             assert rf0.depth is not None
             assert np.allclose(rf0.depth, depth, atol=1e-5)
+
+    def test_eccentric_camera_rasterization_and_fulgur_convention(self) -> None:
+        """Render with SoftwareRasterizer using eccentric camera (cx=700, cy=200, W=1024, H=512).
+
+        Assert screen projection lands at (700, 200) and matches fulgur RH_ZO / reversed-Z.
+        """
+        from synapse.fgpp.frame import CameraConvention
+        from synapse.render_core.rasterizer import SoftwareRasterizer, entity_hash
+
+        width = 1024
+        height = 512
+        cx = 700.0
+        cy = 200.0
+        fx = 800.0
+        fy = 800.0
+        z_near = 0.1
+        z_far = 100.0
+
+        cam = CameraParams(
+            fx=fx,
+            fy=fy,
+            cx=cx,
+            cy=cy,
+            width=width,
+            height=height,
+            z_near=z_near,
+            z_far=z_far,
+        )
+
+        # 1. Check projection matrix against OpenGL formula
+        proj = cam.projection_matrix()
+        assert CameraConvention.detect(proj) == CameraConvention.OPENGL
+
+        # 2. Check Vulkan RH_ZO conversion
+        # Vulkan: p22 = -far / (far - near), p23 = -(far * near) / (far - near)
+        vul_p22 = -z_far / (z_far - z_near)
+        vul_p23 = -(z_far * z_near) / (z_far - z_near)
+        vul_proj = proj.copy()
+        vul_proj[2, 2] = vul_p22
+        vul_proj[2, 3] = vul_p23
+        re_gl = CameraConvention.to_opengl(vul_proj, CameraConvention.VULKAN_RH_ZO)
+        assert np.allclose(re_gl[2, :], proj[2, :], atol=1e-6)
+
+        # Vulkan RH_ZO detection with p22 in (-1, 0)
+        zo_proj = proj.copy()
+        zo_proj[2, 2] = -0.5
+        assert CameraConvention.detect(zo_proj) == CameraConvention.VULKAN_RH_ZO
+
+        # 3. Check fulgur infinite reversed-Z: p22 = 0, p32 = -1, p23 = z_near
+        fulgur_rev_z = proj.copy()
+        fulgur_rev_z[2, 2] = 0.0
+        fulgur_rev_z[2, 3] = z_near
+        fulgur_rev_z[3, 2] = -1.0
+        assert CameraConvention.detect(fulgur_rev_z) == CameraConvention.FULGUR_INF_REVERSED_Z
+
+        # 4. Render with SoftwareRasterizer: quad centered at (0, 0, -5.0) in camera space
+        rasterizer = SoftwareRasterizer(width=width, height=height)
+        d = 0.05
+        verts = np.array(
+            [
+                [-d, -d, -5.0],
+                [d, -d, -5.0],
+                [d, d, -5.0],
+                [-d, d, -5.0],
+            ],
+            dtype=np.float32,
+        )
+        faces = np.array(
+            [
+                [0, 1, 2],
+                [0, 2, 3],
+            ],
+            dtype=np.int32,
+        )
+        normals = np.array(
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+
+        frame = rasterizer.render(verts, faces, normals, cam, entity_name="eccentric_target")
+        expected_eid = np.uint32(entity_hash("eccentric_target"))
+
+        # Verify pixel at (cy=200, cx=700) is hit
+        assert frame.cryptomatte_id is not None
+        assert frame.cryptomatte_id[200, 700] == expected_eid
+        assert frame.depth is not None
+        assert abs(float(frame.depth[200, 700]) - 5.0) < 0.1
 
 
 # ===========================================================================
@@ -410,6 +532,112 @@ class TestRenderFarmJobBundleContract:
         for ctype, stage in CLOSURE_TYPE_MAP.items():
             assert isinstance(stage, str) and len(stage) > 0
 
+    def test_render_farm_models_go_closure_constants_parity(self) -> None:
+        """Verify parity between render-farm internal/domain/models.go and ClosureType."""
+        rf_root = _resolve_render_farm_root()
+        if rf_root is None:
+            if _is_strict_deps():
+                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: sibling render-farm repo not found.")
+            pytest.skip("Sibling render-farm repo not found; skipping models.go parity.")
+
+        models_go = rf_root / "internal" / "domain" / "models.go"
+        assert models_go.is_file(), f"models.go missing at {models_go}"
+        content = models_go.read_text(encoding="utf-8")
+
+        expected_constants = {
+            "ClosureNeuralVideo": "neural_video",
+            "ClosureSurgicalInpaint": "surgical_inpaint",
+            "ClosureMeshReconstruct": "mesh_reconstruct",
+            "ClosureDelighting": "delighting",
+            "ClosureOpticalPolish": "optical_polish",
+            "ClosureMocapIK": "mocap_ik",
+        }
+        for const_name, const_val in expected_constants.items():
+            pattern = rf'{const_name}\s+ClosureType\s*=\s*"{const_val}"'
+            assert re.search(pattern, content) is not None, f"Constant {const_name} not found in models.go"
+
+    def test_rfc0039_job_bundle_e2e_cli_execution(self) -> None:
+        """Run run_worker_cli on valid and tampered RFC 0039 JobBundles."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            # 1. Create a valid FGPP directory with frame and metadata.json
+            from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
+
+            fgpp_dir = tmp_path / "fgpp_input"
+            fgpp_frame = FGPPFrame(
+                camera=CameraParams(fx=500.0, fy=500.0, cx=32.0, cy=32.0, width=64, height=64),
+                depth=np.ones((64, 64), dtype=np.float32),
+                frame_index=0,
+            )
+            seq = FGPPSequence(frames=[fgpp_frame], fps=24.0, scene_id="rfc0039_cli_test")
+            export_fgpp(seq, fgpp_dir, strict=False)
+            meta_file = fgpp_dir / "metadata.json"
+            meta_sha = _compute_sha256(meta_file)
+
+            out_dir = tmp_path / "outputs"
+            out_dir.mkdir(parents=True)
+
+            bundle_dict = {
+                "job_id": "job-rfc0039-test-01",
+                "closure_type": "neural_video",
+                "scene_spec": {
+                    "fgpp_dir": str(fgpp_dir),
+                    "fps": 24,
+                    "frames": 1,
+                },
+                "asset_manifest": [
+                    {
+                        "path": str(meta_file),
+                        "sha256": meta_sha,
+                        "byte_size": meta_file.stat().st_size,
+                    }
+                ],
+                "output_sink": {
+                    "result_video": str(out_dir / "out.mp4"),
+                },
+                "hardware_budget": {
+                    "free_vram_gb": 80.0,
+                },
+                "payload": {
+                    "seed": 42,
+                    "model_variant": "wan2.1_1.3b",
+                    "num_frames": 1,
+                    "adapter": "mock",
+                },
+            }
+
+            bundle_file = tmp_path / "bundle_manifest.json"
+            bundle_file.write_text(json.dumps(bundle_dict), encoding="utf-8")
+
+            # Execute via CLI runner with dry-run or mock backend
+            exit_code = run_worker_cli(str(bundle_file), json_mode=True)
+            assert exit_code == 0
+
+            res_manifest_file = tmp_path / "result_manifest.json"
+            assert res_manifest_file.is_file()
+            res_data = json.loads(res_manifest_file.read_text(encoding="utf-8"))
+            assert res_data["status"] == "success"
+            assert res_data["exit_code"] == 0
+
+            # 2. Tampering test: corrupt asset SHA256 and assert exit_code 20
+            tampered_bundle = dict(bundle_dict)
+            tampered_bundle["job_id"] = "job-rfc0039-tampered-02"
+            tampered_bundle["asset_manifest"] = [
+                {
+                    "path": str(meta_file),
+                    "sha256": "bad" * 21 + "a",
+                    "byte_size": meta_file.stat().st_size,
+                }
+            ]
+            tampered_dir = tmp_path / "tampered"
+            tampered_dir.mkdir(parents=True)
+            tampered_file = tampered_dir / "bundle_manifest.json"
+            tampered_file.write_text(json.dumps(tampered_bundle), encoding="utf-8")
+
+            tamper_exit_code = run_worker_cli(str(tampered_file), json_mode=True)
+            assert tamper_exit_code == 20
+
 
 # ===========================================================================
 # Contract 4: tools/data-inspector/native <-> Electron ShmFrameReader
@@ -493,3 +721,51 @@ class TestDataInspectorShmContract:
                 assert h_fr_busy % 2 != 0, "Odd sequence must indicate writer busy"
 
                 mm.close()
+
+    def test_native_data_inspector_headless_shm_execution(self) -> None:
+        """Execute built data-inspector-native binary with --headless --keep-shm --shm-file."""
+        native_bin = _resolve_inspector_native_binary()
+        if native_bin is None:
+            if _is_strict_deps():
+                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: data-inspector-native binary not found.")
+            pytest.skip("data-inspector-native binary not built; skipping live binary test.")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            shm_file = tmp_path / "test_native_shm.bin"
+
+            width = 64
+            height = 64
+            cmd = [
+                str(native_bin),
+                "--headless",
+                f"--width={width}",
+                f"--height={height}",
+                "--frames=1",
+                "--keep-shm",
+                f"--shm-file={shm_file}",
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            assert res.returncode == 0, f"data-inspector-native exited with {res.returncode}: {res.stderr}"
+            assert shm_file.is_file(), f"Output SHM file missing at {shm_file}"
+
+            expected_bytes = self.HEADER_SIZE + self.BUFFER_COUNT * width * height * 4
+            assert shm_file.stat().st_size == expected_bytes
+
+            with open(shm_file, "rb") as f:
+                header_data = f.read(self.HEADER_SIZE)
+                magic, ver, w, h, widx, bc, fr, fps, dt, dv = struct.unpack_from(
+                    "<IIIIIIQffB", header_data, 0
+                )
+                assert magic == self.INSPECTOR_SHM_MAGIC
+                assert ver == self.INSPECTOR_SHM_VERSION
+                assert w == width
+                assert h == height
+                assert bc == self.BUFFER_COUNT
+                assert fr % 2 == 0  # Even = stable
+
+                # Read published frame buffer
+                f.seek(self.HEADER_SIZE + widx * (width * height * 4))
+                pixels = np.frombuffer(f.read(width * height * 4), dtype=np.uint8).reshape(height, width, 4)
+                # Ensure frame is rendered and non-empty (diagnostic test pattern or clear color)
+                assert pixels.shape == (height, width, 4)

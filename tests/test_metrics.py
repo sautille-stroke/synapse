@@ -285,30 +285,19 @@ class TestTemporal:
         assert result.value >= 0.0
         assert np.isfinite(result.value)
 
-    def test_compute_fvd_from_videos_no_proxy_raises(self) -> None:
-        """compute_fvd_from_videos with require_pretrained=True raises
-        BackendUnavailableError when torch is not available."""
+    def test_compute_fvd_from_videos_no_proxy_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """compute_fvd_from_videos with require_pretrained=True raises BackendUnavailableError."""
+        from synapse.errors import BackendUnavailableError
         from synapse.metrics import compute_fvd_from_videos
 
         rng = np.random.default_rng(42)
         real = rng.random((3, 4, 8, 8, 3)).astype(np.float32)
         gen = rng.random((3, 4, 8, 8, 3)).astype(np.float32)
 
-        # This test may pass or raise depending on torch availability,
-        # but at minimum it should not crash with unhandled exception.
-        try:
-            result = compute_fvd_from_videos(
-                real,
-                gen,
-                require_pretrained=True,
-            )
-            # If torch is available, we get a real result
-            assert result.is_proxy_metric is False
-        except Exception as exc:
-            from synapse.errors import BackendUnavailableError
-
-            assert isinstance(exc, BackendUnavailableError)
-            assert exc.exit_code == 30
+        monkeypatch.setattr("synapse.metrics.temporal._build_r3d18_extractor", lambda: None)
+        with pytest.raises(BackendUnavailableError) as exc_info:
+            compute_fvd_from_videos(real, gen, require_pretrained=True)
+        assert exc_info.value.exit_code == 30
 
 
 # ---------------------------------------------------------------------------

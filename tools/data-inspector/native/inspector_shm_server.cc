@@ -85,25 +85,27 @@ void InspectorShmServer::close() noexcept {
 
   const std::string shmName(m_shm.name());
   m_shm.close();
-  if (m_unlinkOnClose && !shmName.empty()) {
-    (void)aether::pal::SharedMemory::unlink(shmName);
-  }
-  // Clean up file-backed SHM temporary file on exit.
-  if (!m_shmFilePath.empty()) {
+  if (m_unlinkOnClose) {
+    if (!shmName.empty()) {
+      (void)aether::pal::SharedMemory::unlink(shmName);
+    }
+    // Clean up file-backed SHM temporary file on exit.
+    if (!m_shmFilePath.empty()) {
 #if defined(_WIN32)
-    (void)::DeleteFileA(m_shmFilePath.c_str());
+      (void)::DeleteFileA(m_shmFilePath.c_str());
 #else
-    (void)::unlink(m_shmFilePath.c_str());
+      (void)::unlink(m_shmFilePath.c_str());
 #endif
-    m_shmFilePath.clear();
+    }
   }
+  m_shmFilePath.clear();
   m_width = 0;
   m_height = 0;
   m_stagingIdx = 0;
 }
 
 bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
-                                  uint32_t height) {
+                                  uint32_t height, bool unlinkOnClose) {
   close();
 
   if (width == 0 || height == 0 || width > kMaxDimension ||
@@ -159,7 +161,7 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
   m_width = width;
   m_height = height;
   m_stagingIdx = 0;
-  m_unlinkOnClose = false;  // File-backed: do not unlink (file persists)
+  m_unlinkOnClose = unlinkOnClose;
   m_shmFilePath = pathStr;  // Store path for cleanup on close/destructor
 
   void* base = m_shm.data();
