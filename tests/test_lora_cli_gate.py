@@ -404,10 +404,10 @@ class TestLoRACLI:
             sys.stdout = old
 
         output = buf.getvalue()
-        assert code == 50
+        assert code == 20  # AssetNotFoundError: no .npy files in '.'
         parsed = json.loads(output)
         assert parsed["status"] == "error"
-        assert parsed["exit_code"] == 50
+        assert parsed["exit_code"] == 20
         assert "agent_fix_hint" in parsed
 
     def test_lora_eval_pass_json(
@@ -583,11 +583,10 @@ class TestLoRACLI:
         finally:
             sys.stdout = old
 
-        assert code == 50
+        assert code == 0  # Train now wired with small model
         output = buf.getvalue()
         parsed = json.loads(output)
-        assert parsed["status"] == "error"
-        assert parsed["exit_code"] == 50
+        assert parsed["status"] == "ok"
 
     def test_lora_train_invalid_json_exits_10(self) -> None:
         """synapse lora train --json with malformed JSON exits with code 10."""
@@ -665,11 +664,11 @@ class TestLoRACLI:
         finally:
             sys.stdout = old
 
-        assert code == 50
+        assert code == 20  # AssetNotFoundError: no adapter_model.safetensors in '.'
         output = buf.getvalue()
         parsed = json.loads(output)
         assert parsed["status"] == "error"
-        assert parsed["exit_code"] == 50
+        assert parsed["exit_code"] == 20
 
     def test_no_fake_stub_statuses_in_cli_or_trainer(self) -> None:
         """Ensure fake success stub strings are purged from cli and trainer."""

@@ -12,6 +12,8 @@ methods to keep the base package lightweight.
 from __future__ import annotations
 
 import fnmatch
+import logging
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,6 +22,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from synapse.errors import ContractValidationError
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -62,6 +66,9 @@ class LoRATrainConfig(BaseModel):
     max_trainable_ratio: float | None = Field(default=None, gt=0.0, le=1.0)
     edge_loss_weight: float = Field(default=0.0, ge=0.0)
     normal_loss_weight: float = Field(default=0.0, ge=0.0)
+    gradient_checkpointing: bool = False
+    warmup_steps: int = Field(default=0, ge=0)
+    save_every_steps: int = Field(default=0, ge=0)
 
     @field_validator("rank")
     @classmethod
@@ -150,6 +157,44 @@ def _disable_lora_adapters(module: Any) -> Iterator[None]:
 
 
 # ---------------------------------------------------------------------------
+# Temporal compression + spatial downsample helper
+# ---------------------------------------------------------------------------
+
+
+def _temporal_compress_and_spatial_ds(x: Any, dev: Any) -> Any:
+    """Compress temporal axis T → τ = (T-1)//4 + 1 and spatial 8× downsample.
+
+    Args:
+        x: Tensor of shape ``[B, (C,) T, H, W]``.  If ndim == 4 (no C),
+           treated as ``[B, T, H, W]`` → output ``[B, 1, τ, H//8, W//8]``.
+           If ndim == 5, treated as ``[B, C, T, H, W]``.
+        dev: Target device.
+
+    Returns:
+        Tensor ``[B, C, τ, H//8, W//8]``.
+    """
+    import torch
+
+    if x.ndim == 4:
+        # [B, T, H, W] → [B, 1, T, H, W]
+        x = x.unsqueeze(1)
+
+    b, c, t, h, w = x.shape
+    tau = (t - 1) // 4 + 1
+
+    # Temporal average pooling
+    chunks = []
+    for i in range(tau):
+        s = i * 4
+        e = min(s + 4, t)
+        chunks.append(x[:, :, s:e].mean(dim=2, keepdim=True))
+    x_t = torch.cat(chunks, dim=2)  # [B, C, τ, H, W]
+
+    # Spatial 8× strided downsample
+    return x_t[:, :, :, ::8, ::8].to(device=dev)
+
+
+# ---------------------------------------------------------------------------
 # StatelessLoRATrainer
 # ---------------------------------------------------------------------------
 
@@ -185,6 +230,7 @@ class StatelessLoRATrainer:
         self._step_count: int = 0
         self._micro_step: int = 0
         self._target_patterns: list[str] = []
+        self._geometry_probe: Any = None
         self._flow_matching_loss = FlowMatchingLoss()
         self._edge_preserving_loss = EdgePreservingLoss()
         self._normal_reconstruction_loss = NormalReconstructionLoss()
@@ -351,8 +397,67 @@ class StatelessLoRATrainer:
             param_groups.append({"params": temporal_params, "lr": self._config.lr_temporal})
         return torch.optim.AdamW(param_groups)
 
+    def _get_lr_multiplier(self, step: int) -> float:
+        """Cosine annealing LR multiplier with optional linear warmup."""
+        warmup = self._config.warmup_steps
+        max_steps = max(self._config.max_steps, 1)
+        if warmup > 0 and step < warmup:
+            return float(step + 1) / float(warmup)
+        progress = float(step - warmup) / float(max(max_steps - warmup, 1))
+        return 0.5 * (1.0 + math.cos(math.pi * min(progress, 1.0)))
+
+    def enable_gradient_checkpointing(self, module: Any) -> None:
+        """Enable gradient checkpointing on module if configured."""
+        if not self._config.gradient_checkpointing:
+            return
+        if hasattr(module, "gradient_checkpointing_enable"):
+            module.gradient_checkpointing_enable()
+            logger.info("Gradient checkpointing enabled via model API")
+        else:
+            logger.info("Module does not support gradient_checkpointing_enable()")
+
+    def save_state_dict(self, path: Path) -> Path:
+        """Save trainer state for checkpoint resume (Colab preemption)."""
+        import torch
+
+        state = {
+            "step_count": self._step_count,
+            "micro_step": self._micro_step,
+            "config": self._config.model_dump(),
+        }
+        if self._optimizer is not None:
+            state["optimizer_state_dict"] = self._optimizer.state_dict()
+        if hasattr(self, "_grad_scaler"):
+            state["grad_scaler_state_dict"] = self._grad_scaler.state_dict()
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(state, str(out))
+        return out.resolve()
+
+    def load_state_dict(self, path: Path, module: Any) -> int:
+        """Restore trainer state from checkpoint.
+
+        Returns:
+            The step count at which training was saved.
+        """
+        import torch
+
+        state = torch.load(str(path), weights_only=False)
+        self._step_count = state.get("step_count", 0)
+        self._micro_step = state.get("micro_step", 0)
+        if "optimizer_state_dict" in state:
+            if self._optimizer is None:
+                self._optimizer = self._build_optimizer(module)
+            self._optimizer.load_state_dict(state["optimizer_state_dict"])
+        if "grad_scaler_state_dict" in state and hasattr(self, "_grad_scaler"):
+            self._grad_scaler.load_state_dict(state["grad_scaler_state_dict"])
+        return self._step_count
+
     def flush_gradients(self, module: Any) -> None:
-        """Flush and step any remaining accumulated gradients."""
+        """Flush and step any remaining accumulated gradients.
+
+        Respects GradScaler when fp16 mixed precision is active.
+        """
         accum = max(1, self._config.grad_accum_steps)
         if self._micro_step % accum != 0:
             if self._optimizer is not None:
@@ -360,8 +465,15 @@ class StatelessLoRATrainer:
                 if trainable_params:
                     import torch
 
-                    torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
-                    self._optimizer.step()
+                    use_scaler = hasattr(self, "_grad_scaler")
+                    if use_scaler:
+                        self._grad_scaler.unscale_(self._optimizer)
+                        torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                        self._grad_scaler.step(self._optimizer)
+                        self._grad_scaler.update()
+                    else:
+                        torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                        self._optimizer.step()
                 self._optimizer.zero_grad()
             self._micro_step = 0
 
@@ -396,6 +508,13 @@ class StatelessLoRATrainer:
 
         if self._optimizer is None:
             self._optimizer = self._build_optimizer(module)
+
+        # Apply cosine LR with warmup
+        lr_mult = self._get_lr_multiplier(step)
+        for pg in self._optimizer.param_groups:
+            pg["lr"] = pg.get("_base_lr", pg["lr"]) * lr_mult
+            if "_base_lr" not in pg:
+                pg["_base_lr"] = pg["lr"] / max(lr_mult, 1e-8)
 
         module.train()
         accum = max(1, self._config.grad_accum_steps)
@@ -518,25 +637,42 @@ class StatelessLoRATrainer:
         batch: dict[str, Any],
         is_ref: bool = False,
     ) -> Any:
-        """Call module with signature-based argument routing."""
+        """Call module with signature-based argument routing.
+
+        Adapts ``batch["t"]`` to 1D ``[B]`` when the target accepts a
+        scalar timestep parameter. Transparently passes
+        ``encoder_hidden_states`` for Diffusers-style UNets/DiTs.
+        Only catches ``TypeError`` / ``ValueError`` from signature
+        mismatch, never from internal forward bugs.
+        """
         import inspect
 
         target = getattr(module, "forward", module)
         try:
             sig = inspect.signature(target)
-            kwargs = {}
+            kwargs: dict[str, Any] = {}
             for param_name in sig.parameters:
                 if param_name in ("t", "timestep", "timesteps") and "t" in batch:
-                    kwargs[param_name] = batch["t"]
+                    t_val = batch["t"]
+                    # Adapt multi-dim t to 1D [B] for Diffusers compatibility
+                    if hasattr(t_val, "ndim") and t_val.ndim > 1:
+                        t_val = t_val.reshape(t_val.shape[0], -1).mean(dim=-1)
+                    kwargs[param_name] = t_val
                 elif param_name in ("prompt", "caption", "text_embeddings") and "prompt" in batch:
                     kwargs[param_name] = batch["prompt"]
+                elif param_name == "encoder_hidden_states" and "encoder_hidden_states" in batch:
+                    kwargs[param_name] = batch["encoder_hidden_states"]
                 elif param_name in ("fgpp_cond", "cond", "conditions") and "fgpp_cond" in batch:
                     kwargs[param_name] = batch["fgpp_cond"]
                 elif param_name in ("fgpp_cond", "cond", "conditions") and "conditions" in batch:
                     kwargs[param_name] = batch["conditions"]
             return module(x, **kwargs)
-        except (ValueError, TypeError):
-            return module(x)
+        except (ValueError, TypeError) as exc:
+            # Only catch argument-binding issues, re-raise internal TypeError
+            msg = str(exc)
+            if "argument" in msg.lower() or "unexpected" in msg.lower() or "missing" in msg.lower():
+                return module(x)
+            raise
 
     def _sft_step(
         self,
@@ -574,79 +710,108 @@ class StatelessLoRATrainer:
                     z_pred, batch[depth_key]
                 )
 
-        # Wire optional NormalReconstructionLoss
+        # Wire optional NormalReconstructionLoss via LatentGeometryProbe
         if self._config.normal_loss_weight > 0.0:
             norm_key = (
                 "normal_gt" if "normal_gt" in batch else ("normal" if "normal" in batch else None)
             )
             if norm_key is not None:
                 mask = batch.get("mask")
-                n_pred = batch.get("normal_pred", v_pred)
-                loss = loss + self._config.normal_loss_weight * self._normal_reconstruction_loss(
-                    n_pred, batch[norm_key], mask=mask
-                )
+                # Use LatentGeometryProbe if available, otherwise skip
+                # (never directly slice 16ch latent as 3ch normal)
+                if hasattr(self, "_geometry_probe") and self._geometry_probe is not None:
+                    n_pred = self._geometry_probe(z_pred if "z_pred" not in dir() else v_pred)
+                else:
+                    n_pred = batch.get("normal_pred")
+                if n_pred is not None:
+                    loss = loss + self._config.normal_loss_weight * self._normal_reconstruction_loss(
+                        n_pred, batch[norm_key], mask=mask
+                    )
+                else:
+                    logger.debug(
+                        "Skipping normal loss: no probe or normal_pred "
+                        "(refusing to slice 16ch latent as normal)"
+                    )
 
         return loss
 
     @staticmethod
     def _extract_auxiliary_from_fgpp(batch: dict[str, Any]) -> None:
-        """Extract depth and normal from fgpp_cond when separate keys are absent.
+        """Extract depth and normal from fgpp_cond — zero CPU round-trip.
 
-        FGPP raw layout ``[T, H, W, 15]``:
+        Keeps all extracted tensors on the same device as ``fgpp_cond``
+        (no ``.cpu().numpy()`` detour). Handles both 4D and 5D inputs:
+
+        - 4D raw FGPP ``[T, H, W, 15]`` or ``[7, T, H, W]``
+        - 5D batched ``[B, T, H, W, 15]`` or ``[B, 7, T, H, W]``
+
+        FGPP raw layout (15-channel):
         - Channel 0: ``CameraLinearDepth.Z``
         - Channels 1-3: ``DirectRadiance.RGB``
-        - Channels 4-6: ``WorldNormal.XYZ`` (used as normal ground truth)
+        - Channels 4-6: ``WorldNormal.XYZ`` (ground truth normal)
 
-        Wan control layout ``[7, T, H, W]``:
+        Wan control layout (7-channel):
         - Channel 0: depth
         - Channels 1-3: normal
 
-        The extracted arrays are down-sampled 8× to match the latent spatial
-        resolution (VAE factor) using simple strided slicing.
+        Temporal axis is compressed ``T → τ = (T-1)//4 + 1`` via average
+        pooling to match the latent time dimension (Wan 3D causal stride).
+        Spatial axes are down-sampled 8× by strided slicing (VAE factor).
         """
         import torch
 
         fgpp = batch["fgpp_cond"]
-        if isinstance(fgpp, torch.Tensor):
-            fgpp_np = fgpp.detach().cpu().numpy()
+        if not isinstance(fgpp, torch.Tensor):
+            fgpp = torch.as_tensor(fgpp, dtype=torch.float32)
+
+        # Determine device for all outputs
+        dev = fgpp.device
+
+        # Handle 5D batch: [B, ...] -> process first element for shape, but keep batch
+        has_batch = False
+        if fgpp.ndim == 5:
+            has_batch = True
+            if fgpp.shape[-1] == 15:
+                # [B, T, H, W, 15]
+                pass
+            elif fgpp.shape[1] == 7:
+                # [B, 7, T, H, W]
+                pass
+        elif fgpp.ndim == 4:
+            # Add batch dim for uniform processing
+            has_batch = False
+            fgpp = fgpp.unsqueeze(0)
         else:
-            fgpp_np = fgpp
+            return  # Unsupported layout
 
-        import numpy as np
+        if fgpp.shape[-1] == 15:
+            # Raw FGPP: [B, T, H, W, 15]
+            if "depth" not in batch:
+                depth = fgpp[..., 0]  # [B, T, H, W]
+                depth_ds = _temporal_compress_and_spatial_ds(depth, dev)
+                batch["depth"] = depth_ds  # [B, 1, τ, H//8, W//8]
+            if "normal" not in batch:
+                normal = fgpp[..., 4:7]  # [B, T, H, W, 3]
+                normal = normal.permute(0, 4, 1, 2, 3)  # [B, 3, T, H, W]
+                normal_ds = _temporal_compress_and_spatial_ds(normal, dev)
+                batch["normal"] = normal_ds  # [B, 3, τ, H//8, W//8]
+        elif fgpp.shape[-3 if fgpp.ndim == 5 else 0] == 7 or (fgpp.ndim == 5 and fgpp.shape[1] == 7):
+            # Wan control: [B, 7, T, H, W]
+            if "depth" not in batch:
+                depth = fgpp[:, 0:1]  # [B, 1, T, H, W]
+                depth_ds = _temporal_compress_and_spatial_ds(depth, dev)
+                batch["depth"] = depth_ds
+            if "normal" not in batch:
+                normal = fgpp[:, 1:4]  # [B, 3, T, H, W]
+                normal_ds = _temporal_compress_and_spatial_ds(normal, dev)
+                batch["normal"] = normal_ds
 
-        if fgpp_np.ndim == 4 and fgpp_np.shape[-1] == 15:
-            # Raw FGPP: [T, H, W, 15]
-            if "depth" not in batch:
-                depth = fgpp_np[..., 0]  # [T, H, W]
-                depth_ds = depth[:, ::8, ::8]  # downsample 8x
-                batch["depth"] = torch.as_tensor(
-                    depth_ds,
-                    dtype=torch.float32,
-                ).unsqueeze(0)  # [1, T, H//8, W//8]
-            if "normal" not in batch:
-                normal = fgpp_np[..., 4:7]  # [T, H, W, 3]
-                normal_ds = normal[:, ::8, ::8, :]
-                # Transpose to [3, T, H//8, W//8] for channel-first
-                batch["normal"] = torch.as_tensor(
-                    np.ascontiguousarray(normal_ds.transpose(3, 0, 1, 2)),
-                    dtype=torch.float32,
-                ).unsqueeze(0)  # [1, 3, T, H//8, W//8]
-        elif fgpp_np.ndim == 4 and fgpp_np.shape[0] == 7:
-            # Wan control: [7, T, H, W]
-            if "depth" not in batch:
-                depth = fgpp_np[0]  # [T, H, W]
-                depth_ds = depth[:, ::8, ::8]
-                batch["depth"] = torch.as_tensor(
-                    depth_ds,
-                    dtype=torch.float32,
-                ).unsqueeze(0)
-            if "normal" not in batch:
-                normal = fgpp_np[1:4]  # [3, T, H, W]
-                normal_ds = normal[:, :, ::8, ::8]
-                batch["normal"] = torch.as_tensor(
-                    np.ascontiguousarray(normal_ds),
-                    dtype=torch.float32,
-                ).unsqueeze(0)  # [1, 3, T, H//8, W//8]
+        # Remove batch dim if input was unbatched
+        if not has_batch:
+            if "depth" in batch and batch["depth"].ndim == 5:
+                batch["depth"] = batch["depth"].squeeze(0)
+            if "normal" in batch and batch["normal"].ndim == 5:
+                batch["normal"] = batch["normal"].squeeze(0)
 
     def _dpo_step(
         self,
@@ -666,6 +831,8 @@ class StatelessLoRATrainer:
         rejected = batch["rejected"]
         x_0 = batch["noise"]
         t = self._sample_timesteps(chosen, batch)
+        # Store t back so _call_module can forward timesteps to DiT
+        batch["t"] = t
         x_t_w = (1.0 - t) * x_0 + t * chosen
         x_t_l = (1.0 - t) * x_0 + t * rejected
 
