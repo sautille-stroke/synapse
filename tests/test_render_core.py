@@ -432,8 +432,8 @@ class TestDynamicMotionVectorsAndIntrinsics:
         cam.cy = 20.0
         proj = cam.projection_matrix()
 
-        # Check p02 and p12
-        expected_p02 = (2.0 * 40.0 - 64.0) / 64.0  # 16 / 64 = 0.25
+        # Check p02 and p12 (corrected formula from PR-134: p02 = (w - 2*cx)/w)
+        expected_p02 = (64.0 - 2.0 * 40.0) / 64.0  # -16 / 64 = -0.25
         expected_p12 = (2.0 * 20.0 - 64.0) / 64.0  # -24 / 64 = -0.375
         assert abs(proj[0, 2] - expected_p02) < 1e-6
         assert abs(proj[1, 2] - expected_p12) < 1e-6

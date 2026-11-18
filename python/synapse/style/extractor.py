@@ -53,7 +53,10 @@ def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:
     y = xyz[1] / s
 
     # McCamy's formula
-    n = (x - 0.3320) / max(0.1858 - y, 1e-12) if abs(0.1858 - y) > 1e-12 else 0.0
+    denom = 0.1858 - y
+    if abs(denom) < 1e-12:
+        denom = 1e-12 if denom >= 0 else -1e-12
+    n = (x - 0.3320) / denom
     cct = 449.0 * n**3 + 3525.0 * n**2 + 6823.3 * n + 5520.33
     return float(np.clip(cct, 2000.0, 20000.0))
 

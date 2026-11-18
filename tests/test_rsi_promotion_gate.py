@@ -512,6 +512,7 @@ class TestRSICLI:
                     "--json",
                     "rsi",
                     "gate-promote",
+                    "--strict",
                     "--baseline-overall",
                     "0.8",
                     "--candidate-overall",
