@@ -21,6 +21,7 @@ __all__ = [
     "acescg_to_linear_srgb",
     "soft_knee_inverse_tonemap",
     "soft_knee_forward_tonemap",
+    "soft_knee_tonemap",
     "rgb_to_cielab",
     "ciede2000_delta_e",
 ]
@@ -407,6 +408,10 @@ def soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
         Forward-tonemapped array, same shape, compressed into display range.
     """
     return _fallback_soft_knee_forward_tonemap(hdr_linear)
+
+
+soft_knee_tonemap = soft_knee_forward_tonemap
+
 
 
 def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
