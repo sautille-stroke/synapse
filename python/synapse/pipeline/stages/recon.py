@@ -19,7 +19,6 @@ from synapse.pipeline.bundle_worker import BundleManifest, register_stage
 
 
 @register_stage("video_to_3d_invert")
-@register_stage("kinematic_distill")
 @register_stage("inverse_reconstruct")
 def handle_video_to_3d_invert(
     manifest: BundleManifest,
@@ -33,8 +32,13 @@ def handle_video_to_3d_invert(
     Returns:
         Dict with ``output_paths`` to the reconstruction outputs.
     """
+    import time
+
+    from synapse.errors import evaluate_hitl_circuit_breaker
     from synapse.recon import ReconPipeline
     from synapse.recon.delight import delight_multiview_albedo
+
+    t_start = time.monotonic()
 
     params = dict(manifest.params)
     target_faces = int(params.get("target_faces", 1500))
@@ -110,6 +114,74 @@ def handle_video_to_3d_invert(
         p_albedo.parent.mkdir(parents=True, exist_ok=True)
         np.save(str(p_albedo), albedo_res.albedo)
         output_paths["albedo"] = str(p_albedo)
+
+    # HITL circuit breaker — enforce 15-min ceiling (Redline #3)
+    elapsed = time.monotonic() - t_start
+    evaluate_hitl_circuit_breaker(elapsed, domain="asset_3d")
+
+    return {"output_paths": output_paths}
+
+
+@register_stage("kinematic_distill")
+def handle_kinematic_distill(
+    manifest: BundleManifest,
+) -> dict[str, Any]:
+    """Execute kinematic distillation: solve zero-slip foot IK (RFC 0060).
+
+    Expects:
+        - ``manifest.inputs["skeleton"]``: Path to skeleton JSON.
+        - ``manifest.inputs["foot_contacts"]``: Path to ``(T,2)`` ``.npy``.
+
+    Returns:
+        Dict with ``output_paths`` to the IK-solved skeleton data.
+    """
+    from synapse.recon.kinematics import solve_zero_slip_ik
+
+    params = dict(manifest.params)
+    fps = float(params.get("fps", 30.0))
+
+    # Load skeleton template
+    skeleton_path = manifest.inputs.get("skeleton", "")
+    if skeleton_path and Path(skeleton_path).is_file():
+        with open(skeleton_path, encoding="utf-8") as f:
+            skeleton_data = json.loads(f.read())
+    else:
+        skeleton_data = dict(params.get("skeleton_template", {}))
+
+    # Load foot contacts
+    contacts_path = manifest.inputs.get("foot_contacts", "")
+    if contacts_path and Path(contacts_path).is_file():
+        contacts = np.load(contacts_path)
+    else:
+        # Minimal periodic stance phase contacts
+        n_frames = int(params.get("num_frames", 60))
+        contacts = np.zeros((n_frames, 2), dtype=np.float32)
+        for t in range(n_frames):
+            if (t % 30) < 15:
+                contacts[t, 0] = 1.0
+            else:
+                contacts[t, 1] = 1.0
+
+    solved = solve_zero_slip_ik(skeleton_data, contacts, fps=fps)
+
+    output_paths: dict[str, str] = {}
+    out_path = manifest.outputs.get(
+        "ik_skeleton",
+        str(Path("output") / "ik_solved_skeleton.json"),
+    )
+    p_out = Path(out_path)
+    p_out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Serialise — joint_positions are ndarray → convert to list
+    serialisable = {}
+    for k, v in solved.items():
+        if isinstance(v, np.ndarray):
+            serialisable[k] = v.tolist()
+        else:
+            serialisable[k] = v
+    with open(p_out, "w", encoding="utf-8") as f:
+        json.dump(serialisable, f, indent=2, default=str)
+    output_paths["ik_skeleton"] = str(p_out)
 
     return {"output_paths": output_paths}
 
@@ -285,7 +357,7 @@ def handle_delight_albedo(
     # Normalize suffix — np.save auto-appends .npy if missing, so ensure
     # output_paths matches the actual file on disk.
     if p_albedo.suffix != ".npy":
-        p_albedo = p_albedo.with_suffix(p_albedo.suffix + ".npy")
+        p_albedo = p_albedo.with_suffix(".npy")
     p_albedo.parent.mkdir(parents=True, exist_ok=True)
     with open(p_albedo, "wb") as f_out:
         np.save(f_out, albedo_res.albedo)

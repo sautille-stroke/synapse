@@ -206,8 +206,16 @@ def test_mitsuba_import_guard() -> None:
         opt = MitsubaInverseOptimizer()
         assert opt is not None
     else:
+        # Without mitsuba, constructor succeeds (lazy import) but
+        # optimize_material_from_video raises BackendUnavailableError
+        opt = MitsubaInverseOptimizer()
+        assert opt is not None
         with pytest.raises(BackendUnavailableError) as exc_info:
-            MitsubaInverseOptimizer()
+            opt.optimize_material_from_video(
+                frames=np.zeros((2, 4, 4, 3), dtype=np.float32),
+                normals=np.zeros((2, 4, 4, 3), dtype=np.float32),
+                uv_maps=np.zeros((2, 4, 4, 2), dtype=np.float32),
+            )
         assert int(exc_info.value.exit_code) == 30
 
 

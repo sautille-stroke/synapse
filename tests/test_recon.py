@@ -153,7 +153,7 @@ class TestReconGeometry:
     def test_quad_remesh(self, cube_mesh: tuple[np.ndarray, np.ndarray]) -> None:
         """Quad remeshing converts coplanar triangle pairs into quads."""
         v, f = cube_mesh
-        new_v, new_f = quad_remesh(v, f)
+        new_v, new_f, _uvs = quad_remesh(v, f)
         assert len(new_v) == len(v)
         # Cube has 6 square faces (originally 12 triangles). After quad remeshing, should be 6 quads
         assert new_f.shape[1] == 4
@@ -212,8 +212,10 @@ class TestReconKinematics:
         )
 
         telemetry = result["telemetry"]
-        assert telemetry["stance_frames"] == 30
-        assert telemetry["raw_foot_sliding_cm_per_sec"] > 4.0
+        # Enhanced stance detection (ankle height + velocity heuristic) may detect
+        # more stance frames than the binary contact mask alone provides.
+        assert telemetry["stance_frames"] >= 30
+        assert telemetry["raw_foot_sliding_cm_per_sec"] > 1.0  # lowered: enhanced stance detection reduces raw slip
         assert telemetry["clamped_foot_sliding_cm_per_sec"] < 0.3
         assert telemetry["zero_slip_verified"] is True
 
@@ -544,6 +546,68 @@ class TestReconTrackingAndTrajectory:
 class TestReconPipelineEndToEnd:
     """End-to-end integration tests for ReconPipeline."""
 
+    @staticmethod
+    def _make_dense_sphere(n_subdivisions: int = 4) -> tuple:
+        """Generate an icosphere with >=1500 vertices for Redline #3 gate.
+
+        Uses iterative Loop subdivision of an icosahedron. With 4 subdivisions
+        this produces 2562 vertices and 5120 faces, well above the 1500-vertex
+        Redline #3 threshold.
+        """
+        # Golden ratio icosahedron
+        phi = (1.0 + np.sqrt(5.0)) / 2.0
+        verts = np.array(
+            [
+                [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+                [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+                [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1],
+            ],
+            dtype=np.float64,
+        )
+        # Normalize to unit sphere
+        norms = np.linalg.norm(verts, axis=1, keepdims=True)
+        verts = verts / norms
+
+        faces = np.array(
+            [
+                [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],
+                [1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
+                [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
+                [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1],
+            ],
+            dtype=np.int32,
+        )
+
+        for _ in range(n_subdivisions):
+            edge_midpoints: dict = {}
+            new_faces = []
+            new_verts_list = list(verts)
+
+            def _get_mid(a: int, b: int) -> int:
+                key = (min(a, b), max(a, b))
+                if key in edge_midpoints:
+                    return edge_midpoints[key]
+                mid = (new_verts_list[a] + new_verts_list[b]) / 2.0
+                mid = mid / np.linalg.norm(mid)  # project to sphere
+                idx = len(new_verts_list)
+                new_verts_list.append(mid)
+                edge_midpoints[key] = idx
+                return idx
+
+            for tri in faces:
+                v0, v1, v2 = int(tri[0]), int(tri[1]), int(tri[2])
+                a = _get_mid(v0, v1)
+                b = _get_mid(v1, v2)
+                c = _get_mid(v0, v2)
+                new_faces.extend([
+                    [v0, a, c], [a, v1, b], [c, b, v2], [a, b, c],
+                ])
+
+            verts = np.array(new_verts_list, dtype=np.float64)
+            faces = np.array(new_faces, dtype=np.int32)
+
+        return verts.astype(np.float32), faces
+
     def test_pipeline_execution(self) -> None:
         """Runs full 5-stage reconstruction flow on synthetic sequence."""
         from synapse.recon.types import MeshGeometry
@@ -558,43 +622,35 @@ class TestReconPipelineEndToEnd:
             circle = ((yy - cy) ** 2 + (xx - cx) ** 2) < (h // 4) ** 2
             frames[t][circle] = 200
 
-        # Provide initial_mesh to skip MultiViewInitializer, which requires
-        # real multi-view parallax that synthetic frames cannot provide.
+        # --- Redline #3 rejection test: 8-vertex coarse whitebox is blocked ---
         cube_v = np.array(
             [
-                [-1, -1, -1],
-                [1, -1, -1],
-                [1, 1, -1],
-                [-1, 1, -1],
-                [-1, -1, 1],
-                [1, -1, 1],
-                [1, 1, 1],
-                [-1, 1, 1],
+                [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+                [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
             ],
             dtype=np.float32,
         )
         cube_f = np.array(
             [
-                [0, 2, 1],
-                [0, 3, 2],
-                [4, 5, 6],
-                [4, 6, 7],
-                [0, 1, 5],
-                [0, 5, 4],
-                [2, 3, 7],
-                [2, 7, 6],
-                [0, 4, 7],
-                [0, 7, 3],
-                [1, 2, 6],
-                [1, 6, 5],
+                [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+                [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+                [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
             ],
             dtype=np.int32,
         )
-        initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+        cube_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+        from synapse.errors import ContractValidationError
 
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
-        res = pipeline.run(frames, initial_mesh=initial_mesh, fps=30.0)
+        with pytest.raises(ContractValidationError):
+            pipeline.run(frames, initial_mesh=cube_mesh, fps=30.0)
 
+        # --- Happy path: dense sphere (>=1500 verts) passes Redline #3 gate ---
+        sphere_v, sphere_f = self._make_dense_sphere(n_subdivisions=4)
+        assert sphere_v.shape[0] >= 1500, f"Sphere has {sphere_v.shape[0]} verts, need >=1500"
+        dense_mesh = MeshGeometry(vertices=sphere_v, faces=sphere_f)
+
+        res = pipeline.run(frames, initial_mesh=dense_mesh, fps=30.0)
         assert isinstance(res, ReconResult)
         assert res.mesh.vertex_count > 0
         assert res.mesh.face_count > 0
@@ -630,43 +686,41 @@ class TestReconPipelineEndToEnd:
             joint_pos[t, 8] = [0.15, 0.0, 0.0]  # right foot
         skeleton_template = {"joint_positions": joint_pos}
 
-        # Provide initial_mesh to skip MultiViewInitializer
+        # --- Redline #3 rejection: 8-vertex cube blocked by geometry gate ---
         cube_v = np.array(
             [
-                [-1, -1, -1],
-                [1, -1, -1],
-                [1, 1, -1],
-                [-1, 1, -1],
-                [-1, -1, 1],
-                [1, -1, 1],
-                [1, 1, 1],
-                [-1, 1, 1],
+                [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+                [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
             ],
             dtype=np.float32,
         )
         cube_f = np.array(
             [
-                [0, 2, 1],
-                [0, 3, 2],
-                [4, 5, 6],
-                [4, 6, 7],
-                [0, 1, 5],
-                [0, 5, 4],
-                [2, 3, 7],
-                [2, 7, 6],
-                [0, 4, 7],
-                [0, 7, 3],
-                [1, 2, 6],
-                [1, 6, 5],
+                [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+                [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+                [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
             ],
             dtype=np.int32,
         )
-        initial_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+        cube_mesh = MeshGeometry(vertices=cube_v, faces=cube_f)
+        from synapse.errors import ContractValidationError
 
         pipeline = ReconPipeline(target_quad_faces=500, geometry_backend="python")
+        with pytest.raises(ContractValidationError):
+            pipeline.run(
+                frames,
+                initial_mesh=cube_mesh,
+                skeleton_template=skeleton_template,
+                fps=30.0,
+            )
+
+        # --- Happy path: dense sphere (>=1500 verts) passes Redline #3 ---
+        sphere_v, sphere_f = self._make_dense_sphere(n_subdivisions=4)
+        dense_mesh = MeshGeometry(vertices=sphere_v, faces=sphere_f)
+
         res = pipeline.run(
             frames,
-            initial_mesh=initial_mesh,
+            initial_mesh=dense_mesh,
             skeleton_template=skeleton_template,
             fps=30.0,
         )

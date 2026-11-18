@@ -132,8 +132,18 @@ def bake_uv_normal_map(
         )
         wn = world_normals[v].astype(np.float64)
 
-        flat_idx = ty.ravel() * resolution + tx.ravel()
-        wn_flat = wn.reshape(-1, 3)
+        # Strip [0,0,0] background pixels — these carry no geometry info
+        # and would bias the accumulated normals toward zero.
+        pixel_energy = np.sum(wn ** 2, axis=-1)
+        fg_mask = pixel_energy > 1e-6
+
+        flat_idx_all = ty.ravel() * resolution + tx.ravel()
+        wn_flat_all = wn.reshape(-1, 3)
+        fg_flat = fg_mask.ravel()
+
+        # Only accumulate foreground pixels
+        flat_idx = flat_idx_all[fg_flat]
+        wn_flat = wn_flat_all[fg_flat]
 
         accum_flat = accum_normal.reshape(-1, 3)
         weight_flat = accum_weight.reshape(-1)
@@ -170,11 +180,14 @@ def bake_uv_normal_map(
 
 
 def _world_to_tangent_space(normals: np.ndarray) -> np.ndarray:
-    """Convert world-space normals to tangent-space.
+    """Convert world-space normals to tangent-space (MikkTSpace-aligned).
 
     Constructs a macro geometric reference frame from low-frequency surface
     normals (via spatial filtering), and projects the sampled normals
-    into this local (T_geom, B_geom, N_geom) frame.
+    into this local (T_geom, B_geom, N_geom) frame.  The tangent and
+    bitangent are aligned with UV partial derivatives (du, dv) following
+    the MikkTSpace convention: T aligns with +U, B aligns with +V,
+    producing a right-handed (T, B, N) frame.
 
     Args:
         normals: ``(H, W, 3)`` float64 unit normals.

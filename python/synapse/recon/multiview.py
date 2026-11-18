@@ -399,7 +399,13 @@ class MultiViewInitializer:
 
     @staticmethod
     def _validate_cameras(cameras: list[CameraExtrinsics]) -> None:
-        """Ensure camera configuration meets minimum requirements."""
+        """Ensure camera configuration meets minimum requirements.
+
+        Validates:
+        1. Minimum camera count >= 2.
+        2. Angular span >= 15° using direction from volume center (origin)
+           to each camera position, rejecting zero-baseline configurations.
+        """
         if len(cameras) < _MIN_CAMERAS:
             raise ContractValidationError(
                 f"Multi-view reconstruction requires at least {_MIN_CAMERAS} "
@@ -411,12 +417,29 @@ class MultiViewInitializer:
                 ),
             )
 
-        # Compute angular span from camera positions (directions from origin).
         positions = np.array([c.position for c in cameras], dtype=np.float64)
-        norms = np.linalg.norm(positions, axis=1, keepdims=True)
-        # Avoid division by zero for cameras at the origin.
+
+        # Zero-baseline rejection: check all cameras are not at the same point
+        pos_spread = np.max(np.ptp(positions, axis=0))
+        if pos_spread < 1e-6:
+            raise ContractValidationError(
+                "All cameras are at the same position (zero-baseline). "
+                "Multi-view reconstruction requires parallax between views.",
+                agent_fix_hint=(
+                    "Ensure cameras have different positions with sufficient "
+                    "baseline separation. Zero-baseline setups cannot "
+                    "triangulate 3D geometry."
+                ),
+            )
+
+        # Compute angular span using directions from the volume center
+        # (mean camera look-at intersection or centroid) to each camera.
+        volume_center = np.mean(positions, axis=0)
+        dirs_from_center = positions - volume_center[np.newaxis, :]
+        norms = np.linalg.norm(dirs_from_center, axis=1, keepdims=True)
+        # Avoid division by zero for cameras at the centroid.
         norms = np.clip(norms, 1e-12, None)
-        dirs_normalised = positions / norms
+        dirs_normalised = dirs_from_center / norms
 
         # Maximum pairwise angular separation.
         max_angle_deg = 0.0
@@ -513,7 +536,15 @@ class MultiViewInitializer:
         cameras: list[CameraExtrinsics],
         depths: np.ndarray,
     ) -> MeshGeometry:
-        """Volumetric TSDF fusion followed by marching cubes."""
+        """Volumetric TSDF fusion followed by marching cubes.
+
+        Improvements over naive integration:
+        - Only voxels with valid observations (weight > 0) are considered
+          inside. Unobserved interior voxels are flood-filled to -1.0
+          (inside sentinel) to prevent double-wall internal cavities.
+        - Attempts to use PR-141 C++20 ``synapse._c_geometry.marching_cubes``
+          for performance; falls back to pure-Python MC on ImportError.
+        """
         bx, by, bz = self.volume_bounds
         origin = self._compute_volume_origin(cameras, self.volume_bounds)
         nx = int(bx / self.voxel_size)
@@ -589,16 +620,58 @@ class MultiViewInitializer:
 
             tsdf_update = np.clip(sdf / self.sdf_trunc, -1.0, 1.0)
 
+            # Confidence weighting: weight by inverse depth (closer = more reliable)
+            confidence = np.where(
+                valid,
+                1.0 / np.clip(z_cam.astype(np.float32), 0.1, None),
+                0.0,
+            )
+
             w_old = weight.ravel()
             tsdf_old = tsdf.ravel()
-            w_new = np.where(valid, w_old + 1.0, w_old)
+            w_new = np.where(valid, w_old + confidence, w_old)
             tsdf_new = np.where(
                 valid,
-                (tsdf_old * w_old + tsdf_update) / np.clip(w_new, 1e-8, None),
+                (tsdf_old * w_old + tsdf_update * confidence) / np.clip(w_new, 1e-8, None),
                 tsdf_old,
             )
             tsdf = tsdf_new.reshape(nx, ny, nz)
             weight = w_new.reshape(nx, ny, nz)
+
+        # Flood-fill unobserved interior voxels: voxels with weight=0
+        # that are surrounded by negative-SDF voxels should be -1.0 (inside),
+        # not +1.0 (outside) which causes double-wall internal cavities.
+        observed = weight > 0
+        surface_inside = observed & (tsdf < 0)
+        if np.any(surface_inside):
+            # Simple 6-connected flood fill from surface-inside to unobserved
+            unobserved = ~observed
+            fill_mask = np.zeros_like(unobserved)
+            # Seed: unobserved voxels adjacent to observed-inside voxels
+            for axis in range(3):
+                for direction in (-1, 1):
+                    shifted = np.roll(surface_inside, shift=direction, axis=axis)
+                    fill_mask |= shifted & unobserved
+
+            # Iterative propagation (bounded by grid size)
+            changed = True
+            max_iters = max(nx, ny, nz)
+            it = 0
+            while changed and it < max_iters:
+                changed = False
+                it += 1
+                new_fill = np.copy(fill_mask)
+                for axis in range(3):
+                    for direction in (-1, 1):
+                        shifted = np.roll(fill_mask, shift=direction, axis=axis)
+                        expansion = shifted & unobserved & (~fill_mask)
+                        if np.any(expansion):
+                            new_fill |= expansion
+                            changed = True
+                fill_mask = new_fill
+
+            # Set interior unobserved voxels to -1.0 (inside)
+            tsdf[fill_mask] = -1.0
 
         # Pad outer faces with +1.0 (outside) to ensure watertight closure.
         tsdf = np.pad(tsdf, pad_width=1, mode="constant", constant_values=1.0)
@@ -610,7 +683,24 @@ class MultiViewInitializer:
             + np.array([0.5, 0.5, 0.5]) * effective_voxel
         )
 
-        verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
+        # Prefer C++20 marching cubes from PR-141 if available
+        try:
+            import synapse._c_geometry as _cg
+
+            if hasattr(_cg, "marching_cubes"):
+                mc_result = _cg.marching_cubes(tsdf, 0.0, effective_voxel, mc_origin.tolist())
+                # C++ binding returns dict {"vertices": ..., "faces": ...}
+                if isinstance(mc_result, dict):
+                    verts = np.asarray(mc_result["vertices"], dtype=np.float32)
+                    faces = np.asarray(mc_result["faces"], dtype=np.int32)
+                else:
+                    verts, faces = mc_result
+                    verts = np.asarray(verts, dtype=np.float32)
+                    faces = np.asarray(faces, dtype=np.int32)
+            else:
+                verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
+        except (ImportError, AttributeError):
+            verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
             raise ContractValidationError(
@@ -688,8 +778,9 @@ class MultiViewInitializer:
 
             in_bounds = valid_z & (ui >= 0) & (ui < w) & (vi_arr >= 0) & (vi_arr < h)
 
-            # Carve: only carve voxels within the camera frustum that project onto background!
-            carve = np.zeros(len(cam_pts), dtype=bool)
+            # Carve: voxels NOT in the frustum are carved (assumed outside),
+            # and voxels that project onto background are also carved.
+            carve = ~in_bounds  # Out-of-frustum voxels are outside
             if np.any(in_bounds):
                 carve[in_bounds] = mask[vi_arr[in_bounds], ui[in_bounds]] <= 0.5
 

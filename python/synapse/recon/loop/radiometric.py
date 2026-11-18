@@ -6,8 +6,9 @@ Functions
   frame count satisfies the T = 4k+1 constraint required by the 3-D Causal
   VAE temporal down-sampling factor of 4.
 - ``linear_to_acescg`` / ``acescg_to_linear`` — colour-space conversion between
-  linear sRGB (Rec 709 primaries) and ACEScg (AP1 primaries) using the exact
-  3×3 chromatic-adaptation matrices published by the Academy.
+  linear sRGB (Rec 709 primaries) and ACEScg (AP1 primaries).  Delegates to
+  :mod:`synapse.style.aces_color` when available to eliminate matrix
+  duplication; falls back to inline matrices otherwise.
 - ``apply_kappa_reanchor`` — κ-weighted hard-cut re-anchoring at the preroll →
   production boundary.
 """
@@ -17,13 +18,22 @@ from __future__ import annotations
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# sRGB (Rec 709) → ACEScg (AP1) 3×3 matrix.
-#
-# Source: ACES Central — "sRGB Linear to ACEScg" (D65 white point,
-# Bradford chromatic adaptation).
+# Delegate colour-space matrices to style.aces_color to eliminate duplication.
+# Falls back to inline matrices if the style module is not available.
 # ---------------------------------------------------------------------------
 
-_SRGB_TO_AP1: np.ndarray = np.array(
+_USE_STYLE_MODULE = False
+try:
+    from synapse.style.aces_color import AP1_TO_SRGB as _AP1_TO_SRGB_EXT
+    from synapse.style.aces_color import SRGB_TO_AP1 as _SRGB_TO_AP1_EXT
+
+    _USE_STYLE_MODULE = True
+except ImportError:
+    _SRGB_TO_AP1_EXT = None
+    _AP1_TO_SRGB_EXT = None
+
+# Inline fallback matrices (used only when style.aces_color is unavailable)
+_SRGB_TO_AP1_INLINE: np.ndarray = np.array(
     [
         [0.613097, 0.339523, 0.047379],
         [0.070194, 0.916354, 0.013452],
@@ -31,9 +41,11 @@ _SRGB_TO_AP1: np.ndarray = np.array(
     ],
     dtype=np.float64,
 )
+_AP1_TO_SRGB_INLINE: np.ndarray = np.linalg.inv(_SRGB_TO_AP1_INLINE)
 
-# Compute the exact algebraic inverse to guarantee lossless round-trip.
-_AP1_TO_SRGB: np.ndarray = np.linalg.inv(_SRGB_TO_AP1)
+# Select active matrices
+_SRGB_TO_AP1: np.ndarray = _SRGB_TO_AP1_EXT if _USE_STYLE_MODULE else _SRGB_TO_AP1_INLINE
+_AP1_TO_SRGB: np.ndarray = _AP1_TO_SRGB_EXT if _USE_STYLE_MODULE else _AP1_TO_SRGB_INLINE
 
 
 # -- Phase-locking -----------------------------------------------------------

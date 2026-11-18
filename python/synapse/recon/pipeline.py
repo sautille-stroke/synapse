@@ -97,10 +97,22 @@ class ReconPipeline:
                 cameras=[ext for ext in (camera_traj.extrinsics if camera_traj else [])],
             )
         else:
+            # Enforce Track-B distillation geometry gate (Redline #3):
+            # coarse whitebox proxies must pass through gen3d reconstruction
+            # before texture back-projection is permitted.
+            from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
+
+            enforce_distillation_geometry_gate(
+                track="track_b_whitebox",
+                has_gen3d_highpoly=initial_mesh.vertex_count >= 1500,
+                vertex_count=initial_mesh.vertex_count,
+                has_articulated_limbs=(skeleton_template is not None),
+                is_character=(skeleton_template is not None),
+            )
             active_mesh = initial_mesh
 
         # Quad remesh
-        remeshed_v, remeshed_f = quad_remesh(
+        remeshed_v, remeshed_f, remeshed_uvs = quad_remesh(
             active_mesh.vertices, active_mesh.faces, target_faces=self.target_quad_faces
         )
         normals = compute_normals(remeshed_v, remeshed_f)
@@ -113,6 +125,7 @@ class ReconPipeline:
             vertices=remeshed_v,
             faces=remeshed_f,
             normals=normals,
+            uvs=remeshed_uvs,
         )
 
         # 4. Kinematics Distillation & Foot-Plant IK

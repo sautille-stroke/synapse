@@ -50,7 +50,8 @@ class SynapseReconBackend(VgBackend):
         """Remesh to quad-dominant mesh using synapse.recon.geometry."""
         from synapse.recon.geometry import quad_remesh as recon_quad_remesh
 
-        return recon_quad_remesh(vertices, faces, target_faces)
+        v, f, _uvs = recon_quad_remesh(vertices, faces, target_faces)
+        return v, f
 
     def check_manifold(
         self,

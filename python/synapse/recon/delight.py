@@ -333,7 +333,8 @@ def decompose_intrinsic(
     if is_uint8:
         rad = rad / 255.0
 
-    # Do NOT divide float32/float64 HDR by 255.0 — preserve linear range.
+    # Inverse gamma: bring to linear radiometric space
+    rad = _ensure_linear(rad, is_uint8=is_uint8)
 
     h, w, _ = rad.shape
 
@@ -444,9 +445,10 @@ def decompose_intrinsic(
 
 
 def _rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
-    """Convert RGB [0,1] to CIELAB (pure numpy, no external deps).
+    """Convert RGB [0,1] to CIELAB.
 
-    Uses D65 illuminant. Accepts (..., 3) input.
+    Delegates to ``synapse.style.aces_color.rgb_to_lab`` when available,
+    falling back to an inline D65 implementation.
 
     Args:
         rgb: Color array, values in [0, 1].
@@ -455,6 +457,13 @@ def _rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
     Returns:
         Array of shape (..., 3) with (L*, a*, b*).
     """
+    try:
+        from synapse.style.aces_color import rgb_to_lab as _style_rgb_to_lab
+
+        return _style_rgb_to_lab(rgb, is_linear=is_linear)
+    except (ImportError, AttributeError):
+        pass
+
     if is_linear:
         lin = np.asarray(rgb, dtype=np.float64)
     else:
@@ -568,6 +577,154 @@ def _delta_e_00(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     return dE
 
 
+def _ensure_linear(radiance: np.ndarray, *, is_uint8: bool) -> np.ndarray:
+    """Apply inverse sRGB gamma to bring radiance into linear space.
+
+    If the input is uint8 or detected as gamma-encoded (heuristic: mean value
+    of the brightest 10% pixels suggests nonlinear transfer), apply inverse
+    sRGB EOTF.  Float HDR data where pixel values frequently exceed 1.0 is
+    assumed already linear.
+    """
+    rad = np.asarray(radiance, dtype=np.float64)
+    if is_uint8:
+        # Already [0,1] after /255 — apply inverse sRGB gamma
+        return np.where(rad <= 0.04045, rad / 12.92, ((rad + 0.055) / 1.055) ** 2.4)
+
+    # Heuristic: if >98% of values ≤ 1.0, treat as gamma-encoded sRGB
+    if float(np.percentile(rad, 98)) <= 1.0:
+        top10 = rad[rad > np.percentile(rad, 90)]
+        if len(top10) > 0 and float(np.mean(top10)) < 0.85:
+            return np.where(rad <= 0.04045, rad / 12.92, ((rad + 0.055) / 1.055) ** 2.4)
+    return rad
+
+
+def _rasterize_triangles(
+    verts: np.ndarray,
+    nrms_world: np.ndarray,
+    faces: np.ndarray,
+    cam_R: np.ndarray,
+    cam_t: np.ndarray,
+    cam_pos: np.ndarray,
+    h: int,
+    w: int,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Z-Buffer complete triangle rasterization with quad fan-split.
+
+    For quad faces (4-vertex), splits into two triangles at the shorter
+    diagonal before rasterizing.  Uses barycentric interpolation for
+    per-pixel world-space normals and cos_theta_v weighting.
+
+    Returns:
+        normal_map: (H, W, 3) world-space normals.
+        weight_map: (H, W, 1) cos_theta_v.
+        depth_buf:  (H, W) Z-depth for occlusion.
+    """
+    normal_map = np.zeros((h, w, 3), dtype=np.float64)
+    weight_map = np.zeros((h, w, 1), dtype=np.float64)
+    depth_buf = np.full((h, w), np.inf, dtype=np.float64)
+
+    # Split quads into triangles
+    tri_list: list[tuple[int, int, int]] = []
+    if faces is not None and len(faces) > 0:
+        f_arr = np.asarray(faces, dtype=np.int64)
+        if f_arr.ndim == 2:
+            if f_arr.shape[1] == 4:
+                # Fan-split quad at shorter diagonal
+                for q in f_arr:
+                    d02 = float(np.linalg.norm(verts[q[0]] - verts[q[2]]))
+                    d13 = float(np.linalg.norm(verts[q[1]] - verts[q[3]]))
+                    if d02 <= d13:
+                        tri_list.append((int(q[0]), int(q[1]), int(q[2])))
+                        tri_list.append((int(q[0]), int(q[2]), int(q[3])))
+                    else:
+                        tri_list.append((int(q[1]), int(q[2]), int(q[3])))
+                        tri_list.append((int(q[1]), int(q[3]), int(q[0])))
+            elif f_arr.shape[1] >= 3:
+                for tri in f_arr:
+                    tri_list.append((int(tri[0]), int(tri[1]), int(tri[2])))
+
+    if not tri_list:
+        return normal_map, weight_map, depth_buf
+
+    # Project all vertices to camera space once
+    pts_cam = (cam_R @ verts.T).T + cam_t
+
+    for i0, i1, i2 in tri_list:
+        p0, p1, p2 = pts_cam[i0], pts_cam[i1], pts_cam[i2]
+        # Skip behind-camera triangles
+        if p0[2] <= 0.01 and p1[2] <= 0.01 and p2[2] <= 0.01:
+            continue
+
+        # Project to screen
+        def _proj(p: np.ndarray) -> tuple[float, float, float]:
+            z = max(float(p[2]), 0.01)
+            return fx * float(p[0]) / z + cx, fy * float(p[1]) / z + cy, z
+
+        sx0, sy0, z0 = _proj(p0)
+        sx1, sy1, z1 = _proj(p1)
+        sx2, sy2, z2 = _proj(p2)
+
+        # Bounding box
+        min_x = max(0, int(min(sx0, sx1, sx2)))
+        max_x = min(w - 1, int(max(sx0, sx1, sx2)) + 1)
+        min_y = max(0, int(min(sy0, sy1, sy2)))
+        max_y = min(h - 1, int(max(sy0, sy1, sy2)) + 1)
+
+        if min_x > max_x or min_y > max_y:
+            continue
+
+        # Limit rasterization area to prevent O(N²) blowup on large triangles
+        area = abs((sx1 - sx0) * (sy2 - sy0) - (sx2 - sx0) * (sy1 - sy0))
+        if area < 0.01:
+            continue
+        # Cap rasterized pixel count per triangle
+        raster_area = (max_x - min_x + 1) * (max_y - min_y + 1)
+        step = max(1, int(np.sqrt(raster_area / 2048)))
+
+        # Barycentric via edge functions
+        denom = (sy1 - sy2) * (sx0 - sx2) + (sx2 - sx1) * (sy0 - sy2)
+        if abs(denom) < 1e-8:
+            continue
+        inv_denom = 1.0 / denom
+
+        n0 = nrms_world[i0]
+        n1 = nrms_world[i1]
+        n2 = nrms_world[i2]
+
+        for py in range(min_y, max_y + 1, step):
+            for px_i in range(min_x, max_x + 1, step):
+                px_f, py_f = float(px_i) + 0.5, float(py) + 0.5
+                lam0 = ((sy1 - sy2) * (px_f - sx2) + (sx2 - sx1) * (py_f - sy2)) * inv_denom
+                lam1 = ((sy2 - sy0) * (px_f - sx2) + (sx0 - sx2) * (py_f - sy2)) * inv_denom
+                lam2 = 1.0 - lam0 - lam1
+                if lam0 < -0.001 or lam1 < -0.001 or lam2 < -0.001:
+                    continue
+                # Interpolate depth
+                z_interp = lam0 * z0 + lam1 * z1 + lam2 * z2
+                if z_interp < depth_buf[py, px_i]:
+                    depth_buf[py, px_i] = z_interp
+                    # Interpolate world-space normal
+                    n_interp = lam0 * n0 + lam1 * n1 + lam2 * n2
+                    n_len = np.linalg.norm(n_interp)
+                    if n_len > 1e-8:
+                        n_interp /= n_len
+                    normal_map[py, px_i] = n_interp
+                    # cos_theta_v from world-space
+                    world_pt = lam0 * verts[i0] + lam1 * verts[i1] + lam2 * verts[i2]
+                    view_dir = world_pt - cam_pos
+                    vd_len = np.linalg.norm(view_dir)
+                    if vd_len > 1e-8:
+                        view_dir /= vd_len
+                    cos_t = max(0.0, float(np.dot(n_interp, -view_dir)))
+                    weight_map[py, px_i, 0] = cos_t
+
+    return normal_map, weight_map, depth_buf
+
+
 def _project_mesh_to_view(
     vertices: np.ndarray,
     normals: np.ndarray,
@@ -576,7 +733,11 @@ def _project_mesh_to_view(
     w: int,
     faces: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Project mesh into a camera view with Z-buffer occlusion testing.
+    """Project mesh into a camera view with Z-buffer triangle rasterization.
+
+    Uses complete triangle rasterization with quad fan-split (not sparse
+    point sampling) for dense coverage.  Returns **world-space** normals
+    (not camera-space) so that cross-view SH fitting is consistent.
 
     Args:
         vertices: Mesh vertices, shape (V, 3).
@@ -584,88 +745,56 @@ def _project_mesh_to_view(
         camera: Camera extrinsics with .transform (4x4 world-to-cam or cam-to-world).
         h: Image height.
         w: Image width.
-        faces: Optional mesh face indices (F, 3). If provided, samples face centers
-            and edge midpoints for dense coverage with Z-buffering.
+        faces: Optional mesh face indices (F, 3) or (F, 4).
 
     Returns:
-        normal_map: Projected normal map, shape (H, W, 3).
+        normal_map: Projected **world-space** normal map, shape (H, W, 3).
         weight_map: cos_theta_v visibility weight, shape (H, W, 1).
         valid_mask: Boolean mask of pixels with valid projection, shape (H, W).
     """
     verts = np.asarray(vertices, dtype=np.float64)
     nrms = np.asarray(normals, dtype=np.float64)
 
-    # Collect points: vertices + face centers + edge midpoints for dense rasterization
-    all_verts = [verts]
-    all_nrms = [nrms]
-
-    if faces is not None and len(faces) > 0:
-        f_arr = np.asarray(faces, dtype=np.int64)
-        if f_arr.ndim == 2 and f_arr.shape[1] >= 3:
-            f_tris = f_arr[:, :3]
-            face_cents = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) / 3.0
-            face_nrms = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) / 3.0
-            all_verts.append(face_cents)
-            all_nrms.append(face_nrms)
-
-            mid_01 = (verts[f_tris[:, 0]] + verts[f_tris[:, 1]]) * 0.5
-            mid_12 = (verts[f_tris[:, 1]] + verts[f_tris[:, 2]]) * 0.5
-            mid_20 = (verts[f_tris[:, 2]] + verts[f_tris[:, 0]]) * 0.5
-            n_mid_01 = (nrms[f_tris[:, 0]] + nrms[f_tris[:, 1]]) * 0.5
-            n_mid_12 = (nrms[f_tris[:, 1]] + nrms[f_tris[:, 2]]) * 0.5
-            n_mid_20 = (nrms[f_tris[:, 2]] + nrms[f_tris[:, 0]]) * 0.5
-            all_verts.extend([mid_01, mid_12, mid_20])
-            all_nrms.extend([n_mid_01, n_mid_12, n_mid_20])
-
-    v_pts = np.vstack(all_verts)
-    v_nrms = np.vstack(all_nrms)
-
-    # Transform to camera space
     T = np.asarray(camera.transform, dtype=np.float64)
     R = T[:3, :3]
     t = T[:3, 3]
     cam_pos = np.asarray(camera.position, dtype=np.float64)
 
-    pts_cam = (R @ v_pts.T).T + t
-
-    # Simple pinhole projection
     fx = fy = float(max(h, w))
     cx, cy = w / 2.0, h / 2.0
 
-    z = pts_cam[:, 2]
-    in_front = z > 0.01
+    if faces is not None and len(faces) > 0:
+        normal_map, weight_map, _depth = _rasterize_triangles(
+            verts, nrms, faces, R, t, cam_pos, h, w, fx, fy, cx, cy,
+        )
+    else:
+        # Fallback: point-splatting for vertex-only data
+        normal_map = np.zeros((h, w, 3), dtype=np.float64)
+        weight_map = np.zeros((h, w, 1), dtype=np.float64)
+        depth_buf = np.full((h, w), np.inf, dtype=np.float64)
 
-    px = (fx * pts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
-    py = (fy * pts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
+        pts_cam = (R @ verts.T).T + t
+        z = pts_cam[:, 2]
+        in_front = z > 0.01
+        px = (fx * pts_cam[:, 0] / np.clip(z, 0.01, None) + cx).astype(np.int32)
+        py = (fy * pts_cam[:, 1] / np.clip(z, 0.01, None) + cy).astype(np.int32)
 
-    view_dirs = v_pts - cam_pos[np.newaxis, :]
-    view_dist = np.linalg.norm(view_dirs, axis=-1, keepdims=True)
-    view_dist = np.maximum(view_dist, 1e-8)
-    view_dirs = view_dirs / view_dist
+        view_dirs = verts - cam_pos[np.newaxis, :]
+        view_dist = np.maximum(np.linalg.norm(view_dirs, axis=-1, keepdims=True), 1e-8)
+        view_dirs = view_dirs / view_dist
+        cos_theta = np.clip(np.sum(nrms * (-view_dirs), axis=-1), 0.0, 1.0)
 
-    cos_theta = np.sum(v_nrms * (-view_dirs), axis=-1)
-    cos_theta = np.clip(cos_theta, 0.0, 1.0)
-
-    # Transform normals to camera space
-    nrms_cam = (R @ v_nrms.T).T
-
-    normal_map = np.zeros((h, w, 3), dtype=np.float64)
-    weight_map = np.zeros((h, w, 1), dtype=np.float64)
-    depth_buf = np.full((h, w), np.inf, dtype=np.float64)
-
-    valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
-    indices = np.where(valid)[0]
-
-    for idx in indices:
-        xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
-        if zi < depth_buf[yi, xi]:
-            depth_buf[yi, xi] = zi
-            normal_map[yi, xi] = nrms_cam[idx]
-            weight_map[yi, xi, 0] = cos_theta[idx]
+        valid = in_front & (px >= 0) & (px < w) & (py >= 0) & (py < h) & (cos_theta > 0.05)
+        indices = np.where(valid)[0]
+        for idx in indices:
+            xi, yi, zi = int(px[idx]), int(py[idx]), float(z[idx])
+            if zi < depth_buf[yi, xi]:
+                depth_buf[yi, xi] = zi
+                normal_map[yi, xi] = nrms[idx]  # world-space
+                weight_map[yi, xi, 0] = cos_theta[idx]
 
     valid_mask = weight_map[..., 0] > 0.0
-    nrm_lens = np.linalg.norm(normal_map, axis=-1, keepdims=True)
-    nrm_lens = np.maximum(nrm_lens, 1e-12)
+    nrm_lens = np.maximum(np.linalg.norm(normal_map, axis=-1, keepdims=True), 1e-12)
     normal_map = normal_map / nrm_lens
 
     return normal_map, weight_map, valid_mask
@@ -700,7 +829,8 @@ def delight_multiview_albedo(
     if is_uint8:
         frames_arr = frames_arr / 255.0
 
-    # Do NOT divide float32/float64 HDR by 255.0 — preserve linear range.
+    # Inverse gamma: bring to linear radiometric space
+    frames_arr = _ensure_linear(frames_arr, is_uint8=is_uint8)
 
     n_views = frames_arr.shape[0]
     h, w = frames_arr.shape[1], frames_arr.shape[2]
@@ -739,7 +869,7 @@ def delight_multiview_albedo(
         # Use projected normals where available, fall back to pseudo-normals
         has_projection = np.sum(proj_valid) > (h * w * 0.01)  # >1% coverage
         if has_projection:
-            normal_map = proj_normal
+            normal_map = proj_normal  # world-space normals from rasterizer
             view_weight = proj_weight
         else:
             normal_map = _pseudo_normal_map(frame_rgb)
@@ -750,7 +880,12 @@ def delight_multiview_albedo(
         # Build chromaticity mask for SH fitting
         chroma_mask = _build_chromaticity_mask(frame_rgb)
 
-        # Solve SH irradiance using normalized luminance (not raw radiance)
+        # --- Chrominance separation before albedo accumulation ---
+        # Separate luminance and chrominance channels; fit SH on luminance
+        # only, then recover per-channel albedo by dividing out the
+        # achromatic shading estimate.  This prevents hue shifts from
+        # coloured lighting or specular highlights from corrupting the
+        # albedo colour.
         flat_nrm = nrm_vec.reshape(-1, 3)
         flat_mask = chroma_mask.reshape(-1)
 
@@ -765,7 +900,11 @@ def delight_multiview_albedo(
         median_view_lum = max(median_view_lum, 1e-6)
         normalized_view_lum = flat_view_lum / median_view_lum
 
-        # Fit SH to normalized luminance
+        # Chrominance: per-channel ratio to luminance (hue + saturation)
+        safe_lum = np.clip(view_lum, 1e-6, None)[..., np.newaxis]
+        chrominance = frame_rgb / safe_lum  # (H, W, 3) — unitless ratios
+
+        # Fit SH to normalized luminance (achromatic shading)
         sh_lum_coeffs_view = _solve_sh_irradiance(
             flat_nrm,
             normalized_view_lum,
@@ -793,8 +932,10 @@ def delight_multiview_albedo(
         sh_shading_clamped = np.clip(sh_shading_abs, eps, e_max)
         view_shading = np.stack([sh_shading_clamped] * 3, axis=-1)
 
-        # Decompose albedo: rho = I / E
-        view_albedo = frame_rgb / view_shading
+        # Decompose albedo via chrominance: albedo = chrominance * (lum / E)
+        # This avoids the (rad/E)*E self-cancellation artefact
+        albedo_lum = view_lum / sh_shading_clamped  # (H, W) luminance albedo
+        view_albedo = chrominance * albedo_lum[..., np.newaxis]  # (H, W, 3)
 
         # Weighted accumulation (cos_theta_v from mesh projection)
         w_map = view_weight  # (H, W, 1)

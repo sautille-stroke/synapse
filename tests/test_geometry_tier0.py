@@ -830,7 +830,7 @@ class TestQuadRemeshNoDuplicateVertex:
             dtype=np.int32,
         )
 
-        new_v, new_f = quad_remesh(v, f)
+        new_v, new_f, _uvs = quad_remesh(v, f)
 
         # All output faces must be quads (4 vertices each)
         assert new_f.shape[1] == 4, f"Expected quad faces, got {new_f.shape[1]}-gons"
@@ -876,7 +876,7 @@ class TestQuadRemeshNoDuplicateVertex:
             dtype=np.int32,
         )
 
-        new_v, new_f = quad_remesh(v, f)
+        new_v, new_f, _uvs = quad_remesh(v, f)
         assert new_f.shape[1] == 4
         assert len(new_f) == 6
 
@@ -899,7 +899,7 @@ class TestQuadRemeshNoDuplicateVertex:
         )
         f = np.array([[0, 1, 2]], dtype=np.int32)
 
-        new_v, new_f = quad_remesh(v, f)
+        new_v, new_f, _uvs = quad_remesh(v, f)
 
         # No pairing possible → all tris subdivided
         # Single triangle → 3 quads, 4 new verts

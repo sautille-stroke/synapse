@@ -353,15 +353,81 @@ def refine_pose_6dof(
     return mat
 
 
+def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
+    """Generate UV coordinates for a mesh.
+
+    Attempts to use PR-141 xatlas binding (``synapse._c_geometry.unwrap_uv_atlas``)
+    for high-quality UV unwrapping.  Falls back to a spherical projection unwrap
+    if the C++ extension is unavailable.
+
+    Args:
+        vertices: Vertex positions, shape (V, 3).
+        faces: Face indices, shape (F, 3) or (F, 4).
+
+    Returns:
+        UV coordinates of shape (V, 2) float32, or None on failure.
+    """
+    v = np.asarray(vertices, dtype=np.float32)
+    f = np.asarray(faces, dtype=np.int32)
+
+    if len(v) == 0 or len(f) == 0:
+        return None
+
+    # Try xatlas C++ binding first
+    try:
+        import synapse._c_geometry as _cg
+
+        if hasattr(_cg, "unwrap_uv_atlas"):
+            # For quad faces, fan-triangulate to pass to xatlas
+            if f.shape[1] == 4:
+                tri_faces = np.empty((len(f) * 2, 3), dtype=np.int32)
+                tri_faces[0::2, 0] = f[:, 0]
+                tri_faces[0::2, 1] = f[:, 1]
+                tri_faces[0::2, 2] = f[:, 2]
+                tri_faces[1::2, 0] = f[:, 0]
+                tri_faces[1::2, 1] = f[:, 2]
+                tri_faces[1::2, 2] = f[:, 3]
+                uvs = _cg.unwrap_uv_atlas(v, tri_faces)
+            else:
+                uvs = _cg.unwrap_uv_atlas(v, f)
+            # C++ binding may return dict {"uvs": ndarray} or ndarray
+            if isinstance(uvs, dict):
+                uvs = uvs.get("uvs", uvs.get("uv_coords", np.empty((0, 2))))
+            uvs = np.asarray(uvs, dtype=np.float32)
+            if uvs.shape[0] == len(v) and uvs.shape[1] == 2:
+                return uvs
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+
+    # Fallback: spherical projection unwrap
+    centroid = np.mean(v, axis=0)
+    centered = v - centroid
+    r = np.linalg.norm(centered, axis=1, keepdims=True)
+    r = np.clip(r, 1e-8, None)
+    normalized = centered / r
+
+    # Spherical coordinates
+    theta = np.arctan2(normalized[:, 0], normalized[:, 2])  # azimuth
+    phi = np.arcsin(np.clip(normalized[:, 1], -1.0, 1.0))  # elevation
+
+    u = (theta / (2.0 * np.pi)) + 0.5
+    v_coord = (phi / np.pi) + 0.5
+
+    uvs = np.stack([u, v_coord], axis=-1).astype(np.float32)
+    return uvs
+
+
 def quad_remesh(
     vertices: np.ndarray,
     faces: np.ndarray,
     target_faces: int = 0,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Remesh a triangle mesh into a quad-dominant or quad mesh.
 
     Pairs adjacent coplanar triangles sharing an edge based on dihedral angle
     and aspect ratio, removing interior diagonals to form quad faces.
+    After remeshing, generates UV coordinates via xatlas binding
+    (``synapse._c_geometry.unwrap_uv_atlas``) or projection unwrap fallback.
 
     Args:
         vertices: Vertex positions, shape (V, 3).
@@ -369,19 +435,21 @@ def quad_remesh(
         target_faces: Optional target face count (0 = maximize quads).
 
     Returns:
-        Tuple of (new_vertices, new_faces).
+        Tuple of (new_vertices, new_faces, uvs).
+        uvs is (V_new, 2) float32 or None if UV generation fails.
     """
     v = np.asarray(vertices, dtype=np.float32)
     f = np.asarray(faces, dtype=np.int32)
 
     if len(v) == 0 or len(f) == 0:
-        return v, f
+        return v, f, None
 
     if f.shape[1] == 4:
-        return v, f  # Already quad mesh
+        uvs = _generate_uvs(v, f)
+        return v, f, uvs  # Already quad mesh
 
     if f.shape[1] != 3:
-        return v, f  # Unsupported polygon type
+        return v, f, None  # Unsupported polygon type
 
     num_faces = len(f)
     # Map each undirected edge to face indices
@@ -550,7 +618,9 @@ def quad_remesh(
     else:
         new_faces = f
 
-    return v, new_faces
+    # Generate UV coordinates via xatlas binding or projection unwrap fallback
+    uvs = _generate_uvs(v, new_faces)
+    return v, new_faces, uvs
 
 
 def check_degenerate_faces(
