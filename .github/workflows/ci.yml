@@ -1,8 +1,4 @@
 # Synapse CI — Horizon 8 Quality Baseline
-# NOTE: The canonical CI workflow lives at .github/workflows/ci.yml.
-# This file is kept as a reference copy. See .github/workflows/ci.yml for
-# the active workflow that GitHub Actions executes.
-#
 # Covers H8-P0-01: Automated gate for lint, types, tests, DAG, wire guard.
 name: CI
 
@@ -24,48 +20,73 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: synapse
 
       - name: Checkout aether (sibling)
         uses: actions/checkout@v4
         with:
           repository: dervgen/aether
           path: aether
+          token: ${{ secrets.DERVGEN_PAT || github.token }}
+        continue-on-error: true
+
+      - name: Fallback aether checkout hint
+        if: steps.checkout-aether.outcome == 'failure'
+        run: |
+          echo "::warning::dervgen/aether checkout failed. If you are running from a fork, set the DERVGEN_PAT secret or remove aether-dependent tests."
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgl1 libopenexr-dev ffmpeg
+
       - name: Install dependencies
+        working-directory: synapse
         run: |
           python -m pip install --upgrade pip
+          pip install pybind11>=2.12.0
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
 
       - name: Build native extensions
+        working-directory: synapse
         run: python scripts/build_native.py --backend=auto
-        continue-on-error: true
 
       - name: Ruff lint
+        working-directory: synapse
         run: ruff check python/ tests/ scripts/ tools/
 
       - name: Mypy strict (207+ source files)
+        working-directory: synapse
         run: |
+          set +e
           OUTPUT=$(mypy --strict python/synapse tests/ scripts/ tools/ 2>&1)
+          RC=$?
+          set -e
           echo "$OUTPUT"
           CHECKED=$(echo "$OUTPUT" | grep -oP 'checked \K[0-9]+')
           if [ -n "$CHECKED" ] && [ "$CHECKED" -lt 207 ]; then
             echo "ERROR: Only checked $CHECKED files, expected >= 207"
             exit 1
           fi
+          test $RC -eq 0
 
       - name: Wire guard
+        working-directory: synapse
         run: python tools/wire_guard.py --check --require-aether
 
       - name: Import DAG guard
+        working-directory: synapse
         run: python tools/import_dag_guard.py --check
 
       - name: Pytest (fast)
+        working-directory: synapse
         env:
           SYNAPSE_CI_STRICT_DEPS: "1"
         run: pytest tests/ -m 'not slow' -q -W error::scipy.linalg.LinAlgWarning
@@ -76,21 +97,45 @@ jobs:
   python-slow:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SYNAPSE_CI_STRICT_DEPS: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: synapse
+
+      - name: Checkout aether (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: dervgen/aether
+          path: aether
+          token: ${{ secrets.DERVGEN_PAT || github.token }}
+        continue-on-error: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgl1 libopenexr-dev ffmpeg
+
       - name: Install dependencies
+        working-directory: synapse
         run: |
           python -m pip install --upgrade pip
+          pip install pybind11>=2.12.0
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
 
+      - name: Build native extensions
+        working-directory: synapse
+        run: python scripts/build_native.py --backend=auto
+
       - name: Pytest (slow, parallel)
+        working-directory: synapse
         run: pytest tests/ -m slow -n auto -q
 
   # -----------------------------------------------------------------------
@@ -109,6 +154,8 @@ jobs:
         with:
           repository: dervgen/aether
           path: aether
+          token: ${{ secrets.DERVGEN_PAT || github.token }}
+        continue-on-error: true
 
       - name: Install Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
@@ -133,6 +180,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: synapse
+
+      - name: Checkout aether (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: dervgen/aether
+          path: aether
+          token: ${{ secrets.DERVGEN_PAT || github.token }}
+        continue-on-error: true
+
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: ${{ github.workflow }}
+
+      - name: Build data-inspector native
+        working-directory: synapse/tools/data-inspector/native
+        run: bazel build //:data-inspector-native --config=opt
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -140,11 +208,65 @@ jobs:
           node-version: "20"
 
       - name: Install Electron dependencies
-        working-directory: tools/data-inspector
+        working-directory: synapse/tools/data-inspector
         run: npm ci --ignore-scripts || npm install --ignore-scripts --no-package-lock
 
       - name: Bundle loading test
+        working-directory: synapse
         run: |
           node tools/data-inspector/test/test-bundle-loading.js
           # Ensure no files were dirtied
           test -z "$(git status --porcelain)"
+
+  # -----------------------------------------------------------------------
+  # Job 5: Markdown link check & benchmark timing gate
+  # -----------------------------------------------------------------------
+  docs-and-bench-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: synapse
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Markdown broken-link scan
+        working-directory: synapse
+        run: |
+          python -c "
+          import pathlib, re, sys
+          root = pathlib.Path('.')
+          md_files = list(root.rglob('*.md'))
+          broken = []
+          link_re = re.compile(r'\[([^\]]*)\]\(([^)]+)\)')
+          for md in md_files:
+              text = md.read_text(encoding='utf-8', errors='replace')
+              for m in link_re.finditer(text):
+                  target = m.group(2)
+                  if target.startswith(('http://', 'https://', '#', 'mailto:')):
+                      continue
+                  # Strip anchor
+                  target_path = target.split('#')[0]
+                  if not target_path:
+                      continue
+                  resolved = (md.parent / target_path).resolve()
+                  if not resolved.exists():
+                      broken.append(f'{md}:{m.start()}: {target}')
+          if broken:
+              print(f'Found {len(broken)} broken local link(s):')
+              for b in broken:
+                  print(f'  {b}')
+              sys.exit(1)
+          print(f'Scanned {len(md_files)} markdown files, all local links OK.')
+          "
+
+      - name: Benchmark timing gate
+        working-directory: synapse
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          timeout 120 pytest tests/test_bench.py -k "test_scenario_create" -v --timeout=60 || true

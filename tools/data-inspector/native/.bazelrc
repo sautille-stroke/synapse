@@ -10,6 +10,7 @@ common --registry=https://bcr.dervgen.com/bcr
 common --enable_platform_specific_config
 
 # 2. Build mode & RelWithDebInfo baseline
+build:opt --compilation_mode=opt
 build:opt --strip=never
 build:reldbg --config=opt
 
