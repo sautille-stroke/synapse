@@ -359,6 +359,17 @@ def _check_json_schemas() -> list[str]:
 
         # Validate version constant
         props = schema.get("properties", {})
+        schema_required = set(schema.get("required", []))
+        if not props and "oneOf" in schema:
+            for sub in schema["oneOf"]:
+                if isinstance(sub, dict) and meta.get("expected_version_field") in sub.get("properties", {}):
+                    props = sub.get("properties", {})
+                    schema_required = set(sub.get("required", []))
+                    break
+            if not props and schema["oneOf"] and isinstance(schema["oneOf"][0], dict):
+                props = schema["oneOf"][0].get("properties", {})
+                schema_required = set(schema["oneOf"][0].get("required", []))
+
         ver_field = meta["expected_version_field"]
         if ver_field in props:
             ver_prop = props[ver_field]
@@ -372,7 +383,6 @@ def _check_json_schemas() -> list[str]:
         # Validate required fields align with Python model
         if filename in _SCHEMA_PYTHON_ALIGNMENT:
             _, _, expected_required = _SCHEMA_PYTHON_ALIGNMENT[filename]
-            schema_required = set(schema.get("required", []))
             for field in expected_required:
                 if field not in schema_required:
                     errors.append(
@@ -451,6 +461,10 @@ def _check_json_schemas() -> list[str]:
 
         # Deep constraint validation
         def _validate_sub_constraints(obj_schema: dict[str, Any], path_prefix: str, filename: str = filename) -> None:
+            for sub_schema in obj_schema.get("oneOf", []):
+                if isinstance(sub_schema, dict):
+                    _validate_sub_constraints(sub_schema, path_prefix, filename)
+
             for prop_name, prop_spec in obj_schema.get("properties", {}).items():
                 curr_path = f"{path_prefix}.{prop_name}" if path_prefix else prop_name
                 if not isinstance(prop_spec, dict):
