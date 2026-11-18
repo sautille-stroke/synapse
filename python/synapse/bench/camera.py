@@ -4,7 +4,9 @@
     Import from ``synapse.render_core.camera`` instead.
 """
 
-__all__ = ["CameraTrajectoryType", "generate_cameras"]
+from __future__ import annotations
+
+import warnings
 
 from synapse.render_core.camera import (  # noqa: F401
     _GENERATORS,
@@ -19,3 +21,11 @@ from synapse.render_core.camera import (  # noqa: F401
     _make_camera,
     generate_cameras,
 )
+
+warnings.warn(
+    "synapse.bench.camera is deprecated; use synapse.render_core.camera instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+__all__ = ["CameraTrajectoryType", "generate_cameras"]

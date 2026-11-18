@@ -8,6 +8,7 @@ from synapse.fgpp.frame import CameraConvention, CameraParams, FGPPFrame, FGPPSe
 from synapse.fgpp.io import (
     export_fgpp,
     import_fgpp,
+    iter_fgpp_frames,
     resize_fgpp_frame,
     sanitize_fgpp_frame,
 )
@@ -51,6 +52,7 @@ __all__ = [
     # I/O
     "export_fgpp",
     "import_fgpp",
+    "iter_fgpp_frames",
     "sanitize_fgpp_frame",
     "resize_fgpp_frame",
     # Torch bridge

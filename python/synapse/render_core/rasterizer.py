@@ -308,7 +308,6 @@ class SoftwareRasterizer:
 
         # Init buffers
         depth_buf = np.full((H, W), np.inf, dtype=np.float64)
-        color_buf = np.zeros((H, W, 3), dtype=np.float64)
         normal_buf = np.tile(
             np.array([0.0, 0.0, 1.0], dtype=np.float64),
             (H, W, 1),
@@ -365,7 +364,6 @@ class SoftwareRasterizer:
                     clipped_poly[ti],
                     clipped_poly[ti + 1],
                     depth_buf,
-                    color_buf,
                     normal_buf,
                     radiance_buf,
                     bcolor_buf,
@@ -405,7 +403,6 @@ class SoftwareRasterizer:
         v1: _ClipVertex,
         v2: _ClipVertex,
         depth_buf: np.ndarray,
-        color_buf: np.ndarray,
         normal_buf: np.ndarray,
         radiance_buf: np.ndarray,
         bcolor_buf: np.ndarray,
@@ -532,11 +529,6 @@ class SoftwareRasterizer:
         rad_box[closer, 0] = diff_r[closer]
         rad_box[closer, 1] = diff_g[closer]
         rad_box[closer, 2] = diff_b[closer]
-
-        col_box = color_buf[min_y : max_y + 1, min_x : max_x + 1]
-        col_box[closer, 0] = diff_r[closer]
-        col_box[closer, 1] = diff_g[closer]
-        col_box[closer, 2] = diff_b[closer]
 
         mask_box = mask_buf[min_y : max_y + 1, min_x : max_x + 1]
         mask_box[closer] = eid

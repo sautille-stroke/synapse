@@ -90,6 +90,21 @@ def _look_at(
     return view
 
 
+def _extract_cam_kw(kwargs: dict[str, Any] | Any) -> dict[str, Any]:
+    """Extract intrinsic and optical camera parameters to forward to _make_camera."""
+    cam_kw: dict[str, Any] = {}
+    if isinstance(kwargs, dict):
+        if "z_near" in kwargs and kwargs["z_near"] is not None:
+            cam_kw["z_near"] = float(kwargs["z_near"])
+        if "z_far" in kwargs and kwargs["z_far"] is not None:
+            cam_kw["z_far"] = float(kwargs["z_far"])
+        if "aperture_fstop" in kwargs and kwargs["aperture_fstop"] is not None:
+            cam_kw["aperture_fstop"] = float(kwargs["aperture_fstop"])
+        if "shutter_angle_deg" in kwargs and kwargs["shutter_angle_deg"] is not None:
+            cam_kw["shutter_angle_deg"] = float(kwargs["shutter_angle_deg"])
+    return cam_kw
+
+
 def _make_camera(
     eye: np.ndarray,
     target: np.ndarray,
@@ -159,6 +174,7 @@ def _generate_orbit(
     if endpoint is None:
         endpoint = abs(azimuth_range_deg) < 360.0
 
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     for i in range(num_frames):
@@ -174,7 +190,7 @@ def _generate_orbit(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
 
         eye = target_pt + np.array([x, y, z])
-        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -193,12 +209,13 @@ def _generate_tracking(
     start_pt = np.array(start or [-3.0, 1.5, 0.0], dtype=np.float64)
     end_pt = np.array(end or [3.0, 1.5, 0.0], dtype=np.float64)
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     for i in range(num_frames):
         t = i / max(num_frames - 1, 1)
         eye = start_pt + t * (end_pt - start_pt)
-        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -219,6 +236,7 @@ def _generate_dolly(
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     el_rad = math.radians(elevation_deg)
     az_rad = math.radians(azimuth_deg)
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     direction = np.array(
@@ -233,7 +251,7 @@ def _generate_dolly(
         t = i / max(num_frames - 1, 1)
         dist = start_distance + t * (end_distance - start_distance)
         eye = target_pt + direction * dist
-        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -251,6 +269,7 @@ def _generate_static(
     """Generate a static (or slow-drift) camera."""
     pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     for i in range(num_frames):
@@ -263,7 +282,7 @@ def _generate_static(
             ]
         )
         eye = pos + drift
-        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -285,6 +304,7 @@ def _generate_arc(
         radius = float(kwargs["distance"])  # type: ignore[arg-type]
     target_pt = np.array(target or [0.0, 0.0, 0.0], dtype=np.float64)
     az_rad = math.radians(azimuth_deg)
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     for i in range(num_frames):
@@ -297,7 +317,7 @@ def _generate_arc(
         z = radius * math.cos(el_rad) * math.cos(az_rad)
 
         eye = target_pt + np.array([x, y, z])
-        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg))
+        cameras.append(_make_camera(eye, target_pt, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -314,6 +334,7 @@ def _generate_pan(
 ) -> list[CameraParams]:
     """Generate a horizontal pan (camera rotates in place)."""
     pos = np.array(position or [0.0, 1.5, 3.0], dtype=np.float64)
+    cam_kw = _extract_cam_kw(kwargs)
     cameras: list[CameraParams] = []
 
     for i in range(num_frames):
@@ -328,7 +349,7 @@ def _generate_pan(
                 -math.cos(pan_rad) * 5.0,
             ]
         )
-        cameras.append(_make_camera(pos, target, width, height, fov_deg))
+        cameras.append(_make_camera(pos, target, width, height, fov_deg, **cam_kw))
 
     return cameras
 
@@ -367,6 +388,9 @@ def generate_cameras(
         params = dict(scenario.camera_params)
         params["width"] = scenario.width
         params["height"] = scenario.height
+        for attr in ("z_near", "z_far", "aperture_fstop", "shutter_angle_deg"):
+            if hasattr(scenario, attr) and getattr(scenario, attr) is not None:
+                params.setdefault(attr, getattr(scenario, attr))
         params.update(override_params)
 
     # --- Parameter aliasing for cross-scenario compatibility ---

@@ -4,6 +4,10 @@
     Import from ``synapse.render_core.conditions`` instead.
 """
 
+from __future__ import annotations
+
+import warnings
+
 from synapse.render_core.conditions import (  # noqa: F401
     _VALID_FACTOR_KEYS,
     _VALID_LEVELS,
@@ -12,6 +16,12 @@ from synapse.render_core.conditions import (  # noqa: F401
     SINGLE_FACTOR_CONDITIONS,
     ConditionLevel,
     Conditions,
+)
+
+warnings.warn(
+    "synapse.bench.conditions is deprecated; use synapse.render_core.conditions instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 __all__ = [

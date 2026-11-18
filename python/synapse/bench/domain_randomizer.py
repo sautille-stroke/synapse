@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
+from synapse.render_core.conditions import RENDERING_CONDITION_FACTORS
 
 logger = logging.getLogger(__name__)
 

@@ -181,11 +181,11 @@ class BenchPipelineRunner:
     ) -> ScenarioRunReport:
         """Core logic extracted for cleaner error handling."""
         from synapse.adapters.base import VideoGenerationConfig
-        from synapse.bench.camera import generate_cameras
         from synapse.bench.model_loader import load_mesh
-        from synapse.bench.rasterizer import SoftwareRasterizer
         from synapse.bench.scenario import load_scenario
         from synapse.fgpp.frame import FGPPFrame, FGPPSequence
+        from synapse.render_core.camera import generate_cameras
+        from synapse.render_core.rasterizer import SoftwareRasterizer
 
         width, height = resolution
 

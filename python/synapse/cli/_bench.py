@@ -184,12 +184,12 @@ def _cmd_bench_evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
 def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     """Export a scenario to FGPP output directory."""
-    from synapse.bench.camera import generate_cameras
     from synapse.bench.model_loader import load_mesh
-    from synapse.bench.rasterizer import SoftwareRasterizer
     from synapse.bench.scenario import load_scenario
     from synapse.fgpp.frame import FGPPFrame, FGPPSequence
     from synapse.fgpp.io import export_fgpp
+    from synapse.render_core.camera import generate_cameras
+    from synapse.render_core.rasterizer import SoftwareRasterizer
 
     try:
         scenario = load_scenario(args.scenario)

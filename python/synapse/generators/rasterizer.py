@@ -37,6 +37,8 @@ _DEPRECATION_MSG = (
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 
+warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
+
 
 @dataclass
 class RenderResult:
@@ -103,7 +105,10 @@ class SoftwareRasterizer:
 
         if fgpp_frame.direct_radiance is not None:
             radiance = np.asarray(fgpp_frame.direct_radiance, dtype=np.float32)
-            rgb = np.clip(radiance * 255.0, 0, 255).astype(np.uint8)
+            from synapse.style.aces_color import linear_to_srgb
+
+            srgb = linear_to_srgb(radiance)
+            rgb = np.clip(np.round(srgb * 255.0), 0, 255).astype(np.uint8)
         else:
             rgb = np.zeros((h, w, 3), dtype=np.uint8)
 

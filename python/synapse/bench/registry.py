@@ -13,14 +13,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from synapse.bench.procedural import (
-    generate_procedural_mesh,
-)
 from synapse.bench.scenario import (
     Scenario,
 )
 from synapse.bench.scenario import (
     list_scenarios as _list_scenarios,
+)
+from synapse.render_core.procedural import (
+    generate_procedural_mesh,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class AssetRegistry:
             return obj_path
 
         if entry.name == "humanoid_53":
-            from synapse.bench.procedural import (
+            from synapse.render_core.procedural import (
                 generate_humanoid_proxy,
             )
 
@@ -175,12 +175,7 @@ class AssetRegistry:
             return obj_path
 
         if entry.name == "cone":
-            # Cone is a cylinder with top radius = 0
-            mesh = generate_procedural_mesh("cylinder")
-            # Collapse top ring to apex
-            top_mask = mesh.vertices[:, 1] > 0.0
-            mesh.vertices[top_mask, 0] = 0.0
-            mesh.vertices[top_mask, 2] = 0.0
+            mesh = generate_procedural_mesh("cone")
             mesh.save_obj(obj_path)
             return obj_path
 

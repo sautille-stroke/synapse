@@ -301,14 +301,14 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     Returns:
         Populated ``StyleDescriptor`` with optical estimates.
     """
-    frames = np.asarray(frames_srgb, dtype=np.float64)
-    # Only divide by 255.0 for integer (uint8) input; float HDR input
-    # is already in [0, 1] or wider range and must NOT be re-normalised.
-    if np.issubdtype(frames_srgb.dtype, np.integer):
-        frames = frames / 255.0
-    T = frames.shape[0]
+    T = frames_srgb.shape[0]
     if T == 0:
         return StyleDescriptor()
+
+    is_int = np.issubdtype(frames_srgb.dtype, np.integer)
+    # Step sampling for long sequences to keep peak memory < 1.5 GB
+    step = max(1, T // 32)
+    sample_indices = range(0, T, step)
 
     cct_list: list[float] = []
     ev_list: list[float] = []
@@ -316,8 +316,11 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     contrast_list: list[float] = []
     sat_list: list[float] = []
 
-    for t in range(T):
-        frame_linear = srgb_to_linear(frames[t])
+    for t in sample_indices:
+        frame_t = np.asarray(frames_srgb[t], dtype=np.float32)
+        if is_int:
+            frame_t = frame_t / 255.0
+        frame_linear = srgb_to_linear(frame_t)
         cct_list.append(_estimate_cct_mccamy(frame_linear))
         ev_list.append(_estimate_exposure_ev(frame_linear))
         grain_list.append(_estimate_grain_sigma(frame_linear))
@@ -353,26 +356,27 @@ def extract_style_fgpp_intrinsic(
     """
     # Start with optical estimates
     desc = extract_style_optical(frames_srgb)
-    frames_f = np.asarray(frames_srgb, dtype=np.float64)
-    # Only divide by 255.0 for integer (uint8) input; float HDR input
-    # is already in [0, 1] or wider range.
-    if np.issubdtype(frames_srgb.dtype, np.integer):
-        frames_f = frames_f / 255.0
+    is_int = np.issubdtype(frames_srgb.dtype, np.integer)
 
-    T = min(frames_f.shape[0], fgpp_seq.num_frames)
+    T = min(frames_srgb.shape[0], fgpp_seq.num_frames)
+    step = max(1, T // 32)
+    sample_indices = range(0, T, step)
 
     light_dirs: list[np.ndarray] = []
     ambient_ratios: list[float] = []
 
-    for t in range(T):
+    for t in sample_indices:
         fgpp_frame = fgpp_seq.frames[t]
 
         # Need base_color and world_normal
         if fgpp_frame.base_color is None or fgpp_frame.world_normal is None:
             continue
 
-        base_color = np.asarray(fgpp_frame.base_color, dtype=np.float64)
-        normals = np.asarray(fgpp_frame.world_normal, dtype=np.float64)
+        base_color = np.asarray(fgpp_frame.base_color, dtype=np.float32)
+        normals = np.asarray(fgpp_frame.world_normal, dtype=np.float32)
+        frame_t = np.asarray(frames_srgb[t], dtype=np.float32)
+        if is_int:
+            frame_t = frame_t / 255.0
 
         # Build foreground mask
         if fgpp_frame.cryptomatte_id is not None:
@@ -412,7 +416,7 @@ def extract_style_fgpp_intrinsic(
             continue
 
         # Observed radiance (sRGB frame → linear → ACEScg)
-        frame_linear = srgb_to_linear(frames_f[t])
+        frame_linear = srgb_to_linear(frame_t)
         frame_acescg = linear_srgb_to_acescg(frame_linear)
         # AP1 luminance weights for ACEScg working space
         obs_lum = (

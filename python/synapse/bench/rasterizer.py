@@ -4,10 +4,20 @@
     Import from ``synapse.render_core.rasterizer`` instead.
 """
 
-__all__ = ["SoftwareRasterizer", "entity_hash"]
+from __future__ import annotations
+
+import warnings
 
 from synapse.render_core.rasterizer import (  # noqa: F401
     SoftwareRasterizer,
     _murmurhash3_32,
     entity_hash,
 )
+
+warnings.warn(
+    "synapse.bench.rasterizer is deprecated; use synapse.render_core.rasterizer instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+__all__ = ["SoftwareRasterizer", "entity_hash"]

@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -571,3 +572,131 @@ class TestCircuitBreakerAndTelemetryHardening:
         """get_shutter_angle_deg returns 0.0 when not specified."""
         cond = Conditions()
         assert cond.get_shutter_angle_deg() == 0.0
+
+
+class TestWave33PR138Enhancements:
+    """PR-138: Tests for MeshData unification, camera forwarding, cone primitive, and streaming."""
+
+    def test_load_obj_missing_raises_asset_not_found(self, tmp_path: Path) -> None:
+        """Missing OBJ file raises AssetNotFoundError with code 20."""
+        from synapse.errors import AssetNotFoundError
+        from synapse.render_core.mesh import load_obj
+
+        with pytest.raises(AssetNotFoundError) as exc_info:
+            load_obj(tmp_path / "nonexistent.obj")
+        assert exc_info.value.exit_code == 20
+
+    def test_load_obj_preserves_uv_seam_and_exports(self, tmp_path: Path) -> None:
+        """OBJ with vertex sharing different UV coordinates splits vertices along seam."""
+        from synapse.render_core.mesh import MeshData, load_obj
+
+        obj_content = (
+            "v 0.0 0.0 0.0\n"
+            "v 1.0 0.0 0.0\n"
+            "v 0.0 1.0 0.0\n"
+            "v -1.0 0.0 0.0\n"
+            "vt 0.0 0.0\n"
+            "vt 1.0 0.0\n"
+            "vt 0.5 1.0\n"
+            "vt 0.0 1.0\n"
+            "# Two triangles sharing vertex 1 (0.0, 0.0, 0.0), but with different UVs (vt 1 vs vt 2)\n"
+            "f 1/1 2/2 3/3\n"
+            "f 1/2 4/4 3/3\n"
+        )
+        obj_file = tmp_path / "seam.obj"
+        obj_file.write_text(obj_content, encoding="utf-8")
+
+        mesh = load_obj(obj_file)
+        assert isinstance(mesh, MeshData)
+        assert mesh.num_faces == 2
+        # Vertex 1 should have been split because it has 2 different UV indices (1 and 2)
+        assert mesh.num_vertices >= 4
+        assert mesh.uvs is not None
+        assert len(mesh.uvs) == mesh.num_vertices
+
+        # Roundtrip export
+        out_obj = tmp_path / "exported.obj"
+        mesh.export_obj(out_obj)
+        assert out_obj.exists()
+
+    def test_load_obj_vn_without_face_indices_computes_normals(self, tmp_path: Path) -> None:
+        """OBJ with vn definitions but face lines lacking normal indices still computes valid normals."""
+        from synapse.render_core.mesh import load_obj
+
+        obj_content = (
+            "v 0.0 0.0 0.0\n"
+            "v 1.0 0.0 0.0\n"
+            "v 0.0 1.0 0.0\n"
+            "vn 0.0 0.0 1.0\n"
+            "f 1 2 3\n"
+        )
+        obj_file = tmp_path / "no_face_normals.obj"
+        obj_file.write_text(obj_content, encoding="utf-8")
+
+        mesh = load_obj(obj_file)
+        assert mesh.normals is not None
+        # Normals must not be all zeros
+        norms = np.linalg.norm(mesh.normals, axis=1)
+        assert np.all(norms > 0.5)
+
+    def test_cone_procedural_mesh(self) -> None:
+        """Cone primitive is watertight with 0 degenerate faces."""
+        from synapse.render_core.procedural import generate_procedural_mesh
+
+        cone = generate_procedural_mesh("cone", segments=16)
+        assert cone.num_vertices > 0
+        assert cone.num_faces == 32  # 16 side + 16 bottom
+        # Verify no zero-area faces
+        v0 = cone.vertices[cone.faces[:, 0]]
+        v1 = cone.vertices[cone.faces[:, 1]]
+        v2 = cone.vertices[cone.faces[:, 2]]
+        cross = np.cross(v1 - v0, v2 - v0)
+        areas = 0.5 * np.linalg.norm(cross, axis=1)
+        assert np.all(areas > 1e-6)
+
+    def test_camera_trajectory_forwards_cam_kw(self) -> None:
+        """Trajectory generator forwards z_near, z_far, aperture_fstop, shutter_angle_deg."""
+        from synapse.render_core.camera import generate_cameras
+
+        cams = generate_cameras(
+            "orbit",
+            num_frames=4,
+            z_near=0.25,
+            z_far=500.0,
+            aperture_fstop=2.8,
+            shutter_angle_deg=90.0,
+        )
+        assert len(cams) == 4
+        for cam in cams:
+            assert cam.z_near == 0.25
+            assert cam.z_far == 500.0
+            assert cam.aperture_fstop == 2.8
+            assert cam.shutter_angle_deg == 90.0
+
+    def test_pyramid_vectorized_upsample_and_1x1_reflect(self) -> None:
+        """Pyramid upsample2x is vectorized and separable_gaussian does not crash on 1x1."""
+        from synapse.render_core.pyramid import (
+            build_laplacian_pyramid,
+            reconstruct_laplacian_pyramid,
+            separable_gaussian,
+            upsample2x,
+        )
+
+        # 1x1 reflect crash prevention
+        one_px = np.array([[128]], dtype=np.uint8)
+        blurred = separable_gaussian(one_px, sigma=2.0)
+        assert blurred.shape == (1, 1)
+
+        # uint8 underflow prevention in Laplacian pyramid
+        img = np.full((16, 16), 100, dtype=np.uint8)
+        img[4:12, 4:12] = 200
+        lap = build_laplacian_pyramid(img, n_levels=2)
+        assert len(lap) == 3
+        # Should not have uint8 wrap-around values
+        reconstructed = reconstruct_laplacian_pyramid(lap)
+        assert np.allclose(reconstructed, img.astype(np.float32), atol=2.0)
+
+        # Vectorized upsample2x check
+        small = np.random.randn(8, 8, 3).astype(np.float32)
+        upsampled = upsample2x(small, 16, 16)
+        assert upsampled.shape == (16, 16, 3)

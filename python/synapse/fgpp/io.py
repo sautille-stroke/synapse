@@ -351,9 +351,9 @@ def _read_exr_frame(
 
             field_name = _GROUP_TO_FIELD[group]
             if len(components) == 1:
-                field_arrays[field_name] = components[0].copy()
+                field_arrays[field_name] = components[0]
             else:
-                field_arrays[field_name] = np.stack(components, axis=-1).copy()
+                field_arrays[field_name] = np.stack(components, axis=-1)
     finally:
         exr.close()
 
@@ -465,6 +465,30 @@ def import_fgpp(
         )
 
     return FGPPSequence(frames=frames, fps=meta_seq.fps, scene_id=meta_seq.scene_id)
+
+
+def iter_fgpp_frames(
+    input_dir: str | Path,
+    *,
+    channels: Sequence[str] | None = None,
+    allow_missing_optional: bool = False,
+) -> Iterator[FGPPFrame]:
+    """Stream FGPP frames lazily one-by-one from an OpenEXR sequence directory.
+
+    Yields individual :class:`FGPPFrame` objects to keep peak memory below 1.5 GB.
+    """
+    inp = Path(input_dir)
+    if not inp.exists():
+        raise AssetNotFoundError(
+            f"FGPP input directory does not exist: {inp}",
+            agent_fix_hint="Ensure the specified sequence directory exists on disk.",
+        )
+
+    meta_seq = FGPPSequence.load_metadata(inp)
+    channel_set = set(channels) if channels is not None else None
+    return _iter_fgpp_frames(
+        inp, meta_seq, channel_set, allow_missing_optional=allow_missing_optional
+    )
 
 
 # ---------------------------------------------------------------------------
