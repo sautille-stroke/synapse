@@ -37,10 +37,9 @@ def handle_anatomical_refine(
     """
     from synapse.refine.pipeline import (
         _METHOD_MAP,
-        _REGION_MAP,
         LocalRefinementPipeline,
     )
-    from synapse.refine.types import FusionMethod, RefinementROI
+    from synapse.refine.types import FusionMethod
 
     params = dict(manifest.params)
 
@@ -101,33 +100,26 @@ def handle_anatomical_refine(
             ),
         )
 
-    rois_raw = json.loads(Path(rois_path).read_text(encoding="utf-8"))
-    _height, _width = frames.shape[1], frames.shape[2]
+    p_rois = Path(rois_path)
+    if p_rois.suffix.lower() not in (".json", ".npy"):
+        from synapse.errors import ContractValidationError
 
-    rois_per_frame: list[list[RefinementROI]] = []
-    for t, frame_rois_raw in enumerate(rois_raw):
-        frame_rois: list[RefinementROI] = []
-        for roi_dict in frame_rois_raw:
-            region = _REGION_MAP.get(roi_dict["region"])
-            if region is None:
-                continue
-            bbox = np.array(roi_dict["bbox_xyxy"], dtype=np.float32)
-            x1 = max(0, min(_width, int(bbox[0])))
-            y1 = max(0, min(_height, int(bbox[1])))
-            x2 = max(0, min(_width, int(bbox[2])))
-            y2 = max(0, min(_height, int(bbox[3])))
-            if x2 <= x1 or y2 <= y1:
-                continue
-            clipped_bbox = np.array([x1, y1, x2, y2], dtype=np.float32)
-            crop = frames[t, y1:y2, x1:x2, :].copy()
-            roi = RefinementROI(
-                region=region,
-                bbox_xyxy=clipped_bbox,
-                crop_acescg=crop,
-                confidence=float(roi_dict.get("confidence", 0.9)),
-            )
-            frame_rois.append(roi)
-        rois_per_frame.append(frame_rois)
+        raise ContractValidationError(
+            f"Invalid ROI metadata file extension: {p_rois.suffix!r}. Expected .json or .npy",
+            agent_fix_hint="Provide a valid .json or .npy file for manifest.inputs['rois'].",
+        )
+
+    from synapse.refine.roi_tracker import parse_rois_json
+
+    meta_content = json.loads(p_rois.read_text(encoding="utf-8"))
+    _height, _width = frames.shape[1], frames.shape[2]
+    rois_per_frame = parse_rois_json(
+        meta_content,
+        num_frames=frames.shape[0],
+        height=_height,
+        width=_width,
+        frames=frames,
+    )
 
     from synapse.refine.gates import GateThresholds
 
@@ -162,6 +154,16 @@ def handle_anatomical_refine(
     with open(p_diag, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2, default=str)
     output_paths["diagnostics"] = str(p_diag)
+
+    # Record action to PersistentHitlLedger to track cumulative budget
+    from synapse.bridge.hitl import CommandIRRecord
+
+    action_record = CommandIRRecord(
+        intent_group_id=group_id,
+        intent="anatomical_refine_stage",
+        elapsed_seconds=elapsed_seconds if elapsed_seconds > 0 else float(result.elapsed_seconds),
+    )
+    ledger.record_action(action_record, max_seconds=max_elapsed_seconds)
 
     return {
         "output_paths": output_paths,

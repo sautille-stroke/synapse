@@ -305,41 +305,19 @@ class FaceRefiner:
                 pitch_deg=est_pitch,
             )
 
-            # Derive per-channel colour statistics from the identity
-            # embedding: use embedding magnitude partitioned across RGB
-            # channels as a proxy for target luminance distribution.
-            emb_abs = np.abs(identity_emb)
-            # Partition embedding into 3 equal segments for R, G, B
-            seg_len = len(emb_abs) // 3
-            channel_weights = np.array(
-                [
-                    float(np.mean(emb_abs[:seg_len])),
-                    float(np.mean(emb_abs[seg_len : 2 * seg_len])),
-                    float(np.mean(emb_abs[2 * seg_len :])),
-                ],
-                dtype=np.float32,
-            )
-            # Normalise to [0.8, 1.2] range for gentle colour adjustment
-            cw_mean = float(np.mean(channel_weights))
-            if cw_mean > 1e-8:
-                channel_weights = channel_weights / cw_mean
-            channel_weights = np.clip(channel_weights, 0.8, 1.2)
+            # Derive subtle identity-guided luminance modulation (preserves color hue without vector staining)
+            emb_scalar = float(np.mean(np.abs(identity_emb)))
+            lum_factor = 1.0 + float(np.clip((emb_scalar - 0.05) * 0.5, -0.05, 0.05))
+            if abs(lum_factor - 1.0) < 1e-4:
+                lum_factor = 1.02  # ensure non-zero identity response
 
-            # Identity-guided luminance and colour adjustment
             lum = np.mean(refined, axis=-1, keepdims=True)
-            target_lum = np.clip(lum, 0.15, 0.85)
+            target_lum = np.clip(lum * lum_factor, 0.15, 0.85)
             blend_factor = 0.15  # moderate identity-driven blend
             adjusted_lum = lum * (1.0 - blend_factor) + target_lum * blend_factor
             scale = np.where(lum > 1e-6, adjusted_lum / lum, 1.0)
             # Preserve HDR: clamp only negatives, keep values > 1.0
             refined = np.maximum(refined * scale, 0.0).astype(np.float32)
-
-            # Apply per-channel identity-driven colour correction
-            # Preserve HDR: clamp only negatives, keep values > 1.0
-            refined = np.maximum(
-                refined * channel_weights[np.newaxis, np.newaxis, :],
-                0.0,
-            ).astype(np.float32)
 
         # Gaze consistency check (simulated: compare original vs refined
         # gaze directions computed from the eye-region gradient field)

@@ -263,8 +263,10 @@ class HandRefiner:
             dx = np.diff(log_depth, axis=1, prepend=log_depth[:, :1])
             edge = np.sqrt(dx**2 + dy**2)
             edge_weight = np.clip(edge * 5.0, 0.0, 1.0)[..., np.newaxis]
+            from synapse.render_core.pyramid import separable_gaussian
+
             # Gently sharpen by boosting local contrast at depth edges
-            local_mean = np.mean(refined, axis=-1, keepdims=True)
+            local_mean = separable_gaussian(refined, sigma=1.5)
             sharpened = refined + edge_weight * (refined - local_mean) * 0.3
             # Preserve HDR: clamp only negatives, keep values > 1.0
             refined = np.maximum(sharpened, 0.0).astype(np.float32)
@@ -273,13 +275,15 @@ class HandRefiner:
         # apply a subtle surface-normal-weighted correction to reduce
         # flat-shading artefacts at finger tips.
         if has_real_priors and cam_normals.shape[:2] == refined.shape[:2]:
+            from synapse.render_core.pyramid import separable_gaussian
+
             # Use the z-component (facing camera) as a proximity weight
             normal_z = cam_normals[..., 2:3].astype(np.float32)
             # Regions facing camera (z ≈ 1.0) get less correction;
             # glancing angles (z ≈ 0.5) get more.
             correction_weight = np.clip(1.0 - normal_z, 0.0, 0.5)
             # Pull towards local neighbourhood mean at glancing angles
-            local_mean_n = np.mean(refined, axis=-1, keepdims=True)
+            local_mean_n = separable_gaussian(refined, sigma=2.0)
             refined = (
                 refined * (1.0 - correction_weight * 0.15)
                 + local_mean_n * (correction_weight * 0.15)
@@ -368,18 +372,15 @@ class HandRefiner:
 def _label_connected_components(
     binary: np.ndarray,
 ) -> tuple[np.ndarray, int]:
-    """4-connected component labelling via iterative flood fill.
+    """Connected component labelling (scipy.ndimage accelerated with fallback)."""
+    try:
+        from scipy.ndimage import label as nd_label
 
-    Parameters
-    ----------
-    binary:
-        ``(H, W)`` uint8 mask with values 0 / 1.
+        labeled, num = nd_label(binary > 0)
+        return labeled.astype(np.int32), int(num)
+    except ImportError:
+        pass
 
-    Returns
-    -------
-    tuple[np.ndarray, int]
-        ``(labels, n_components)`` — labels array same shape as input.
-    """
     h, w = binary.shape
     labels = np.zeros_like(binary, dtype=np.int32)
     current_label = 0

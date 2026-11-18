@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from synapse.refine.face import CanonicalAnchorGallery, FaceRefiner
-from synapse.refine.fusion import MultiModelRefineFusion
+from synapse.refine.fusion import AnatomicalModelEnsemble, MultiModelRefineFusion
 from synapse.refine.gates import (
     GateThresholds,
     GateVerdict,
@@ -29,6 +29,7 @@ from synapse.refine.types import (
 )
 
 __all__ = [
+    "AnatomicalModelEnsemble",
     "AnatomicalRegion",
     "CanonicalAnchorGallery",
     "FaceRefiner",

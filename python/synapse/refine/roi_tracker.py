@@ -8,6 +8,8 @@ filtering library is required.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 
@@ -77,6 +79,9 @@ class KalmanBBoxTracker:
         self._x = self._F @ self._x
         # P = F @ P @ F^T + Q
         self._P = self._F @ self._P @ self._F.T + self._Q
+        # Clamp state to prevent negative widths or heights
+        self._x[2] = max(float(self._x[2]), 1.0)
+        self._x[3] = max(float(self._x[3]), 1.0)
         return self._x[: self._DIM_MEAS].astype(np.float32)
 
     def update(self, bbox_xyxy: np.ndarray) -> np.ndarray:
@@ -112,18 +117,9 @@ class KalmanBBoxTracker:
     def reset(self) -> None:
         """Reset the tracker to its uninitialised state."""
         self._x = np.zeros(self._DIM_STATE, dtype=np.float64)
-        # Covariance: larger uncertainty for position/size than velocities.
+        # Covariance: larger uncertainty for position/size (100.0) than velocities (10.0).
         p_diag = np.array(
-            [
-                100.0,
-                100.0,
-                100.0,
-                100.0,  # cx, cy, w, h
-                10.0,
-                10.0,
-                10.0,
-                10.0,
-            ],  # velocities
+            [100.0, 100.0, 100.0, 100.0, 10.0, 10.0, 10.0, 10.0],
             dtype=np.float64,
         )
         self._P = np.diag(p_diag)
@@ -197,3 +193,142 @@ def compute_affine_align(
     )
 
     return M_fwd, M_inv
+
+
+def compute_bbox_iou(box1: np.ndarray, box2: np.ndarray) -> float:
+    """Compute Intersection-over-Union between two boxes [x1, y1, x2, y2]."""
+    b1 = np.asarray(box1, dtype=np.float64)
+    b2 = np.asarray(box2, dtype=np.float64)
+
+    ix1 = max(float(b1[0]), float(b2[0]))
+    iy1 = max(float(b1[1]), float(b2[1]))
+    ix2 = min(float(b1[2]), float(b2[2]))
+    iy2 = min(float(b1[3]), float(b2[3]))
+
+    inter_w = max(0.0, ix2 - ix1)
+    inter_h = max(0.0, iy2 - iy1)
+    inter_area = inter_w * inter_h
+
+    area1 = max(0.0, float(b1[2] - b1[0])) * max(0.0, float(b1[3] - b1[1]))
+    area2 = max(0.0, float(b2[2] - b2[0])) * max(0.0, float(b2[3] - b2[1]))
+    union_area = area1 + area2 - inter_area
+    if union_area <= 0.0:
+        return 0.0
+    return float(inter_area / union_area)
+
+
+def parse_rois_json(
+    meta_content: Any,
+    num_frames: int,
+    height: int,
+    width: int,
+    frames: np.ndarray | None = None,
+) -> list[list[Any]]:
+    """Common ROI JSON parser supporting dict {"rois": [...]}, flat list[dict], or list[list[dict]].
+
+    Returns a per-frame list of RefinementROI instances.
+    """
+    from synapse.errors import ContractValidationError
+    from synapse.refine.types import AnatomicalRegion, RefinementROI
+
+    region_map = {
+        "HAND": AnatomicalRegion.HAND,
+        "FACE": AnatomicalRegion.FACE,
+    }
+
+    rois_per_frame: list[list[RefinementROI]] = [[] for _ in range(num_frames)]
+
+    # Normalize into list of items or list of frame lists
+    if isinstance(meta_content, dict):
+        if "rois" in meta_content:
+            raw_items = meta_content["rois"]
+        else:
+            raw_items = [meta_content]
+    elif isinstance(meta_content, list):
+        raw_items = meta_content
+    else:
+        raise ContractValidationError(
+            f"Unsupported ROI JSON root type: {type(meta_content).__name__}",
+            agent_fix_hint="Provide a JSON object with 'rois' or a list of ROI entries.",
+        )
+
+    # Check if raw_items is list[list[dict]] (per-frame list)
+    if raw_items and isinstance(raw_items[0], list):
+        for t_idx, frame_items in enumerate(raw_items):
+            if t_idx >= num_frames:
+                break
+            for item in frame_items:
+                if not isinstance(item, dict):
+                    continue
+                rname = str(item.get("region", "HAND")).upper()
+                region = region_map.get(rname, AnatomicalRegion.HAND)
+                bbox = np.asarray(
+                    item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])),
+                    dtype=np.float32,
+                )
+                x1 = max(0, min(width - 1, int(round(float(bbox[0])))))
+                y1 = max(0, min(height - 1, int(round(float(bbox[1])))))
+                x2 = max(x1 + 1, min(width, int(round(float(bbox[2])))))
+                y2 = max(y1 + 1, min(height, int(round(float(bbox[3])))))
+                clipped_bbox = np.array([x1, y1, x2, y2], dtype=np.float32)
+
+                if frames is not None and t_idx < frames.shape[0]:
+                    crop = frames[t_idx, y1:y2, x1:x2, :].copy()
+                else:
+                    crop = np.zeros((y2 - y1, x2 - x1, 3), dtype=np.float32)
+
+                rois_per_frame[t_idx].append(
+                    RefinementROI(
+                        region=region,
+                        bbox_xyxy=clipped_bbox,
+                        crop_acescg=crop,
+                        confidence=float(item.get("confidence", 0.9)),
+                        frame_index=t_idx,
+                    )
+                )
+    else:
+        # Flat list of items
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            raw_t = item.get("frame_index")
+            if raw_t is None:
+                raw_t = item.get("t", 0)
+            t_idx = int(raw_t)
+            if t_idx < 0 or t_idx >= num_frames:
+                continue
+            rname = str(item.get("region", "HAND")).upper()
+            region = region_map.get(rname, AnatomicalRegion.HAND)
+            bbox = np.asarray(
+                item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])),
+                dtype=np.float32,
+            )
+            x1 = max(0, min(width - 1, int(round(float(bbox[0])))))
+            y1 = max(0, min(height - 1, int(round(float(bbox[1])))))
+            x2 = max(x1 + 1, min(width, int(round(float(bbox[2])))))
+            y2 = max(y1 + 1, min(height, int(round(float(bbox[3])))))
+            clipped_bbox = np.array([x1, y1, x2, y2], dtype=np.float32)
+
+            if frames is not None and t_idx < frames.shape[0]:
+                crop = frames[t_idx, y1:y2, x1:x2, :].copy()
+            else:
+                crop = np.zeros((y2 - y1, x2 - x1, 3), dtype=np.float32)
+
+            rois_per_frame[t_idx].append(
+                RefinementROI(
+                    region=region,
+                    bbox_xyxy=clipped_bbox,
+                    crop_acescg=crop,
+                    confidence=float(item.get("confidence", 0.9)),
+                    frame_index=t_idx,
+                )
+            )
+
+    total_parsed = sum(len(f_rois) for f_rois in rois_per_frame)
+    if total_parsed == 0:
+        raise ContractValidationError(
+            "No valid ROIs parsed from metadata.",
+            agent_fix_hint="Ensure ROI JSON contains at least one non-degenerate bounding box.",
+        )
+
+    return rois_per_frame

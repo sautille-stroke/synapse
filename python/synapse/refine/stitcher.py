@@ -193,10 +193,11 @@ class ScalpelStitcher:
                     ring_width_px=ring,
                 )
                 matched_acescg = _srgb_to_acescg_f32(matched_srgb)
-                # Preserve linear ACEScg HDR values (> 1.0) from composite_full
-                hdr_pixels = composite_full > 1.0
-                if np.any(hdr_pixels):
-                    matched_acescg[hdr_pixels] = composite_full[hdr_pixels]
+                # Preserve linear ACEScg HDR values (> 1.0) while preserving color hue
+                # Replace whole pixel (all 3 channels) for any HDR pixel to prevent per-channel hue distortion
+                hdr_pixel_mask = np.any(composite_full > 1.0, axis=-1)
+                if np.any(hdr_pixel_mask):
+                    matched_acescg[hdr_pixel_mask] = composite_full[hdr_pixel_mask]
 
                 # -------------------------------------------------------
                 # 4. Laplacian pyramid blend in linear ACEScg.
@@ -590,6 +591,7 @@ def _border_ciede2000(
 def _backward_warp_bilinear(
     img: np.ndarray,
     flow: np.ndarray,
+    fallback: np.ndarray | None = None,
 ) -> np.ndarray:
     """Backward-warp *img* by *flow* using bilinear interpolation.
 
@@ -599,6 +601,7 @@ def _backward_warp_bilinear(
     Args:
         img: ``(H, W, C)`` float32/float64 image.
         flow: ``(H, W, 2)`` float32 flow field ``(dx, dy)``.
+        fallback: Optional fallback image for out-of-bounds pixels.
 
     Returns:
         Warped ``(H, W, C)`` image with the same dtype.
@@ -610,6 +613,8 @@ def _backward_warp_bilinear(
     yy, xx = np.mgrid[:h, :w]
     sx = xx.astype(np.float64) - fl[..., 0]
     sy = yy.astype(np.float64) - fl[..., 1]
+
+    oob = (sx < 0) | (sx > w - 1) | (sy < 0) | (sy > h - 1)
 
     # Clamp to valid range.
     sx_c = np.clip(sx, 0, w - 1)
@@ -631,6 +636,11 @@ def _backward_warp_bilinear(
         top = tl * (1.0 - xf) + tr * xf
         bot = bl * (1.0 - xf) + br * xf
         out[..., ch] = top * (1.0 - yf) + bot * yf
+
+    if fallback is not None and np.any(oob):
+        fb = fallback.astype(np.float64)
+        for ch in range(c):
+            out[oob, ch] = fb[oob, ch]
 
     return out.astype(img.dtype)
 

@@ -166,15 +166,25 @@ class PersistentHitlLedger:
 
     def _unlock_and_write(self, data: dict[str, Any], lock_handle: Any) -> None:
         """Write state via atomic replace and release lock."""
+        tmp_path = None
         try:
-            tmp_fd, tmp_path = tempfile.mkstemp(
+            tmp_fd, tmp_path_str = tempfile.mkstemp(
                 dir=str(self.ledger_path.parent),
                 prefix="synapse_hitl_tmp_",
                 suffix=".json",
             )
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tf:
-                json.dump(data, tf, indent=2)
-            os.replace(tmp_path, self.ledger_path)
+            tmp_path = Path(tmp_path_str)
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as tf:
+                    json.dump(data, tf, indent=2)
+                os.replace(str(tmp_path), str(self.ledger_path))
+            except Exception:
+                if tmp_path.is_file():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
+                raise
         finally:
             self._unlock(lock_handle)
 
