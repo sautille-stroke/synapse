@@ -512,17 +512,6 @@ class MitsubaInverseOptimizer:
 
         Legacy API — delegates to ``optimize_material_from_video``.
         """
-        if self._mi is None:
-            from synapse.errors import BackendUnavailableError
-
-            raise BackendUnavailableError(
-                "Mitsuba 3 is not installed or no differentiable variant "
-                "(cuda_ad_rgb / llvm_ad_rgb) is available.",
-                agent_fix_hint=(
-                    "pip install 'mitsuba>=3.5.0' 'drjit>=0.4.5' or "
-                    "use AnalyticUVInverseOptimizer for CPU-only mode."
-                ),
-            )
         return self.optimize_material_from_video(
             frames=kwargs["frames"],
             normals=kwargs["normals"],

@@ -58,7 +58,7 @@ class ReconPipeline:
         skeleton_template: dict[str, Any] | None = None,
         fps: float = 30.0,
         track: str = "track_b_whitebox",
-        has_gen3d_highpoly: bool = True,
+        has_gen3d_highpoly: bool | None = None,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -67,6 +67,12 @@ class ReconPipeline:
             initial_mesh: Optional prior 3D geometry (whitebox or gen3d).
             skeleton_template: Optional skeleton joints dictionary.
             fps: Video frame rate.
+            track: Distillation track identifier for the geometry gate
+                (default ``"track_b_whitebox"``).
+            has_gen3d_highpoly: Whether the mesh has passed through gen3d
+                high-poly reconstruction.  When *None* (default), auto-
+                computed as ``initial_mesh.vertex_count >= 1500`` to
+                enforce Redline #3.
 
         Returns:
             ReconResult containing mesh, camera trajectory, kinematics,
@@ -104,9 +110,16 @@ class ReconPipeline:
             # before texture back-projection is permitted.
             from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
 
+            # Auto-compute has_gen3d_highpoly from vertex count when not
+            # explicitly set by caller (Redline #3 safety).
+            _highpoly = (
+                has_gen3d_highpoly
+                if has_gen3d_highpoly is not None
+                else initial_mesh.vertex_count >= 1500
+            )
             enforce_distillation_geometry_gate(
                 track=track,
-                has_gen3d_highpoly=has_gen3d_highpoly,
+                has_gen3d_highpoly=_highpoly,
                 vertex_count=initial_mesh.vertex_count,
                 has_articulated_limbs=(skeleton_template is not None),
                 is_character=(skeleton_template is not None),
