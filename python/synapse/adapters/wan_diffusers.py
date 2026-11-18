@@ -68,9 +68,9 @@ class DiffusersWanBackend(WanBackendTransport):
         if self._pipeline is not None or self._transformer is not None:
             return True
         try:
-            import diffusers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
+            import diffusers  # noqa: F401
             import torch  # noqa: F401
-            import transformers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
+            import transformers  # type: ignore[import-not-found]  # noqa: F401
 
             return True
         except ImportError:
@@ -98,8 +98,8 @@ class DiffusersWanBackend(WanBackendTransport):
             ) from exc
 
         try:
-            import diffusers  # type: ignore[import-not-found,import-untyped]
-            import transformers  # noqa: F401  # type: ignore[import-not-found,import-untyped]
+            import diffusers
+            import transformers  # type: ignore[import-not-found]  # noqa: F401
         except ImportError as exc:
             raise BackendUnavailableError(
                 "diffusers and transformers are required for DiffusersWanBackend.",
