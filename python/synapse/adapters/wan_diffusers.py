@@ -70,7 +70,7 @@ class DiffusersWanBackend(WanBackendTransport):
         try:
             import diffusers  # noqa: F401
             import torch  # noqa: F401
-            import transformers  # type: ignore[import-not-found]  # noqa: F401
+            import transformers  # noqa: F401
 
             return True
         except ImportError:
@@ -99,7 +99,7 @@ class DiffusersWanBackend(WanBackendTransport):
 
         try:
             import diffusers
-            import transformers  # type: ignore[import-not-found]  # noqa: F401
+            import transformers  # noqa: F401
         except ImportError as exc:
             raise BackendUnavailableError(
                 "diffusers and transformers are required for DiffusersWanBackend.",
