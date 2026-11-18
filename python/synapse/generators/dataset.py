@@ -327,7 +327,7 @@ class DatasetGenerator:
         try:
             from synapse.fgpp.io import export_fgpp
 
-            export_fgpp(fgpp_seq, fgpp_dir)
+            export_fgpp(fgpp_seq, fgpp_dir, strict=False)
         except (ImportError, OSError):
             fgpp_seq.save_metadata(fgpp_dir)
 
