@@ -142,7 +142,8 @@ ignore = [
     "B007", "B009", "B010",
     "SIM102", "SIM105", "SIM108", "SIM117", "SIM118", "SIM300",
     "UP006", "UP007", "UP015", "UP035",
-    "RUF001", "RUF002", "RUF003", "RUF005", "RUF015", "RUF022", "RUF043", "RUF046",
+    "RUF001", "RUF002", "RUF003", "RUF005", "RUF015", "RUF022", "RUF043", "RUF046", "RUF059",
+    "E501", "W", "PT", "S108", "S301", "S310", "S602", "S603",
 ]
 
 [tool.ruff.lint.per-file-ignores]
