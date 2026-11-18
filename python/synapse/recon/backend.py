@@ -59,7 +59,10 @@ class SynapseReconBackend(VgBackend):
     ) -> bool:
         """Check 2-manifold status using native C++ kernel with Oracle fallback."""
         try:
-            import synapse._c_geometry as _cg
+            try:
+                import aether_geo as _cg
+            except ImportError:
+                import synapse._c_geometry as _cg
 
             v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
             f_arr = np.ascontiguousarray(faces, dtype=np.int32)
@@ -76,7 +79,10 @@ class SynapseReconBackend(VgBackend):
     ) -> bool:
         """Check watertight status using native C++ kernel with Oracle fallback."""
         try:
-            import synapse._c_geometry as _cg
+            try:
+                import aether_geo as _cg
+            except ImportError:
+                import synapse._c_geometry as _cg
 
             v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
             f_arr = np.ascontiguousarray(faces, dtype=np.int32)

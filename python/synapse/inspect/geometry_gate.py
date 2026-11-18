@@ -4,7 +4,8 @@ Runs topology and geometric sanity checks (manifold, watertight, degenerate
 faces, self-intersections, floating islands) and produces a structured
 :class:`~synapse.inspect.schemas.GeometricValidationResult`.
 
-The gate requires the C++20 native backend (``synapse._c_geometry``) in
+The gate requires the C++20 native backend (``aether_geo`` or legacy
+``synapse._c_geometry``) in
 production.  A ``"python"`` backend exists **only** for Oracle parity
 testing — it must never be used in production workflows.
 """
@@ -67,15 +68,15 @@ def validate_mesh_geometry(
             component must have to avoid being classified as a floating
             island.
         backend: Execution backend — ``"native"`` (default, requires
-            ``synapse._c_geometry``) or ``"python"`` (Python Oracle,
+            ``aether_geo`` or ``synapse._c_geometry``) or ``"python"`` (Python Oracle,
             **for testing only** — must not be used in production).
 
     Returns:
         A :class:`GeometricValidationResult` with all gate results.
 
     Raises:
-        BackendUnavailableError: If ``backend="native"`` and the C++ extension
-            ``synapse._c_geometry`` is not available (exit_code=30).
+        BackendUnavailableError: If ``backend="native"`` and neither ``aether_geo``
+            nor ``synapse._c_geometry`` is available (exit_code=30).
         ValueError: If ``backend`` is not one of the accepted values.
     """
     if backend not in ("native", "python"):
@@ -83,12 +84,15 @@ def validate_mesh_geometry(
 
     if backend == "native":
         try:
-            import synapse._c_geometry as _cg
-        except ImportError as exc:
-            raise BackendUnavailableError(
-                "synapse._c_geometry C++20 extension is not compiled or available",
-                agent_fix_hint="Run: python scripts/build_native.py",
-            ) from exc
+            import aether_geo as _cg
+        except ImportError:
+            try:
+                import synapse._c_geometry as _cg
+            except ImportError as exc:
+                raise BackendUnavailableError(
+                    "aether_geo / synapse._c_geometry C++20 extension is not available",
+                    agent_fix_hint="Install aether_geo or run: python scripts/build_native.py",
+                ) from exc
     else:
         # Python Oracle — for parity testing only, not production use.
         from synapse.recon.geometry import (
