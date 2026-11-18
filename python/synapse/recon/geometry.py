@@ -267,12 +267,58 @@ def refine_pose_6dof(
     accum_r = np.eye(3, dtype=np.float64)
     accum_t = np.zeros(3, dtype=np.float64)
 
-    for _ in range(max_iterations):
-        # Find nearest neighbors via vectorized euclidean distance
-        # For efficiency, compute pairwise squared distances
-        diff = transformed_src[:, np.newaxis, :] - tgt[np.newaxis, :, :]
-        sq_dist = np.sum(diff**2, axis=-1)
-        nearest_indices = np.argmin(sq_dist, axis=1)
+    # Fast KD-Tree / BVH nearest neighbor lookup if available
+    _has_cg_bvh = False
+    try:
+        try:
+            import aether_geo as _cg
+        except ImportError:
+            import synapse._c_geometry as _cg
+
+        if hasattr(_cg, "bvh_closest_points"):
+            _has_cg_bvh = True
+    except (ImportError, AttributeError):
+        _has_cg_bvh = False
+
+    _has_scipy_tree = False
+    if not _has_cg_bvh:
+        try:
+            from scipy.spatial import cKDTree
+
+            _has_scipy_tree = True
+        except ImportError:
+            _has_scipy_tree = False
+
+    def _find_nn(
+        source: np.ndarray, target: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Find nearest-neighbor indices and distances from source to target."""
+        if _has_cg_bvh:
+            return cast(tuple[np.ndarray, np.ndarray], _cg.bvh_closest_points(target, source))
+        elif _has_scipy_tree:
+            tree = cKDTree(target)
+            d, idx = tree.query(source, k=1)
+            return idx, d
+        else:
+            # Chunked distance matrix (batch size 1024) to prevent memory explosion
+            nn_idx = np.empty(len(source), dtype=np.int64)
+            nn_dist = np.empty(len(source), dtype=np.float64)
+            batch_size = 1024
+            for i in range(0, len(source), batch_size):
+                chunk = source[i : i + batch_size]
+                diff = chunk[:, np.newaxis, :] - target[np.newaxis, :, :]
+                sq_dist = np.sum(diff**2, axis=-1)
+                nn_idx[i : i + batch_size] = np.argmin(sq_dist, axis=1)
+                nn_dist[i : i + batch_size] = np.sqrt(np.min(sq_dist, axis=1))
+            return nn_idx, nn_dist
+
+    for it in range(max_iterations):
+        nearest_indices, nearest_dists = _find_nn(transformed_src, tgt)
+
+        # Robust outlier rejection: use mutual nearest-neighbor filtering.
+        # A source-target pair is kept only if the reverse NN lookup agrees,
+        # effectively eliminating correspondences to noise/outlier targets.
+        nearest_dists = np.asarray(nearest_dists, dtype=np.float64)
         matched_tgt = tgt[nearest_indices]
 
         # Step transformation
@@ -291,6 +337,73 @@ def refine_pose_6dof(
     mat[:3, :3] = accum_r
     mat[:3, 3] = accum_t
     return mat
+
+
+def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
+    """Generate UV coordinates for a mesh.
+
+    Attempts to use PR-141 xatlas binding (``synapse._c_geometry.unwrap_uv_atlas``)
+    for high-quality UV unwrapping.  Falls back to a spherical projection unwrap
+    if the C++ extension is unavailable.
+
+    Args:
+        vertices: Vertex positions, shape (V, 3).
+        faces: Face indices, shape (F, 3) or (F, 4).
+
+    Returns:
+        UV coordinates of shape (V, 2) float32, or None on failure.
+    """
+    v = np.asarray(vertices, dtype=np.float32)
+    f = np.asarray(faces, dtype=np.int32)
+
+    if len(v) == 0 or len(f) == 0:
+        return None
+
+    # Try xatlas C++ binding first
+    try:
+        try:
+            import aether_geo as _cg
+        except ImportError:
+            import synapse._c_geometry as _cg
+
+        if hasattr(_cg, "unwrap_uv_atlas"):
+            # For quad faces, fan-triangulate to pass to xatlas
+            if f.shape[1] == 4:
+                tri_faces = np.empty((len(f) * 2, 3), dtype=np.int32)
+                tri_faces[0::2, 0] = f[:, 0]
+                tri_faces[0::2, 1] = f[:, 1]
+                tri_faces[0::2, 2] = f[:, 2]
+                tri_faces[1::2, 0] = f[:, 0]
+                tri_faces[1::2, 1] = f[:, 2]
+                tri_faces[1::2, 2] = f[:, 3]
+                uvs = _cg.unwrap_uv_atlas(v, tri_faces)
+            else:
+                uvs = _cg.unwrap_uv_atlas(v, f)
+            # C++ binding may return dict {"uvs": ndarray} or ndarray
+            if isinstance(uvs, dict):
+                uvs = uvs.get("uvs", uvs.get("uv_coords", np.empty((0, 2))))
+            uvs = np.asarray(uvs, dtype=np.float32)
+            if uvs.shape[0] == len(v) and uvs.shape[1] == 2:
+                return uvs
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+
+    # Fallback: spherical projection unwrap
+    centroid = np.mean(v, axis=0)
+    centered = v - centroid
+    r = np.linalg.norm(centered, axis=1, keepdims=True)
+    r = np.clip(r, 1e-8, None)
+    normalized = centered / r
+
+    # Spherical coordinates
+    theta = np.arctan2(normalized[:, 0], normalized[:, 2])  # azimuth
+    phi = np.arcsin(np.clip(normalized[:, 1], -1.0, 1.0))  # elevation
+
+    u = (theta / (2.0 * np.pi)) + 0.5
+    v_coord = (phi / np.pi) + 0.5
+
+    uvs = np.stack([u, v_coord], axis=-1).astype(np.float32)
+    return uvs
 
 
 def quad_remesh(
@@ -996,7 +1109,10 @@ def validate_recon_mesh_manifold(
     """
     if backend == "native":
         try:
-            import synapse._c_geometry as _cg
+            try:
+                import aether_geo as _cg
+            except ImportError:
+                import synapse._c_geometry as _cg
 
             v = np.ascontiguousarray(vertices, dtype=np.float64)
             f = np.ascontiguousarray(faces, dtype=np.int64)

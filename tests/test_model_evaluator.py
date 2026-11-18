@@ -24,7 +24,10 @@ from synapse.metrics.profiles import (
 )
 
 try:
-    import synapse._c_geometry  # noqa: F401
+    try:
+        import aether_geo  # noqa: F401
+    except ImportError:
+        import synapse._c_geometry  # noqa: F401
 
     _BACKEND = "native"
 except ImportError:

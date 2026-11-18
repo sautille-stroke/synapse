@@ -610,7 +610,27 @@ class MultiViewInitializer:
             + np.array([0.5, 0.5, 0.5]) * effective_voxel
         )
 
-        verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
+        # Prefer C++20 marching cubes from PR-141 if available
+        try:
+            try:
+                import aether_geo as _cg
+            except ImportError:
+                import synapse._c_geometry as _cg
+
+            if hasattr(_cg, "marching_cubes"):
+                mc_result = _cg.marching_cubes(tsdf, 0.0, effective_voxel, mc_origin.tolist())
+                # C++ binding returns dict {"vertices": ..., "faces": ...}
+                if isinstance(mc_result, dict):
+                    verts = np.asarray(mc_result["vertices"], dtype=np.float32)
+                    faces = np.asarray(mc_result["faces"], dtype=np.int32)
+                else:
+                    verts, faces = mc_result
+                    verts = np.asarray(verts, dtype=np.float32)
+                    faces = np.asarray(faces, dtype=np.int32)
+            else:
+                verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
+        except (ImportError, AttributeError):
+            verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
             raise ContractValidationError(

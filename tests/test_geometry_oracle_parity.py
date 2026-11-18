@@ -23,7 +23,10 @@ from synapse.recon.geometry import (
 )
 
 try:
-    import synapse._c_geometry as _c_geometry
+    try:
+        import aether_geo as _c_geometry
+    except ImportError:
+        import synapse._c_geometry as _c_geometry
 
     HAS_NATIVE_GEOMETRY = True
 except ImportError:
