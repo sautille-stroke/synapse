@@ -537,7 +537,7 @@ class TestWanSlidingWindowAndGuards:
             return frames
 
         adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
-        adapter.generate(payload, config, fgpp_frames=seq.frames)
+        adapter.generate(payload, config, fgpp_frames=seq.frames, check_non_degenerate=False)
 
         # Window 0: no warmup
         assert len(captured_warmup[0]) == 0
