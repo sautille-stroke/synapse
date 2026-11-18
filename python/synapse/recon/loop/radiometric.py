@@ -23,6 +23,8 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 _USE_STYLE_MODULE = False
+_SRGB_TO_AP1_EXT: np.ndarray | None
+_AP1_TO_SRGB_EXT: np.ndarray | None
 try:
     from synapse.style.aces_color import AP1_TO_SRGB as _AP1_TO_SRGB_EXT
     from synapse.style.aces_color import SRGB_TO_AP1 as _SRGB_TO_AP1_EXT
