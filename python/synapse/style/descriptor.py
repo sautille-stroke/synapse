@@ -58,9 +58,24 @@ class StyleDescriptor(BaseModel):
     @field_validator("key_light_dir_world")
     @classmethod
     def _validate_light_dir(cls, v: list[float]) -> list[float]:
-        return _validate_3_element_finite(v, "key_light_dir_world")
+        v = _validate_3_element_finite(v, "key_light_dir_world")
+        # Reject zero-length direction vectors
+        mag = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+        if mag < 1e-8:
+            raise ValueError("key_light_dir_world must be a non-zero vector")
+        return v
 
     @field_validator("key_light_rgb")
     @classmethod
     def _validate_light_rgb(cls, v: list[float]) -> list[float]:
         return _validate_3_element_finite_nonneg(v, "key_light_rgb")
+
+    @field_validator("tone_curve_lut_1d")
+    @classmethod
+    def _validate_tone_curve(cls, v: list[float] | None) -> list[float] | None:
+        if v is None:
+            return v
+        for i, x in enumerate(v):
+            if not math.isfinite(x):
+                raise ValueError(f"tone_curve_lut_1d[{i}] must be finite, got {x}")
+        return v

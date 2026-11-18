@@ -39,11 +39,15 @@ class TraceContext:
     tracestate: str = ""
 
     def __post_init__(self) -> None:
-        if not re.match(r"^[0-9a-f]{32}$", self.trace_id.lower()) or self.trace_id == "0" * 32:
+        # Force lowercase normalisation for W3C compliance
+        self.trace_id = self.trace_id.lower()
+        self.span_id = self.span_id.lower()
+        self.trace_flags = self.trace_flags.lower()
+        if not re.match(r"^[0-9a-f]{32}$", self.trace_id) or self.trace_id == "0" * 32:
             self.trace_id = secrets.token_hex(16)
-        if not re.match(r"^[0-9a-f]{16}$", self.span_id.lower()) or self.span_id == "0" * 16:
+        if not re.match(r"^[0-9a-f]{16}$", self.span_id) or self.span_id == "0" * 16:
             self.span_id = secrets.token_hex(8)
-        if not re.match(r"^[0-9a-f]{2}$", self.trace_flags.lower()):
+        if not re.match(r"^[0-9a-f]{2}$", self.trace_flags):
             self.trace_flags = "01"
 
     @classmethod
@@ -219,7 +223,11 @@ class MemoryForecaster:
 
         # Determine fallback level
         if available_vram_gb is not None:
-            if peak_gb <= available_vram_gb:
+            if weight_gb > available_vram_gb:
+                # Model weights alone exceed VRAM — recommend CPU offload
+                # instead of useless spatial tiling
+                level = FallbackLevel.REJECT_OOM
+            elif peak_gb <= available_vram_gb:
                 level = FallbackLevel.LEVEL_0_FULL
             elif peak_gb <= available_vram_gb * 1.5:
                 level = FallbackLevel.LEVEL_1_SPATIAL_TILE_2X2

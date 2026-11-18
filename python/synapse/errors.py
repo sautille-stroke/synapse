@@ -55,7 +55,33 @@ class SynapseError(Exception):
         self.details = details or {}
 
     def to_json_dict(self, trace_id: str = "") -> dict[str, Any]:
-        """Serialize to JSON-safe dict for ``--json`` CLI output."""
+        """Serialize to JSON-safe dict for ``--json`` CLI output.
+
+        Recursively sanitizes values: ``pathlib.Path`` → ``str``,
+        NumPy scalars → Python float/int, ``NaN``/``Inf`` → ``null``.
+        """
+
+        def _sanitize(obj: Any) -> Any:
+            """Recursively convert non-JSON-safe types."""
+            from pathlib import PurePath
+
+            if isinstance(obj, PurePath):
+                return str(obj)
+            if isinstance(obj, dict):
+                return {str(k): _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_sanitize(v) for v in obj]
+            # NumPy scalar → Python scalar
+            if hasattr(obj, "item"):
+                try:
+                    obj = obj.item()
+                except (ValueError, AttributeError):
+                    pass
+            # NaN / Inf → None (JSON null)
+            if isinstance(obj, float) and not math.isfinite(obj):
+                return None
+            return obj
+
         return {
             "status": "error",
             "exit_code": int(self.exit_code),
@@ -63,7 +89,7 @@ class SynapseError(Exception):
             "message": str(self),
             "agent_fix_hint": self.agent_fix_hint,
             "trace_id": trace_id,
-            "details": self.details,
+            "details": _sanitize(self.details),
         }
 
 

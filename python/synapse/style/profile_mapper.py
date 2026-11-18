@@ -67,7 +67,7 @@ def save_style_profile_yaml(
     d = to_style_profile_dict(desc)
 
     if p.suffix.lower() == ".json":
-        p.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        p.write_text(json.dumps(d, indent=2, allow_nan=False), encoding="utf-8")
         return p
 
     try:
