@@ -156,15 +156,15 @@ class TestAetherFgppContract:
         )
 
         proj = cam.projection_matrix()
-        # Verify p02 matches the canonical formula (2*cx - W) / W
-        expected_p02 = (2.0 * cx - float(width)) / float(width)
-        expected_p12 = (2.0 * cy - float(height)) / float(height)
+        # Verify p02 matches the corrected canonical formula (W - 2*cx) / W
+        expected_p02 = (float(width) - 2.0 * cx) / float(width)
+        expected_p12 = (float(height) - 2.0 * cy) / float(height)
         assert abs(proj[0, 2] - expected_p02) < 1e-12
         assert abs(proj[1, 2] - expected_p12) < 1e-12
 
         # Verify exact intrinsics reconstruction from projection matrix elements
-        recovered_cx = (proj[0, 2] + 1.0) * float(width) / 2.0
-        recovered_cy = (proj[1, 2] + 1.0) * float(height) / 2.0
+        recovered_cx = (1.0 - proj[0, 2]) * float(width) / 2.0
+        recovered_cy = (1.0 - proj[1, 2]) * float(height) / 2.0
         assert abs(recovered_cx - cx) < 1e-12
         assert abs(recovered_cy - cy) < 1e-12
 
