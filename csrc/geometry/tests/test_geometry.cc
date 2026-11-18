@@ -298,4 +298,53 @@ TEST(GeometryTest, KdTreeClosestPoints) {
   EXPECT_EQ(n1->id, 1);
 }
 
+// ---------------------------------------------------------------------------
+// PR-149: Fuzz and Degenerate Geometry / ASan / UBSan Gate
+// ---------------------------------------------------------------------------
+
+TEST(GeometryTest, FuzzDegenerateAndCollinearPolygons) {
+  const std::vector<Vec3> fuzzVerts = {
+      Vec3(0.0, 0.0, 0.0),
+      Vec3(1.0, 0.0, 0.0),
+      Vec3(2.0, 0.0, 0.0), // collinear with 0 and 1
+      Vec3(0.0, 0.0, 0.0), // duplicate of vertex 0
+      Vec3(std::numeric_limits<double>::quiet_NaN(), 1.0, 0.0),
+      Vec3(std::numeric_limits<double>::infinity(), 0.0, 0.0),
+  };
+
+  const std::vector<int64_t> fuzzFaces = {
+      0, 1, 2, // collinear zero-area triangle
+      0, 0, 0, // identical index triangle
+      0, 3, 1, // triangle containing duplicate vertex
+      4, 5, 0, // triangle containing NaN and Inf
+  };
+
+  const auto degen = checkDegenerateFaces(fuzzVerts, fuzzFaces, 3);
+  EXPECT_FALSE(degen.empty());
+
+  const auto selfInter = checkSelfIntersections(fuzzVerts, fuzzFaces, 3);
+  (void)selfInter;
+
+  const auto res = validateMeshGeometry(fuzzVerts, fuzzFaces, 3, false);
+  EXPECT_FALSE(res.passed);
+}
+
+TEST(GeometryTest, FuzzIndexOutOfBoundsAndNegative) {
+  const std::vector<Vec3> verts = {
+      Vec3(0.0, 0.0, 0.0),
+      Vec3(1.0, 0.0, 0.0),
+      Vec3(0.0, 1.0, 0.0),
+  };
+
+  const std::vector<int64_t> oobFaces = {
+      0, 1, 9999, // out-of-bounds index
+      -1, 0, 1,   // negative index
+  };
+
+  const auto comps = findConnectedComponents(oobFaces, 3);
+  (void)comps;
+  const auto res = validateMeshGeometry(verts, oobFaces, 3, false);
+  EXPECT_FALSE(res.passed);
+}
+
 }  // namespace

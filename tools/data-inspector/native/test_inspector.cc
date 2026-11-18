@@ -845,3 +845,159 @@ TEST(InspectorApp, ExportScreenshotPpmAck) {
   ifs.close();
   std::filesystem::remove(outPath);
 }
+
+// ---------------------------------------------------------------------------
+// PR-149: Fuzz and Malformed Binary / ASan / UBSan Gate
+// ---------------------------------------------------------------------------
+
+TEST(InspectorApp, GlbFuzzTruncatedByteStreams) {
+  const std::vector<uint8_t> validGlb = createMinimalGlb();
+  ASSERT_GT(validGlb.size(), 20u);
+
+  const std::string bundleDir = ::testing::TempDir() + "/test_fuzz_trunc_glb";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-fuzz-trunc";
+  cfg.headless = true;
+  cfg.width = 64;
+  cfg.height = 64;
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  for (size_t len = 0; len < validGlb.size(); len += (len < 32 ? 1 : 11)) {
+    const std::string modelPath = bundleDir + "/source/model.glb";
+    std::ofstream out(modelPath, std::ios::binary);
+    if (len > 0) {
+      out.write(reinterpret_cast<const char*>(validGlb.data()), len);
+    }
+    out.close();
+
+    (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+        R"({"sources":{"model":"source/model.glb"}})");
+
+    app.handleCommand(R"({"type":"load_bundle","path":")" + bundleDir + R"("})");
+    EXPECT_FALSE(app.hasCustomMesh());
+    EXPECT_EQ(app.vertexCount(), 8u);
+  }
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, GlbFuzzIntegerOverflowAccessors) {
+  const std::string bundleDir = ::testing::TempDir() + "/test_fuzz_overflow_glb";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  const std::string evilJson = R"({
+    "asset": {"version": "2.0"},
+    "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+    "accessors": [
+      {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 4294967295, "type": "VEC3"},
+      {"bufferView": 1, "byteOffset": 0, "componentType": 5123, "count": 4294967295, "type": "SCALAR"}
+    ],
+    "bufferViews": [
+      {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+      {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+    ],
+    "buffers": [{"byteLength": 44}]
+  })";
+
+  auto evilGlb = createMaliciousGlb(evilJson);
+  const std::string modelPath = bundleDir + "/source/evil.glb";
+  std::ofstream out(modelPath, std::ios::binary);
+  out.write(reinterpret_cast<const char*>(evilGlb.data()), evilGlb.size());
+  out.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":"source/evil.glb"}})");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-fuzz-overflow";
+  cfg.bundlePath = bundleDir;
+  cfg.headless = true;
+  cfg.width = 64;
+  cfg.height = 64;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  EXPECT_FALSE(app.hasCustomMesh());
+  EXPECT_EQ(app.vertexCount(), 8u);
+  (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, DegeneratePolygonMeshes) {
+  const std::string bundleDir = ::testing::TempDir() + "/test_fuzz_degen_glb";
+  (void)aether::fs::removeAll(bundleDir);
+  (void)aether::fs::createDirectories(bundleDir + "/source");
+
+  const float verts[9] = {
+      std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f,
+      std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), 0.0f,
+      0.0f, 0.0f, 0.0f,
+  };
+  const uint16_t indices[3] = {0, 0, 0};
+
+  std::vector<uint8_t> binData(44, 0);
+  std::memcpy(binData.data(), verts, sizeof(verts));
+  std::memcpy(binData.data() + 36, indices, sizeof(indices));
+
+  std::string jsonStr = R"({
+  "asset": {"version": "2.0"},
+  "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+  "accessors": [
+    {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+    {"bufferView": 1, "byteOffset": 0, "componentType": 5123, "count": 3, "type": "SCALAR"}
+  ],
+  "bufferViews": [
+    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+    {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+  ],
+  "buffers": [{"byteLength": 44}]
+})";
+
+  while (jsonStr.size() % 4 != 0) jsonStr.push_back(' ');
+  const uint32_t jsonLen = static_cast<uint32_t>(jsonStr.size());
+  const uint32_t binLen = static_cast<uint32_t>(binData.size());
+  const uint32_t totalLen = 12u + (8u + jsonLen) + (8u + binLen);
+
+  std::vector<uint8_t> glb(totalLen);
+  uint8_t* ptr = glb.data();
+  const uint32_t magic = 0x46546C67u;
+  const uint32_t version = 2u;
+  std::memcpy(ptr, &magic, 4);
+  std::memcpy(ptr + 4, &version, 4);
+  std::memcpy(ptr + 8, &totalLen, 4);
+  ptr += 12;
+
+  const uint32_t jsonType = 0x4E4F534Au;
+  std::memcpy(ptr, &jsonLen, 4);
+  std::memcpy(ptr + 4, &jsonType, 4);
+  std::memcpy(ptr + 8, jsonStr.data(), jsonLen);
+  ptr += 8 + jsonLen;
+
+  const uint32_t binType = 0x004E4942u;
+  std::memcpy(ptr, &binLen, 4);
+  std::memcpy(ptr + 4, &binType, 4);
+  std::memcpy(ptr + 8, binData.data(), binLen);
+
+  const std::string modelPath = bundleDir + "/source/degen.glb";
+  std::ofstream out(modelPath, std::ios::binary);
+  out.write(reinterpret_cast<const char*>(glb.data()), glb.size());
+  out.close();
+
+  (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
+      R"({"sources":{"model":"source/degen.glb"}})");
+
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-fuzz-degen";
+  cfg.bundlePath = bundleDir;
+  cfg.headless = true;
+  cfg.width = 64;
+  cfg.height = 64;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  app.renderFrame(0.016f);
+  (void)aether::fs::removeAll(bundleDir);
+}
