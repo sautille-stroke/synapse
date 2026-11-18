@@ -1,9 +1,9 @@
 # M29–M32 Post-Horizon-7 生产级真闭环与跨仓契约合龙计划 (Actionable Horizon-8 Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.6`**）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.6` / `v3.7`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md)（`main` @ `cf2a49f`）
 > - **规划模型**: `[gemini4]` / 执行模型: `[opus4.6]`
-> - **当前状态**: ✅ **已完成封板 (Sealed — Release v3.6.0, `main` @ `30ce3a5`, 2026-11-17)**
+> - **当前状态**: ⚠️ **代码批次 `#112 ~ #131` 已合入（`v3.6.0`, `main` @ `df93ac7`, 2026-11-17）** — 经 [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 独立复核，`209` 文件 `mypy --strict`、`ruff` 与 `1,156` 文档链接均真实通过，但检出 4 项 H8 回归崩溃（`cli/_rsi.py` `UnboundLocalError`、`bench_runner` `applicable_keys`、`model_evaluator` 无参考必退 `40`、`data-inspector` `--shm-file` 断链与 `.glb` 32 位整数溢出、`colab_runner` E1/E4 崩溃）及未激活 `.github/workflows/ci.yml`/跨仓对齐/算子演进项，已全部移交 **Horizon 9 (`M33–M36`, `PR-133 ~ PR-152`)**（详见 [`PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md`](PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)）
 > - **目标周期**: 4 个里程碑（`M29` – `M32`）、4 个并发 Execution Waves（`Wave 28` – `Wave 31`）、**18 个原子 PR**（`PR-112` – `PR-129`，编号紧接 Post-H7 审计规划 PR `#111`，实现 GitHub PR 号 1:1 严格对齐）
 
 > [!IMPORTANT]
