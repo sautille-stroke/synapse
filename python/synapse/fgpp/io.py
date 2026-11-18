@@ -258,9 +258,9 @@ def _read_exr_frame(
         import Imath as _Imath
 
         _IMATH_PT_MAP = {
-            _Imath.PixelType(_Imath.PixelType.UINT): PixelType.UINT32,
-            _Imath.PixelType(_Imath.PixelType.HALF): PixelType.HALF,
-            _Imath.PixelType(_Imath.PixelType.FLOAT): PixelType.FLOAT,
+            _Imath.PixelType.UINT: PixelType.UINT32,
+            _Imath.PixelType.HALF: PixelType.HALF,
+            _Imath.PixelType.FLOAT: PixelType.FLOAT,
         }
         header_channels = exr.header().get("channels", {})
         for ch_name, (_, _, expected_pt) in _CHANNEL_MAP.items():
@@ -270,11 +270,10 @@ def _read_exr_frame(
             if ch_info is None or not hasattr(ch_info, "type"):
                 continue
             actual_imath_pt = ch_info.type
-            actual_pt = _IMATH_PT_MAP.get(actual_imath_pt)
+            pt_val = getattr(actual_imath_pt, "v", actual_imath_pt)
+            actual_pt = _IMATH_PT_MAP.get(pt_val)
             # Allow legacy FLOAT storage for Cryptomatte.ID (backward compat)
-            if ch_name == "Cryptomatte.ID" and actual_imath_pt == _Imath.PixelType(
-                _Imath.PixelType.FLOAT
-            ):
+            if ch_name == "Cryptomatte.ID" and pt_val == _Imath.PixelType.FLOAT:
                 continue
             if actual_pt is not None and actual_pt != expected_pt:
                 raise ContractValidationError(
