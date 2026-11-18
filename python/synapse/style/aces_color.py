@@ -305,7 +305,7 @@ def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarra
     term_C = dC_prime / S_C
     term_H = dH_prime / S_H
 
-    dE = np.sqrt(term_L**2 + term_C**2 + term_H**2 + R_T * term_C * term_H)
+    dE = np.sqrt(np.maximum(term_L**2 + term_C**2 + term_H**2 + R_T * term_C * term_H, 0.0))
     return np.asarray(dE)
 
 

@@ -289,27 +289,14 @@ def border_ring_lab_match(
     output_f = patch_f.copy()
     # Compute distance from the inner edge of the mask toward the interior
     # for a smooth falloff over the ring_width_px band.
-    from synapse.render_core.morphology import binary_erosion as _be
-
-    # Distance-based smooth weight: 1.0 at the outer edge of the inner
-    # band (mask boundary) → 0.0 at the inner edge (eroded boundary).
-    # Pixels outside inner_band keep the original patch values.
     if np.any(inner_band):
-        # Build distance field from the eroded boundary inward
-        # Approximate with iterative erosion layers
-        layers = max(1, ring_width_px)
-        weight_map = np.zeros(mask.shape, dtype=np.float64)
-        remaining = inner_band.copy()
-        for layer_i in range(layers):
-            # Fraction: outermost layer = 1.0, innermost = close to 0
-            frac = 1.0 - layer_i / layers
-            layer_mask = remaining & (~_be(remaining, _circular_structuring_element(1)))
-            weight_map[layer_mask] = frac
-            remaining = remaining & (~layer_mask)
-        # Any remaining pixels in inner_band that weren't peeled
-        weight_map[remaining] = 0.0
+        from synapse.render_core.morphology import exact_euclidean_distance_transform
 
-        # Blend between original patch and colour-matched result
+        # Monotonic distance-based weight: 1.0 at mask boundary → 0.0 at eroded boundary
+        d_in = exact_euclidean_distance_transform(~mask)  # distance from outside into mask
+        d_out = exact_euclidean_distance_transform(mask)  # distance from inside toward outside
+        weight_map = d_in / np.maximum(d_in + d_out, 1e-6)
+        # Only apply within inner_band
         weight_3d = weight_map[..., np.newaxis]
         output_f[inner_band] = (
             weight_3d[inner_band] * result_srgb[inner_band]
@@ -561,7 +548,13 @@ def composite_surgical_sequence(
                 warped_prev: np.ndarray
                 if motion_vectors is not None:
                     mv = motion_vectors[t].astype(np.float64)  # (H, W, 2) dx, dy
-                    flow_mag = float(np.mean(np.sqrt(mv[..., 0] ** 2 + mv[..., 1] ** 2)))
+                    # Measure flow only within boundary band for ghost detection
+                    band_mv = mv[boundary_band]
+                    flow_mag = (
+                        float(np.mean(np.sqrt(band_mv[..., 0] ** 2 + band_mv[..., 1] ** 2)))
+                        if band_mv.size > 0
+                        else 0.0
+                    )
                     # Adaptive alpha: large motion -> trust current frame (effective_alpha -> 1.0) to eliminate ghosting
                     if flow_mag > 15.0:
                         effective_alpha = min(
@@ -586,7 +579,11 @@ def composite_surgical_sequence(
                     effective_alpha * blended_f + (1.0 - effective_alpha) * prev_f,
                     blended_f,
                 )
-                blended = np.rint(np.clip(smoothed, 0.0, 255.0)).astype(np.uint8)
+                blended = (
+                    np.rint(np.clip(smoothed, 0.0, 255.0)).astype(video_frames.dtype)
+                    if np.issubdtype(video_frames.dtype, np.integer)
+                    else smoothed.astype(video_frames.dtype)
+                )
 
         result[t] = blended
         prev_boundary = blended.copy()
@@ -664,7 +661,8 @@ def composite_optical_increments(
 
         # 2. Build guide from Cryptomatte boundary.
         cid = cryptomatte_ids[t]
-        guide = _cryptomatte_boundary_guide(cid)
+        guide_3ch = _cryptomatte_boundary_guide(cid)
+        guide = np.mean(guide_3ch, axis=-1)
 
         # IMPORTANT: Do NOT apply guided filter to the original video
         # background. The guided filter is only used for aligning
@@ -712,27 +710,29 @@ def composite_optical_increments(
 
 
 def _cryptomatte_boundary_guide(cid: np.ndarray) -> np.ndarray:
-    """Extract Cryptomatte boundary as a grayscale guide image.
+    """Map Cryptomatte entity IDs to 3-channel golden-ratio hash embedding.
 
-    Boundary pixels (where adjacent IDs differ across any entity or background)
-    are set to 1.0, and interior pixels to 0.0, ensuring high edge contrast
-    for all entities regardless of their ID values.
+    Each unique entity ID is mapped to a distinct 3-channel colour via
+    golden-ratio hashing, ensuring maximal separation between adjacent
+    entities.  Background (ID == 0) maps to [0, 0, 0].
 
     Args:
         cid: ``[H, W]`` uint32 Cryptomatte IDs.
 
     Returns:
-        ``[H, W]`` float64 guide image in ``[0, 1]``.
+        ``[H, W, 3]`` float64 guide image in ``[0, 1]``.
     """
     h, w = cid.shape
-    boundary = np.zeros((h, w), dtype=bool)
-    if w > 1:
-        boundary[:, :-1] |= cid[:, :-1] != cid[:, 1:]
-        boundary[:, 1:] |= cid[:, :-1] != cid[:, 1:]
-    if h > 1:
-        boundary[:-1, :] |= cid[:-1, :] != cid[1:, :]
-        boundary[1:, :] |= cid[:-1, :] != cid[1:, :]
-
-    guide = np.zeros((h, w), dtype=np.float64)
-    guide[boundary] = 1.0
+    guide = np.zeros((h, w, 3), dtype=np.float64)
+    phi_inv = 0.6180339887498949  # 1/φ (golden ratio conjugate)
+    unique_ids = np.unique(cid)
+    for uid in unique_ids:
+        if uid == 0:
+            continue
+        mask = cid == uid
+        # Hash each ID to 3 channels using golden ratio
+        hval = int(uid)
+        guide[mask, 0] = (hval * phi_inv) % 1.0
+        guide[mask, 1] = (hval * phi_inv * 2) % 1.0
+        guide[mask, 2] = (hval * phi_inv * 3) % 1.0
     return guide
