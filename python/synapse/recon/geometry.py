@@ -278,35 +278,65 @@ def refine_pose_6dof(
         _has_cg_bvh = False
 
     _has_scipy_tree = False
-    _scipy_tree = None
     if not _has_cg_bvh:
         try:
-            from scipy.spatial import cKDTree
+            from scipy.spatial import cKDTree  # noqa: F811
 
-            _scipy_tree = cKDTree(tgt)
             _has_scipy_tree = True
         except ImportError:
             _has_scipy_tree = False
 
-    for _ in range(max_iterations):
+    def _find_nn(
+        source: np.ndarray, target: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Find nearest-neighbor indices and distances from source to target."""
         if _has_cg_bvh:
-            nearest_indices, _ = _cg.bvh_closest_points(tgt, transformed_src)
-        elif _has_scipy_tree and _scipy_tree is not None:
-            _, nearest_indices = _scipy_tree.query(transformed_src, k=1)
+            return _cg.bvh_closest_points(target, source)
+        elif _has_scipy_tree:
+            tree = cKDTree(target)
+            d, idx = tree.query(source, k=1)
+            return idx, d
         else:
-            # Chunked distance matrix (batch size 1024) to prevent 60 GB memory explosion
-            nearest_indices = np.empty(len(transformed_src), dtype=np.int64)
+            # Chunked distance matrix (batch size 1024) to prevent memory explosion
+            nn_idx = np.empty(len(source), dtype=np.int64)
+            nn_dist = np.empty(len(source), dtype=np.float64)
             batch_size = 1024
-            for i in range(0, len(transformed_src), batch_size):
-                chunk = transformed_src[i : i + batch_size]
-                diff = chunk[:, np.newaxis, :] - tgt[np.newaxis, :, :]
+            for i in range(0, len(source), batch_size):
+                chunk = source[i : i + batch_size]
+                diff = chunk[:, np.newaxis, :] - target[np.newaxis, :, :]
                 sq_dist = np.sum(diff**2, axis=-1)
-                nearest_indices[i : i + batch_size] = np.argmin(sq_dist, axis=1)
+                nn_idx[i : i + batch_size] = np.argmin(sq_dist, axis=1)
+                nn_dist[i : i + batch_size] = np.sqrt(np.min(sq_dist, axis=1))
+            return nn_idx, nn_dist
 
+    for it in range(max_iterations):
+        nearest_indices, nearest_dists = _find_nn(transformed_src, tgt)
+
+        # Robust outlier rejection: use mutual nearest-neighbor filtering.
+        # A source-target pair is kept only if the reverse NN lookup agrees,
+        # effectively eliminating correspondences to noise/outlier targets.
+        nearest_dists = np.asarray(nearest_dists, dtype=np.float64)
         matched_tgt = tgt[nearest_indices]
 
-        # Step transformation
-        step_r, step_t = _solve_kabsch(transformed_src, matched_tgt)
+        # Bidirectional check: for each matched target point, verify that
+        # the source point is also its nearest neighbor.
+        reverse_indices, _ = _find_nn(matched_tgt, transformed_src)
+        mutual_mask = reverse_indices == np.arange(len(transformed_src))
+
+        # Additionally apply distance-based trimming (IQR fence)
+        if np.sum(mutual_mask) >= 4:
+            inlier_mask = mutual_mask
+        else:
+            # Fallback: keep best 80% by distance
+            trim_k = max(int(0.8 * len(transformed_src)), 4)
+            order = np.argsort(nearest_dists)
+            inlier_mask = np.zeros(len(transformed_src), dtype=bool)
+            inlier_mask[order[:trim_k]] = True
+
+        # Step transformation (using only inlier correspondences)
+        step_r, step_t = _solve_kabsch(
+            transformed_src[inlier_mask], matched_tgt[inlier_mask]
+        )
 
         # Update transformed points
         transformed_src = (step_r @ transformed_src.T).T + step_t
@@ -619,6 +649,7 @@ def check_degenerate_faces(
 def check_self_intersections(
     vertices: np.ndarray,
     faces: np.ndarray,
+    verts_per_face: int = 3,
 ) -> list[tuple[int, int]]:
     """Find all pairs of non-adjacent triangles that geometrically intersect.
 

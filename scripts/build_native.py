@@ -59,7 +59,7 @@ def _find_bazel() -> str | None:
 
 
 def _build_with_bazel(
-    repo_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 15.0
+    repo_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 300.0
 ) -> Path | None:
     """Build _c_geometry using Bazel."""
     csrc_dir = repo_root / "csrc" / "geometry"
@@ -185,9 +185,13 @@ def _find_aether_geo_src(repo_root: Path) -> list[Path]:
     sources: list[Path] = []
     geo_src_dir = aether_root / "geo" / "src"
     if geo_src_dir.is_dir():
-        mesh_checks = geo_src_dir / "mesh_checks.cc"
-        if mesh_checks.is_file():
-            sources.append(mesh_checks)
+        for fname in ["mesh_checks.cc", "marching_cubes.cc", "subdivision.cc"]:
+            cand = geo_src_dir / fname
+            if cand.is_file():
+                sources.append(cand)
+    core_assert = aether_root / "core" / "src" / "assert.cc"
+    if core_assert.is_file():
+        sources.append(core_assert)
     return sources
 
 
@@ -372,6 +376,7 @@ def _build_direct_fallback(
             "/GR",
             "/DNOMINMAX",
             "/D_CRT_SECURE_NO_WARNINGS",
+            "/DSYNAPSE_NO_XATLAS",
             *includes,
             str(bindings_src),
             f"/Fo:{bindings_obj}",
@@ -430,6 +435,7 @@ def _build_direct_fallback(
             *common_flags,
             "-fexceptions",
             "-frtti",
+            "-DSYNAPSE_NO_XATLAS",
             *includes,
             str(bindings_src),
             "-o",

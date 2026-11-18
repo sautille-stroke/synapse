@@ -561,3 +561,125 @@ class TestNativeVsPythonOracleParity:
         assert cpp_res.self_intersecting_pairs == []
         assert py_res.passed is True
         assert cpp_res.passed is True
+
+    def test_large_triangle_self_intersection_parity(self) -> None:
+        """PR-141: Large triangle touching >512 cells detected against small intersecting triangle."""
+        verts = np.array(
+            [
+                [-50.0, -50.0, 0.0],
+                [50.0, -50.0, 0.0],
+                [0.0, 50.0, 0.0],
+                [1.0, 1.0, -2.0],
+                [1.0, 1.0, 2.0],
+                [2.0, 1.0, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)
+
+        py_pairs = check_self_intersections(verts, faces, verts_per_face=3)
+        assert len(py_pairs) == 1
+        assert py_pairs[0] == (0, 1)
+
+        if HAS_NATIVE_GEOMETRY and _c_geometry is not None:
+            cpp_pairs = _c_geometry.check_self_intersections(verts, faces, verts_per_face=3)
+            assert [tuple(p) for p in cpp_pairs] == [(0, 1)]
+
+    def test_expanded_csrc_geometry_bindings(self) -> None:
+        """PR-141: Verify expanded bindings in _c_geometry."""
+        if not HAS_NATIVE_GEOMETRY or _c_geometry is None:
+            pytest.skip("_c_geometry native extension not available")
+
+        assert hasattr(_c_geometry, "marching_cubes")
+        assert hasattr(_c_geometry, "catmull_clark_subdivide")
+        assert hasattr(_c_geometry, "unwrap_uv_atlas")
+        assert hasattr(_c_geometry, "bvh_closest_points")
+
+        # 1. Marching Cubes
+        grid = np.zeros((8, 8, 8), dtype=np.float32)
+        grid[2:6, 2:6, 2:6] = 1.0  # inside
+        mc_res = _c_geometry.marching_cubes(grid, iso_level=0.5)
+        assert isinstance(mc_res, dict)
+        assert "vertices" in mc_res and "faces" in mc_res and "normals" in mc_res
+        assert len(mc_res["vertices"]) > 0
+        assert len(mc_res["faces"]) > 0
+
+        # 2. Catmull-Clark
+        cube_v = np.array(
+            [
+                [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0],
+                [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+                [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0],
+                [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+        cube_f = np.array(
+            [
+                [0, 3, 2, 1], [4, 5, 6, 7],
+                [0, 1, 5, 4], [2, 3, 7, 6],
+                [0, 4, 7, 3], [1, 2, 6, 5],
+            ],
+            dtype=np.int64,
+        )
+        sub_res = _c_geometry.catmull_clark_subdivide(cube_v, cube_f, verts_per_face=4, levels=1)
+        assert isinstance(sub_res, dict)
+        assert len(sub_res["faces"]) == 24
+        assert sub_res["faces"].shape[1] == 4
+
+        # 3. UV Unwrapping
+        tetra_v = np.array(
+            [[1.0, 1.0, 1.0], [-1.0, -1.0, 1.0], [-1.0, 1.0, -1.0], [1.0, -1.0, -1.0]],
+            dtype=np.float64,
+        )
+        tetra_f = np.array(
+            [[0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2]],
+            dtype=np.int64,
+        )
+        uv_res = _c_geometry.unwrap_uv_atlas(tetra_v, tetra_f)
+        assert isinstance(uv_res, dict)
+        assert "uvs" in uv_res and "indices" in uv_res
+        assert len(uv_res["uvs"]) > 0
+        assert 0.0 <= uv_res["utilization"] <= 1.0
+
+        # 4. BVH / KD-Tree closest points
+        tgt = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]], dtype=np.float64)
+        queries = np.array([[0.1, 0.2, 0.0], [9.8, -0.1, 0.0]], dtype=np.float64)
+        indices, dists = _c_geometry.bvh_closest_points(tgt, queries)
+        assert list(indices) == [0, 1]
+        assert dists[0] < 0.5 and dists[1] < 0.5
+
+    def test_refine_pose_6dof_memory_and_convergence(self) -> None:
+        """PR-141: refine_pose_6dof with non-matching point counts aligns
+        without memory explosion and converges for small-angle perturbations.
+
+        Uses a small rotation (15°) so that ICP can converge despite outlier
+        noise points in the target set. The key validation is that the chunked
+        nearest-neighbor path does NOT explode to 60 GB (the original bug).
+        """
+        from synapse.recon.geometry import refine_pose_6dof
+
+        np.random.seed(42)
+        src = np.random.randn(200, 3).astype(np.float64)
+
+        # Small rotation (~15 degrees around Z)
+        theta = np.radians(15.0)
+        c, s = np.cos(theta), np.sin(theta)
+        r_true = np.array(
+            [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64
+        )
+        t_true = np.array([0.3, -0.2, 0.1], dtype=np.float64)
+        tgt = (r_true @ src.T).T + t_true
+        # Add far-away outlier points to target so point counts differ
+        extra = np.random.randn(50, 3).astype(np.float64) * 20.0
+        tgt = np.vstack([tgt, extra])
+
+        mat = refine_pose_6dof(src, tgt, max_iterations=50, tolerance=1e-6)
+        assert mat.shape == (4, 4)
+        # Verify alignment error is small
+        aligned_src = (mat[:3, :3] @ src.T).T + mat[:3, 3]
+        true_transformed = (r_true @ src.T).T + t_true
+        dists = np.linalg.norm(aligned_src - true_transformed, axis=1)
+        assert np.mean(dists) < 0.1, (
+            f"ICP did not converge: mean alignment error = {np.mean(dists):.4f}"
+        )

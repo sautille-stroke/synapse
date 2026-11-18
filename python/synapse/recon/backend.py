@@ -61,8 +61,8 @@ class SynapseReconBackend(VgBackend):
         try:
             import synapse._c_geometry as _cg
 
-            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
-            f_arr = np.ascontiguousarray(faces, dtype=np.int32)
+            v_arr = np.ascontiguousarray(vertices, dtype=np.float64)
+            f_arr = np.ascontiguousarray(faces, dtype=np.int64)
             return bool(_cg.check_manifold(v_arr, f_arr))
         except (ImportError, AttributeError):
             from synapse.recon.geometry import check_manifold as recon_check_manifold
@@ -78,8 +78,8 @@ class SynapseReconBackend(VgBackend):
         try:
             import synapse._c_geometry as _cg
 
-            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
-            f_arr = np.ascontiguousarray(faces, dtype=np.int32)
+            v_arr = np.ascontiguousarray(vertices, dtype=np.float64)
+            f_arr = np.ascontiguousarray(faces, dtype=np.int64)
             if hasattr(_cg, "check_watertight"):
                 return bool(_cg.check_watertight(v_arr, f_arr))
             from synapse.recon.geometry import check_watertight as recon_check_watertight
