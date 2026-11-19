@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
-__version__ = "3.6.0"
+__version__ = "4.0.0"
 
 # ---------------------------------------------------------------------------
 # PEP 562 lazy loading — all subpackages are imported on first access only.
