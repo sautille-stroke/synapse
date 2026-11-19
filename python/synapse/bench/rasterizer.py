@@ -8,6 +8,6 @@ __all__ = ["SoftwareRasterizer", "entity_hash"]
 
 from synapse.render_core.rasterizer import (  # noqa: F401
     SoftwareRasterizer,
-    _murmurhash3_32,
+    _cryptomatte_name_hash,
     entity_hash,
 )

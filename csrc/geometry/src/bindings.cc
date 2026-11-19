@@ -11,6 +11,14 @@
 
 #include "synapse/geometry/mesh_checks.h"
 
+#include <aether/geo/marching_cubes.h>
+#include <aether/geo/subdivision.h>
+#ifndef SYNAPSE_NO_XATLAS
+#include <aether/geo/uv_unwrapper.h>
+#endif
+#include <aether/spatial/kd_tree.h>
+
+#include <cmath>
 #include <limits>
 #include <span>
 #include <stdexcept>
@@ -19,6 +27,15 @@
 #include <vector>
 
 namespace py = pybind11;
+
+namespace aether::core {
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+bool reportAssertionFailure(const char*, const char*, const char*, uint32_t, const char*) {
+  return false;
+}
+}  // namespace aether::core
 
 namespace synapse::geometry {
 namespace {
@@ -232,6 +249,330 @@ py::dict pyValidateMeshGeometry(
   return d;
 }
 
+// ---------------------------------------------------------------------------
+// Marching Cubes
+// ---------------------------------------------------------------------------
+py::dict pyMarchingCubes(
+    const py::array_t<float, py::array::c_style | py::array::forcecast>& field,
+    float isoLevel,
+    float cellSize,
+    py::sequence origin) {
+  const auto buf = field.request();
+  if (buf.ndim != 3) {
+    throw std::invalid_argument("field must be a 3D float32 array");
+  }
+  const auto dim_z = static_cast<uint32_t>(buf.shape[0]);
+  const auto dim_y = static_cast<uint32_t>(buf.shape[1]);
+  const auto dim_x = static_cast<uint32_t>(buf.shape[2]);
+  if (dim_z < 2 || dim_y < 2 || dim_x < 2) {
+    throw std::invalid_argument("All dimensions of field must be at least 2");
+  }
+  const float* data = static_cast<const float*>(buf.ptr);
+
+  aether::Vec3 orig(0.0f, 0.0f, 0.0f);
+  if (py::len(origin) >= 3) {
+    orig = aether::Vec3(origin[0].cast<float>(), origin[1].cast<float>(), origin[2].cast<float>());
+  }
+
+  aether::MarchingCubesResult res;
+  {
+    py::gil_scoped_release release;
+    res = aether::MarchingCubes(data, dim_x, dim_y, dim_z, isoLevel, cellSize, orig);
+  }
+
+  const size_t numVerts = res.vertices.size();
+  const size_t numTris = res.indices.size() / 3;
+
+  py::array_t<double> outVerts({static_cast<py::ssize_t>(numVerts), py::ssize_t(3)});
+  py::array_t<int64_t> outFaces({static_cast<py::ssize_t>(numTris), py::ssize_t(3)});
+  py::array_t<float> outNormals({static_cast<py::ssize_t>(numVerts), py::ssize_t(3)});
+
+  if (numVerts > 0) {
+    auto vBuf = outVerts.request();
+    auto* vPtr = static_cast<double*>(vBuf.ptr);
+    auto nBuf = outNormals.request();
+    auto* nPtr = static_cast<float*>(nBuf.ptr);
+    for (size_t i = 0; i < numVerts; ++i) {
+      vPtr[i * 3 + 0] = static_cast<double>(res.vertices[i].x);
+      vPtr[i * 3 + 1] = static_cast<double>(res.vertices[i].y);
+      vPtr[i * 3 + 2] = static_cast<double>(res.vertices[i].z);
+      nPtr[i * 3 + 0] = res.normals[i].x;
+      nPtr[i * 3 + 1] = res.normals[i].y;
+      nPtr[i * 3 + 2] = res.normals[i].z;
+    }
+  }
+  if (numTris > 0) {
+    auto fBuf = outFaces.request();
+    auto* fPtr = static_cast<int64_t*>(fBuf.ptr);
+    for (size_t i = 0; i < res.indices.size(); ++i) {
+      fPtr[i] = static_cast<int64_t>(res.indices[i]);
+    }
+  }
+
+  py::dict d;
+  d["vertices"] = outVerts;
+  d["faces"] = outFaces;
+  d["normals"] = outNormals;
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// Catmull-Clark Subdivision
+// ---------------------------------------------------------------------------
+py::dict pyCatmullClarkSubdivide(
+    const DoubleArray& vertices,
+    const Int64Array& faces,
+    int vertsPerFace,
+    int levels) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, vertsPerFace);
+
+  aether::geo::SubdMesh mesh;
+  mesh.positions.reserve(verts.size());
+  for (const auto& v : verts) {
+    mesh.positions.push_back(aether::Vec3(static_cast<float>(v.x),
+                                          static_cast<float>(v.y),
+                                          static_cast<float>(v.z)));
+  }
+
+  const int vpf = parsed.vertsPerFace;
+  const size_t numFaces = parsed.span.size() / static_cast<size_t>(vpf);
+  mesh.faces.reserve(numFaces);
+  for (size_t fi = 0; fi < numFaces; ++fi) {
+    aether::geo::SubdFace f;
+    f.verts.reserve(static_cast<size_t>(vpf));
+    for (int k = 0; k < vpf; ++k) {
+      f.verts.push_back(static_cast<int>(parsed.span[fi * static_cast<size_t>(vpf) + static_cast<size_t>(k)]));
+    }
+    mesh.faces.push_back(std::move(f));
+  }
+
+  aether::geo::SubdMesh result;
+  {
+    py::gil_scoped_release release;
+    result = mesh.subdivide(levels > 0 ? levels : 1);
+  }
+
+  const size_t outNumVerts = result.positions.size();
+  py::array_t<double> outVerts({static_cast<py::ssize_t>(outNumVerts), py::ssize_t(3)});
+  py::array_t<float> outNormals({static_cast<py::ssize_t>(outNumVerts), py::ssize_t(3)});
+  {
+    auto vBuf = outVerts.request();
+    auto* vPtr = static_cast<double*>(vBuf.ptr);
+    auto nBuf = outNormals.request();
+    auto* nPtr = static_cast<float*>(nBuf.ptr);
+    for (size_t i = 0; i < outNumVerts; ++i) {
+      vPtr[i * 3 + 0] = static_cast<double>(result.positions[i].x);
+      vPtr[i * 3 + 1] = static_cast<double>(result.positions[i].y);
+      vPtr[i * 3 + 2] = static_cast<double>(result.positions[i].z);
+      if (i < result.normals.size()) {
+        nPtr[i * 3 + 0] = result.normals[i].x;
+        nPtr[i * 3 + 1] = result.normals[i].y;
+        nPtr[i * 3 + 2] = result.normals[i].z;
+      } else {
+        nPtr[i * 3 + 0] = 0.0f;
+        nPtr[i * 3 + 1] = 1.0f;
+        nPtr[i * 3 + 2] = 0.0f;
+      }
+    }
+  }
+
+  const size_t outNumFaces = result.faces.size();
+  py::array_t<int64_t> outFaces({static_cast<py::ssize_t>(outNumFaces), py::ssize_t(4)});
+  {
+    auto fBuf = outFaces.request();
+    auto* fPtr = static_cast<int64_t*>(fBuf.ptr);
+    for (size_t fi = 0; fi < outNumFaces; ++fi) {
+      const auto& face = result.faces[fi];
+      for (size_t k = 0; k < 4; ++k) {
+        fPtr[fi * 4 + k] = (k < face.verts.size()) ? static_cast<int64_t>(face.verts[k]) : 0;
+      }
+    }
+  }
+
+  py::dict d;
+  d["vertices"] = outVerts;
+  d["faces"] = outFaces;
+  d["normals"] = outNormals;
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// UV Unwrapping (xatlas)
+// ---------------------------------------------------------------------------
+#ifdef SYNAPSE_NO_XATLAS
+py::dict pyUnwrapUvAtlas(
+    const DoubleArray& /* vertices */,
+    const Int64Array& /* faces */,
+    uint32_t /* maxChartSize */,
+    uint32_t /* padding */,
+    float /* texelsPerUnit */,
+    uint32_t /* resolution */,
+    bool /* bilinear */,
+    bool /* rotateCharts */) {
+  throw std::runtime_error(
+      "UV unwrapping (xatlas) is not available in direct-compiled builds. "
+      "Use Bazel build: python scripts/build_native.py --backend=bazel");
+}
+#else
+py::dict pyUnwrapUvAtlas(
+    const DoubleArray& vertices,
+    const Int64Array& faces,
+    uint32_t maxChartSize,
+    uint32_t padding,
+    float texelsPerUnit,
+    uint32_t resolution,
+    bool bilinear,
+    bool rotateCharts) {
+  const auto verts = verticesFromNumpy(vertices);
+  const auto parsed = facesFromNumpy(faces, 3);
+  if (parsed.vertsPerFace != 3) {
+    throw std::invalid_argument("unwrap_uv_atlas requires triangular faces (verts_per_face=3)");
+  }
+
+  std::vector<aether::Vec3> positions;
+  positions.reserve(verts.size());
+  for (const auto& v : verts) {
+    positions.push_back(aether::Vec3(static_cast<float>(v.x),
+                                     static_cast<float>(v.y),
+                                     static_cast<float>(v.z)));
+  }
+
+  std::vector<aether::u32> indices;
+  indices.reserve(parsed.span.size());
+  for (const auto idx : parsed.span) {
+    indices.push_back(static_cast<aether::u32>(idx));
+  }
+
+  aether::geo::UVUnwrapOptions opts;
+  opts.maxChartSize = maxChartSize;
+  opts.padding = padding;
+  opts.texelsPerUnit = texelsPerUnit;
+  opts.resolution = resolution;
+  opts.bilinear = bilinear;
+  opts.rotateCharts = rotateCharts;
+
+  const auto res = [&]() {
+    py::gil_scoped_release release;
+    return aether::geo::MeshUVUnwrapper::unwrap(positions, indices, opts);
+  }();
+
+  if (res.isError()) {
+    throw std::runtime_error("UV unwrapping failed with error code: " +
+                             std::to_string(static_cast<int>(res.error())));
+  }
+
+  const auto& unwrapped = res.value();
+  const size_t numUvs = unwrapped.uvs.size();
+  py::array_t<float> outUvs({static_cast<py::ssize_t>(numUvs), py::ssize_t(2)});
+  {
+    auto uvBuf = outUvs.request();
+    auto* uvPtr = static_cast<float*>(uvBuf.ptr);
+    for (size_t i = 0; i < numUvs; ++i) {
+      uvPtr[i * 2 + 0] = unwrapped.uvs[i].x;
+      uvPtr[i * 2 + 1] = unwrapped.uvs[i].y;
+    }
+  }
+
+  const size_t numIndices = unwrapped.indices.size();
+  py::array_t<int64_t> outIndices({static_cast<py::ssize_t>(numIndices / 3), py::ssize_t(3)});
+  {
+    auto idxBuf = outIndices.request();
+    auto* idxPtr = static_cast<int64_t*>(idxBuf.ptr);
+    for (size_t i = 0; i < numIndices; ++i) {
+      idxPtr[i] = static_cast<int64_t>(unwrapped.indices[i]);
+    }
+  }
+
+  const size_t mapSize = unwrapped.originalVertexMap.size();
+  py::array_t<int64_t> outMap(static_cast<py::ssize_t>(mapSize));
+  {
+    auto mapBuf = outMap.request();
+    auto* mapPtr = static_cast<int64_t*>(mapBuf.ptr);
+    for (size_t i = 0; i < mapSize; ++i) {
+      mapPtr[i] = static_cast<int64_t>(unwrapped.originalVertexMap[i]);
+    }
+  }
+
+  py::dict d;
+  d["uvs"] = outUvs;
+  d["indices"] = outIndices;
+  d["original_vertex_map"] = outMap;
+  d["chart_count"] = unwrapped.chartCount;
+  d["utilization"] = unwrapped.utilization;
+  d["width"] = unwrapped.width;
+  d["height"] = unwrapped.height;
+  return d;
+}
+#endif  // SYNAPSE_NO_XATLAS
+
+// ---------------------------------------------------------------------------
+// KD-Tree / BVH Closest Points
+// ---------------------------------------------------------------------------
+py::tuple pyBvhClosestPoints(
+    const DoubleArray& targetPoints,
+    const DoubleArray& queryPoints) {
+  const auto targets = verticesFromNumpy(targetPoints);
+  const auto queries = verticesFromNumpy(queryPoints);
+
+  if (targets.empty() || queries.empty()) {
+    py::array_t<int64_t> emptyIndices(0);
+    py::array_t<double> emptyDistances(0);
+    return py::make_tuple(emptyIndices, emptyDistances);
+  }
+
+  struct IndexedPoint {
+    aether::Vec3 pos;
+    int64_t index;
+  };
+
+  std::vector<IndexedPoint> points;
+  points.reserve(targets.size());
+  for (size_t i = 0; i < targets.size(); ++i) {
+    points.push_back({
+        aether::Vec3(static_cast<float>(targets[i].x),
+                     static_cast<float>(targets[i].y),
+                     static_cast<float>(targets[i].z)),
+        static_cast<int64_t>(i)
+    });
+  }
+
+  aether::KdTree<IndexedPoint, 3, std::function<aether::Vec3(const IndexedPoint&)>> tree;
+  tree.Build(points, [](const IndexedPoint& p) { return p.pos; });
+
+  const size_t numQueries = queries.size();
+  py::array_t<int64_t> outIndices(static_cast<py::ssize_t>(numQueries));
+  py::array_t<double> outDists(static_cast<py::ssize_t>(numQueries));
+
+  auto iBuf = outIndices.request();
+  auto* iPtr = static_cast<int64_t*>(iBuf.ptr);
+  auto dBuf = outDists.request();
+  auto* dPtr = static_cast<double*>(dBuf.ptr);
+
+  {
+    py::gil_scoped_release release;
+    for (size_t q = 0; q < numQueries; ++q) {
+      aether::Vec3 qPos(static_cast<float>(queries[q].x),
+                        static_cast<float>(queries[q].y),
+                        static_cast<float>(queries[q].z));
+      const auto* nearest = tree.Nearest(qPos);
+      if (nearest) {
+        iPtr[q] = nearest->index;
+        const auto& t = targets[static_cast<size_t>(nearest->index)];
+        const double dx = queries[q].x - t.x;
+        const double dy = queries[q].y - t.y;
+        const double dz = queries[q].z - t.z;
+        dPtr[q] = std::sqrt(dx * dx + dy * dy + dz * dz);
+      } else {
+        iPtr[q] = 0;
+        dPtr[q] = 0.0;
+      }
+    }
+  }
+
+  return py::make_tuple(outIndices, outDists);
+}
+
 }  // anonymous namespace
 }  // namespace synapse::geometry
 
@@ -249,6 +590,10 @@ PYBIND11_MODULE(_c_geometry, m) {
       - degenerate face detection (area / aspect ratio)
       - self-intersection detection (AABB broad phase + coplanar SAT / Möller–Trumbore)
       - connected component analysis (edge-sharing Union-Find)
+      - marching cubes isosurface extraction
+      - Catmull-Clark subdivision surfaces
+      - xatlas UV atlas parameterization
+      - KD-Tree / BVH closest point queries
 
     Vertices: float64 array of shape (N, 3).
     Faces:    int64 2-D array of shape (F, K) or 1-D flat buffer of length (F * K).
@@ -285,4 +630,26 @@ PYBIND11_MODULE(_c_geometry, m) {
         py::arg("max_aspect_ratio") = 100.0,
         py::arg("min_face_ratio") = 0.01,
         "Full Tier-0 geometric mesh validation.");
+
+  m.def("marching_cubes", &pyMarchingCubes,
+        py::arg("field"), py::arg("iso_level") = 0.0f,
+        py::arg("cell_size") = 1.0f,
+        py::arg("origin") = py::make_tuple(0.0f, 0.0f, 0.0f),
+        "Extract isosurface from a 3D scalar field via Marching Cubes.");
+
+  m.def("catmull_clark_subdivide", &pyCatmullClarkSubdivide,
+        py::arg("vertices"), py::arg("faces"),
+        py::arg("verts_per_face") = 3, py::arg("levels") = 1,
+        "Catmull-Clark subdivision surfaces (produces quad faces).");
+
+  m.def("unwrap_uv_atlas", &pyUnwrapUvAtlas,
+        py::arg("vertices"), py::arg("faces"),
+        py::arg("max_chart_size") = 0, py::arg("padding") = 2,
+        py::arg("texels_per_unit") = 0.0f, py::arg("resolution") = 1024,
+        py::arg("bilinear") = true, py::arg("rotate_charts") = true,
+        "Non-overlapping UV parameterization and atlas packing via xatlas.");
+
+  m.def("bvh_closest_points", &pyBvhClosestPoints,
+        py::arg("target_points"), py::arg("query_points"),
+        "Find closest points in target_points for each query_point via KD-Tree.");
 }

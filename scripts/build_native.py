@@ -59,12 +59,11 @@ def _find_bazel() -> str | None:
 
 
 def _build_with_bazel(
-    repo_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 15.0
+    repo_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 300.0
 ) -> Path | None:
     """Build _c_geometry using Bazel."""
     csrc_dir = repo_root / "csrc" / "geometry"
-    config_flag = f"--config={_get_platform_config()}"
-    cmd = [bazel_bin, "build", "//:_c_geometry", config_flag]
+    cmd = [bazel_bin, "build", "//:_c_geometry"]
     if not quiet:
         print(f"[build_native] Running Bazel in {csrc_dir}: {' '.join(cmd)}")
 
@@ -186,12 +185,13 @@ def _find_aether_geo_src(repo_root: Path) -> list[Path]:
     sources: list[Path] = []
     geo_src_dir = aether_root / "geo" / "src"
     if geo_src_dir.is_dir():
-        mesh_checks = geo_src_dir / "mesh_checks.cc"
-        if mesh_checks.is_file():
-            sources.append(mesh_checks)
-        mesh_forensics = geo_src_dir / "mesh_forensics.cc"
-        if mesh_forensics.is_file():
-            sources.append(mesh_forensics)
+        for fname in ["mesh_checks.cc", "marching_cubes.cc", "subdivision.cc"]:
+            cand = geo_src_dir / fname
+            if cand.is_file():
+                sources.append(cand)
+    core_assert = aether_root / "core" / "src" / "assert.cc"
+    if core_assert.is_file():
+        sources.append(core_assert)
     return sources
 
 
@@ -354,6 +354,8 @@ def _build_direct_fallback(
                 "/D_HAS_EXCEPTIONS=0",
                 "/DNOMINMAX",
                 "/D_CRT_SECURE_NO_WARNINGS",
+                "/DSPDLOG_NO_EXCEPTIONS=1",
+                "/DFMT_USE_EXCEPTIONS=0",
                 *includes,
                 str(src),
                 f"/Fo:{obj_path}",
@@ -374,6 +376,7 @@ def _build_direct_fallback(
             "/GR",
             "/DNOMINMAX",
             "/D_CRT_SECURE_NO_WARNINGS",
+            "/DSYNAPSE_NO_XATLAS",
             *includes,
             str(bindings_src),
             f"/Fo:{bindings_obj}",
@@ -413,6 +416,8 @@ def _build_direct_fallback(
                 *common_flags,
                 "-fno-exceptions",
                 "-fno-rtti",
+                "-DSPDLOG_NO_EXCEPTIONS=1",
+                "-DFMT_USE_EXCEPTIONS=0",
                 *includes,
                 str(src),
                 "-o",
@@ -430,6 +435,7 @@ def _build_direct_fallback(
             *common_flags,
             "-fexceptions",
             "-frtti",
+            "-DSYNAPSE_NO_XATLAS",
             *includes,
             str(bindings_src),
             "-o",
@@ -659,7 +665,7 @@ def main() -> int:
             if args.json:
                 print(json.dumps({"status": "ok", "backend": "bazel", "dry_run": True}))
             return 0
-        built_artifact = _build_with_bazel(repo_root, bazel_bin, quiet=quiet)
+        built_artifact = _build_with_bazel(repo_root, bazel_bin, quiet=quiet, timeout=args.timeout)
         if built_artifact:
             chosen_backend = "bazel"
             if not quiet:

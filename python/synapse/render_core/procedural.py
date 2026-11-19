@@ -11,9 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from synapse.render_core.mesh import MeshData
 
 
 class ProceduralMeshType(str, Enum):
@@ -24,6 +27,7 @@ class ProceduralMeshType(str, Enum):
     CYLINDER = "cylinder"
     TORUS = "torus"
     PLANE = "plane"
+    CONE = "cone"
 
 
 @dataclass
@@ -49,41 +53,30 @@ class ProceduralMesh:
         return self.vertices.min(axis=0), self.vertices.max(axis=0)
 
     def centroid(self) -> np.ndarray:
-        """Compute the mesh centroid."""
-        return self.vertices.mean(axis=0)
+        """Compute center of axis-aligned bounding box."""
+        min_c, max_c = self.bounding_box()
+        return np.asarray((min_c + max_c) * 0.5, dtype=np.float32)
+
+    def to_mesh_data(self) -> MeshData:
+        """Convert to canonical :class:`synapse.render_core.mesh.MeshData`."""
+        from synapse.render_core.mesh import MeshData
+
+        return MeshData(
+            name=self.mesh_type,
+            vertices=self.vertices,
+            faces=self.faces,
+            normals=self.normals,
+            uvs=self.uvs,
+        )
 
     def save_obj(self, path: str | Path) -> Path:
-        """Export to Wavefront OBJ format."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        """Export to Wavefront OBJ format via unified MeshData."""
+        res = self.to_mesh_data().export_obj(path)
+        return Path(res)
 
-        lines = [f"# Synapse-Bench procedural mesh: {self.mesh_type}"]
-        lines.append(f"# Vertices: {self.num_vertices}, Faces: {self.num_faces}")
-
-        for v in self.vertices:
-            lines.append(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}")
-
-        for n in self.normals:
-            lines.append(f"vn {n[0]:.6f} {n[1]:.6f} {n[2]:.6f}")
-
-        if self.uvs is not None:
-            for uv in self.uvs:
-                lines.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
-
-        for f in self.faces:
-            if self.uvs is not None:
-                lines.append(
-                    f"f {f[0] + 1}/{f[0] + 1}/{f[0] + 1} "
-                    f"{f[1] + 1}/{f[1] + 1}/{f[1] + 1} "
-                    f"{f[2] + 1}/{f[2] + 1}/{f[2] + 1}"
-                )
-            else:
-                lines.append(
-                    f"f {f[0] + 1}//{f[0] + 1} {f[1] + 1}//{f[1] + 1} {f[2] + 1}//{f[2] + 1}"
-                )
-
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return path
+    def export_obj(self, path: str | Path) -> Path:
+        """Alias for save_obj."""
+        return self.save_obj(path)
 
 
 def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
@@ -342,12 +335,72 @@ def _generate_plane(
     )
 
 
+def _generate_cone(
+    radius: float = 0.5,
+    height: float = 1.0,
+    segments: int = 32,
+    **kwargs: Any,
+) -> ProceduralMesh:
+    """Watertight cone primitive centered at origin with apex pointing up (+Y)."""
+    half_h = height / 2.0
+    vertices: list[list[float]] = []
+    normals: list[list[float]] = []
+    uvs: list[list[float]] = []
+    faces: list[list[int]] = []
+
+    # Apex vertex at index 0
+    vertices.append([0.0, half_h, 0.0])
+    normals.append([0.0, 1.0, 0.0])
+    uvs.append([0.5, 1.0])
+
+    # Bottom center vertex at index 1
+    vertices.append([0.0, -half_h, 0.0])
+    normals.append([0.0, -1.0, 0.0])
+    uvs.append([0.5, 0.5])
+
+    # Ring vertices for bottom
+    ring_start = len(vertices)
+    slant = math.sqrt(radius * radius + height * height)
+    ny_side = radius / slant if slant > 0 else 0.0
+    nr_side = height / slant if slant > 0 else 1.0
+
+    for j in range(segments):
+        theta = 2.0 * math.pi * j / segments
+        c, s = math.cos(theta), math.sin(theta)
+        x = radius * c
+        z = radius * s
+        vertices.append([x, -half_h, z])
+        normals.append([nr_side * c, ny_side, nr_side * s])
+        u = 0.5 + 0.5 * c
+        v = 0.5 + 0.5 * s
+        uvs.append([u, v])
+
+    # Side triangles (apex to ring)
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces.append([0, ring_start + j, ring_start + j_next])
+
+    # Bottom cap triangles (bottom center to ring)
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces.append([1, ring_start + j_next, ring_start + j])
+
+    return ProceduralMesh(
+        vertices=np.array(vertices, dtype=np.float32),
+        faces=np.array(faces, dtype=np.int32),
+        normals=np.array(normals, dtype=np.float32),
+        uvs=np.array(uvs, dtype=np.float32),
+        mesh_type="cone",
+    )
+
+
 _GENERATORS: dict[ProceduralMeshType, Callable[..., ProceduralMesh]] = {
     ProceduralMeshType.CUBE: _generate_cube,
     ProceduralMeshType.SPHERE: _generate_sphere,
     ProceduralMeshType.CYLINDER: _generate_cylinder,
     ProceduralMeshType.TORUS: _generate_torus,
     ProceduralMeshType.PLANE: _generate_plane,
+    ProceduralMeshType.CONE: _generate_cone,
 }
 
 
@@ -387,9 +440,9 @@ _HUMANOID_SEGMENTS: list[
     ("pelvis", "cylinder", (0.16, 0.15), None, (0.0, 0.0, 0.0)),
     # Spine / Torso — above pelvis
     ("torso", "cylinder", (0.18, 0.50), "pelvis", (0.0, 0.325, 0.0)),
-    # Head chain
+    # Head chain (offset head so bottom pole does not penetrate neck top cap)
     ("neck", "cylinder", (0.06, 0.10), "torso", (0.0, 0.30, 0.0)),
-    ("head", "sphere", (0.12,), "neck", (0.0, 0.11, 0.0)),
+    ("head", "sphere", (0.12,), "neck", (0.0, 0.175, 0.0)),
     # Left arm chain
     ("left_upper_arm", "cylinder", (0.05, 0.28), "torso", (-0.23, 0.20, 0.0)),
     ("left_forearm", "cylinder", (0.04, 0.25), "left_upper_arm", (0.0, -0.265, 0.0)),

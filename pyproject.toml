@@ -122,6 +122,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
+extend = "../rules_dervgen_env/config/ruff.toml"
 target-version = "py310"
 line-length = 100
 exclude = ["._*"]
