@@ -5,7 +5,7 @@ geometry checks (manifold, watertight, degenerate faces, self-intersections,
 connected components, etc.).
 
 **This is NOT production code.**  Normal workflows use the C++20 native kernel
-(``synapse._c_geometry`` via ``csrc/geometry/``) for actual geometry validation.
+(``aether_geo`` via ``@aether//geo``) for actual geometry validation.
 If the C++ extension is unavailable, the geometry gate raises ``ImportError``
 rather than falling back to this module.
 
@@ -270,15 +270,14 @@ def refine_pose_6dof(
 
     # Fast KD-Tree / BVH nearest neighbor lookup if available
     _has_cg_bvh = False
+    _cg = None
     try:
-        try:
-            import aether_geo as _cg
-        except ImportError:
-            import synapse._c_geometry as _cg
+        from synapse.bridge.aether_bridge import get_aether_geo
 
-        if hasattr(_cg, "bvh_closest_points"):
+        _cg = get_aether_geo()
+        if _cg is not None and hasattr(_cg, "bvh_closest_points"):
             _has_cg_bvh = True
-    except (ImportError, AttributeError):
+    except AttributeError:
         _has_cg_bvh = False
 
     _has_scipy_tree = False
@@ -343,7 +342,7 @@ def refine_pose_6dof(
 def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
     """Generate UV coordinates for a mesh.
 
-    Attempts to use PR-141 xatlas binding (``synapse._c_geometry.unwrap_uv_atlas``)
+    Attempts to use xatlas binding (``aether_geo.unwrap_uv_atlas``)
     for high-quality UV unwrapping.  Falls back to a spherical projection unwrap
     if the C++ extension is unavailable.
 
@@ -362,12 +361,10 @@ def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
 
     # Try xatlas C++ binding first
     try:
-        try:
-            import aether_geo as _cg
-        except ImportError:
-            import synapse._c_geometry as _cg
+        from synapse.bridge.aether_bridge import get_aether_geo
 
-        if hasattr(_cg, "unwrap_uv_atlas"):
+        _cg = get_aether_geo()
+        if _cg is not None and hasattr(_cg, "unwrap_uv_atlas"):
             # For quad faces, fan-triangulate to pass to xatlas
             if f.shape[1] == 4:
                 tri_faces = np.empty((len(f) * 2, 3), dtype=np.int32)
@@ -1103,18 +1100,16 @@ def validate_recon_mesh_manifold(
     Args:
         vertices: Vertex positions, shape (V, 3).
         faces: Triangle indices, shape (F, 3).
-        backend: Execution backend — "native" (synapse._c_geometry) or "python".
+        backend: Execution backend — "native" (aether_geo) or "python".
 
     Returns:
         True if the mesh is 2-manifold.
     """
     if backend == "native":
-        try:
-            try:
-                import aether_geo as _cg
-            except ImportError:
-                import synapse._c_geometry as _cg
+        from synapse.bridge.aether_bridge import get_aether_geo
 
+        _cg = get_aether_geo()
+        if _cg is not None:
             v = np.ascontiguousarray(vertices, dtype=np.float64)
             f = np.ascontiguousarray(faces, dtype=np.int64)
             if v.ndim == 1 and len(v) == 0:
@@ -1126,6 +1121,4 @@ def validate_recon_mesh_manifold(
                 v, f, verts_per_face=verts_per_face, require_watertight=False
             )
             return bool(res["is_manifold"])
-        except (ImportError, ModuleNotFoundError):
-            pass
     return bool(check_manifold(vertices, faces))

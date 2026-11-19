@@ -23,15 +23,9 @@ from synapse.metrics.profiles import (
     TRACK_B_VIDEO,
 )
 
-try:
-    try:
-        import aether_geo  # noqa: F401
-    except ImportError:
-        import synapse._c_geometry  # noqa: F401
+from synapse.bridge.aether_bridge import has_aether_geo
 
-    _BACKEND = "native"
-except ImportError:
-    _BACKEND = "python"
+_BACKEND = "native" if has_aether_geo() else "python"
 
 
 def _create_test_obj(path: Path) -> Path:

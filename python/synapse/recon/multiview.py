@@ -610,14 +610,12 @@ class MultiViewInitializer:
             + np.array([0.5, 0.5, 0.5]) * effective_voxel
         )
 
-        # Prefer C++20 marching cubes from PR-141 if available
+        # Prefer C++20 marching cubes from aether_geo if available
         try:
-            try:
-                import aether_geo as _cg
-            except ImportError:
-                import synapse._c_geometry as _cg
+            from synapse.bridge.aether_bridge import get_aether_geo
 
-            if hasattr(_cg, "marching_cubes"):
+            _cg = get_aether_geo()
+            if _cg is not None and hasattr(_cg, "marching_cubes"):
                 mc_result = _cg.marching_cubes(tsdf, 0.0, effective_voxel, mc_origin.tolist())
                 # C++ binding returns dict {"vertices": ..., "faces": ...}
                 if isinstance(mc_result, dict):
@@ -629,7 +627,7 @@ class MultiViewInitializer:
                     faces = np.asarray(faces, dtype=np.int32)
             else:
                 verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
-        except (ImportError, AttributeError):
+        except AttributeError:
             verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
