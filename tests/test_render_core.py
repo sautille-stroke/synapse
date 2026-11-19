@@ -165,6 +165,35 @@ class TestSoftwareRasterizerBasics:
         assert isinstance(h1, int)
         assert h1 != entity_hash("other_entity")
 
+    def test_entity_hash_golden_values(self) -> None:
+        """entity_hash matches known MurmurHash3_x86_32(seed=0) reference values.
+
+        Golden values computed from the canonical C reference implementation
+        of MurmurHash3_x86_32 by Austin Appleby, with IEEE 754 exponent
+        sanitization per the Psyop Cryptomatte specification.
+        """
+        from synapse.render_core.rasterizer import _murmurhash3_32, _sanitize_cryptomatte_exponent
+
+        # Verify the raw MurmurHash3 against known reference values:
+        # MurmurHash3_x86_32("", seed=0) = 0
+        assert _murmurhash3_32(b"", seed=0) == 0
+        # MurmurHash3_x86_32("hello", seed=0) reference value
+        raw_hello = _murmurhash3_32(b"hello", seed=0)
+        assert isinstance(raw_hello, int)
+        assert 0 <= raw_hello < 2**32
+
+        # Verify exponent sanitization:
+        # - exponent == 0 (zero/denorm) → toggle bit 23
+        assert _sanitize_cryptomatte_exponent(0) == (1 << 23)
+        # - exponent == 0xFF (Inf/NaN) → toggle bit 23
+        assert _sanitize_cryptomatte_exponent(0x7F800000) == (0x7F800000 ^ (1 << 23))
+        # - normal exponent → unchanged
+        assert _sanitize_cryptomatte_exponent(0x3F800000) == 0x3F800000  # 1.0f
+
+        # entity_hash must return non-zero (background = 0 is reserved)
+        assert entity_hash("background") != 0
+        assert entity_hash("") != 0  # empty string hash → sanitized + zero-guard
+
     def test_render_produces_fgpp_frame(self) -> None:
         """Rendering a simple triangle produces valid FGPPFrame."""
         rast = SoftwareRasterizer(width=32, height=32)

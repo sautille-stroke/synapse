@@ -45,14 +45,24 @@ class FVDResult:
 
 # ---------------------------------------------------------------------------
 # Upstream native extension probe (@aether//metrics via aether_bridge)
+# Deferred to first use to avoid import-time side effects (§3.2).
 # ---------------------------------------------------------------------------
 
-_aether_mod = get_aether_metrics()
-_native_temporal_warp_error: Callable[..., Any] | None = getattr(
-    _aether_mod, "temporal_warp_error", None
-)
-_native_flicker_score: Callable[..., Any] | None = getattr(_aether_mod, "temporal_flicker_score", None)
-_HAS_NATIVE = (_native_temporal_warp_error is not None) and (_native_flicker_score is not None)
+_native_temporal_warp_error: Callable[..., Any] | None = None
+_native_flicker_score: Callable[..., Any] | None = None
+_HAS_NATIVE: bool | None = None  # lazy sentinel
+
+
+def _ensure_native_probed() -> bool:
+    """Probe for native temporal metrics on first use."""
+    global _HAS_NATIVE, _native_temporal_warp_error, _native_flicker_score
+    if _HAS_NATIVE is not None:
+        return _HAS_NATIVE
+    _aether_mod = get_aether_metrics()
+    _native_temporal_warp_error = getattr(_aether_mod, "temporal_warp_error", None)
+    _native_flicker_score = getattr(_aether_mod, "temporal_flicker_score", None)
+    _HAS_NATIVE = (_native_temporal_warp_error is not None) and (_native_flicker_score is not None)
+    return _HAS_NATIVE
 
 
 # ===================================================================
@@ -66,12 +76,11 @@ def _fallback_temporal_warp_error(
     occlusion_masks: np.ndarray | None = None,
     metric: Literal["l1", "rmse"] = "l1",
 ) -> float:
-    """Warp each frame *t* to *t+1* using motion vectors and return error (L1 or RMSE)."""
-    raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8:
-        frames_f = raw_frames.astype(np.float32) / 255.0
-    else:
-        frames_f = raw_frames.astype(np.float32)
+    """Warp each frame *t* to *t+1* using motion vectors and return error (L1 or RMSE).
+
+    Expects pre-normalized float32 frames in [0, 1].
+    """
+    frames_f = np.asarray(frames, dtype=np.float32)
 
     motion_vectors = np.asarray(motion_vectors, dtype=np.float32)
 
@@ -174,12 +183,11 @@ def _fallback_temporal_warp_error(
 
 
 def _fallback_flicker_score(frames: np.ndarray) -> float:
-    """Second-order temporal Laplacian energy (flicker metric)."""
-    raw_frames = np.asarray(frames)
-    if raw_frames.dtype == np.uint8:
-        frames_f = raw_frames.astype(np.float32) / 255.0
-    else:
-        frames_f = raw_frames.astype(np.float32)
+    """Second-order temporal Laplacian energy (flicker metric).
+
+    Expects pre-normalized float32 frames in [0, 1].
+    """
+    frames_f = np.asarray(frames, dtype=np.float32)
 
     t_count = frames_f.shape[0]
     if t_count < 3:
@@ -223,7 +231,7 @@ def temporal_warp_error(
     else:
         frames_f = raw_frames.astype(np.float32)
 
-    if _HAS_NATIVE and callable(_native_temporal_warp_error) and metric == "rmse":
+    if _ensure_native_probed() and callable(_native_temporal_warp_error) and metric == "rmse":
         return float(
             _native_temporal_warp_error(
                 frames_f,
@@ -258,7 +266,7 @@ def flicker_score(frames: np.ndarray) -> float:
     else:
         frames_f = raw_frames.astype(np.float32)
 
-    if _HAS_NATIVE and callable(_native_flicker_score):
+    if _ensure_native_probed() and callable(_native_flicker_score):
         return float(_native_flicker_score(frames_f))
     return _fallback_flicker_score(frames_f)
 

@@ -10,6 +10,16 @@ This package may only import from: ``synapse.errors``, ``synapse.telemetry``,
 
 from synapse.render_core.backend import MockVgBackend, VgBackend
 from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+
+# Camera mathematics SSOT (look-at, projection, pose conversion).
+from synapse.render_core.camera_math import (
+    look_at,
+    look_at_rotation,
+    perspective_projection,
+    pose_from_view_matrix,
+    quat_to_matrix,
+    view_matrix_from_pose,
+)
 from synapse.render_core.conditions import (
     CROSS_CONDITIONS,
     RENDERING_CONDITION_FACTORS,
@@ -70,4 +80,10 @@ __all__ = [
     "reconstruct_laplacian_pyramid",
     "separable_gaussian",
     "upsample2x",
+    "look_at",
+    "look_at_rotation",
+    "perspective_projection",
+    "pose_from_view_matrix",
+    "quat_to_matrix",
+    "view_matrix_from_pose",
 ]

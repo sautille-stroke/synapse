@@ -478,11 +478,11 @@ def _view_matrix_to_camera_pose(
 def _quat_to_matrix(q: list[float]) -> np.ndarray:
     """Convert quaternion ``[x, y, z, w]`` to 3×3 rotation matrix.
 
-    Delegates to :func:`synapse.render_core.camera_math._quat_to_matrix`.
+    Delegates to :func:`synapse.render_core.camera_math.quat_to_matrix`.
     """
-    from synapse.render_core.camera_math import _quat_to_matrix as _cm_quat_to_matrix
+    from synapse.render_core.camera_math import quat_to_matrix
 
-    return _cm_quat_to_matrix(q)
+    return quat_to_matrix(q)
 
 
 def _build_projection(
