@@ -10,6 +10,7 @@
 
 #include <aether/geo/marching_cubes.h>
 #include <aether/geo/mesh_checks.h>
+#include <aether/geo/primitives.h>
 #include <aether/geo/subdivision.h>
 #include <aether/geo/uv_unwrapper.h>
 #include <aether/spatial/kd_tree.h>

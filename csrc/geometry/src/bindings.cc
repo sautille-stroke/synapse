@@ -12,6 +12,7 @@
 #include "synapse/geometry/mesh_checks.h"
 
 #include <aether/geo/marching_cubes.h>
+#include <aether/geo/primitives.h>
 #include <aether/geo/subdivision.h>
 #ifndef SYNAPSE_NO_XATLAS
 #include <aether/geo/uv_unwrapper.h>
@@ -509,6 +510,11 @@ py::dict pyUnwrapUvAtlas(
 // ---------------------------------------------------------------------------
 // KD-Tree / BVH Closest Points
 // ---------------------------------------------------------------------------
+struct IndexedPoint {
+  aether::Vec3 pos;
+  int64_t index;
+};
+
 py::tuple pyBvhClosestPoints(
     const DoubleArray& targetPoints,
     const DoubleArray& queryPoints) {
@@ -520,11 +526,6 @@ py::tuple pyBvhClosestPoints(
     py::array_t<double> emptyDistances(0);
     return py::make_tuple(emptyIndices, emptyDistances);
   }
-
-  struct IndexedPoint {
-    aether::Vec3 pos;
-    int64_t index;
-  };
 
   std::vector<IndexedPoint> points;
   points.reserve(targets.size());
@@ -571,6 +572,172 @@ py::tuple pyBvhClosestPoints(
   }
 
   return py::make_tuple(outIndices, outDists);
+}
+
+double pyComputeChamferDistance(const DoubleArray& ptsA_arr,
+                                const DoubleArray& ptsB_arr,
+                                const std::string& reduction) {
+  auto a = verticesFromNumpy(ptsA_arr);
+  auto b = verticesFromNumpy(ptsB_arr);
+  if (a.empty() || b.empty()) {
+    return 0.0;
+  }
+
+  std::vector<IndexedPoint> pointsB;
+  pointsB.reserve(b.size());
+  for (size_t i = 0; i < b.size(); ++i) {
+    pointsB.push_back({
+        aether::Vec3(static_cast<float>(b[i].x),
+                     static_cast<float>(b[i].y),
+                     static_cast<float>(b[i].z)),
+        static_cast<int64_t>(i)
+    });
+  }
+  aether::KdTree<IndexedPoint, 3, std::function<aether::Vec3(const IndexedPoint&)>> treeB;
+  treeB.Build(pointsB, [](const IndexedPoint& p) { return p.pos; });
+
+  std::vector<IndexedPoint> pointsA;
+  pointsA.reserve(a.size());
+  for (size_t i = 0; i < a.size(); ++i) {
+    pointsA.push_back({
+        aether::Vec3(static_cast<float>(a[i].x),
+                     static_cast<float>(a[i].y),
+                     static_cast<float>(a[i].z)),
+        static_cast<int64_t>(i)
+    });
+  }
+  aether::KdTree<IndexedPoint, 3, std::function<aether::Vec3(const IndexedPoint&)>> treeA;
+  treeA.Build(pointsA, [](const IndexedPoint& p) { return p.pos; });
+
+  double sumDistAtoB = 0.0;
+  double sumDistBtoA = 0.0;
+
+  {
+    py::gil_scoped_release release;
+    for (size_t i = 0; i < a.size(); ++i) {
+      aether::Vec3 qPos(static_cast<float>(a[i].x),
+                        static_cast<float>(a[i].y),
+                        static_cast<float>(a[i].z));
+      const auto* nearest = treeB.Nearest(qPos);
+      if (nearest) {
+        const auto& t = b[static_cast<size_t>(nearest->index)];
+        const double dx = a[i].x - t.x;
+        const double dy = a[i].y - t.y;
+        const double dz = a[i].z - t.z;
+        sumDistAtoB += std::sqrt(dx * dx + dy * dy + dz * dz);
+      }
+    }
+
+    for (size_t j = 0; j < b.size(); ++j) {
+      aether::Vec3 qPos(static_cast<float>(b[j].x),
+                        static_cast<float>(b[j].y),
+                        static_cast<float>(b[j].z));
+      const auto* nearest = treeA.Nearest(qPos);
+      if (nearest) {
+        const auto& t = a[static_cast<size_t>(nearest->index)];
+        const double dx = b[j].x - t.x;
+        const double dy = b[j].y - t.y;
+        const double dz = b[j].z - t.z;
+        sumDistBtoA += std::sqrt(dx * dx + dy * dy + dz * dz);
+      }
+    }
+  }
+
+  const double meanAtoB = sumDistAtoB / static_cast<double>(a.size());
+  const double meanBtoA = sumDistBtoA / static_cast<double>(b.size());
+
+  double chamfer_m = 0.0;
+  if (reduction == "mean") {
+    chamfer_m = (meanAtoB + meanBtoA) / 2.0;
+  } else if (reduction == "sum") {
+    chamfer_m = meanAtoB + meanBtoA;
+  } else {
+    throw std::invalid_argument("Unsupported reduction: '" + reduction + "'. Choose 'mean' or 'sum'.");
+  }
+
+  return chamfer_m * 1000.0;  // metres -> mm
+}
+
+py::dict pyCreatePrimitiveMesh(const std::string& type, py::kwargs kwargs) {
+  aether::geo::PrimitiveMeshData mesh;
+  if (type == "cube") {
+    float size = kwargs.contains("size") ? kwargs["size"].cast<float>() : 1.0f;
+    mesh = aether::geo::createCube(aether::Vec3{size});
+  } else if (type == "sphere") {
+    float radius = kwargs.contains("radius") ? kwargs["radius"].cast<float>() : 1.0f;
+    uint32_t segments = kwargs.contains("segments") ? kwargs["segments"].cast<uint32_t>() : 32;
+    uint32_t rings = kwargs.contains("rings") ? kwargs["rings"].cast<uint32_t>() : 16;
+    mesh = aether::geo::createSphere(radius, segments, rings);
+  } else if (type == "cylinder") {
+    float radius = kwargs.contains("radius") ? kwargs["radius"].cast<float>() : 0.5f;
+    float height = kwargs.contains("height") ? kwargs["height"].cast<float>() : 2.0f;
+    uint32_t segments = kwargs.contains("segments") ? kwargs["segments"].cast<uint32_t>() : 32;
+    mesh = aether::geo::createCylinder(radius, height, segments);
+  } else if (type == "torus") {
+    float majorRadius = kwargs.contains("major_radius") ? kwargs["major_radius"].cast<float>() : 1.0f;
+    float minorRadius = kwargs.contains("minor_radius") ? kwargs["minor_radius"].cast<float>() : 0.3f;
+    uint32_t majorSegments = kwargs.contains("major_segments") ? kwargs["major_segments"].cast<uint32_t>() : 32;
+    uint32_t minorSegments = kwargs.contains("minor_segments") ? kwargs["minor_segments"].cast<uint32_t>() : 16;
+    mesh = aether::geo::createTorus(majorRadius, minorRadius, majorSegments, minorSegments);
+  } else if (type == "plane") {
+    float sizeVal = kwargs.contains("size") ? kwargs["size"].cast<float>() : 2.0f;
+    float width = kwargs.contains("width") ? kwargs["width"].cast<float>() : sizeVal;
+    float depth = kwargs.contains("height") ? kwargs["height"].cast<float>()
+                  : (kwargs.contains("depth") ? kwargs["depth"].cast<float>() : sizeVal);
+    uint32_t subdivX = kwargs.contains("subdivisions") ? kwargs["subdivisions"].cast<uint32_t>() : 1;
+    mesh = aether::geo::createPlane(width, depth, subdivX, subdivX);
+  } else if (type == "cone") {
+    float radius = kwargs.contains("radius") ? kwargs["radius"].cast<float>() : 0.5f;
+    float height = kwargs.contains("height") ? kwargs["height"].cast<float>() : 1.0f;
+    uint32_t segments = kwargs.contains("segments") ? kwargs["segments"].cast<uint32_t>() : 32;
+    mesh = aether::geo::createCone(radius, height, segments);
+  } else {
+    throw std::invalid_argument("Unknown primitive type: " + type);
+  }
+
+  const size_t vCount = mesh.vertices.size();
+  const size_t fCount = mesh.indices.size() / 3;
+
+  py::array_t<double> vertices({static_cast<py::ssize_t>(vCount), static_cast<py::ssize_t>(3)});
+  py::array_t<double> normals({static_cast<py::ssize_t>(vCount), static_cast<py::ssize_t>(3)});
+  py::array_t<double> uvs({static_cast<py::ssize_t>(vCount), static_cast<py::ssize_t>(2)});
+  py::array_t<int32_t> faces({static_cast<py::ssize_t>(fCount), static_cast<py::ssize_t>(3)});
+
+  auto vBuf = vertices.request();
+  auto* vPtr = static_cast<double*>(vBuf.ptr);
+  auto nBuf = normals.request();
+  auto* nPtr = static_cast<double*>(nBuf.ptr);
+  auto uBuf = uvs.request();
+  auto* uPtr = static_cast<double*>(uBuf.ptr);
+  auto fBuf = faces.request();
+  auto* fPtr = static_cast<int32_t*>(fBuf.ptr);
+
+  for (size_t i = 0; i < vCount; ++i) {
+    vPtr[i * 3 + 0] = static_cast<double>(mesh.vertices[i].position.x);
+    vPtr[i * 3 + 1] = static_cast<double>(mesh.vertices[i].position.y);
+    vPtr[i * 3 + 2] = static_cast<double>(mesh.vertices[i].position.z);
+
+    nPtr[i * 3 + 0] = static_cast<double>(mesh.vertices[i].normal.x);
+    nPtr[i * 3 + 1] = static_cast<double>(mesh.vertices[i].normal.y);
+    nPtr[i * 3 + 2] = static_cast<double>(mesh.vertices[i].normal.z);
+
+    uPtr[i * 2 + 0] = static_cast<double>(mesh.vertices[i].uv.x);
+    uPtr[i * 2 + 1] = static_cast<double>(mesh.vertices[i].uv.y);
+  }
+
+  for (size_t f = 0; f < fCount; ++f) {
+    fPtr[f * 3 + 0] = static_cast<int32_t>(mesh.indices[f * 3 + 0]);
+    fPtr[f * 3 + 1] = static_cast<int32_t>(mesh.indices[f * 3 + 1]);
+    fPtr[f * 3 + 2] = static_cast<int32_t>(mesh.indices[f * 3 + 2]);
+  }
+
+  py::dict res;
+  res["vertices"] = vertices;
+  res["normals"] = normals;
+  res["uvs"] = uvs;
+  res["faces"] = faces;
+  res["mesh_type"] = type;
+  return res;
 }
 
 }  // anonymous namespace
@@ -652,4 +819,12 @@ PYBIND11_MODULE(_c_geometry, m) {
   m.def("bvh_closest_points", &pyBvhClosestPoints,
         py::arg("target_points"), py::arg("query_points"),
         "Find closest points in target_points for each query_point via KD-Tree.");
+
+  m.def("compute_chamfer_distance", &pyComputeChamferDistance,
+        py::arg("points_a"), py::arg("points_b"), py::arg("reduction") = "mean",
+        "Compute bilateral Chamfer distance in millimetres using KD-Tree acceleration.");
+
+  m.def("create_primitive_mesh", &pyCreatePrimitiveMesh,
+        py::arg("primitive_type"),
+        "Generate a 3D procedural primitive mesh via @aether//geo::primitives.");
 }

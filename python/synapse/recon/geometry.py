@@ -22,6 +22,7 @@ alignment, and quad-dominant remeshing — utilities used by the recon pipeline.
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 import numpy as np
 
