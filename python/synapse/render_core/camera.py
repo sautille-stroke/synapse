@@ -23,7 +23,6 @@ from typing import Any
 
 import numpy as np
 
-from synapse.errors import ContractValidationError
 from synapse.fgpp.frame import CameraParams
 
 
@@ -52,42 +51,12 @@ def _look_at(
     Includes a zenith/nadir singularity guard: when *forward* is nearly
     parallel to *up*, a fallback up-vector is used so the cross product
     remains well-conditioned.
+
+    Delegates to :func:`synapse.render_core.camera_math.look_at_view_matrix`.
     """
-    if up is None:
-        up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    from synapse.render_core.camera_math import look_at_view_matrix
 
-    forward = target - eye
-    forward = forward / (np.linalg.norm(forward) + 1e-12)
-
-    up_norm = up / (np.linalg.norm(up) + 1e-12)
-
-    # Zenith / nadir singularity guard
-    if abs(float(np.dot(forward, up_norm))) > 0.9999:
-        up_fallback = np.array(
-            [0.0, 0.0, -1.0 if forward[1] > 0 else 1.0],
-            dtype=np.float64,
-        )
-        right = np.cross(forward, up_fallback)
-    else:
-        right = np.cross(forward, up_norm)
-
-    right = right / (np.linalg.norm(right) + 1e-12)
-    new_up = np.cross(right, forward)
-
-    view = np.eye(4, dtype=np.float64)
-    view[0, :3] = right
-    view[1, :3] = new_up
-    view[2, :3] = -forward
-    view[:3, 3] = -view[:3, :3] @ eye
-
-    # Sanity: rotation sub-matrix must be orthonormal (det ≈ 1)
-    det = float(np.linalg.det(view[:3, :3]))
-    if abs(det - 1.0) >= 1e-4:
-        raise ContractValidationError(
-            f"_look_at produced non-orthonormal rotation (det={det})",
-            agent_fix_hint="Verify eye, target, and up vectors are linearly independent.",
-        )
-    return view
+    return look_at_view_matrix(eye, target, up, strict=True)
 
 
 def _make_camera(

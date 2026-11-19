@@ -27,62 +27,52 @@ import numpy as np
 from synapse.fgpp.frame import CameraParams, FGPPFrame
 
 # ---------------------------------------------------------------------------
-# MurmurHash3 (32-bit) — pure Python for Cryptomatte entity IDs
+# ---------------------------------------------------------------------------
+# Cryptomatte entity ID hashing (Psyop Cryptomatte spec: MD5 → float32 bits)
 # ---------------------------------------------------------------------------
 
 
-def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
-    """MurmurHash3 32-bit finaliser for entity name hashing.
+def _cryptomatte_name_hash(name: str) -> int:
+    """Compute a Cryptomatte entity ID per the Psyop Cryptomatte specification.
 
-    Uses native Python ``int`` with explicit ``& 0xFFFFFFFF`` masking to avoid
-    ``RuntimeWarning: overflow encountered in scalar multiply`` emitted by
-    NumPy ≥ 2.0 when performing arithmetic on ``np.uint32`` scalars.
+    Algorithm: MD5(UTF-8 name) → take first 4 bytes LE → uint32 →
+    sanitize IEEE 754 exponent (clamp NaN/Inf/denormals) → store as uint32.
+
+    This matches ``aether::core::cryptomatteNameHash`` in
+    ``aether/core/include/aether/core/hash.h`` and is compatible with
+    Cryptomatte IDs produced by ``fulgur`` and ``caelum-core``.
+
+    Returns a ``uint32`` integer representing the float32 bit-pattern.
     """
-    _M = 0xFFFFFFFF
-    length = len(key)
-    h = seed & _M
-    c1 = 0xCC9E2D51
-    c2 = 0x1B873593
-    nblocks = length // 4
+    import hashlib
+    import struct
 
-    for i in range(nblocks):
-        k = int.from_bytes(key[i * 4 : (i + 1) * 4], "little") & _M
-        k = (k * c1) & _M
-        k = ((k << 15) | (k >> 17)) & _M
-        k = (k * c2) & _M
-        h ^= k
-        h = ((h << 13) | (h >> 19)) & _M
-        h = (h * 5 + 0xE6546B64) & _M
+    digest = hashlib.md5(name.encode("utf-8")).digest()
 
-    tail = key[nblocks * 4 :]
-    k1 = 0
-    tlen = len(tail)
-    if tlen >= 3:
-        k1 ^= (tail[2] << 16) & _M
-    if tlen >= 2:
-        k1 ^= (tail[1] << 8) & _M
-    if tlen >= 1:
-        k1 ^= tail[0]
-        k1 = (k1 * c1) & _M
-        k1 = ((k1 << 15) | (k1 >> 17)) & _M
-        k1 = (k1 * c2) & _M
-        h ^= k1
+    # First 4 bytes, little-endian → uint32
+    h = struct.unpack("<I", digest[:4])[0]
 
-    h ^= length
-    h = (h ^ (h >> 16)) & _M
-    h = (h * 0x85EBCA6B) & _M
-    h = (h ^ (h >> 13)) & _M
-    h = (h * 0xC2B2AE35) & _M
-    h = (h ^ (h >> 16)) & _M
-    return h
+    # Sanitize IEEE 754 exponent field
+    exponent = (h >> 23) & 0xFF
+    if exponent == 0xFF:
+        # NaN or Inf — clear one exponent bit to make it finite
+        h &= ~(1 << 23)
+    elif exponent == 0x00:
+        # Denormal — set one exponent bit to make it normal
+        h |= 1 << 23
+
+    return int(h)
 
 
 def entity_hash(name: str) -> int:
     """Compute a 32-bit Cryptomatte entity ID for *name*.
 
+    Uses the Psyop Cryptomatte specification (MD5-based) for cross-engine
+    compatibility with ``fulgur`` and ``caelum-core``.
+
     Returns a non-zero hash; background ``0`` is reserved.
     """
-    h = _murmurhash3_32(name.encode("utf-8"))
+    h = _cryptomatte_name_hash(name)
     return h if h != 0 else 1
 
 

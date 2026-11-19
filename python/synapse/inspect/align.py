@@ -396,69 +396,22 @@ def _look_at_rotation(
     - Row 0 = right
     - Row 1 = camera up
     - Row 2 = -forward (camera looks along -Z)
+
+    Delegates to :func:`synapse.render_core.camera_math.look_at_rotation`.
     """
-    forward = target - eye
-    f_len = np.linalg.norm(forward)
-    if f_len < 1e-12:
-        return np.eye(3, dtype=np.float64)
-    forward = forward / f_len
+    from synapse.render_core.camera_math import look_at_rotation
 
-    right = np.cross(forward, up)
-    r_len = np.linalg.norm(right)
-    if r_len < 1e-12:
-        # Fallback: pick an arbitrary perpendicular
-        alt_up = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-        right = np.cross(forward, alt_up)
-        r_len = np.linalg.norm(right)
-        if r_len < 1e-12:
-            return np.eye(3, dtype=np.float64)
-    right = right / r_len
-
-    cam_up = np.cross(right, forward)
-    cam_up = cam_up / np.linalg.norm(cam_up)
-
-    # Row-major: right, up, -forward
-    rot = np.array(
-        [
-            right,
-            cam_up,
-            -forward,
-        ],
-        dtype=np.float64,
-    )
-
-    return rot
+    return look_at_rotation(eye, target, up, strict=False)
 
 
 def _camera_pose_to_view_matrix(pose: CameraPose) -> np.ndarray:
     """Convert a CameraPose to a 4x4 view (world-to-camera) matrix.
 
-    Parameters
-    ----------
-    pose:
-        Camera pose with position and rotation.
-
-    Returns
-    -------
-    np.ndarray
-        ``[4, 4]`` view matrix.
+    Delegates to :func:`synapse.render_core.camera_math.camera_pose_to_view_matrix`.
     """
-    pos = np.array(pose.position, dtype=np.float64)
+    from synapse.render_core.camera_math import camera_pose_to_view_matrix
 
-    rot_vals = pose.rotation
-    if len(rot_vals) == 9:
-        # Column-major 3x3 -> row-major by transposing
-        rot_col = np.array(rot_vals, dtype=np.float64).reshape(3, 3)
-        rot = rot_col.T
-    elif len(rot_vals) == 4:
-        rot = _quat_to_matrix(rot_vals)
-    else:
-        rot = np.eye(3, dtype=np.float64)
-
-    view = np.eye(4, dtype=np.float64)
-    view[:3, :3] = rot
-    view[:3, 3] = -rot @ pos
-    return view
+    return camera_pose_to_view_matrix(pose)
 
 
 def _view_matrix_to_camera_pose(
@@ -467,44 +420,21 @@ def _view_matrix_to_camera_pose(
 ) -> CameraPose:
     """Convert a 4x4 view matrix back to a CameraPose.
 
-    Parameters
-    ----------
-    view_matrix:
-        ``[4, 4]`` world-to-camera matrix.
-    fov_deg:
-        Vertical field of view in degrees.
-
-    Returns
-    -------
-    CameraPose
+    Delegates to :func:`synapse.render_core.camera_math.view_matrix_to_camera_pose`.
     """
-    view = np.asarray(view_matrix, dtype=np.float64)
-    rot = view[:3, :3]
-    t = view[:3, 3]
+    from synapse.render_core.camera_math import view_matrix_to_camera_pose
 
-    # Position: -R^T * t
-    pos = (-rot.T @ t).tolist()
-    # Column-major rotation
-    rot_col = rot.T.flatten().tolist()
-
-    return CameraPose(
-        position=pos,
-        rotation=rot_col,
-        fov_deg=fov_deg,
-    )
+    return view_matrix_to_camera_pose(view_matrix, fov_deg)  # type: ignore[return-value]
 
 
 def _quat_to_matrix(q: list[float]) -> np.ndarray:
-    """Convert quaternion ``[x, y, z, w]`` to 3x3 rotation matrix."""
-    x, y, z, w = q
-    return np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ],
-        dtype=np.float64,
-    )
+    """Convert quaternion ``[x, y, z, w]`` to 3x3 rotation matrix.
+
+    Delegates to :func:`synapse.render_core.camera_math.quat_to_matrix`.
+    """
+    from synapse.render_core.camera_math import quat_to_matrix
+
+    return quat_to_matrix(q)
 
 
 def _build_projection(
@@ -514,14 +444,10 @@ def _build_projection(
     z_near: float = 0.1,
     z_far: float = 1000.0,
 ) -> np.ndarray:
-    """Build a 4x4 perspective projection matrix."""
-    fov_rad = math.radians(fov_deg)
-    aspect = width / max(height, 1)
-    f = 1.0 / math.tan(fov_rad / 2.0)
-    proj = np.zeros((4, 4), dtype=np.float64)
-    proj[0, 0] = f / aspect
-    proj[1, 1] = f
-    proj[2, 2] = -(z_far + z_near) / (z_far - z_near)
-    proj[2, 3] = -2.0 * z_far * z_near / (z_far - z_near)
-    proj[3, 2] = -1.0
-    return proj
+    """Build a 4x4 perspective projection matrix.
+
+    Delegates to :func:`synapse.render_core.camera_math.build_projection`.
+    """
+    from synapse.render_core.camera_math import build_projection
+
+    return build_projection(fov_deg, width, height, z_near, z_far)

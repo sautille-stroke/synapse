@@ -8,9 +8,26 @@
 
 #include "synapse/geometry/types.h"
 
+#include <aether/geo/marching_cubes.h>
 #include <aether/geo/mesh_checks.h>
+#include <aether/geo/subdivision.h>
+#include <aether/geo/uv_unwrapper.h>
+#include <aether/spatial/kd_tree.h>
 
 namespace synapse::geometry {
+
+using aether::MarchingCubesResult;
+using aether::MarchingCubes;
+using aether::marchingCubes;
+
+using aether::geo::SubdMesh;
+using aether::geo::SubdFace;
+using aether::geo::SubdEdgeKey;
+
+using aether::geo::MeshUVUnwrapper;
+using aether::geo::UVUnwrapOptions;
+using aether::geo::UVUnwrapResult;
+using aether::geo::UVUnwrapError;
 
 using aether::geo::CheckManifold;
 using aether::geo::checkManifold;
