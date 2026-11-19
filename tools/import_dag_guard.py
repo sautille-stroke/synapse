@@ -72,6 +72,12 @@ TIER_MAP: dict[str, int] = {
 # are exempt from tier checks.
 _PRIVATE_PREFIX = "_"
 
+# Files allowed to use non-constant ``importlib.import_module(var)`` because
+# they are dynamic extension loaders by design.
+_DYNAMIC_IMPORT_ALLOWLIST: frozenset[str] = frozenset({
+    "bridge/aether_bridge.py",
+})
+
 
 # ---------------------------------------------------------------------------
 # AST import visitor
@@ -317,7 +323,10 @@ def scan_import_dag(
         visitor.visit(tree)
         all_edges.update(visitor.edges)
         toplevel_edges.update(visitor.toplevel_edges)
+        rel_posix = rel.as_posix()
         for err in visitor.errors:
+            if rel_posix in _DYNAMIC_IMPORT_ALLOWLIST and "Non-constant dynamic import" in err:
+                continue  # legitimate dynamic loader
             all_errors.append(f"{rel}: {err}")
 
     return all_edges, toplevel_edges, dict(pkg_files), all_errors
