@@ -1,7 +1,7 @@
 # 细分实施计划：Horizon-6 生产硬化、算子真值化与自动化 CI 封板 (M21–M24: PR-74 ~ PR-91)
 
 - **计划版本**: `Actionable Horizon-6 Blueprint (v1.0)`
-- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（Horizon 6 / Waves 20–23，**M21–M24** 共 4 大里程碑、**18 个原子 PR**）
+- **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md)（Horizon 6 / Waves 20–23，**M21–M24** 共 4 大里程碑、**18 个原子 PR**）
 - **问题源头审计**: [docs/audits/AUDIT-POST-HORIZON5-2026-11.md](../audits/AUDIT-POST-HORIZON5-2026-11.md)（基线 `e37bfa6`，全覆盖实测确认的 `10×P0 + 10×P1 + 5×P2 + 2×P3` 缺陷）
 - **制定日期**: `2026-11-15`
 - **操作模型标识**: `[opus4.6]` / `[gemini3.8]`

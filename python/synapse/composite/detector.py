@@ -238,29 +238,69 @@ def _detect_silhouette_drift(
 
         # Video luminance edges
         video_edge_mag = _sobel_edges(video_gray[t])
-        video_edge_mask = video_edge_mag > 0.05
 
         # FGPP cryptomatte boundary edges
         cid = fgpp.cryptomatte_id
         h, w = cid.shape
         boundary = np.zeros((h, w), dtype=bool)
         boundary[:, :-1] |= cid[:, :-1] != cid[:, 1:]
+        boundary[:, 1:] |= cid[:, :-1] != cid[:, 1:]
         boundary[:-1, :] |= cid[:-1, :] != cid[1:, :]
+        boundary[1:, :] |= cid[:-1, :] != cid[1:, :]
 
         if not np.any(boundary):
             continue
 
-        # Distance from each pixel to the nearest FGPP boundary edge.
+        # Restrict detection to a corridor near the boundary (2× threshold)
         dist_from_boundary = exact_euclidean_distance_transform(boundary)
+        corridor = dist_from_boundary <= threshold * 2.0
 
-        # Where video edges are far from FGPP edges → drift.
-        drift_mask = video_edge_mask & (dist_from_boundary > threshold)
-        if not np.any(drift_mask):
+        # Video edges within corridor
+        video_edge_mask = (video_edge_mag > 0.05) & corridor
+
+        # Bidirectional Chamfer distance:
+        # For each boundary pixel, distance to nearest video edge
+        # For each video edge pixel, distance to nearest boundary
+        if not np.any(video_edge_mask):
+            # No video edges near boundary → possible vanished object
+            boundary_pixels = int(np.sum(boundary))
+            if boundary_pixels > 50:  # only flag if significant boundary
+                ys_b, xs_b = np.nonzero(boundary)
+                defects.append(
+                    VideoDefectRegion(
+                        defect_type="silhouette_drift",
+                        frame_range=(t, t),
+                        bbox_xyxy=(
+                            int(np.min(xs_b)),
+                            int(np.min(ys_b)),
+                            int(np.max(xs_b)) + 1,
+                            int(np.max(ys_b)) + 1,
+                        ),
+                        entity_id=0,
+                        severity_score=0.8,
+                        details={
+                            "chamfer_distance": float(threshold * 2.0),
+                            "vanished_object": True,
+                        },
+                    )
+                )
             continue
 
-        ys, xs = np.nonzero(drift_mask)
-        mean_dist = float(dist_from_boundary[drift_mask].mean())
-        severity = float(np.clip(mean_dist / (threshold * 5.0), 0.0, 1.0))
+        # Chamfer: boundary → nearest video edge
+        dist_boundary_to_edge = exact_euclidean_distance_transform(video_edge_mask)
+        chamfer_b2e = float(np.mean(dist_boundary_to_edge[boundary]))
+
+        # Chamfer: video edge → nearest boundary
+        dist_edge_to_boundary = dist_from_boundary  # already computed
+        chamfer_e2b = float(np.mean(dist_edge_to_boundary[video_edge_mask]))
+
+        chamfer_dist = (chamfer_b2e + chamfer_e2b) / 2.0
+
+        if chamfer_dist <= threshold:
+            continue
+
+        severity = float(np.clip(chamfer_dist / (threshold * 5.0), 0.0, 1.0))
+        ys, xs = np.nonzero(boundary)
 
         defects.append(
             VideoDefectRegion(
@@ -274,7 +314,7 @@ def _detect_silhouette_drift(
                 ),
                 entity_id=0,
                 severity_score=severity,
-                details={"mean_edge_distance": mean_dist},
+                details={"chamfer_distance": chamfer_dist},
             )
         )
 
@@ -317,36 +357,30 @@ def _detect_ground_violation(
         # Top of image (yy = 0) is +Y_cam: y_cam = -((yy + 0.5) - cy) * z / fy
         # Right of image (xx = W-1) is +X_cam: x_cam = ((xx + 0.5) - cx) * z / fx
         # Derive focal length from fov_degrees if intrinsics are missing.
-        if cam.fx > 0:
-            fx = float(cam.fx)
-        elif hasattr(cam, "fov_degrees") and cam.fov_degrees > 0:
-            fx = float(w) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
-        else:
-            # Fallback: assume 60° horizontal FoV when no intrinsics are
-            # available.  Produces a plausible focal length rather than the
-            # near-zero sentinel that ``max(cam.fx, 1e-6)`` would give.
-            fx = float(w) / (2.0 * math.tan(math.radians(30.0)))
+        # fov_degrees is vertical FoV: derive fy first, then fx = fy (square pixels).
         if cam.fy > 0:
             fy = float(cam.fy)
         elif hasattr(cam, "fov_degrees") and cam.fov_degrees > 0:
             fy = float(h) / (2.0 * math.tan(math.radians(cam.fov_degrees / 2.0)))
         else:
             fy = float(h) / (2.0 * math.tan(math.radians(30.0)))
+        if cam.fx > 0:
+            fx = float(cam.fx)
+        else:
+            fx = fy  # fov_degrees is vertical → fx = fy for square pixels
         x_cam = ((xx.astype(np.float64) + 0.5) - cam.cx) * z / fx
         y_cam = -((yy.astype(np.float64) + 0.5) - cam.cy) * z / fy
         z_cam = -z
 
-        # Build [N, 4] homogeneous coordinates
-        ones = np.ones_like(z)
-        pts_cam = np.stack([x_cam, y_cam, z_cam, ones], axis=-1)  # [H,W,4]
-        pts_flat = pts_cam.reshape(-1, 4)
-
-        # Camera-to-world: world_matrix is the inverse of view_matrix
+        # Camera-to-world: direct dot product for Y coordinate only (saves 8× memory)
         world_mat = cam.world_matrix.astype(np.float64)
-        pts_world = (world_mat @ pts_flat.T).T  # [N, 4]
-
-        # World Y coordinate (+Y = up direction)
-        world_y = pts_world[:, 1].reshape(h, w)
+        # world_y = M[1,0]*x_cam + M[1,1]*y_cam + M[1,2]*z_cam + M[1,3]*1
+        world_y = (
+            world_mat[1, 0] * x_cam
+            + world_mat[1, 1] * y_cam
+            + world_mat[1, 2] * z_cam
+            + world_mat[1, 3]
+        )
 
         # Check per entity
         unique_ids = np.unique(cid)
@@ -364,30 +398,47 @@ def _detect_ground_violation(
             y2 = int(ys.max()) + 1
             entity_violations.setdefault(int(eid), []).append((t, min_y, x1, y1, x2, y2))
 
-    # Emit defects for entities violating ground across >= 2 frames.
+    # Emit defects for entities violating ground across >= 2 frames,
+    # split by continuous time segments.
     for eid, violations in entity_violations.items():
         if len(violations) < 2:
             continue
-        frames = [v[0] for v in violations]
-        min_ys = [v[1] for v in violations]
-        x1_all = [v[2] for v in violations]
-        y1_all = [v[3] for v in violations]
-        x2_all = [v[4] for v in violations]
-        y2_all = [v[5] for v in violations]
+        # Sort by frame index
+        violations.sort(key=lambda v: v[0])
+        # Split into continuous time segments
+        segments: list[list[tuple[int, float, int, int, int, int]]] = []
+        current_seg: list[tuple[int, float, int, int, int, int]] = [violations[0]]
+        for i in range(1, len(violations)):
+            if violations[i][0] - violations[i - 1][0] <= 1:
+                current_seg.append(violations[i])
+            else:
+                segments.append(current_seg)
+                current_seg = [violations[i]]
+        segments.append(current_seg)
 
-        worst_y = min(min_ys)
-        severity = float(np.clip(abs(worst_y - ground_y) / 1.0, 0.0, 1.0))
-        bbox = (min(x1_all), min(y1_all), max(x2_all), max(y2_all))
-        defects.append(
-            VideoDefectRegion(
-                defect_type="ground_violation",
-                frame_range=(min(frames), max(frames)),
-                bbox_xyxy=bbox,
-                entity_id=eid,
-                severity_score=severity,
-                details={"min_world_y": worst_y},
+        for seg in segments:
+            if len(seg) < 2:
+                continue
+            frames = [v[0] for v in seg]
+            min_ys = [v[1] for v in seg]
+            x1_all = [v[2] for v in seg]
+            y1_all = [v[3] for v in seg]
+            x2_all = [v[4] for v in seg]
+            y2_all = [v[5] for v in seg]
+
+            worst_y = min(min_ys)
+            severity = float(np.clip(abs(worst_y - ground_y) / 1.0, 0.0, 1.0))
+            bbox = (min(x1_all), min(y1_all), max(x2_all), max(y2_all))
+            defects.append(
+                VideoDefectRegion(
+                    defect_type="ground_violation",
+                    frame_range=(min(frames), max(frames)),
+                    bbox_xyxy=bbox,
+                    entity_id=eid,
+                    severity_score=severity,
+                    details={"min_world_y": worst_y},
+                )
             )
-        )
 
     return defects
 

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from synapse.render_core.mesh import MeshData
 
 
 @dataclass
@@ -108,41 +111,23 @@ class ModelAsset:
         self.normals = (vert_normals / norms).astype(np.float32)
         return self
 
+    def to_mesh_data(self) -> MeshData:
+        """Convert to canonical :class:`synapse.render_core.mesh.MeshData`."""
+        from synapse.render_core.mesh import MeshData
+
+        return MeshData(
+            name=self.name,
+            vertices=self.vertices,
+            faces=self.faces,
+            normals=self.normals,
+            uvs=self.uvs,
+            base_color=self.vertex_colors[:, :3] if self.vertex_colors is not None else None,
+        )
+
     def export_obj(self, path: str | Path) -> Path:
-        """Export geometry to Wavefront OBJ format."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        lines: list[str] = [f"# Synapse ModelAsset: {self.name}"]
-        lines.append(f"# Vertices: {self.num_vertices}, Faces: {self.num_faces}")
-
-        for vert in self.vertices:
-            lines.append(f"v {vert[0]:.6f} {vert[1]:.6f} {vert[2]:.6f}")
-
-        has_normals = self.normals is not None and len(self.normals) == len(self.vertices)
-        if has_normals:
-            for norm in self.normals:
-                lines.append(f"vn {norm[0]:.6f} {norm[1]:.6f} {norm[2]:.6f}")
-
-        has_uv = self.uvs is not None and len(self.uvs) == len(self.vertices)
-        if has_uv and self.uvs is not None:
-            for uv in self.uvs:
-                lines.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
-
-        for face in self.faces:
-            # 1-based indexing for OBJ
-            f1, f2, f3 = face[0] + 1, face[1] + 1, face[2] + 1
-            if has_uv and has_normals:
-                lines.append(f"f {f1}/{f1}/{f1} {f2}/{f2}/{f2} {f3}/{f3}/{f3}")
-            elif has_uv and not has_normals:
-                lines.append(f"f {f1}/{f1} {f2}/{f2} {f3}/{f3}")
-            elif not has_uv and has_normals:
-                lines.append(f"f {f1}//{f1} {f2}//{f2} {f3}//{f3}")
-            else:
-                lines.append(f"f {f1} {f2} {f3}")
-
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return path
+        """Export geometry to Wavefront OBJ format via unified MeshData."""
+        res = self.to_mesh_data().export_obj(path)
+        return Path(res)
 
     def get_summary(self) -> dict[str, Any]:
         """Return metadata summary for logging and manifest serialization."""

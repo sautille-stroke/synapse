@@ -41,29 +41,43 @@ def border_ring_ciede2000(
         srgb_to_linear,
     )
 
-    m = np.asarray(mask, dtype=bool)
-    h, w = m.shape
-
-    # Simple morphological dilation via shift-and-OR
-    dilated = m.copy()
-    for dy in range(-ring_width, ring_width + 1):
-        for dx in range(-ring_width, ring_width + 1):
-            if dy * dy + dx * dx > ring_width * ring_width:
-                continue
-            shifted = np.zeros_like(m)
-            sy = slice(max(0, dy), min(h, h + dy))
-            sx = slice(max(0, dx), min(w, w + dx))
-            ty = slice(max(0, -dy), min(h, h - dy))
-            tx = slice(max(0, -dx), min(w, w - dx))
-            shifted[sy, sx] = m[ty, tx]
-            dilated |= shifted
-
-    ring = dilated & ~m
-    if not ring.any():
-        return 0.0
-
     comp = np.asarray(composited, dtype=np.float64)
     bg = np.asarray(background, dtype=np.float64)
+    m = np.asarray(mask, dtype=bool)
+    if hasattr(composited, "dtype") and composited.dtype == np.uint8:
+        comp /= 255.0
+    if hasattr(background, "dtype") and background.dtype == np.uint8:
+        bg /= 255.0
+
+    if comp.shape[:2] != bg.shape[:2] or comp.shape[:2] != m.shape[:2]:
+        raise ValueError(
+            f"Shape mismatch: composited={comp.shape}, background={bg.shape}, mask={m.shape}"
+        )
+
+    # Fast Euclidean Distance Transform (EDT) for ring mask
+    try:
+        from scipy.ndimage import distance_transform_edt
+
+        edt = distance_transform_edt(~m)
+        ring = (edt > 0.0) & (edt <= float(ring_width))
+    except ImportError:
+        h, w = m.shape[:2]
+        dilated = m.copy()
+        for dy in range(-ring_width, ring_width + 1):
+            for dx in range(-ring_width, ring_width + 1):
+                if dy * dy + dx * dx > ring_width * ring_width:
+                    continue
+                shifted = np.zeros_like(m)
+                sy = slice(max(0, dy), min(h, h + dy))
+                sx = slice(max(0, dx), min(w, w + dx))
+                ty = slice(max(0, -dy), min(h, h - dy))
+                tx = slice(max(0, -dx), min(w, w - dx))
+                shifted[sy, sx] = m[ty, tx]
+                dilated |= shifted
+        ring = dilated & ~m
+
+    if not ring.any():
+        return 0.0
 
     if input_space == "srgb":
         lab_comp = rgb_to_cielab(srgb_to_linear(comp))

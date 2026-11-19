@@ -5,8 +5,8 @@
 - **审计日期**: `2026-11-14`
 - **操作模型标识**: `[gemini4]`
 - **关联修复计划**: [docs/plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md](../plans/PLAN-M13-M16-POST-REFACTOR-REMEDIATION.md)（Horizon 4: `M13–M16` / `PR-44 ~ PR-57`）
-- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)
-- **前序基线审计**: [docs/AUDIT_AND_ARCHITECTURE.md](../AUDIT_AND_ARCHITECTURE.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../DESIGN_REVIEW_AND_ALIGNMENT.md)
+- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md)
+- **前序基线审计**: [docs/AUDIT_AND_ARCHITECTURE.md](../../AUDIT_AND_ARCHITECTURE.md) · [docs/DESIGN_REVIEW_AND_ALIGNMENT.md](../../DESIGN_REVIEW_AND_ALIGNMENT.md)
 
 ---
 
@@ -28,8 +28,8 @@
 
 1. **`FGPP v1.0` 跨仓线格式零漂移**：`tools/wire_guard.py --check` 针对 `../aether/fgpp/include/aether/fgpp/fgpp_types.h` 的 15 标量通道、`34 B/px` 布局与 `Cryptomatte.ID` (`UINT32` 逐 bit 保留) 校验 100% 通过。
 2. **重型可选依赖严格零顶层引入**：全仓 32,290 行 `python/synapse` 经 AST 全量扫描，`torch`、`openexr`、`cv2`、`trimesh`、`mitsuba` 顶层导入数为 **0**，且公共函数返回类型注解覆盖率达 **99.15% (`699/705`)**。
-3. **Agent-Native 确定性错误分类体系**：[errors.py](../../python/synapse/errors.py) 与 [telemetry.py](../../python/synapse/telemetry.py) 统一实现了 `ExitCode`（`0/10/20/30/40/50`）、`agent_fix_hint` 与 W3C `TraceContext`。
-4. **双轨 Tier-0 自包含几何内核**：[csrc/geometry](../../csrc/geometry/)（`@aether//math` `DVec3`）与 Python Oracle [recon/geometry.py](../../python/synapse/recon/geometry.py) 形成双轨互验，摆脱对外部 `vg-core` 的编译期强绑定。
+3. **Agent-Native 确定性错误分类体系**：[errors.py](../../../python/synapse/errors.py) 与 [telemetry.py](../../../python/synapse/telemetry.py) 统一实现了 `ExitCode`（`0/10/20/30/40/50`）、`agent_fix_hint` 与 W3C `TraceContext`。
+4. **双轨 Tier-0 自包含几何内核**：[csrc/geometry](../../../csrc/geometry/)（`@aether//math` `DVec3`）与 Python Oracle [recon/geometry.py](../../../python/synapse/recon/geometry.py) 形成双轨互验，摆脱对外部 `vg-core` 的编译期强绑定。
 5. **领域解耦的 Stage Adapter**：通过 `python/synapse/pipeline/stages/` 注册模式，避免下游领域包直接依赖 `synapse.pipeline`。
 
 ### 1.3 全库健康度多维评分卡
@@ -114,7 +114,7 @@ flowchart TD
 
 #### `[P1-ARCH-04]` `synapse.viewer.server` 常驻 HTTP Daemon 风险重审
 - **定位**: `python/synapse/viewer/server.py:14,55-96`；`python/synapse/cli/__init__.py:118-163,1410-1419`。
-- **现象**: 尽管 [AUDIT_AND_ARCHITECTURE.md §2.3](../AUDIT_AND_ARCHITECTURE.md) 对 `synapse view` 给予了本地调试豁免，但当前实现存在三项硬伤：
+- **现象**: 尽管 [AUDIT_AND_ARCHITECTURE.md §2.3](../../AUDIT_AND_ARCHITECTURE.md) 对 `synapse view` 给予了本地调试豁免，但当前实现存在三项硬伤：
   1. `server.py:64` 篡改全局类属性 `socketserver.TCPServer.allow_reuse_address = True`；
   2. 直接通过 `SimpleHTTPRequestHandler` 暴露目标目录文件且未对 `host` 强制锁死回环地址 `127.0.0.1`；
   3. `while True: time.sleep(1)` 常驻进程阻塞，与 `--json` Agent 无头契约冲突。

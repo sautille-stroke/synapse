@@ -167,6 +167,7 @@ class HttpFoundaryTransport(FoundaryTransport):
             BackendUnavailableError: If base_url is empty, connection refused,
                 or server times out.
         """
+        import hashlib
         import http.client
         import json
         import time
@@ -189,9 +190,11 @@ class HttpFoundaryTransport(FoundaryTransport):
         validate_safe_url(self._base_url)
         url = f"{self._base_url}/v1/{request.service}"
         payload = request.model_dump_json().encode("utf-8")
+        idempotency_key = hashlib.sha256(payload).hexdigest()
         trace_headers = TraceContext.current().to_headers()
         headers = {
             "Content-Type": "application/json",
+            "Idempotency-Key": idempotency_key,
             **trace_headers,
         }
 

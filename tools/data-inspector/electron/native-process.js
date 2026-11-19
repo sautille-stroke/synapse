@@ -18,6 +18,8 @@ const ALLOWED_COMMAND_TYPES = new Set([
   'switch_view',
   'set_entity_visible',
   'load_bundle',
+  'select_tab',
+  'resize',
   'quit',
 ]);
 
@@ -101,6 +103,22 @@ function validateNativeCommand(cmd) {
       }
       return { ok: true, command: { type, path: cmd.path } };
     }
+    case 'select_tab': {
+      const ALLOWED_TABS = new Set(['source', 'animation', 'video', 'comparison']);
+      if (typeof cmd.tab !== 'string' || !ALLOWED_TABS.has(cmd.tab)) {
+        return { ok: false, error: `Invalid tab: '${String(cmd.tab)}'` };
+      }
+      return { ok: true, command: { type: 'select_tab', tab: cmd.tab } };
+    }
+    case 'resize': {
+      if (typeof cmd.width !== 'number' || typeof cmd.height !== 'number' ||
+          !Number.isFinite(cmd.width) || !Number.isFinite(cmd.height) ||
+          cmd.width < 1 || cmd.height < 1 || cmd.width > 8192 || cmd.height > 8192 ||
+          !Number.isInteger(cmd.width) || !Number.isInteger(cmd.height)) {
+        return { ok: false, error: 'Resize width and height must be integers in [1, 8192]' };
+      }
+      return { ok: true, command: { type: 'resize', width: cmd.width, height: cmd.height } };
+    }
     case 'quit':
       return { ok: true, command: { type: 'quit' } };
     default:
@@ -124,10 +142,9 @@ class InspectorProcessManager extends EventEmitter {
     this._proc = null;
     this._stdoutRl = null;
     this._stderrRl = null;
-    this._shmReader = new ShmFrameReader(this._shmName);
-    this._shmReader.on('frame', (frame) => {
-      this.emit('frame', frame);
-    });
+    // File-backed SHM path: unified across --shm-file arg and ShmFrameReader target.
+    this._shmFilePath = null;
+    this._shmReader = null;  // Deferred until start() determines shmTarget
   }
 
   /**
@@ -206,11 +223,20 @@ class InspectorProcessManager extends EventEmitter {
     // Auto-inject --shm-file on macOS and Windows where POSIX shm_open is
     // unavailable or unreliable.  The native process will memory-map this
     // file instead of using /dev/shm.
+    // Unified: _shmFilePath is set once and shared between --shm-file arg
+    // and ShmFrameReader target to prevent path inconsistency.
+    let shmTarget = this._shmName;
     if (process.platform === 'darwin' || process.platform === 'win32') {
-      const shmFilePath = path.join(os.tmpdir(), `synapse-shm-${process.pid}`);
-      args.push(`--shm-file=${shmFilePath}`);
-      this._shmFilePath = shmFilePath;
+      this._shmFilePath = path.join(os.tmpdir(), `synapse-shm-${process.pid}`);
+      args.push(`--shm-file=${this._shmFilePath}`);
+      shmTarget = this._shmFilePath;
     }
+
+    // Create ShmFrameReader with the correct target path (unified).
+    this._shmReader = new ShmFrameReader(shmTarget);
+    this._shmReader.on('frame', (frame) => {
+      this.emit('frame', frame);
+    });
     if (bundlePath) {
       args.push(`--bundle=${bundlePath}`);
     }
@@ -296,10 +322,56 @@ class InspectorProcessManager extends EventEmitter {
   }
 
   /**
+   * Export a screenshot via the native process and wait for synchronous ACK.
+   * @param {string} outputPath - Absolute path for the PPM screenshot.
+   * @param {number} [timeoutMs=5000] - Timeout in milliseconds.
+   * @returns {Promise<{ ok: boolean, path?: string, error?: string }>}
+   */
+  exportScreenshot(outputPath, timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      if (!this._proc || !this._proc.stdin || this._proc.stdin.destroyed) {
+        resolve({ ok: false, error: 'Native process is not running' });
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        this.removeListener('native-event', onEvent);
+        resolve({ ok: false, error: 'Timeout waiting for screenshot ACK' });
+      }, timeoutMs);
+
+      const onEvent = (event) => {
+        if (event && event.type === 'ack' && event.command === 'export_screenshot') {
+          clearTimeout(timer);
+          this.removeListener('native-event', onEvent);
+          resolve({ ok: !!event.ok, path: event.path || outputPath });
+        }
+      };
+      this.on('native-event', onEvent);
+
+      try {
+        const cmd = JSON.stringify({ type: 'export_screenshot', path: outputPath });
+        this._proc.stdin.write(cmd + '\n');
+      } catch (err) {
+        clearTimeout(timer);
+        this.removeListener('native-event', onEvent);
+        resolve({ ok: false, error: err.message });
+      }
+    });
+  }
+
+  /**
    * Stop the native process and close SHM reader.
    */
   stop() {
-    this._shmReader.close();
+    if (this._shmReader) {
+      this._shmReader.close();
+    }
+
+    // Clean up file-backed SHM temporary file.
+    if (this._shmFilePath) {
+      try { fs.unlinkSync(this._shmFilePath); } catch (_) { /* ignore */ }
+      this._shmFilePath = null;
+    }
 
     if (this._stdoutRl) {
       try { this._stdoutRl.close(); } catch (_) { /* ignore */ }

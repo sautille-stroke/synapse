@@ -1,4 +1,4 @@
-"""Tests for threshold SSOT synchronization with DESIGN_REVIEW_AND_ALIGNMENT.md."""
+"""Tests for threshold SSOT synchronization with DESIGN_REVIEW_AND_ALIGNMENT.md and ARCHITECTURE.md."""
 
 from __future__ import annotations
 
@@ -19,9 +19,11 @@ from synapse.training.packager import LoRAGateThresholds
 
 
 def _parse_doc_threshold_table() -> dict[str, dict[str, float]]:
-    """Parse §3.4 threshold matrix from docs/DESIGN_REVIEW_AND_ALIGNMENT.md."""
+    """Parse §3.4 threshold matrix from docs/ARCHITECTURE.md (or DESIGN_REVIEW_AND_ALIGNMENT.md)."""
     repo_root = Path(__file__).resolve().parent.parent
-    doc_path = repo_root / "docs" / "DESIGN_REVIEW_AND_ALIGNMENT.md"
+    doc_path = repo_root / "docs" / "ARCHITECTURE.md"
+    if not doc_path.is_file():
+        doc_path = repo_root / "docs" / "DESIGN_REVIEW_AND_ALIGNMENT.md"
     text = doc_path.read_text(encoding="utf-8")
 
     # Find lines in §3.4 table starting with | `metric_name` |
@@ -54,7 +56,7 @@ def _parse_doc_threshold_table() -> dict[str, dict[str, float]]:
 
 
 class TestProfilesDocSync:
-    """Verify synapse.metrics.profiles matches DESIGN_REVIEW_AND_ALIGNMENT.md §3.4."""
+    """Verify synapse.metrics.profiles matches ARCHITECTURE.md §3.4."""
 
     def test_doc_table_matches_profiles(self) -> None:
         doc_profiles = _parse_doc_threshold_table()
@@ -138,3 +140,111 @@ class TestProfilesDocSync:
             required_keys=["chamfer_mm"],
         )
         assert v_nan.passed is False
+
+    def test_architecture_doc_table_matches_profiles(self) -> None:
+        """Verify docs/ARCHITECTURE.md §3.4 table matches profiles.py."""
+        repo_root = Path(__file__).resolve().parent.parent
+        doc_path = repo_root / "docs" / "ARCHITECTURE.md"
+        assert doc_path.is_file(), "docs/ARCHITECTURE.md must exist as canonical SSOT"
+        text = doc_path.read_text(encoding="utf-8")
+        row_pattern = re.compile(
+            r"^\|\s*`([a-z0-9_]+)`\s*\|[^|]+\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|",
+            re.MULTILINE,
+        )
+        num_pattern = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
+        parsed: dict[str, dict[str, float]] = {
+            "track_b_video": {},
+            "track_a_asset": {},
+            "rsi_promotion": {},
+        }
+        for match in row_pattern.finditer(text):
+            metric = match.group(1)
+            m_b = num_pattern.search(match.group(2))
+            m_a = num_pattern.search(match.group(3))
+            m_r = num_pattern.search(match.group(4))
+            if m_b and m_a and m_r:
+                parsed["track_b_video"][metric] = float(m_b.group(1))
+                parsed["track_a_asset"][metric] = float(m_a.group(1))
+                parsed["rsi_promotion"][metric] = float(m_r.group(1))
+
+        governed_metrics = [
+            "temporal_warp_error",
+            "flicker_score",
+            "depth_rmse_m",
+            "normal_angular_error_deg",
+            "silhouette_iou",
+            "chamfer_mm",
+            "volume_breathing_pct",
+            "foot_sliding_cm",
+            "albedo_delta_e00",
+            "border_ring_ciede2000",
+        ]
+        for metric in governed_metrics:
+            assert TRACK_B_VIDEO[metric] == pytest.approx(parsed["track_b_video"][metric])
+            assert TRACK_A_ASSET[metric] == pytest.approx(parsed["track_a_asset"][metric])
+            assert RSI_PROMOTION[metric] == pytest.approx(parsed["rsi_promotion"][metric])
+
+    def test_cli_subcommands_documented_in_architecture(self) -> None:
+        """Verify all registered CLI domain subcommands are present in docs/ARCHITECTURE.md."""
+        repo_root = Path(__file__).resolve().parent.parent
+        arch_text = (repo_root / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+        expected_subcommands = [
+            "fgpp",
+            "worker",
+            "lora",
+            "inspect",
+            "rsi",
+            "recon",
+            "refine",
+            "generate",
+            "view",
+        ]
+        for cmd in expected_subcommands:
+            assert f"`synapse` | `{cmd}`" in arch_text or f"synapse {cmd}" in arch_text, (
+                f"CLI subcommand {cmd!r} is missing from docs/ARCHITECTURE.md §3.2"
+            )
+
+    def test_import_dag_tier_map_matches_architecture_tree(self) -> None:
+        """Verify all packages in tools/import_dag_guard.py TIER_MAP appear in ARCHITECTURE.md tree."""
+        import sys
+
+        repo_root = Path(__file__).resolve().parent.parent
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        from tools.import_dag_guard import TIER_MAP
+
+        arch_text = (repo_root / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        for pkg in TIER_MAP:
+            assert (
+                f"── {pkg}/" in arch_text
+                or f"── {pkg}.py" in arch_text
+                or f"`{pkg}`" in arch_text
+                or f"synapse.{pkg}" in arch_text
+            ), f"TIER_MAP package {pkg!r} not referenced in docs/ARCHITECTURE.md"
+
+    def test_style_descriptor_fields_documented(self) -> None:
+        """Verify StyleDescriptor fields are reflected in docs."""
+        repo_root = Path(__file__).resolve().parent.parent
+        arch_text = (repo_root / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        wire_text = (repo_root / "docs" / "WIRE_CONTRACTS.md").read_text(encoding="utf-8")
+        combined = arch_text + "\n" + wire_text
+
+        core_fields = ["working_colorspace", "color_temp_kelvin", "exposure_ev"]
+        for field in core_fields:
+            assert field in combined or "ACEScg" in combined, (
+                f"StyleDescriptor field {field!r} missing from documentation"
+            )
+
+    def test_readme_status_markers_clean_and_released(self) -> None:
+        """Verify README.md contains no unmerged '待 PR-' markers and shows Release v4.0.0."""
+        repo_root = Path(__file__).resolve().parent.parent
+        readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
+
+        assert "Release v4.0.0" in readme_text, "README.md must announce Release v4.0.0"
+        assert "待 PR-" not in readme_text, (
+            "README.md status table still contains unmerged '待 PR-' placeholder markers"
+        )
+        assert "🟡" not in readme_text, (
+            "README.md status table still contains yellow in-progress 🟡 markers"
+        )

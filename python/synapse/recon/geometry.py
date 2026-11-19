@@ -321,8 +321,25 @@ def refine_pose_6dof(
         nearest_dists = np.asarray(nearest_dists, dtype=np.float64)
         matched_tgt = tgt[nearest_indices]
 
-        # Step transformation
-        step_r, step_t = _solve_kabsch(transformed_src, matched_tgt)
+        # Bidirectional check: for each matched target point, verify that
+        # the source point is also its nearest neighbor.
+        reverse_indices, _ = _find_nn(matched_tgt, transformed_src)
+        mutual_mask = reverse_indices == np.arange(len(transformed_src))
+
+        # Additionally apply distance-based trimming (IQR fence)
+        if np.sum(mutual_mask) >= 4:
+            inlier_mask = mutual_mask
+        else:
+            # Fallback: keep best 80% by distance
+            trim_k = max(int(0.8 * len(transformed_src)), 4)
+            order = np.argsort(nearest_dists)
+            inlier_mask = np.zeros(len(transformed_src), dtype=bool)
+            inlier_mask[order[:trim_k]] = True
+
+        # Step transformation (using only inlier correspondences)
+        step_r, step_t = _solve_kabsch(
+            transformed_src[inlier_mask], matched_tgt[inlier_mask]
+        )
 
         # Update transformed points
         transformed_src = (step_r @ transformed_src.T).T + step_t
@@ -408,11 +425,13 @@ def quad_remesh(
     vertices: np.ndarray,
     faces: np.ndarray,
     target_faces: int = 0,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Remesh a triangle mesh into a quad-dominant or quad mesh.
 
     Pairs adjacent coplanar triangles sharing an edge based on dihedral angle
     and aspect ratio, removing interior diagonals to form quad faces.
+    After remeshing, generates UV coordinates via xatlas binding
+    (``synapse._c_geometry.unwrap_uv_atlas``) or projection unwrap fallback.
 
     Args:
         vertices: Vertex positions, shape (V, 3).
@@ -420,19 +439,21 @@ def quad_remesh(
         target_faces: Optional target face count (0 = maximize quads).
 
     Returns:
-        Tuple of (new_vertices, new_faces).
+        Tuple of (new_vertices, new_faces, uvs).
+        uvs is (V_new, 2) float32 or None if UV generation fails.
     """
     v = np.asarray(vertices, dtype=np.float32)
     f = np.asarray(faces, dtype=np.int32)
 
     if len(v) == 0 or len(f) == 0:
-        return v, f
+        return v, f, None
 
     if f.shape[1] == 4:
-        return v, f  # Already quad mesh
+        uvs = _generate_uvs(v, f)
+        return v, f, uvs  # Already quad mesh
 
     if f.shape[1] != 3:
-        return v, f  # Unsupported polygon type
+        return v, f, None  # Unsupported polygon type
 
     num_faces = len(f)
     # Map each undirected edge to face indices
@@ -601,7 +622,9 @@ def quad_remesh(
     else:
         new_faces = f
 
-    return v, new_faces
+    # Generate UV coordinates via xatlas binding or projection unwrap fallback
+    uvs = _generate_uvs(v, new_faces)
+    return v, new_faces, uvs
 
 
 def check_degenerate_faces(
@@ -700,6 +723,7 @@ def check_degenerate_faces(
 def check_self_intersections(
     vertices: np.ndarray,
     faces: np.ndarray,
+    verts_per_face: int = 3,
 ) -> list[tuple[int, int]]:
     """Find all pairs of non-adjacent triangles that geometrically intersect.
 
@@ -869,10 +893,10 @@ def check_self_intersections(
 
     _MAX_CELLS_PER_FACE = 512  # prevent memory explosion for large faces
 
+    large_faces: list[int] = []
     grid: dict[tuple[int, int, int], list[int]] = defaultdict(list)
     for fi_np in valid_ids:
         fi = int(fi_np)
-        _cell_count = 0
         lo = np.clip(
             np.floor((tri_min[fi] - global_min) / cell_size).astype(int),
             0,
@@ -883,21 +907,17 @@ def check_self_intersections(
             0,
             num_cells - 1,
         )
+        total_cells = int(
+            (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1)
+        )
+        if total_cells > _MAX_CELLS_PER_FACE:
+            large_faces.append(fi)
+            continue
+
         for ix in range(int(lo[0]), int(hi[0]) + 1):
             for iy in range(int(lo[1]), int(hi[1]) + 1):
                 for iz in range(int(lo[2]), int(hi[2]) + 1):
                     grid[(ix, iy, iz)].append(fi)
-                    # Cap per-face cell count to prevent memory explosion
-                    # from large faces spanning the entire grid.
-                    _cell_count += 1
-                    if _cell_count > _MAX_CELLS_PER_FACE:
-                        break
-                else:
-                    continue
-                break
-            else:
-                continue
-            break
 
     # ------------------------------------------------------------------
     # Narrow phase
@@ -906,6 +926,48 @@ def check_self_intersections(
     tested: set[tuple[int, int]] = set()
     result: list[tuple[int, int]] = []
     aabb_eps = 1e-9
+
+    def _test_pair(fi: int, fj: int) -> None:
+        # Skip adjacent faces (sharing ≥ 1 vertex)
+        if face_vertex_sets[fi] & face_vertex_sets[fj]:
+            return
+
+        # Exact AABB overlap pre-filter
+        if np.any(tri_min[fi] > tri_max[fj] + aabb_eps) or np.any(
+            tri_max[fi] + aabb_eps < tri_min[fj]
+        ):
+            return
+
+        # Skip UV / hard-normal split-vertex seam neighbors.
+        # Check ALL vpf vertices per face, not just 3.
+        verts_fi = face_all_verts[fi]  # (vpf, 3)
+        verts_fj = face_all_verts[fj]  # (vpf, 3)
+        diff_sq = np.sum(
+            (verts_fi[:, None, :] - verts_fj[None, :, :]) ** 2,
+            axis=2,
+        )
+        shared_pos_i = int(np.count_nonzero(np.any(diff_sq <= 1e-18, axis=1)))
+        shared_pos_j = int(np.count_nonzero(np.any(diff_sq <= 1e-18, axis=0)))
+        shared_pos = max(shared_pos_i, shared_pos_j)
+        if 1 <= shared_pos <= vpf - 1:
+            return
+
+        # Fan-triangulate both faces and test ALL sub-triangle pairs.
+        found = False
+        p0_a = verts_fi[0]
+        p0_b = verts_fj[0]
+        for ka in range(1, vpf - 1):
+            if found:
+                break
+            tri_a = np.array([p0_a, verts_fi[ka], verts_fi[ka + 1]])
+            for kb in range(1, vpf - 1):
+                tri_b = np.array([p0_b, verts_fj[kb], verts_fj[kb + 1]])
+                if _tri_tri_intersect(tri_a, tri_b):
+                    found = True
+                    break
+        if found:
+            pair = (min(fi, fj), max(fi, fj))
+            result.append(pair)
 
     for cell_faces in grid.values():
         for a_idx in range(len(cell_faces)):
@@ -916,44 +978,25 @@ def check_self_intersections(
                 if pair in tested:
                     continue
                 tested.add(pair)
+                _test_pair(fi, fj)
 
-                # Skip adjacent faces (sharing ≥ 1 vertex)
-                if face_vertex_sets[fi] & face_vertex_sets[fj]:
+    # Test large faces against all other valid faces via vectorized AABB overlap
+    if large_faces:
+        for fi in large_faces:
+            overlap_mask = ~(
+                (tri_min[fi] > tri_max[valid_ids] + aabb_eps).any(axis=1)
+                | (tri_max[fi] + aabb_eps < tri_min[valid_ids]).any(axis=1)
+            )
+            cand_fjs = valid_ids[overlap_mask]
+            for fj_np in cand_fjs:
+                fj = int(fj_np)
+                if fi == fj:
                     continue
-
-                # Exact AABB overlap pre-filter
-                if np.any(tri_min[fi] > tri_max[fj] + aabb_eps) or np.any(
-                    tri_max[fi] + aabb_eps < tri_min[fj]
-                ):
+                pair = (min(fi, fj), max(fi, fj))
+                if pair in tested:
                     continue
-
-                # Skip UV / hard-normal split-vertex seam neighbors.
-                # Check ALL vpf vertices per face, not just 3.
-                verts_fi = face_all_verts[fi]  # (vpf, 3)
-                verts_fj = face_all_verts[fj]  # (vpf, 3)
-                diff_sq = np.sum(
-                    (verts_fi[:, None, :] - verts_fj[None, :, :]) ** 2,
-                    axis=2,
-                )
-                shared_pos = int(np.count_nonzero(np.any(diff_sq <= 1e-18, axis=1)))
-                if 1 <= shared_pos <= vpf - 1:
-                    continue
-
-                # Fan-triangulate both faces and test ALL sub-triangle pairs.
-                found = False
-                p0_a = verts_fi[0]
-                p0_b = verts_fj[0]
-                for ka in range(1, vpf - 1):
-                    if found:
-                        break
-                    tri_a = np.array([p0_a, verts_fi[ka], verts_fi[ka + 1]])
-                    for kb in range(1, vpf - 1):
-                        tri_b = np.array([p0_b, verts_fj[kb], verts_fj[kb + 1]])
-                        if _tri_tri_intersect(tri_a, tri_b):
-                            found = True
-                            break
-                if found:
-                    result.append(pair)
+                tested.add(pair)
+                _test_pair(fi, fj)
 
     result.sort()
     return result
@@ -961,6 +1004,8 @@ def check_self_intersections(
 
 def find_connected_components(
     faces: np.ndarray,
+    verts_per_face: int = 3,
+    num_vertices: int = 0,
 ) -> list[np.ndarray]:
     """Partition mesh faces into connected components via shared edges.
 
@@ -968,7 +1013,9 @@ def find_connected_components(
     where edges provide the union relation.
 
     Args:
-        faces: Triangle (or quad) indices, shape ``(F, K)``.
+        faces: Triangle (or quad) indices, shape ``(F, K)`` or 1-D flat buffer.
+        verts_per_face: Number of vertices per polygon (default 3).
+        num_vertices: Total vertex count hint (default 0 = auto-infer).
 
     Returns:
         List of 1-D arrays, each containing the sorted face indices of one
@@ -978,6 +1025,19 @@ def find_connected_components(
 
     if len(f) == 0:
         return []
+
+    if f.ndim == 1:
+        if verts_per_face < 3:
+            raise ValueError(f"verts_per_face must be >= 3, got {verts_per_face}")
+        if len(f) % verts_per_face != 0:
+            raise ValueError(
+                f"Flat faces buffer length ({len(f)}) not divisible by verts_per_face ({verts_per_face})"
+            )
+        f = f.reshape(-1, verts_per_face)
+    elif f.ndim == 2:
+        pass
+    else:
+        raise ValueError(f"faces must be 1-D or 2-D, got {f.ndim}-D")
 
     num_faces = len(f)
 

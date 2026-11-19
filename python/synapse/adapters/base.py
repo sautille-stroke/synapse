@@ -83,6 +83,7 @@ class PreparedConditionPayload:
     direct_radiance: np.ndarray | None = None  # [T, H, W, 3] float32
     depth: np.ndarray | None = None  # [T, H, W] float32
     cryptomatte_id: np.ndarray | None = None  # [T, H, W] uint32
+    fgpp_frames: list[Any] = field(default_factory=list)
 
     extra: dict[str, Any] = field(default_factory=dict)
 

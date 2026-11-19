@@ -39,6 +39,8 @@ def depth_rmse_m(
     """
     p = np.asarray(pred_depth, dtype=np.float64)
     g = np.asarray(gt_depth, dtype=np.float64)
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred_depth {p.shape} != gt_depth {g.shape}")
 
     if valid_mask is not None:
         m = np.asarray(valid_mask, dtype=bool)
@@ -72,6 +74,8 @@ def scale_invariant_depth_error(
     """
     p = np.asarray(pred, dtype=np.float64)
     g = np.asarray(gt, dtype=np.float64)
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred {p.shape} != gt {g.shape}")
 
     if valid_mask is not None:
         m = np.asarray(valid_mask, dtype=bool)
@@ -109,6 +113,8 @@ def normal_angular_error_deg(
     """
     p = np.asarray(pred_normals, dtype=np.float64)
     g = np.asarray(gt_normals, dtype=np.float64)
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred_normals {p.shape} != gt_normals {g.shape}")
 
     if valid_mask is not None:
         m = np.asarray(valid_mask, dtype=bool)
@@ -149,6 +155,8 @@ def flow_endpoint_error_px(
     """
     p = np.asarray(pred_flow, dtype=np.float64)
     g = np.asarray(gt_flow, dtype=np.float64)
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred_flow {p.shape} != gt_flow {g.shape}")
 
     diff = p - g
     epe = np.sqrt(np.maximum(np.sum(diff**2, axis=-1), 0.0))  # [H, W]
@@ -178,6 +186,8 @@ def silhouette_iou(
     """
     p = np.asarray(pred_mask, dtype=bool)
     g = np.asarray(gt_mask, dtype=bool)
+    if p.shape != g.shape:
+        raise ValueError(f"Shape mismatch: pred_mask {p.shape} != gt_mask {g.shape}")
 
     intersection = np.sum(p & g)
     union = np.sum(p | g)

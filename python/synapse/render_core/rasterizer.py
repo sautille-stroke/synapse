@@ -13,8 +13,9 @@
 
 Provides a zero-external-dependency rasterization path that produces
 complete :class:`~synapse.fgpp.FGPPFrame` output including all 7 logical
-channel groups.  If ``numba`` is available, JIT-accelerated kernels are
-used for inner loops; otherwise falls back to pure NumPy vectorised code.
+channel groups.  Uses NumPy vectorised code for inner-triangle rasterization;
+the outer per-triangle loop remains pure Python (acceptable for test/mock
+usage; production rendering uses native C++ via ``@aether//geo``).
 """
 
 from __future__ import annotations

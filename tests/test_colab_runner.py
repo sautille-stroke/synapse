@@ -40,6 +40,7 @@ if str(REPO_ROOT / "python") not in sys.path:
 
 from scripts.colab_runner import (  # noqa: E402
     _persist_state,
+    _verify_e4_real_gpu,
     detect_gpu_profile,
     finalize_job_workspace,
     init_job_workspace,
@@ -237,17 +238,80 @@ def test_colab_runner_sigterm_and_partial_checkpoint(tmp_path: Path) -> None:
 
 
 def test_colab_runner_e3_frame_floor_contract(tmp_path: Path) -> None:
-    """Verify E3 raises contract ValueError when input sequence has < 97 frames."""
+    """Verify E3 raises ContractValidationError (exit 10) when input sequence has < 97 frames."""
+    from synapse.errors import ContractValidationError
+
     short_seq = _make_dummy_sequence(17, "short_sequence")
     dummy_seq_a = _make_dummy_sequence(17, "caelum_17f")
 
     with mock.patch(
         "scripts.colab_runner.import_fgpp", side_effect=[short_seq, dummy_seq_a, short_seq]
     ):
-        with pytest.raises(ValueError, match="at least 97 frames"):
+        with pytest.raises(ContractValidationError, match="at least 97 frames") as exc_info:
             run_colab_suite(
                 dataset_dir=tmp_path / "datasets",
                 checkpoint_dir=tmp_path / "checkpoints",
                 experiments=["e3"],
                 mode="mock",
             )
+        assert exc_info.value.exit_code == 10
+
+
+def test_colab_runner_e4_real_gpu_hierarchical_module(tmp_path: Path) -> None:
+    """Verify _verify_e4_real_gpu creates LoRA with hierarchical cross_attn module."""
+    pytest.importorskip("torch")
+    pytest.importorskip("safetensors")
+
+    dummy_seq_a = _make_dummy_sequence(17, "caelum_17f")
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    result = _verify_e4_real_gpu(dummy_seq_a, checkpoint_dir)
+
+    assert result["status"] == "PASS"
+    assert result["mode"] == "real-gpu"
+    assert "lora_sha256" in result
+    # Verify adapter_path is relative (not absolute)
+    lora_path = checkpoint_dir / "wan21_scene_lora.safetensors"
+    assert lora_path.is_file()
+
+
+def test_colab_runner_error_preserves_completed_metrics(tmp_path: Path) -> None:
+    """Verify SynapseError handler preserves completed metrics in job.json."""
+    from synapse.errors import ExitCode, SynapseError
+
+    job_dir = tmp_path / "job"
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-seed a checkpoint with e1 completed
+    state = {
+        "gpu_profile": {"cuda_available": False},
+        "mode": "mock",
+        "completed": {
+            "e1": {"status": "PASS", "elapsed_sec": 1.5},
+        },
+    }
+    state_path = checkpoint_dir / "colab_experiment_state.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    # Initialize job workspace
+    init_job_workspace(job_dir, "test_user", "test_job", "2026-11-18")
+
+    # Simulate a SynapseError during e2 that should preserve e1 metrics
+    err = SynapseError("GPU OOM during e2", ExitCode.BACKEND_UNAVAILABLE)
+
+    from scripts.colab_runner import finalize_job_workspace
+
+    finalize_job_workspace(
+        job_dir,
+        {"completed": state["completed"], "error": err.to_json_dict()},
+        duration=5.0,
+        status="FAILED",
+    )
+
+    job_json = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
+    assert job_json["status"] == "FAILED"
+    # Key assertion: completed metrics must be preserved via flattening, NOT wiped to {}
+    assert job_json["metrics"]["e1_status"] == "PASS"
+    assert job_json["metrics"]["e1_elapsed_sec"] == 1.5

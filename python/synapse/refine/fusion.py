@@ -16,7 +16,7 @@ refinements* of the **same** region before that compositing step.
 
 from __future__ import annotations
 
-from typing import ClassVar, Sequence
+from typing import Any, ClassVar, Sequence
 
 import numpy as np
 
@@ -120,7 +120,8 @@ def _fuse_cascade(
 
         blended_coarse = (1.0 - alpha) * coarse_res + alpha * coarse_cand
         detail_cand = cand - coarse_cand
-        result = blended_coarse + alpha * detail_cand
+        detail_res = result - coarse_res
+        result = blended_coarse + (1.0 - alpha) * detail_res + alpha * detail_cand
 
     return np.asarray(result)
 
@@ -184,6 +185,25 @@ def _fuse_uncertainty(
         smoothed = separable_gaussian(disagreement[:, :, np.newaxis], sigma=1.5)
         local_vars[k] = smoothed[:, :, 0]
 
+    if k_count == 2:
+        # Break K=2 symmetry using centroid distance decay and edge sharpness
+        h, w = candidates[0].shape[:2]
+        cy, cx = h / 2.0, w / 2.0
+        yy, xx = np.mgrid[:h, :w]
+        dist_sq = (yy - cy) ** 2 + (xx - cx) ** 2
+        sigma_sq = max(float(cy**2 + cx**2) * 0.5, 1.0)
+        center_decay = np.exp(-dist_sq / (2.0 * sigma_sq)).astype(np.float32)
+
+        def _sharp(img: np.ndarray) -> np.ndarray:
+            gy = np.diff(img, axis=0, prepend=img[:1, :])
+            gx = np.diff(img, axis=1, prepend=img[:, :1])
+            return np.mean(np.abs(gx) + np.abs(gy), axis=-1).astype(np.float32)
+
+        sharp0 = _sharp(candidates[0])
+        sharp1 = _sharp(candidates[1])
+        local_vars[0] = (local_vars[0] + 0.1 * (1.0 - center_decay)) / (sharp0 + 1.0)
+        local_vars[1] = (local_vars[1] + 0.1 * center_decay) / (sharp1 + 1.0)
+
     eps = 1e-6
     inv_var = 1.0 / (local_vars + eps)
 
@@ -236,13 +256,20 @@ def _fuse_poisson_gradient(
     for k, cand in enumerate(candidates):
         result += weights[k] * cand
 
-    # Jacobi iterations for Poisson equation
+    dirichlet_boundary = result.copy()
+
+    # Jacobi iterations for Poisson equation with fixed outer 1px Dirichlet boundary
     for _ in range(n_iterations):
-        padded = np.pad(result, ((1, 1), (1, 1), (0, 0)), mode="reflect")
+        padded = np.pad(result, ((1, 1), (1, 1), (0, 0)), mode="edge")
         neighbour_sum = (
             padded[:-2, 1:-1, :] + padded[2:, 1:-1, :] + padded[1:-1, :-2, :] + padded[1:-1, 2:, :]
         )
-        result = (neighbour_sum - div) / 4.0
+        result[1:-1, 1:-1, :] = (neighbour_sum[1:-1, 1:-1, :] - div[1:-1, 1:-1, :]) / 4.0
+        # Re-anchor outer 1px Dirichlet boundary
+        result[0, :, :] = dirichlet_boundary[0, :, :]
+        result[-1, :, :] = dirichlet_boundary[-1, :, :]
+        result[:, 0, :] = dirichlet_boundary[:, 0, :]
+        result[:, -1, :] = dirichlet_boundary[:, -1, :]
 
     return result
 
@@ -380,3 +407,41 @@ class MultiModelRefineFusion:
         weights: np.ndarray,
     ) -> np.ndarray:
         return _fuse_poisson_gradient(candidates, weights)
+
+
+class AnatomicalModelEnsemble:
+    """Multi-candidate model ensemble generating diverse candidates for refinement fusion.
+
+    Integrates:
+    - Base original crop (structure & color guidance)
+    - Primary refiner (e.g. Hand/Face neural or geometric model)
+    - Optional secondary refiner / detail enhancer (e.g. Foundary transport)
+    """
+
+    def __init__(
+        self,
+        refiners: Sequence[Any] | None = None,
+        weights: Sequence[float] | None = None,
+    ) -> None:
+        self.refiners = list(refiners) if refiners else []
+        self.weights = list(weights) if weights else []
+
+    def generate_candidates(
+        self,
+        roi: Any,
+    ) -> list[np.ndarray]:
+        cands: list[np.ndarray] = [roi.crop_acescg]
+        for refiner in self.refiners:
+            if hasattr(refiner, "refine"):
+                res = refiner.refine(roi)
+                cands.append(res.refined_acescg if hasattr(res, "refined_acescg") else res)
+            elif callable(refiner):
+                res = refiner(roi)
+                cands.append(res.refined_acescg if hasattr(res, "refined_acescg") else res)
+        return cands
+
+
+__all__ = [
+    "AnatomicalModelEnsemble",
+    "MultiModelRefineFusion",
+]

@@ -255,7 +255,7 @@ export interface RefinementTrackFrame {
 
 ### 4.3 跨端 Wire 契约 (`synapse.refine_session.v1.0`)
 
-`forgekit` 前端通过 RFC 0039 `JobBundle` 与后端 `synapse refine anatomical --json` 交换 JSON 会话契约（由 [PR-37](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 落地对齐）：
+`forgekit` 前端通过 RFC 0039 `JobBundle` 与后端 `synapse refine anatomical --json` 交换 JSON 会话契约（由 [PR-37](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) 落地对齐）：
 
 | 字段 / 阶段 | 生产端 / 消费端 | 语义与格式约束 |
 |---|---|---|

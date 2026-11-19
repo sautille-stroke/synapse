@@ -71,7 +71,7 @@ class PhysicsThresholds(BaseModel):
         default=float(RSI_PROMOTION["normal_angular_error_deg"]),
         ge=0.0,
     )
-    manifold_watertight: bool = True
+    manifold_watertight: bool = False
 
     @classmethod
     def from_profile(
@@ -231,6 +231,8 @@ class DualVerifierEngine:
             "depth_rmse_m",
             "normal_angular_error_deg",
         ]
+        if self._thresholds.manifold_watertight:
+            required_keys.append("is_manifold_watertight")
         missing = [k for k in required_keys if k not in physics_metrics]
         if missing:
             raise ContractValidationError(
@@ -246,8 +248,15 @@ class DualVerifierEngine:
                 ),
             )
 
-        # R1 fix: reject NaN / Inf / bool values across all physics metrics
+        # Allow bool for is_manifold_watertight; reject NaN / Inf / bool values across other physics metrics
         for key, val in physics_metrics.items():
+            if key == "is_manifold_watertight":
+                if not isinstance(val, (bool, numbers.Real)):
+                    raise ContractValidationError(
+                        f"Invalid physics metric '{key}'={val!r} for sample '{sample_id}'. Expected bool or numeric.",
+                        agent_fix_hint="Pass boolean True/False or 1.0/0.0 for is_manifold_watertight.",
+                    )
+                continue
             if (
                 isinstance(val, bool)
                 or not isinstance(val, numbers.Real)
@@ -341,15 +350,16 @@ class DualVerifierEngine:
             if fs > t.foot_slide_velocity_ms and "FOOT_SLIPPING" not in failures:
                 failures.append("FOOT_SLIPPING")
 
-        # Optional: manifold watertight
+        # Manifold watertight check
         wt = physics_metrics.get("is_manifold_watertight")
         if wt is not None and t.manifold_watertight:
+            passed_wt = bool(wt)
             checks["is_manifold_watertight"] = {
                 "value": wt,
                 "required": True,
-                "passed": bool(wt),
+                "passed": passed_wt,
             }
-            if not wt:
+            if not passed_wt:
                 failures.append("NON_MANIFOLD")
 
         # Map failures to LoRA buckets

@@ -13,14 +13,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from synapse.bench.procedural import (
-    generate_procedural_mesh,
-)
 from synapse.bench.scenario import (
     Scenario,
 )
 from synapse.bench.scenario import (
     list_scenarios as _list_scenarios,
+)
+from synapse.render_core.procedural import (
+    generate_procedural_mesh,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,11 +135,32 @@ class AssetRegistry:
     # ── private ───────────────────────────────────────────────────
 
     def _register_builtins(self) -> None:
-        """Pre-register standard procedural primitives."""
+        """Pre-register standard procedural primitives and scanned assets."""
         for prim in _BUILTIN_PROCEDURAL:
             self._entries[prim] = AssetEntry(
                 name=prim,
                 builtin=True,
+            )
+        # Register standard GSO and Objaverse assets per SYN-RFC-0063
+        scanned_assets = [
+            (
+                "gso_shoe",
+                "https://raw.githubusercontent.com/google-research/google-research/master/scanned_objects/shoe.glb",
+            ),
+            (
+                "gso_camera",
+                "https://raw.githubusercontent.com/google-research/google-research/master/scanned_objects/camera.glb",
+            ),
+            (
+                "objaverse_chair",
+                "https://raw.githubusercontent.com/allenai/objaverse-xl/main/assets/chair.glb",
+            ),
+        ]
+        for name, url in scanned_assets:
+            self._entries[name] = AssetEntry(
+                name=name,
+                url=url,
+                builtin=False,
             )
 
     def _resolve_builtin(
@@ -153,7 +174,7 @@ class AssetRegistry:
             return obj_path
 
         if entry.name == "humanoid_53":
-            from synapse.bench.procedural import (
+            from synapse.render_core.procedural import (
                 generate_humanoid_proxy,
             )
 
@@ -175,12 +196,7 @@ class AssetRegistry:
             return obj_path
 
         if entry.name == "cone":
-            # Cone is a cylinder with top radius = 0
-            mesh = generate_procedural_mesh("cylinder")
-            # Collapse top ring to apex
-            top_mask = mesh.vertices[:, 1] > 0.0
-            mesh.vertices[top_mask, 0] = 0.0
-            mesh.vertices[top_mask, 2] = 0.0
+            mesh = generate_procedural_mesh("cone")
             mesh.save_obj(obj_path)
             return obj_path
 
@@ -195,10 +211,19 @@ class AssetRegistry:
         cache_dir: Path,
     ) -> Path:
         """Download a remote asset with SHA-256 verification."""
-        # Determine local filename from URL
         assert entry.url is not None
+        if entry.url.lower().startswith("file://"):
+            from synapse.errors import ContractValidationError
+
+            raise ContractValidationError(
+                f"file:// URLs forbidden in asset registry: {entry.url}",
+                agent_fix_hint="Use http:// or https:// URLs for remote benchmark assets.",
+            )
+
+        # Hash bucketing to avoid collisions
+        url_hash = hashlib.sha256(entry.url.encode("utf-8")).hexdigest()[:16]
         filename = entry.url.rsplit("/", 1)[-1]
-        local_path = cache_dir / filename
+        local_path = cache_dir / f"{url_hash}_{filename}"
 
         if local_path.is_file():
             if entry.sha256 and not self._verify_sha256(
@@ -213,22 +238,37 @@ class AssetRegistry:
             else:
                 return local_path
 
-        # Download
+        # Download with timeout and clean up partial file on failure
         try:
             import urllib.request
 
             logger.info("Downloading %s -> %s", entry.url, local_path)
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            urllib.request.urlretrieve(entry.url, str(local_path))
+            with urllib.request.urlopen(entry.url, timeout=30.0) as resp, open(local_path, "wb") as f:
+                while chunk := resp.read(65536):
+                    f.write(chunk)
         except Exception as exc:
+            if local_path.is_file():
+                try:
+                    local_path.unlink()
+                except OSError:
+                    pass
             # Offline fallback: try procedural
-            if entry.name in _BUILTIN_PROCEDURAL:
+            fallback_name = entry.name
+            if fallback_name.startswith("gso_") or fallback_name.startswith("objaverse_"):
+                fallback_name = (
+                    "cube" if "chair" in fallback_name or "camera" in fallback_name else "cylinder"
+                )
+            if fallback_name in _BUILTIN_PROCEDURAL or entry.name in _BUILTIN_PROCEDURAL:
                 logger.warning(
-                    "Download failed for %s, falling back to procedural: %s",
+                    "Download failed for %s, falling back to procedural %s: %s",
                     entry.name,
+                    fallback_name,
                     exc,
                 )
-                return self._resolve_builtin(entry, cache_dir)
+                return self._resolve_builtin(
+                    AssetEntry(name=fallback_name, builtin=True), cache_dir
+                )
             raise FileNotFoundError(
                 f"Cannot download asset '{entry.name}' from {entry.url}: {exc}"
             ) from exc
@@ -238,6 +278,11 @@ class AssetRegistry:
             local_path,
             entry.sha256,
         ):
+            if local_path.is_file():
+                try:
+                    local_path.unlink()
+                except OSError:
+                    pass
             raise ValueError(f"SHA256 mismatch for {entry.name}: expected {entry.sha256}")
 
         return local_path

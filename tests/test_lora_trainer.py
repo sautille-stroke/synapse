@@ -642,8 +642,11 @@ class TestStatelessLoRATrainer:
         assert b_after_full > 0.0
 
         assert len(trainer._optimizer.param_groups) == 2
-        lrs = {pg["lr"] for pg in trainer._optimizer.param_groups}
-        assert lrs == {1e-3, 2e-4}
+        lrs = sorted(pg["lr"] for pg in trainer._optimizer.param_groups)
+        # Cosine LR scheduling may adjust the exact values slightly;
+        # verify relative ordering and approximate magnitude.
+        assert lrs[0] == pytest.approx(2e-4, rel=0.01)
+        assert lrs[1] == pytest.approx(1e-3, rel=0.01)
 
     def test_train_step_produces_gradients(self) -> None:
         """PR-77: After train_step(), LoRA parameter .grad is not None and norm > 0."""
@@ -976,7 +979,10 @@ class TestPR117TrainerEnhancements:
         assert isinstance(batch["t"], torch.Tensor)
 
     def test_extract_auxiliary_from_raw_fgpp(self) -> None:
-        """PR-117: _extract_auxiliary_from_fgpp extracts depth/normal from [T,H,W,15]."""
+        """PR-117 / PR-140: _extract_auxiliary_from_fgpp extracts depth/normal from [T,H,W,15].
+
+        Post-PR-140 the method stays on-device and applies T→τ temporal compression.
+        """
         import torch
         from synapse.training.trainer import StatelessLoRATrainer
 
@@ -996,12 +1002,17 @@ class TestPR117TrainerEnhancements:
 
         assert "depth" in batch
         assert "normal" in batch
-        # Downsampled 8x: H//8=4, W//8=4
-        assert batch["depth"].shape == (1, t, h // 8, w // 8)
-        assert batch["normal"].shape == (1, 3, t, h // 8, w // 8)
+        # Temporal compression T=4 → τ=(4-1)//4+1=1; spatial 8× downsample
+        tau = (t - 1) // 4 + 1
+        assert batch["depth"].shape == (1, tau, h // 8, w // 8)
+        assert batch["normal"].shape == (3, tau, h // 8, w // 8)
 
     def test_extract_auxiliary_from_wan_7ch(self) -> None:
-        """PR-117: _extract_auxiliary_from_fgpp extracts depth/normal from [7,T,H,W]."""
+        """PR-117 / PR-140: _extract_auxiliary_from_fgpp extracts depth/normal from [7,T,H,W].
+
+        Post-PR-140 the method stays on-device and applies T→τ temporal compression.
+        """
+        import torch
         from synapse.training.trainer import StatelessLoRATrainer
 
         # Wan control: [7, T, H, W]
@@ -1011,15 +1022,16 @@ class TestPR117TrainerEnhancements:
         fgpp[1:4] = np.array([0.0, 0.0, 1.0]).reshape(3, 1, 1, 1)  # normal
 
         batch: dict[str, Any] = {
-            "fgpp_cond": fgpp,
+            "fgpp_cond": torch.as_tensor(fgpp),
         }
 
         StatelessLoRATrainer._extract_auxiliary_from_fgpp(batch)
 
         assert "depth" in batch
         assert "normal" in batch
-        assert batch["depth"].shape == (1, t, h // 8, w // 8)
-        assert batch["normal"].shape == (1, 3, t, h // 8, w // 8)
+        tau = (t - 1) // 4 + 1
+        assert batch["depth"].shape == (1, tau, h // 8, w // 8)
+        assert batch["normal"].shape == (3, tau, h // 8, w // 8)
 
     def test_extract_auxiliary_no_overwrite(self) -> None:
         """PR-117: _extract_auxiliary_from_fgpp does not overwrite existing keys."""

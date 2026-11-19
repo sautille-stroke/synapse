@@ -594,6 +594,43 @@ def fuse_overlapping_latents(
     return fused.astype(z_prev.dtype)
 
 
+def cross_dissolve_pixels(
+    p_prev: np.ndarray,
+    p_curr: np.ndarray,
+    overlap_steps: int,
+) -> np.ndarray:
+    """Linearly blend overlapping pixel frames using smoothstep weighting.
+
+    Unlike latent-space variance-preserving fusion, pixel blending preserves
+    average radiance and color intensity without 1.41x brightness blowup.
+
+    Args:
+        p_prev: Video frames from the previous window [T, H, W, C].
+        p_curr: Video frames from the current window [T, H, W, C].
+        overlap_steps: Number of overlapping pixel frames.
+
+    Returns:
+        Fused pixel frames with length `overlap_steps`.
+    """
+    if overlap_steps <= 0:
+        return np.empty((0,) + p_prev.shape[1:], dtype=p_prev.dtype)
+    if p_prev.shape[0] < overlap_steps:
+        raise ValueError(f"p_prev has {p_prev.shape[0]} frames, need >= {overlap_steps}")
+    if p_curr.shape[0] < overlap_steps:
+        raise ValueError(f"p_curr has {p_curr.shape[0]} frames, need >= {overlap_steps}")
+
+    t = np.linspace(0.0, 1.0, overlap_steps, endpoint=True, dtype=np.float32)
+    # Smoothstep s(t) = 3*t^2 - 2*t^3
+    alpha = 3.0 * t**2 - 2.0 * t**3
+    shape = [overlap_steps] + [1] * (p_prev.ndim - 1)
+    a = alpha.reshape(shape)
+
+    prev_tail = p_prev[-overlap_steps:].astype(np.float32)
+    curr_head = p_curr[:overlap_steps].astype(np.float32)
+    blended = (1.0 - a) * prev_tail + a * curr_head
+    return blended.astype(p_prev.dtype)
+
+
 # -----------------------------------------------------------------------
 # compute_latent_flow_operator — motion-vector to latent displacement
 # -----------------------------------------------------------------------

@@ -68,6 +68,21 @@ def _extract_cam_kw(kwargs: dict[str, Any] | Any) -> dict[str, Any]:
     return cam_kw
 
 
+def _extract_cam_kw(kwargs: dict[str, Any] | Any) -> dict[str, Any]:
+    """Extract intrinsic and optical camera parameters to forward to _make_camera."""
+    cam_kw: dict[str, Any] = {}
+    if isinstance(kwargs, dict):
+        if "z_near" in kwargs and kwargs["z_near"] is not None:
+            cam_kw["z_near"] = float(kwargs["z_near"])
+        if "z_far" in kwargs and kwargs["z_far"] is not None:
+            cam_kw["z_far"] = float(kwargs["z_far"])
+        if "aperture_fstop" in kwargs and kwargs["aperture_fstop"] is not None:
+            cam_kw["aperture_fstop"] = float(kwargs["aperture_fstop"])
+        if "shutter_angle_deg" in kwargs and kwargs["shutter_angle_deg"] is not None:
+            cam_kw["shutter_angle_deg"] = float(kwargs["shutter_angle_deg"])
+    return cam_kw
+
+
 def _make_camera(
     eye: np.ndarray,
     target: np.ndarray,

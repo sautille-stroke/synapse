@@ -61,7 +61,10 @@ class RefinementROI:
         Returns:
             ``np.ndarray`` of shape ``(H, W, 3)`` with dtype ``uint8``.
         """
-        linear = np.clip(self.crop_acescg, 0.0, 1.0)
+        from synapse.style.aces_color import acescg_to_linear_srgb
+
+        linear_srgb = acescg_to_linear_srgb(self.crop_acescg.astype(np.float64))
+        linear = np.clip(linear_srgb, 0.0, 1.0)
         srgb = np.where(
             linear <= 0.0031308,
             12.92 * linear,

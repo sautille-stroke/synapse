@@ -78,7 +78,7 @@ class CameraParams:
         if self.fx > 0 and self.fy > 0:
             p00 = 2.0 * float(self.fx) / w
             p11 = 2.0 * float(self.fy) / h
-            p02 = (2.0 * float(self.cx) - w) / w
+            p02 = (w - 2.0 * float(self.cx)) / w
             p12 = (2.0 * float(self.cy) - h) / h
         else:
             fov_rad = math.radians(self.fov_degrees or 60.0)
@@ -143,6 +143,116 @@ class CameraParams:
             z_far=d.get("z_far", 1000.0),
             aperture_fstop=d.get("aperture_fstop", 0.0),
             shutter_angle_deg=d.get("shutter_angle_deg", 180.0),
+        )
+
+
+class CameraConvention:
+    """Identifies and converts between camera projection conventions.
+
+    Supported conventions:
+    - OPENGL: NDC z in [-1, 1], right-handed
+    - VULKAN_RH_ZO: NDC z in [0, 1], right-handed (Vulkan default)
+    - FULGUR_INF_REVERSED_Z: Infinite reversed-Z (p22==0, p32==-1, p23==z_near)
+    - ORTHOGRAPHIC: Orthographic projection (p32==0)
+    """
+
+    OPENGL = "opengl"
+    VULKAN_RH_ZO = "vulkan_rh_zo"
+    FULGUR_INF_REVERSED_Z = "fulgur_inf_reversed_z"
+    ORTHOGRAPHIC = "orthographic"
+    UNKNOWN = "unknown"
+
+    @staticmethod
+    def detect(proj: np.ndarray) -> str:
+        """Detect the camera convention from a 4x4 projection matrix (row-major).
+
+        Returns one of the CameraConvention string constants.
+        """
+        p22 = float(proj[2, 2])
+        p23 = float(proj[2, 3])
+        p32 = float(proj[3, 2])
+
+        # Orthographic: p32 == 0
+        if abs(p32) < 1e-8:
+            return CameraConvention.ORTHOGRAPHIC
+
+        # Fulgur infinite reversed-Z: p22 == 0, p32 == -1, p23 == z_near
+        if abs(p22) < 1e-8 and abs(p32 + 1.0) < 1e-6 and p23 > 0:
+            return CameraConvention.FULGUR_INF_REVERSED_Z
+
+        # Vulkan RH_ZO [0,1]: p22 = -far/(far-near), p23 = -(far*near)/(far-near)
+        # For standard perspective: p32 == -1, and 0 < -p22 < 1
+        if abs(p32 + 1.0) < 1e-6 and p22 < 0.0 and p22 > -1.0 - 1e-6:
+            return CameraConvention.VULKAN_RH_ZO
+
+        # OpenGL [-1,1]: p22 = -(far+near)/(far-near), p32 == -1
+        if abs(p32 + 1.0) < 1e-6:
+            return CameraConvention.OPENGL
+
+        return CameraConvention.UNKNOWN
+
+    @staticmethod
+    def to_opengl(proj: np.ndarray, convention: str) -> np.ndarray:
+        """Convert a projection matrix to OpenGL convention [-1, 1] z range.
+
+        Parameters
+        ----------
+        proj:
+            4x4 row-major projection matrix.
+        convention:
+            Source convention string.
+
+        Returns
+        -------
+        np.ndarray
+            4x4 projection matrix in OpenGL convention.
+        """
+        out = proj.copy()
+        if convention == CameraConvention.OPENGL:
+            return out
+        elif convention == CameraConvention.VULKAN_RH_ZO:
+            # Convert from [0,1] to [-1,1]: p22' = 2*p22 + 1, p23' = 2*p23
+            out[2, 2] = 2.0 * proj[2, 2] + 1.0
+            out[2, 3] = 2.0 * proj[2, 3]
+            return out
+        elif convention == CameraConvention.FULGUR_INF_REVERSED_Z:
+            # Infinite reversed-Z: p22=0, p32=-1, p23=z_near
+            # Reconstruct a standard OpenGL matrix with z_far = 10000 * z_near
+            z_near = float(proj[2, 3])
+            z_far = 10000.0 * max(z_near, 1e-7)
+            out[2, 2] = -(z_far + z_near) / (z_far - z_near)
+            out[2, 3] = -2.0 * z_far * z_near / (z_far - z_near)
+            return out
+        # ORTHOGRAPHIC or UNKNOWN: return as-is
+        return out
+
+
+def _validate_view_matrix_so3(view_row: np.ndarray, frame_id: int | str) -> None:
+    """Validate that a 4x4 view matrix has valid SO(3) rotation and [0,0,0,1] bottom row."""
+    if view_row.shape != (4, 4):
+        return  # Skip validation for non-4x4 matrices
+
+    # Validate bottom row [0, 0, 0, 1]
+    if not np.allclose(view_row[3], [0.0, 0.0, 0.0, 1.0], atol=1e-4):
+        raise ContractValidationError(
+            f"Frame {frame_id}: bottom row of view_matrix {view_row[3]} deviates from [0, 0, 0, 1].",
+            agent_fix_hint="Ensure view_matrix has homogeneous last row [0, 0, 0, 1].",
+        )
+
+    # Validate rotation determinant and orthogonality
+    R = view_row[:3, :3]
+    det = float(np.linalg.det(R))
+    if abs(det - 1.0) > 1e-4:
+        raise ContractValidationError(
+            f"Frame {frame_id}: rotation determinant {det:.6f} deviates from 1.0 by more than 1e-4.",
+            agent_fix_hint="Ensure camera rotation is a proper orthogonal matrix with det(R) = +1.0.",
+        )
+
+    ortho_err = float(np.linalg.norm(R.T @ R - np.eye(3)))
+    if ortho_err > 1e-4:
+        raise ContractValidationError(
+            f"Frame {frame_id}: rotation matrix orthogonality error ||R^T R - I||_F = {ortho_err:.6e} > 1e-4.",
+            agent_fix_hint="Ensure camera rotation matrix R satisfies R^T R = I.",
         )
 
 
@@ -314,6 +424,8 @@ class FGPPSequence:
             # Reconstruct camera
             if "camera" in fr:
                 cam = CameraParams.from_dict(fr["camera"])
+                # Validate view_matrix SO(3) even when loaded from camera dict
+                _validate_view_matrix_so3(cam.view_matrix, fr.get("frame_index", "?"))
             else:
                 # Flat camera reconstruction
                 fx, fy = 0.0, 0.0
@@ -328,6 +440,7 @@ class FGPPSequence:
                     p00, p11 = proj_row[0, 0], proj_row[1, 1]
                     p02, p12 = proj_row[0, 2], proj_row[1, 2]
                     p22, p23 = proj_row[2, 2], proj_row[2, 3]
+                    convention = CameraConvention.detect(proj_row)
 
                     if abs(p00) > 1e-6 and width > 0:
                         fx = abs(p00) * float(width) / 2.0
@@ -336,19 +449,39 @@ class FGPPSequence:
                         fov_deg = math.degrees(2.0 * math.atan(float(height) / (2.0 * fy)))
 
                     if width > 0:
-                        cx = (p02 + 1.0) * float(width) / 2.0
+                        cx = (1.0 - p02) * float(width) / 2.0
                     if height > 0:
-                        cy = (p12 + 1.0) * float(height) / 2.0
+                        cy = (1.0 - p12) * float(height) / 2.0
 
-                    # Near and far reconstruction
-                    denom_near = p22 - 1.0
-                    denom_far = p22 + 1.0
-                    if abs(denom_near) > 1e-8 and abs(denom_far) > 1e-8 and abs(p23) > 1e-8:
-                        recovered_near = p23 / denom_near
-                        recovered_far = p23 / denom_far
-                        if 0 < recovered_near < recovered_far:
-                            z_near = float(recovered_near)
-                            z_far = float(recovered_far)
+                    # Near and far reconstruction based on convention
+                    if convention == CameraConvention.FULGUR_INF_REVERSED_Z:
+                        # p22==0, p32==-1, p23==z_near
+                        if p23 > 0:
+                            z_near = float(p23)
+                            z_far = 100000.0  # infinite far
+                    elif convention == CameraConvention.VULKAN_RH_ZO:
+                        # p22 = -far/(far-near), p23 = -(far*near)/(far-near)
+                        if abs(p22) > 1e-8 and abs(p23) > 1e-8:
+                            z_near = float(p23 / p22)
+                            if z_near > 0 and abs(p22 + 1.0) > 1e-8:
+                                z_far = float(p23 / (p22 + 1.0))
+                                if z_far <= z_near:
+                                    z_near, z_far = 0.1, 1000.0
+                            else:
+                                z_near, z_far = 0.1, 1000.0
+                    elif convention == CameraConvention.ORTHOGRAPHIC:
+                        # Orthographic: use sensible defaults
+                        z_near, z_far = 0.1, 1000.0
+                    else:
+                        # OpenGL or unknown: standard recovery
+                        denom_near = p22 - 1.0
+                        denom_far = p22 + 1.0
+                        if abs(denom_near) > 1e-8 and abs(denom_far) > 1e-8 and abs(p23) > 1e-8:
+                            recovered_near = p23 / denom_near
+                            recovered_far = p23 / denom_far
+                            if 0 < recovered_near < recovered_far:
+                                z_near = float(recovered_near)
+                                z_far = float(recovered_far)
 
                 if fx <= 0.0 and fov_deg > 0.0 and height > 0:
                     fy = float(height) / (2.0 * math.tan(math.radians(fov_deg) / 2.0))
@@ -376,28 +509,7 @@ class FGPPSequence:
                     )
                 view_row = col_flat.reshape((4, 4)).T
 
-                # Validate bottom row [0, 0, 0, 1]
-                if not np.allclose(view_row[3], [0.0, 0.0, 0.0, 1.0], atol=1e-4):
-                    raise ContractValidationError(
-                        f"Frame {fr.get('frame_index', '?')}: bottom row of view_matrix {view_row[3]} deviates from [0, 0, 0, 1].",
-                        agent_fix_hint="Ensure view_matrix has homogeneous last row [0, 0, 0, 1].",
-                    )
-
-                # Validate rotation determinant and orthogonality
-                R = view_row[:3, :3]
-                det = float(np.linalg.det(R))
-                if abs(det - 1.0) > 1e-4:
-                    raise ContractValidationError(
-                        f"Frame {fr.get('frame_index', '?')}: rotation determinant {det:.6f} deviates from 1.0 by more than 1e-4.",
-                        agent_fix_hint="Ensure camera rotation is a proper orthogonal matrix with det(R) = +1.0.",
-                    )
-
-                ortho_err = float(np.linalg.norm(R.T @ R - np.eye(3)))
-                if ortho_err > 1e-4:
-                    raise ContractValidationError(
-                        f"Frame {fr.get('frame_index', '?')}: rotation matrix orthogonality error ||R^T R - I||_F = {ortho_err:.6e} > 1e-4.",
-                        agent_fix_hint="Ensure camera rotation matrix R satisfies R^T R = I.",
-                    )
+                _validate_view_matrix_so3(view_row, fr.get('frame_index', '?'))
 
                 cam.view_matrix = view_row
                 cam.world_matrix = np.linalg.inv(view_row)

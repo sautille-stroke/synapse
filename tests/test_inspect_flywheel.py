@@ -635,6 +635,82 @@ class TestPreloadedGroups:
         )
         assert result["record_count"] == 0
 
+    def test_dpo_rejects_empty_initial_state_cross_matching(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Intents with empty initial_state_uri are not cross-matched."""
+        groups = [
+            IntentGroup(
+                intent_id="rej_empty",
+                asset_id="ax",
+                undo_triggered=True,
+                final_passed_gate=False,
+                initial_state_uri="",
+                final_state_uri="file:///bad.glb",
+            ),
+            IntentGroup(
+                intent_id="good_empty",
+                asset_id="ax",
+                undo_triggered=False,
+                final_passed_gate=True,
+                initial_state_uri="",
+                final_state_uri="file:///good.glb",
+            ),
+        ]
+        out = tmp_path / "dpo_empty.jsonl"
+        log_dir = tmp_path / "dummy_logs"
+        log_dir.mkdir(exist_ok=True)
+        result = export_rl_flywheel_dataset(
+            log_dir=log_dir,
+            output_path=out,
+            format="dpo",
+            intent_groups=groups,
+        )
+        assert result["record_count"] == 0
+
+    def test_dpo_does_not_reuse_chosen_intent_id(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A chosen intent is paired at most once (no duplication)."""
+        groups = [
+            IntentGroup(
+                intent_id="rej_1",
+                asset_id="ax",
+                undo_triggered=True,
+                final_passed_gate=False,
+                initial_state_uri="file:///state.glb",
+                final_state_uri="file:///bad_1.glb",
+            ),
+            IntentGroup(
+                intent_id="rej_2",
+                asset_id="ax",
+                undo_triggered=True,
+                final_passed_gate=False,
+                initial_state_uri="file:///state.glb",
+                final_state_uri="file:///bad_2.glb",
+            ),
+            IntentGroup(
+                intent_id="good_1",
+                asset_id="ax",
+                undo_triggered=False,
+                final_passed_gate=True,
+                initial_state_uri="file:///state.glb",
+                final_state_uri="file:///good_1.glb",
+            ),
+        ]
+        out = tmp_path / "dpo_single_chosen.jsonl"
+        log_dir = tmp_path / "dummy_logs"
+        log_dir.mkdir(exist_ok=True)
+        result = export_rl_flywheel_dataset(
+            log_dir=log_dir,
+            output_path=out,
+            format="dpo",
+            intent_groups=groups,
+        )
+        assert result["record_count"] == 1
+
 
 # -------------------------------------------------------------------
 # CLI tests

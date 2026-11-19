@@ -1,9 +1,9 @@
 # M33–M36 Post-Horizon-8 全域复盘整改、原生扩围与真白盒演进计划 (Actionable Horizon-9 Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.7`**）
-> - **触发审计基线**: [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)（`main` @ `df93ac7`）
+> - **触发审计基线**: [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)（`main` @ `df93ac7`）
 > - **规划模型**: `[gemini4]`
-> - **当前状态**: 📋 **已规划待执行 (Planned — 对应 PR `#132` 合入后立即开启 Wave 32，目标发布 `Release v4.0.0`)**
+> - **当前状态**: 🚀 **Wave 33 (M34) 已完成 — PR-133 ~ PR-142 已合入 `main`，`ubuntu24` 全量测试通过**
 > - **目标周期**: 4 个里程碑（`M33` – `M36`）、4 个并发 Execution Waves（`Wave 32` – `Wave 35`）、**20 个原子 PR**（`PR-133` – `PR-152`，紧接整体审查与规划 PR `#132`，实现 GitHub PR 号 1:1 严格对齐）
 
 > [!IMPORTANT]
@@ -18,7 +18,7 @@
 
 ## 1. 全景概览、战略支柱映射与 Wave 32–35 调度拓扑
 
-[`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 在 `main` @ `df93ac7`（`v3.6.0`）上经过五切片逐行复审、跨仓 SSOT 核对（`../aether`、`../render-farm`、`../grand-studio`、`../fulgur`、`../caelum-core`）及 `ubuntu24` 无竞争独立复测 12 项门禁后确认：虽然静态工程基线显著改善（`209` 文件 `mypy --strict` 零错、Ruff 8 条核心规则解禁零报错、`1,156` 条文档链接零断链），但仍存在 **`18×P0 + 24×P1 + 12×P2 + 4×P3 = 58`** 项实证缺陷（含 **4 项 Horizon-8 新引入的必崩回归**），且测试 SLA（单进程快测 `38.60s` > `25s`，慢测 `90.75s` > `45s`）、`.github/workflows/ci.yml` 缺失与核心算子代差（`0` `diffusers` 接线、`32³` 玩具体素、`38.6 GB` `float64` 内存爆炸）尚未真正闭合。
+[`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 在 `main` @ `df93ac7`（`v3.6.0`）上经过五切片逐行复审、跨仓 SSOT 核对（`../aether`、`../render-farm`、`../grand-studio`、`../fulgur`、`../caelum-core`）及 `ubuntu24` 无竞争独立复测 12 项门禁后确认：虽然静态工程基线显著改善（`209` 文件 `mypy --strict` 零错、Ruff 8 条核心规则解禁零报错、`1,156` 条文档链接零断链），但仍存在 **`18×P0 + 24×P1 + 12×P2 + 4×P3 = 58`** 项实证缺陷（含 **4 项 Horizon-8 新引入的必崩回归**），且测试 SLA（单进程快测 `38.60s` > `25s`，慢测 `90.75s` > `45s`）、`.github/workflows/ci.yml` 缺失与核心算子代差（`0` `diffusers` 接线、`32³` 玩具体素、`38.6 GB` `float64` 内存爆炸）尚未真正闭合。
 
 **Horizon 9 (`M33–M36`, `PR-133 ~ PR-152`)** 将“止血回归清零”与“七大战略级架构进化支柱”合龙为四个递进里程碑，将全仓健康度从 **`67/100`** 推进至 **`>= 95/100`**（`Release v4.0.0`）。
 
@@ -90,7 +90,7 @@ flowchart LR
 | :--- | :---: | :--- | :--- |
 | **Wave 32** | **M33** | `PR-133` → (`PR-134` ∥ `PR-135` ∥ `PR-136`) → `PR-137` | 激活真 GitHub CI + Bazel `opt`、修 `p02` 与跨仓 RFC 0039 `JobBundle`、解 `_rsi.py` 崩溃、封 GLB 溢出越界并通三端 SHM、修 EDT/Style/Viewer |
 | **Wave 33** | **M34** | (`PR-138` → `PR-139` → `PR-140`) ∥ (`PR-141` → `PR-142`) | 合并网格与流式 `<1.5GB` 架构、打通 `WanAdapter`+真 `DiffusersWanBackend`、CUDA+时域对齐 PEFT 训练、绑定 `@aether//geo`、真 3D 逆向与 `Mitsuba` |
-| **Wave 34** | **M35** | `PR-143` ∥ `PR-144` → `PR-145` ∥ `PR-146` ∥ `PR-147` | 解剖精修与 HITL 账本闭环、30 场景真实评测+GSO 资产、无参考/世界尺度评估与 RSI 飞轮桥、多源/真 EXR Inspector、Colab/Datasets 真运行 |
+| **Wave 34** | **M35** | `PR-143` ∥ `PR-144` → `PR-145` ∥ `PR-146` ∥ `PR-147` | 解剖精修与 HITL 账本闭环、30 场景真实评测+GSO 资产、无参考/世界尺度评估与 RSI 飞轮桥、多源/真 EXR Inspector、Colab/Datasets 真运行 ✅ |
 | **Wave 35** | **M36** | (`PR-148` ∥ `PR-149` ∥ `PR-150` ∥ `PR-151`) → `PR-152` | 反恒等跨仓/往返测试、`hypothesis`/ASan Fuzz、单进程快测 `<=20s` / 慢测 `<=40s`、文档三层收敛、14 项硬门禁双端绿灯封板 `v4.0.0` |
 
 ---
@@ -382,7 +382,7 @@ flowchart LR
 ## 4. M35 (Wave 34): 解剖精修闭环、真 `Synapse-Bench`、RSI 桥接与 `Data Inspector` 完备化
 
 <a id="pr-143"></a>
-#### PR-143: 打通 `synapse.refine`（旁路 100dB / EMA / Fusion / Tiled / 多候选集成 / HITL 写盘） (`M35 / Wave 34`)
+#### PR-143: 打通 `synapse.refine`（旁路 100dB / EMA / Fusion / Tiled / 多候选集成 / HITL 写盘） (`M35 / Wave 34`) ✅ 已实施
 
 - **对应审计项 / 战略支柱**: `H9-P0-17` · `H9-P1-11` · `H9-P1-15` · `H9-P1-16` · `H9-P2-12` · `H9-P3-03` · `H9-P3-04` / 支柱五
 - **前置依赖**: `PR-137`, `PR-142`
@@ -412,7 +412,7 @@ flowchart LR
 ---
 
 <a id="pr-144"></a>
-#### PR-144: 修复 `BenchPipelineRunner` 回归、激活 22/30 场景真实参数与 GSO 扫描资产、硬化 `metrics` 全维度门禁 (`M35 / Wave 34`)
+#### PR-144: 修复 `BenchPipelineRunner` 回归、激活 22/30 场景真实参数与 GSO 扫描资产、硬化 `metrics` 全维度门禁 (`M35 / Wave 34`) ✅ 已实施
 
 - **对应审计项 / 战略支柱**: `H9-P0-05` · `H9-P0-18` · `H9-P1-06` · `H9-P1-17` · `H9-P2-01` · `H9-P2-07` · `H9-P3-01` / 支柱六
 - **前置依赖**: `PR-135`, `PR-138`, `PR-142`
@@ -439,7 +439,7 @@ flowchart LR
 ---
 
 <a id="pr-145"></a>
-#### PR-145: 修复 `model_evaluator` 无参考模式与世界尺度、`macro`/`align`/`inspect_refine`/`HttpJevTransport` 及打通 `RSI` 自演进飞轮自动桥 (`M35 / Wave 34`)
+#### PR-145: 修复 `model_evaluator` 无参考模式与世界尺度、`macro`/`align`/`inspect_refine`/`HttpJevTransport` 及打通 `RSI` 自演进飞轮自动桥 (`M35 / Wave 34`) ✅ 已实施
 
 - **对应审计项 / 战略支柱**: `H9-P0-06` · `H9-P1-18` · `H9-P1-19` / 支柱六
 - **前置依赖**: `PR-142`, `PR-144`
@@ -467,7 +467,7 @@ flowchart LR
 ---
 
 <a id="pr-146"></a>
-#### PR-146: 完备化 `Data Inspector`（多源网格管理、真 15ch EXR AOV、同步截图/`resize` 与四标签页桌面交互） (`M35 / Wave 34`)
+#### PR-146: 完备化 `Data Inspector`（多源网格管理、真 15ch EXR AOV、同步截图/`resize` 与四标签页桌面交互） (`M35 / Wave 34`) ✅ 已实施
 
 - **对应审计项 / 战略支柱**: `H9-P1-20` · `H9-P2-10` / 支柱六
 - **前置依赖**: `PR-136`
@@ -494,7 +494,7 @@ flowchart LR
 ---
 
 <a id="pr-147"></a>
-#### PR-147: 修复 `prepare_datasets` 崩溃与诚实溯源、`colab_runner` 真 E1/E4、资产离线快速路径及 Colab `setup`/`io_spec` 对齐 (`M35 / Wave 34`)
+#### PR-147: 修复 `prepare_datasets` 崩溃与诚实溯源、`colab_runner` 真 E1/E4、资产离线快速路径及 Colab `setup`/`io_spec` 对齐 (`M35 / Wave 34`) ✅ 已实施
 
 - **对应审计项 / 战略支柱**: `H9-P0-11` · `H9-P0-12` · `H9-P1-21` · `H9-P1-22` · `H9-P3-02` / 支柱四、支柱六
 - **前置依赖**: `PR-139`, `PR-140`, `PR-141`

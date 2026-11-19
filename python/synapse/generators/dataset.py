@@ -167,20 +167,30 @@ class DatasetGenerator:
         # 3. Partition train / val split
         # Strategy: uniformly space validation frames across sequence
         num_frames = len(cameras)
-        num_val = max(1, int(round(num_frames * cfg.val_ratio)))
-        val_step = max(1, num_frames // num_val)
-        val_indices = set(range(0, num_frames, val_step)[:num_val])
+        if cfg.val_ratio > 0.0:
+            num_val = max(1, int(round(num_frames * cfg.val_ratio)))
+            val_step = max(1, num_frames // num_val)
+            val_indices = set(range(0, num_frames, val_step)[:num_val])
+        else:
+            num_val = 0
+            val_indices = set()
         train_indices = [i for i in range(num_frames) if i not in val_indices]
         val_indices_list = sorted(list(val_indices))
 
         # 4. Rendering loop
-        rgb_frames: list[np.ndarray] = []
-        depth_vis_frames: list[np.ndarray] = []
         fgpp_frames: list[FGPPFrame] = []
         frame_records: list[dict[str, Any]] = []
 
-        import cv2  # lazy: heavy native dependency, not needed at import time
-        from PIL import Image  # lazy: optional image extra
+        from synapse.errors import BackendUnavailableError
+
+        try:
+            import cv2  # lazy: heavy native dependency, not needed at import time
+            from PIL import Image  # lazy: optional image extra
+        except (ImportError, Exception) as err:
+            raise BackendUnavailableError(
+                f"cv2 or PIL not available for dataset rendering: {err}",
+                agent_fix_hint="Install image dependencies via pip install synapse[image] or install opencv-python and pillow.",
+            ) from err
 
         fourcc = cv2.VideoWriter.fourcc(*"mp4v")
         video_path = out_dir / "video_all.mp4"
@@ -191,11 +201,14 @@ class DatasetGenerator:
         train_writer = cv2.VideoWriter(
             str(train_video_path), fourcc, cfg.fps, (cfg.width, cfg.height)
         )
-        val_writer = cv2.VideoWriter(str(val_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
+        val_writer = (
+            cv2.VideoWriter(str(val_video_path), fourcc, cfg.fps, (cfg.width, cfg.height))
+            if num_val > 0
+            else None
+        )
 
-        from synapse.errors import BackendUnavailableError
-
-        if not video_writer.isOpened() or not train_writer.isOpened() or not val_writer.isOpened():
+        writers_ok = video_writer.isOpened() and train_writer.isOpened() and (val_writer is None or val_writer.isOpened())
+        if not writers_ok:
             raise BackendUnavailableError(
                 "cv2.VideoWriter failed to open video codecs for writing",
                 agent_fix_hint="Check ffmpeg and OpenCV video codec availability for mp4v.",
@@ -228,10 +241,9 @@ class DatasetGenerator:
                     else np.zeros((*render_res.depth.shape, 3), dtype=np.float32)
                 )
 
-                from synapse.style.aces_color import acescg_to_linear_srgb, linear_to_srgb
+                from synapse.style.aces_color import linear_to_srgb
 
-                _lin = acescg_to_linear_srgb(_radiance)
-                _srgb = linear_to_srgb(_lin)
+                _srgb = linear_to_srgb(_radiance)
                 _rgb = np.clip(np.round(_srgb * 255.0), 0, 255).astype(np.uint8)
 
                 # Assert required channels are present (rasterizer always produces them)
@@ -259,9 +271,9 @@ class DatasetGenerator:
                 # Write to video
                 bgr_frame = cv2.cvtColor(_rgb, cv2.COLOR_RGB2BGR)
                 video_writer.write(bgr_frame)
-                if is_val:
+                if is_val and val_writer is not None:
                     val_writer.write(bgr_frame)
-                else:
+                elif not is_val:
                     train_writer.write(bgr_frame)
 
                 # Save NPZ for FGPP channel data
@@ -274,13 +286,15 @@ class DatasetGenerator:
                     mask=_mask.astype(np.uint8),
                 )
 
-                # FGPP Frame dataclass
+                # FGPP Frame dataclass with all 15 channels
                 fgpp_frame = FGPPFrame(
                     camera=cam,
                     depth=render_res.depth,
                     direct_radiance=render_res.direct_radiance,
                     world_normal=render_res.world_normal.astype(np.float16),
                     motion_vector=render_res.motion_vector.astype(np.float16),
+                    base_color=render_res.base_color,
+                    roughness_metallic=render_res.roughness_metallic,
                     cryptomatte_id=render_res.cryptomatte_id,
                     frame_index=i,
                 )
@@ -299,9 +313,6 @@ class DatasetGenerator:
                     }
                 )
 
-                rgb_frames.append(_rgb)
-                depth_vis_frames.append(depth_rgb)
-
                 # Generate contact sheet for middle frame or key frame
                 if i == num_frames // 4:
                     contact = make_contact_sheet(
@@ -316,7 +327,8 @@ class DatasetGenerator:
         finally:
             video_writer.release()
             train_writer.release()
-            val_writer.release()
+            if val_writer is not None:
+                val_writer.release()
 
         # 5. FGPP sequence metadata and OpenEXR export
         fgpp_seq = FGPPSequence(
@@ -327,8 +339,8 @@ class DatasetGenerator:
         try:
             from synapse.fgpp.io import export_fgpp
 
-            export_fgpp(fgpp_seq, fgpp_dir)
-        except (ImportError, OSError):
+            export_fgpp(fgpp_seq, fgpp_dir, strict=False)
+        except (ImportError, OSError, BackendUnavailableError):
             fgpp_seq.save_metadata(fgpp_dir)
 
         # 6. Overall Dataset Manifest

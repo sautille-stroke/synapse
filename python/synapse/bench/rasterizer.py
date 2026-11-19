@@ -26,5 +26,4 @@ def __getattr__(name: str) -> Any:
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-
 __all__ = ["SoftwareRasterizer", "entity_hash"]

@@ -322,13 +322,18 @@ def export_inspection_bundle(
     if generated_frames:
         gen_out = output_dir / "generated" / "video_frames"
         gen_out.mkdir(parents=True, exist_ok=True)
+        seen_names: set[str] = set()
         for idx, fp in enumerate(generated_frames):
             fp = Path(fp)
-            dst = gen_out / fp.name
+            fname = fp.name
+            if fname in seen_names:
+                fname = f"{idx:04d}_{fp.name}"
+            seen_names.add(fname)
+            dst = gen_out / fname
             _safe_copy(fp, dst)
             sources[f"generated_{idx}"] = SourceEntry(
-                path=f"generated/video_frames/{fp.name}",
-                media_type=_guess_media_type(fp.name),
+                path=f"generated/video_frames/{fname}",
+                media_type=_guess_media_type(fname),
                 sha256=_compute_sha256(dst),
             )
 
@@ -351,13 +356,18 @@ def export_inspection_bundle(
     if animations:
         anim_out = output_dir / "animations"
         anim_out.mkdir(parents=True, exist_ok=True)
+        seen_anims: set[str] = set()
         for idx, anim_path in enumerate(animations):
             anim_path = Path(anim_path)
-            dst = anim_out / anim_path.name
+            aname = anim_path.name
+            if aname in seen_anims:
+                aname = f"{idx:04d}_{anim_path.name}"
+            seen_anims.add(aname)
+            dst = anim_out / aname
             _safe_copy(anim_path, dst)
             sources[f"animation_{idx}"] = SourceEntry(
-                path=f"animations/{anim_path.name}",
-                media_type=_guess_media_type(anim_path.name),
+                path=f"animations/{aname}",
+                media_type=_guess_media_type(aname),
                 sha256=_compute_sha256(dst),
             )
 
@@ -365,9 +375,27 @@ def export_inspection_bundle(
     metrics_out = output_dir / "metrics"
     metrics_out.mkdir(parents=True, exist_ok=True)
     interval = DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES
+    num_f = (
+        len(generated_frames)
+        if generated_frames
+        else (
+            len([f for f in Path(fgpp_dir).iterdir() if f.is_file()])
+            if fgpp_dir is not None and Path(fgpp_dir).is_dir()
+            else 97
+        )
+    )
+    if num_f <= 1:
+        anchor_frames = [0]
+    elif num_f <= interval:
+        anchor_frames = [0, num_f // 2, num_f - 1]
+    else:
+        anchor_frames = [i * interval for i in range(max(1, (num_f - 1) // interval + 1))]
+        if (num_f - 1) not in anchor_frames:
+            anchor_frames.append(num_f - 1)
+
     comparison_payload: dict[str, Any] = {
         "scenario_name": scenario_name,
-        "anchor_frames": [i * interval for i in range(3)],  # [0, 48, 96]
+        "anchor_frames": anchor_frames,
         "defect_regions": [],
     }
     if metrics_dict:

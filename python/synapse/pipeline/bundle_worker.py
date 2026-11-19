@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Callable, Iterator
 from enum import Enum
@@ -63,6 +64,11 @@ CLOSURE_TYPE_MAP: dict[str, str] = {
 }
 """Mapping from RFC 0039 ``closure_type`` to synapse stage names."""
 
+# W3C traceparent pattern: version-trace_id-parent_id-trace_flags
+_TRACEPARENT_RE = re.compile(
+    r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+)
+
 
 class HardwareBudget(BaseModel):
     """Hardware resource budget for a single job execution.
@@ -76,6 +82,78 @@ class HardwareBudget(BaseModel):
 
     free_vram_gb: float = 24.0
     max_cpu_cores: int = 8
+
+    @field_validator("free_vram_gb")
+    @classmethod
+    def _check_vram(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError(
+                f"free_vram_gb must be >= 0, got {v}"
+            )
+        return v
+
+    @field_validator("max_cpu_cores")
+    @classmethod
+    def _check_cores(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(
+                f"max_cpu_cores must be >= 1, got {v}"
+            )
+        return v
+
+
+class EngineSpec(BaseModel):
+    """Upstream engine specification from RFC 0039 JobBundle.
+
+    Attributes:
+        name: Engine name (e.g. ``"fulgur"``, ``"caelum"``).
+        version: Engine version string.
+        mode: Execution mode (e.g. ``"realtime"``, ``"offline"``).
+    """
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    name: str = ""
+    version: str = ""
+    mode: str = ""
+
+
+class OutputSink(BaseModel):
+    """Upstream output sink specification from RFC 0039 JobBundle.
+
+    Attributes:
+        format: Output format (e.g. ``"mp4"``, ``"exr"``, ``"npy"``).
+        channels: Requested output channels.
+        write_capability: Where output is written.
+    """
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    format: str = ""
+    channels: list[str] = Field(default_factory=list)
+    write_capability: str = ""
+
+
+class SceneSpec(BaseModel):
+    """Upstream scene specification from RFC 0039 JobBundle.
+
+    Attributes:
+        resolution: ``[width, height]`` pixel dimensions.
+        frame_range: ``[start, end]`` frame indices (inclusive).
+        camera: Camera identifier or parameters.
+        crop_window: Optional ``[x0, y0, x1, y1]`` normalised crop region.
+        target_crypto_ids: Cryptomatte entity IDs to focus on.
+    """
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    resolution: list[int] | None = None
+    frame_range: list[int] | None = Field(default=None, alias="frameRange")
+    camera: str | dict[str, Any] | None = None
+    crop_window: list[float] | None = Field(default=None, alias="cropWindow")
+    target_crypto_ids: list[int] | None = Field(
+        default=None, alias="targetCryptoIds"
+    )
 
 
 class BundleManifest(BaseModel):
@@ -113,6 +191,17 @@ class BundleManifest(BaseModel):
         if v != "synapse.job_bundle.v1.0":
             raise ValueError(
                 f"Unsupported schema_version '{v}'; expected 'synapse.job_bundle.v1.0'"
+            )
+        return v
+
+    @field_validator("traceparent")
+    @classmethod
+    def _check_traceparent(cls, v: str | None) -> str | None:
+        if v is not None and not _TRACEPARENT_RE.match(v):
+            raise ValueError(
+                f"Invalid W3C traceparent format: {v!r}. "
+                "Expected: <version>-<trace-id>-<parent-id>-<flags> "
+                "(hex, e.g. '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01')."
             )
         return v
 
@@ -162,12 +251,14 @@ class BundleManifest(BaseModel):
             )
 
         # Validate asset_manifest SHA-256 checksums
+        # Accept both ``path`` and ``logical_path`` keys; also allow
+        # ``size_bytes`` and ``payload: null`` without error.
         asset_manifest = raw.get("asset_manifest", [])
         for entry in asset_manifest:
             if not isinstance(entry, dict):
                 continue
             expected_sha = entry.get("sha256", "")
-            asset_path = entry.get("path", "")
+            asset_path = entry.get("path", "") or entry.get("logical_path", "")
             if expected_sha and asset_path:
                 p = Path(asset_path)
                 if p.is_file():
@@ -190,10 +281,20 @@ class BundleManifest(BaseModel):
                         ),
                     )
 
-        # Also check input_sha256s if present
-        input_sha256s = raw.get("input_sha256s", {})
+        # Also check input_sha256s if present — search in scene_spec,
+        # inputs, and payload (not just payload).
+        input_sha256s: dict[str, str] = raw.get("input_sha256s", {})
+        scene_spec_raw = raw.get("scene_spec", {}) or {}
+        payload_raw = raw.get("payload", {}) or {}
+        inputs_raw = raw.get("inputs", {}) or {}
+
         for key, expected_sha in input_sha256s.items():
-            asset_path = raw.get("payload", {}).get(key, "")
+            # Try to resolve the actual file path from scene_spec, inputs, then payload
+            asset_path = (
+                scene_spec_raw.get(key, "")
+                or inputs_raw.get(key, "")
+                or payload_raw.get(key, "")
+            )
             if expected_sha and asset_path:
                 p = Path(str(asset_path))
                 if p.is_file():
@@ -208,36 +309,100 @@ class BundleManifest(BaseModel):
                                 "with the correct contents."
                             ),
                         )
+                elif not p.exists():
+                    raise AssetNotFoundError(
+                        f"Input file not found for '{key}': {asset_path!r}",
+                        agent_fix_hint=(
+                            f"Ensure '{asset_path}' exists on disk before submitting the JobBundle."
+                        ),
+                    )
 
         # Build normalised inputs/outputs/params from scene_spec + payload
-        scene_spec = raw.get("scene_spec", {})
-        payload = raw.get("payload", {})
-        output_sink = raw.get("output_sink", {})
+        output_sink_raw = raw.get("output_sink", {}) or {}
 
         inputs: dict[str, str] = {}
         outputs: dict[str, str] = {}
         params: dict[str, Any] = {}
 
-        # Map scene_spec fields to inputs
-        if isinstance(scene_spec, dict):
-            for k, v in scene_spec.items():
+        # Parse SceneSpec and map string fields to inputs, structured fields to params
+        if isinstance(scene_spec_raw, dict):
+            try:
+                scene_spec = SceneSpec.model_validate(scene_spec_raw)
+            except Exception:
+                scene_spec = None
+
+            for k, v in scene_spec_raw.items():
                 if isinstance(v, str):
                     inputs[k] = v
+                else:
+                    params[k] = v
 
-        # Merge payload into params
-        if isinstance(payload, dict):
-            params.update(payload)
+            # Also propagate parsed SceneSpec fields into params for downstream
+            if scene_spec is not None:
+                if scene_spec.resolution is not None:
+                    params.setdefault("resolution", scene_spec.resolution)
+                if scene_spec.frame_range is not None:
+                    params.setdefault("frame_range", scene_spec.frame_range)
+                if scene_spec.crop_window is not None:
+                    params.setdefault("crop_window", scene_spec.crop_window)
+                if scene_spec.target_crypto_ids is not None:
+                    params.setdefault("target_crypto_ids", scene_spec.target_crypto_ids)
 
-        # Map output_sink to outputs
-        if isinstance(output_sink, dict):
-            for k, v in output_sink.items():
+        # Merge payload into params (payload: null is acceptable)
+        if isinstance(payload_raw, dict):
+            params.update(payload_raw)
+
+        # Parse OutputSink and map to outputs
+        if isinstance(output_sink_raw, dict):
+            try:
+                output_sink = OutputSink.model_validate(output_sink_raw)
+            except Exception:
+                output_sink = None
+
+            for k, v in output_sink_raw.items():
                 if isinstance(v, str):
                     outputs[k] = v
 
-        # Extract traceparent from payload or env
+            # Store parsed output_sink metadata in params for downstream access
+            if output_sink is not None:
+                if output_sink.format:
+                    params.setdefault("output_format", output_sink.format)
+                if output_sink.channels:
+                    params.setdefault("output_channels", output_sink.channels)
+                if output_sink.write_capability:
+                    params.setdefault("write_capability", output_sink.write_capability)
+
+        # Parse EngineSpec if present
+        engine_raw = raw.get("engine", {}) or {}
+        if isinstance(engine_raw, dict) and engine_raw:
+            try:
+                engine_spec = EngineSpec.model_validate(engine_raw)
+                if engine_spec.name:
+                    params.setdefault("engine_name", engine_spec.name)
+                if engine_spec.version:
+                    params.setdefault("engine_version", engine_spec.version)
+                if engine_spec.mode:
+                    params.setdefault("engine_mode", engine_spec.mode)
+            except Exception:
+                pass  # Non-critical: best-effort engine metadata
+
+        # Parse HardwareBudget if present
+        hw_budget_raw = raw.get("hardware_budget", {}) or {}
+        hardware_budget = HardwareBudget()
+        if isinstance(hw_budget_raw, dict) and hw_budget_raw:
+            try:
+                hardware_budget = HardwareBudget.model_validate(hw_budget_raw)
+            except Exception:
+                pass  # Fall back to defaults
+
+        # Extract traceparent from raw, payload or env
         traceparent = (
-            raw.get("traceparent") or payload.get("traceparent") or os.environ.get("TRACEPARENT")
+            raw.get("traceparent") or payload_raw.get("traceparent") or os.environ.get("TRACEPARENT")
         )
+
+        # Validate traceparent format if present
+        if traceparent and not _TRACEPARENT_RE.match(traceparent):
+            traceparent = None  # Silently drop invalid traceparent from upstream
 
         return cls(
             schema_version="synapse.job_bundle.v1.0",
@@ -246,6 +411,7 @@ class BundleManifest(BaseModel):
             inputs=inputs,
             outputs=outputs,
             params=params,
+            hardware_budget=hardware_budget,
             traceparent=traceparent,
         )
 
@@ -277,6 +443,8 @@ class ResultManifest(BaseModel):
         timings: Named duration measurements in seconds.
         fallback_level: Applied OOM fallback tier name, if any.
         agent_fix_hint: Machine-readable remediation hint on error.
+        error_type: Error class name on failure (empty on success).
+        message: Human-readable error message on failure (empty on success).
     """
 
     job_id: str
@@ -290,6 +458,8 @@ class ResultManifest(BaseModel):
     timings: dict[str, float] = Field(default_factory=dict)
     fallback_level: str | None = None
     agent_fix_hint: str | None = None
+    error_type: str = ""
+    message: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -606,8 +776,6 @@ def _handle_style_extract_and_map(
     )
 
     # Build sRGB frames for style extraction — no synthetic fallback
-    int(params.get("width", 512))
-    int(params.get("height", 512))
     num_frames = int(params.get("num_frames", 8))
 
     if not frames_dir.is_dir():
@@ -814,6 +982,29 @@ def _compute_sha256(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Ancestor symlink check
+# ---------------------------------------------------------------------------
+
+
+def _check_ancestor_symlinks(p: Path) -> str | None:
+    """Check all ancestor components of *p* for symlink traversal.
+
+    Returns an error message string if any ancestor is a symlink,
+    or ``None`` if the path is clean.
+    """
+    # Walk from root to leaf, checking each component
+    parts = p.parts
+    for i in range(1, len(parts) + 1):
+        ancestor = Path(*parts[:i])
+        if ancestor.is_symlink():
+            return (
+                f"Symlink traversal blocked: ancestor '{ancestor}' "
+                f"in path '{p}' is a symlink."
+            )
+    return None
+
+
+# ---------------------------------------------------------------------------
 # JobBundleWorker
 # ---------------------------------------------------------------------------
 
@@ -827,10 +1018,20 @@ class JobBundleWorker:
 
     Args:
         worker_id: Identifier for this worker instance.
+        workspace_root: Optional workspace root for path sandboxing.
+            When set, all input/output paths must be ``is_relative_to``
+            this directory.
     """
 
-    def __init__(self, worker_id: str = "local") -> None:
+    def __init__(
+        self,
+        worker_id: str = "local",
+        workspace_root: str | None = None,
+    ) -> None:
         self.worker_id = worker_id
+        self.workspace_root: Path | None = (
+            Path(workspace_root).resolve() if workspace_root else None
+        )
 
     def execute(
         self,
@@ -848,19 +1049,46 @@ class JobBundleWorker:
         t_start = time.monotonic()
         _ensure_stage_adapters_loaded()
 
-        # Path normalization and symlink rejection for inputs/outputs.
-        # Check is_symlink() on the *original* path before resolve(),
-        # because resolve() follows symlinks and the resolved path
-        # will never report is_symlink() == True.
+        # Work on a deep copy to avoid mutating the caller's manifest
+        manifest = manifest.model_copy(deep=True)
+
+        # Path normalization, symlink rejection (full ancestor check),
+        # and workspace sandboxing for inputs/outputs and params paths.
         for label, mapping in [("inputs", manifest.inputs), ("outputs", manifest.outputs)]:
             for key, val in mapping.items():
+                # Reject empty strings that degrade to Path(".") CWD
+                if not val or not val.strip():
+                    return ResultManifest(
+                        job_id=manifest.job_id,
+                        stage=manifest.stage,
+                        status="error",
+                        exit_code=10,
+                        error_type="ContractValidationError",
+                        message=(
+                            f"Empty path in {label}['{key}']. "
+                            "Paths must be non-empty strings."
+                        ),
+                        timings={"total_seconds": time.monotonic() - t_start},
+                        agent_fix_hint=(
+                            f"Provide a non-empty path for {label}['{key}']."
+                        ),
+                    )
+
                 raw = Path(val)
+
+                # Check the leaf path itself
                 if raw.is_symlink():
                     return ResultManifest(
                         job_id=manifest.job_id,
                         stage=manifest.stage,
                         status="error",
                         exit_code=10,
+                        error_type="ContractValidationError",
+                        message=(
+                            f"Symlinks are forbidden in {label}: "
+                            f"'{key}' -> '{val}' is a symlink. "
+                            "Use real paths only."
+                        ),
                         timings={"total_seconds": time.monotonic() - t_start},
                         agent_fix_hint=(
                             f"Symlinks are forbidden in {label}: "
@@ -868,7 +1096,101 @@ class JobBundleWorker:
                             "Use real paths only."
                         ),
                     )
-                mapping[key] = str(raw.resolve())
+
+                # Check all ancestor components for symlinks
+                ancestor_err = _check_ancestor_symlinks(raw)
+                if ancestor_err:
+                    return ResultManifest(
+                        job_id=manifest.job_id,
+                        stage=manifest.stage,
+                        status="error",
+                        exit_code=10,
+                        error_type="ContractValidationError",
+                        message=ancestor_err,
+                        timings={"total_seconds": time.monotonic() - t_start},
+                        agent_fix_hint=(
+                            "Remove symlinks from path ancestors. "
+                            "Use real paths only."
+                        ),
+                    )
+
+                resolved = raw.resolve()
+
+                # Workspace root sandboxing
+                if self.workspace_root is not None:
+                    if not resolved.is_relative_to(self.workspace_root):
+                        return ResultManifest(
+                            job_id=manifest.job_id,
+                            stage=manifest.stage,
+                            status="error",
+                            exit_code=10,
+                            error_type="ContractValidationError",
+                            message=(
+                                f"Path escapes workspace sandbox: "
+                                f"{label}['{key}'] = '{val}' resolves to "
+                                f"'{resolved}' which is outside workspace "
+                                f"root '{self.workspace_root}'."
+                            ),
+                            timings={"total_seconds": time.monotonic() - t_start},
+                            agent_fix_hint=(
+                                f"Ensure all {label} paths are within "
+                                f"the workspace root '{self.workspace_root}'."
+                            ),
+                        )
+
+                mapping[key] = str(resolved)
+
+        # Also check params for path-like values
+        for pkey, pval in manifest.params.items():
+            if isinstance(pval, str) and (os.sep in pval or "/" in pval):
+                raw_p = Path(pval)
+                if raw_p.is_symlink():
+                    return ResultManifest(
+                        job_id=manifest.job_id,
+                        stage=manifest.stage,
+                        status="error",
+                        exit_code=10,
+                        error_type="ContractValidationError",
+                        message=(
+                            f"Symlinks are forbidden in params: "
+                            f"'{pkey}' -> '{pval}' is a symlink."
+                        ),
+                        timings={"total_seconds": time.monotonic() - t_start},
+                        agent_fix_hint="Use real paths only in params.",
+                    )
+                ancestor_err = _check_ancestor_symlinks(raw_p)
+                if ancestor_err:
+                    return ResultManifest(
+                        job_id=manifest.job_id,
+                        stage=manifest.stage,
+                        status="error",
+                        exit_code=10,
+                        error_type="ContractValidationError",
+                        message=ancestor_err,
+                        timings={"total_seconds": time.monotonic() - t_start},
+                        agent_fix_hint="Remove symlinks from path ancestors.",
+                    )
+                if self.workspace_root is not None:
+                    resolved_p = raw_p.resolve()
+                    if not resolved_p.is_relative_to(self.workspace_root):
+                        return ResultManifest(
+                            job_id=manifest.job_id,
+                            stage=manifest.stage,
+                            status="error",
+                            exit_code=10,
+                            error_type="ContractValidationError",
+                            message=(
+                                f"Path escapes workspace sandbox: "
+                                f"params['{pkey}'] = '{pval}' resolves to "
+                                f"'{resolved_p}' which is outside workspace "
+                                f"root '{self.workspace_root}'."
+                            ),
+                            timings={"total_seconds": time.monotonic() - t_start},
+                            agent_fix_hint=(
+                                f"Ensure all params paths are within "
+                                f"the workspace root '{self.workspace_root}'."
+                            ),
+                        )
 
         handler = _STAGE_HANDLERS.get(manifest.stage)
         if handler is None:
@@ -877,6 +1199,11 @@ class JobBundleWorker:
                 stage=manifest.stage,
                 status="error",
                 exit_code=10,
+                error_type="ContractValidationError",
+                message=(
+                    f"Unknown stage '{manifest.stage}'. "
+                    f"Registered stages: {get_registered_stages()}"
+                ),
                 timings={
                     "total_seconds": time.monotonic() - t_start,
                 },
@@ -904,6 +1231,8 @@ class JobBundleWorker:
                 stage=manifest.stage,
                 status="error",
                 exit_code=exit_code,
+                error_type=type(exc).__name__,
+                message=str(exc),
                 timings={
                     "total_seconds": t_end - t_start,
                 },
@@ -976,11 +1305,16 @@ def run_worker_cli(
     bundle_path: str,
     json_mode: bool = False,
     trace_ctx: Any | None = None,
+    workspace_root: str | None = None,
 ) -> int:
     """Execute a job bundle from a JSON manifest file.
 
     Reads ``bundle_manifest.json`` from *bundle_path*, runs the worker,
     and writes ``result_manifest.json`` alongside the input.
+
+    Automatically detects RFC 0039 upstream ``JobBundle`` wire format
+    (by presence of ``closure_type`` key) and routes through
+    :meth:`BundleManifest.from_rfc0039_job_bundle` to normalise it.
 
     Args:
         bundle_path: Path to the bundle directory or manifest file.
@@ -988,6 +1322,7 @@ def run_worker_cli(
         trace_ctx: Optional :class:`~synapse.telemetry.TraceContext`
             for correlation.  Falls back to env ``TRACEPARENT`` or
             manifest ``traceparent``.
+        workspace_root: Optional workspace root path for sandboxing.
 
     Returns:
         Process exit code from the result manifest.
@@ -1010,8 +1345,9 @@ def run_worker_cli(
         err = {
             "status": "error",
             "exit_code": 20,
+            "error_type": "AssetNotFoundError",
+            "message": f"Bundle manifest not found: {manifest_file}",
             "trace_id": trace_ctx.trace_id,
-            "message": (f"Bundle manifest not found: {manifest_file}"),
             "agent_fix_hint": (f"Ensure '{manifest_file}' exists and is a valid JSON file."),
         }
         if json_mode:
@@ -1032,8 +1368,9 @@ def run_worker_cli(
         err = {
             "status": "error",
             "exit_code": 10,
-            "trace_id": trace_ctx.trace_id,
+            "error_type": "ContractValidationError",
             "message": f"Invalid JSON in bundle manifest: {exc}",
+            "trace_id": trace_ctx.trace_id,
             "agent_fix_hint": (
                 f"Fix the JSON syntax in the bundle manifest file '{manifest_file}' and retry."
             ),
@@ -1048,18 +1385,31 @@ def run_worker_cli(
             )
         return 10
 
+    # Auto-detect RFC 0039 upstream JobBundle format by presence of
+    # ``closure_type`` key and route through the normaliser.
     try:
-        manifest = BundleManifest(**raw)
+        if "closure_type" in raw:
+            manifest = BundleManifest.from_rfc0039_job_bundle(raw)
+        else:
+            manifest = BundleManifest(**raw)
     except Exception as exc:
+        exit_code = 10
+        from synapse.errors import SynapseError
+
+        if isinstance(exc, SynapseError):
+            exit_code = int(exc.exit_code)
         err = {
             "status": "error",
-            "exit_code": 10,
+            "exit_code": exit_code,
+            "error_type": type(exc).__name__,
+            "message": f"Bundle manifest validation failed: {exc}",
             "trace_id": trace_ctx.trace_id,
-            "message": (f"Bundle manifest validation failed: {exc}"),
             "agent_fix_hint": (
-                "Ensure the bundle manifest conforms to the "
-                "synapse.job_bundle.v1.0 schema. Check required "
-                "fields: job_id, stage, schema_version."
+                getattr(exc, "agent_fix_hint", "")
+                or "Ensure the bundle manifest conforms to the "
+                "synapse.job_bundle.v1.0 schema or is a valid "
+                "RFC 0039 JobBundle with 'closure_type'. Check required "
+                "fields: job_id, stage/closure_type, schema_version."
             ),
         }
         if json_mode:
@@ -1070,7 +1420,7 @@ def run_worker_cli(
                 f"Error: {err['message']}",
                 file=sys.stderr,
             )
-        return 10
+        return exit_code
 
     # Update trace_ctx from manifest if available
     if manifest.traceparent and not trace_ctx.trace_id:
@@ -1078,7 +1428,7 @@ def run_worker_cli(
             {"TRACEPARENT": manifest.traceparent},
         )
 
-    worker = JobBundleWorker()
+    worker = JobBundleWorker(workspace_root=workspace_root)
     result = worker.execute(manifest)
 
     # Write result manifest
@@ -1105,6 +1455,10 @@ def run_worker_cli(
         if result.fallback_level:
             print(
                 f"  Fallback: {result.fallback_level}",
+            )
+        if result.error_type:
+            print(
+                f"  Error: {result.error_type}: {result.message}",
             )
         if result.agent_fix_hint:
             print(

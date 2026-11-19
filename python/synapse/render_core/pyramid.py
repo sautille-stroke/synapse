@@ -38,7 +38,7 @@ def gaussian_kernel_1d(sigma: float, radius: int) -> np.ndarray:
     """
     x = np.arange(-radius, radius + 1, dtype=np.float64)
     k = np.exp(-0.5 * (x / max(sigma, _EPS)) ** 2)
-    return k / k.sum()
+    return np.asarray(k / k.sum())
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def separable_gaussian(
     Returns:
         Blurred array with the same shape and dtype.
     """
-    if sigma < 0.5:
+    if sigma < 0.5 or min(img.shape[:2]) <= 1:
         return np.asarray(img.copy())
 
     orig_dtype = img.dtype
@@ -70,11 +70,12 @@ def separable_gaussian(
     try:
         from scipy.ndimage import gaussian_filter
 
+        mode = "nearest" if min(img.shape[:2]) <= 1 else "reflect"
         return np.asarray(
             gaussian_filter(
                 img.astype(np.float64),
                 sigma=sigma,
-                mode="reflect",
+                mode=mode,
             ).astype(orig_dtype)
         )
     except ImportError:
@@ -85,9 +86,15 @@ def separable_gaussian(
     kernel = gaussian_kernel_1d(sigma, radius)
 
     def _convolve_axis(arr: np.ndarray, axis: int) -> np.ndarray:
+        dim_len = arr.shape[axis]
+        if dim_len <= 1:
+            return arr.copy()
         pad_widths: list[tuple[int, int]] = [(0, 0)] * arr.ndim
         pad_widths[axis] = (radius, radius)
-        padded = np.pad(arr.astype(np.float64), pad_widths, mode="reflect")
+        if dim_len > radius:
+            padded = np.pad(arr.astype(np.float64), pad_widths, mode="reflect")
+        else:
+            padded = np.pad(arr.astype(np.float64), pad_widths, mode="edge")
         out_n = arr.shape[axis]
         result = np.zeros(arr.shape, dtype=np.float64)
         for i, w in enumerate(kernel):
@@ -119,6 +126,8 @@ def upsample2x(
 ) -> np.ndarray:
     """Upsample by ~2× via bilinear interpolation to ``(target_h, target_w, ...)``.
 
+    Vectorized implementation without Python scanline loops.
+
     Args:
         img: ``(H, W)`` or ``(H, W, C)`` array.
         target_h: Output height or tuple shape ``(th, tw, ...)``.
@@ -134,10 +143,8 @@ def upsample2x(
         tw = int(target_w) if target_w is not None else th
 
     h, w = img.shape[:2]
-    if img.ndim == 2:
-        out = np.zeros((th, tw), dtype=img.dtype)
-    else:
-        out = np.zeros((th, tw, img.shape[2]), dtype=img.dtype)
+    orig_dtype = img.dtype
+    img_f = img.astype(np.float64) if np.issubdtype(orig_dtype, np.integer) else img
 
     row_idx = np.clip(
         (np.arange(th, dtype=np.float64) + 0.5) * (h / max(th, 1)) - 0.5, 0.0, float(h - 1)
@@ -155,14 +162,21 @@ def upsample2x(
     cf = (col_idx - c0).astype(np.float64)
 
     if img.ndim == 2:
-        for i in range(th):
-            top = (1.0 - rf[i]) * img[r0[i], :] + rf[i] * img[r1[i], :]
-            out[i, :] = (1.0 - cf) * top[c0] + cf * top[c1]
+        rf_2d = rf[:, np.newaxis]
+        cf_2d = cf[np.newaxis, :]
+        top = (1.0 - cf_2d) * img_f[r0[:, None], c0[None, :]] + cf_2d * img_f[r0[:, None], c1[None, :]]
+        bottom = (1.0 - cf_2d) * img_f[r1[:, None], c0[None, :]] + cf_2d * img_f[r1[:, None], c1[None, :]]
+        out = (1.0 - rf_2d) * top + rf_2d * bottom
     else:
-        for i in range(th):
-            top = (1.0 - rf[i]) * img[r0[i], :, :] + rf[i] * img[r1[i], :, :]
-            out[i, :, :] = (1.0 - cf)[:, np.newaxis] * top[c0, :] + cf[:, np.newaxis] * top[c1, :]
-    return out
+        rf_3d = rf[:, np.newaxis, np.newaxis]
+        cf_3d = cf[np.newaxis, :, np.newaxis]
+        top = (1.0 - cf_3d) * img_f[r0[:, None], c0[None, :], :] + cf_3d * img_f[r0[:, None], c1[None, :], :]
+        bottom = (1.0 - cf_3d) * img_f[r1[:, None], c0[None, :], :] + cf_3d * img_f[r1[:, None], c1[None, :], :]
+        out = (1.0 - rf_3d) * top + rf_3d * bottom
+
+    if np.issubdtype(orig_dtype, np.integer):
+        return np.asarray(np.clip(np.round(out), 0, 255).astype(orig_dtype))
+    return np.asarray(out.astype(orig_dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +186,9 @@ def upsample2x(
 
 def build_gaussian_pyramid(img: np.ndarray, n_levels: int) -> list[np.ndarray]:
     """Build a Gaussian pyramid with ``n_levels + 1`` entries."""
-    pyramid: list[np.ndarray] = [img.copy()]
-    cur = img.copy()
+    work_img = img.astype(np.float32) if np.issubdtype(img.dtype, np.integer) else img
+    pyramid: list[np.ndarray] = [work_img.copy()]
+    cur = work_img.copy()
     for _ in range(n_levels):
         cur = downsample2x(cur)
         pyramid.append(cur)
@@ -182,7 +197,8 @@ def build_gaussian_pyramid(img: np.ndarray, n_levels: int) -> list[np.ndarray]:
 
 def build_laplacian_pyramid(img: np.ndarray, n_levels: int) -> list[np.ndarray]:
     """Build a Laplacian pyramid (last entry is the low-pass residual)."""
-    gaussian = build_gaussian_pyramid(img, n_levels)
+    work_img = img.astype(np.float32) if np.issubdtype(img.dtype, np.integer) else img
+    gaussian = build_gaussian_pyramid(work_img, n_levels)
     lap: list[np.ndarray] = []
     for i in range(n_levels):
         up = upsample2x(gaussian[i + 1], gaussian[i].shape[0], gaussian[i].shape[1])

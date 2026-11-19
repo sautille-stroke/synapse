@@ -286,7 +286,8 @@ def generate_html_report(
         passed = r.error is None and (r.gate_verdict is None or r.gate_verdict.passed)
         name_esc = html.escape(r.scenario_name)
         adapter_esc = html.escape(r.adapter_id)
-        total_ms = r.timings.get("total_ms", 0.0)
+        total_ms_raw = r.timings.get("total_ms", 0.0)
+        total_ms = 0.0 if (total_ms_raw is None or math.isnan(total_ms_raw)) else float(total_ms_raw)
         parts.append(
             f"<tr><td>{name_esc}</td>"
             f"<td>{_status_badge(passed)}</td>"
@@ -342,7 +343,10 @@ def generate_html_report(
     parts.append("</section>")
 
     # Footer
-    total_cpu_ms = sum(r.timings.get("total_ms", 0.0) for r in reports)
+    def _safe_t(val: Any) -> float:
+        return 0.0 if (val is None or math.isnan(val)) else float(val)
+
+    total_cpu_ms = sum(_safe_t(r.timings.get("total_ms", 0.0)) for r in reports)
     adapters = sorted({r.adapter_id for r in reports})
     adapter_str = ", ".join(html.escape(a) for a in adapters)
     parts.append(
@@ -396,6 +400,10 @@ def _compute_pillar_scores(
             pillar_accumulators["fgpp_fidelity"].append(min(m["silhouette_iou"], 1.0))
         if "depth_rmse_m" in m:
             pillar_accumulators["fgpp_fidelity"].append(max(0.0, 1.0 - min(m["depth_rmse_m"], 1.0)))
+        if "normal_angular_error_deg" in m and not math.isnan(m["normal_angular_error_deg"]):
+            pillar_accumulators["fgpp_fidelity"].append(
+                max(0.0, 1.0 - min(m["normal_angular_error_deg"] / 90.0, 1.0))
+            )
 
         # Roundtrip
         if "psnr_db" in m:
@@ -403,6 +411,8 @@ def _compute_pillar_scores(
             pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, m["psnr_db"] / 40.0)))
         if "ssim" in m:
             pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, m["ssim"])))
+        if "chamfer_mm" in m and not math.isnan(m["chamfer_mm"]):
+            pillar_accumulators["roundtrip"].append(max(0.0, 1.0 - min(m["chamfer_mm"] / 50.0, 1.0)))
 
         # Style
         if "style_color_de" in m:

@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
-__version__ = "3.6.0"
+__version__ = "4.0.0"
 
 # ---------------------------------------------------------------------------
 # PEP 562 lazy loading — all subpackages are imported on first access only.
@@ -40,6 +40,7 @@ _SUBMODULES = frozenset(
         "bridge",
         "cli",
         "composite",
+        "errors",
         "fgpp",
         "generators",
         "inspect",
@@ -51,6 +52,7 @@ _SUBMODULES = frozenset(
         "render_core",
         "rsi",
         "style",
+        "telemetry",
         "training",
         "viewer",
     }
@@ -63,6 +65,7 @@ if TYPE_CHECKING:  # pragma: no cover — static analysis only
         bridge,
         cli,
         composite,
+        errors,
         fgpp,
         generators,
         inspect,
@@ -74,6 +77,7 @@ if TYPE_CHECKING:  # pragma: no cover — static analysis only
         render_core,
         rsi,
         style,
+        telemetry,
         training,
         viewer,
     )
@@ -96,6 +100,7 @@ __all__ = [
     "bridge",
     "cli",
     "composite",
+    "errors",
     "fgpp",
     "generators",
     "inspect",
@@ -107,6 +112,7 @@ __all__ = [
     "render_core",
     "rsi",
     "style",
+    "telemetry",
     "training",
     "viewer",
 ]

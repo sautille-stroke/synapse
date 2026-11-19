@@ -59,12 +59,17 @@ class SynapseArgumentParser(argparse.ArgumentParser):
 
 
 def get_json_parent_parser() -> argparse.ArgumentParser:
-    """Return a parent parser defining the common --json flag."""
+    """Return a parent parser defining the common --json flag.
+
+    Uses ``default=argparse.SUPPRESS`` so that ``--json`` only appears in the
+    namespace when explicitly passed, allowing the top-level ``is_json_in_raw``
+    detection to stay authoritative.
+    """
     parent = argparse.ArgumentParser(add_help=False)
     parent.add_argument(
         "--json",
         action="store_true",
-        default=False,
+        default=argparse.SUPPRESS,
         help="Emit machine-readable JSON to stdout (no log noise)",
     )
     return parent
@@ -89,6 +94,10 @@ def _run_with_json_mode(
         Process exit code (``0`` on success, error's ``exit_code``
         on ``SynapseError``, ``10`` on unexpected exceptions).
     """
+    # Ensure args.json is always in sync with the caller's json_mode,
+    # so that handler functions checking ``args.json`` see the correct value.
+    args.json = json_mode
+
     try:
         result = func(args)
         if result is None:

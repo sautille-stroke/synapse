@@ -72,11 +72,17 @@ class LoRAPatchHook:
         target_device = module.weight.device
         delta = delta.to(device=target_device, dtype=target_dtype)
 
-        # Skip spatial masking for text cross-attention layers (e.g. cross_attn.to_k/to_v)
+        # Skip spatial masking for text cross-attention layers (e.g. cross_attn.to_k/to_v, attn2.to_k/to_v)
         # where token dimensions reflect text sequences rather than video spatial tokens.
-        if mask is not None and any(
-            sub in module_name for sub in ("cross_attn.to_k", "cross_attn.to_v")
-        ):
+        _CROSS_ATTN_SUBS = (
+            "cross_attn.to_k",
+            "cross_attn.to_v",
+            "attn2.to_k",
+            "attn2.to_v",
+            "add_k_proj",
+            "add_v_proj",
+        )
+        if mask is not None and any(sub in module_name for sub in _CROSS_ATTN_SUBS):
             mask = None
 
         # Pre-cache mask to target device and dtype once at attach time
@@ -117,8 +123,8 @@ class LoRAPatchHook:
                     if m.dim() == 3:
                         t_m, h_m, w_m = m.shape
                         tau = (t_m - 1) // 4 + 1
-                        h16 = max(h_m // 2 if (h_m > 1 and h_m % 2 == 0) else h_m, 1)
-                        w16 = max(w_m // 2 if (w_m > 1 and w_m % 2 == 0) else w_m, 1)
+                        h16 = max(h_m // 2, 1)
+                        w16 = max(w_m // 2, 1)
                         expected_l = tau * h16 * w16
                         if expected_l == l_dim:
                             m_5d = m.unsqueeze(0).unsqueeze(0)
@@ -152,8 +158,9 @@ class LoRAPatchHook:
                     elif m.dim() == 3 and m.shape[1] == l_dim and m.shape[2] == 1:
                         pass
                     else:
-                        while m.dim() < lora_contrib.dim():
-                            m = m.unsqueeze(-1)
+                        # Fallback: if m cannot be reshaped to match visual token count l_dim,
+                        # bypass spatial masking safely to prevent dimension mismatch crashes.
+                        m = torch.ones((1, 1, 1), dtype=lora_contrib.dtype, device=lora_contrib.device)
                 else:
                     while m.dim() < lora_contrib.dim():
                         m = m.unsqueeze(-1)

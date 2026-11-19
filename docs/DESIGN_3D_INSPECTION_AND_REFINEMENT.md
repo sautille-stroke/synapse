@@ -389,7 +389,7 @@ synapse inspect export-rl-data \
 > - **Tier 0 几何拓扑硬门禁全仓自包含**：2-流形（含顶点扇单伞连通性）、水密性、退化/针状面、AABB 树 + 共面 2D SAT + Möller–Trumbore 自穿插检测、连通域并查集与浮空碎块识别，已完全内聚于本仓 **`csrc/geometry/`（C++20 原生算子，`synapse._c_geometry`）+ `synapse.recon.geometry`（Python Oracle）**，通过 `tests/test_geometry_oracle_parity.py` 锁死 100% 一致，脱离对外部 `vg-core` 的编译依赖；
 > - **重型网格重拓扑与骨骼逆运动学算子**：高算力四边面重拓扑（QuadWild）、关节刚体骨长 IK 求解与 Graph-Cut 多视角去光照缝合，在生产容器内通过 `synapse.bridge.vg_bridge` 调度 C++20/CUDA 重型算子执行；
 > - **交互式 MCP 修复沙箱**：`RepairSandbox` 与 8 机位摄影棚交互评测归属 `forgekit` / `grand-studio` / `asset-forge`（RFC 0053）；`synapse.inspect` 聚焦于 **Tier 0 自包含几何门禁、多维模型评估报告（`model_evaluator` / `eval_report`）、DINOv2 姿态反求、微距视锥规划、Visual Jev 校准 Logits 裁决以及 RFC 0020/0021 DPO/PRM 训练数据导出**。
-> - 详细工程拆解见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
+> - 详细工程拆解见 [docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md](archive/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md)。
 
 | 原子 PR | 交付模块 | 核心成果 | 依赖项 | 预估工时 |
 |:---:|:---|:---|:---|:---:|

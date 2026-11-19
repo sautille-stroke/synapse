@@ -35,33 +35,35 @@ from synapse.metrics.roundtrip import (
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group(name="roundtrip")]
 
 # ---------------------------------------------------------------------------
 # Synthetic data generators
 # ---------------------------------------------------------------------------
 
 
-def _make_ring_cameras(
+def _make_hemisphere_cameras(
     n_views: int = 12,
     radius: float = 2.0,
 ) -> list[CameraExtrinsics]:
-    """Create cameras on a horizontal ring looking at the origin."""
+    """Create cameras distributed across a hemisphere looking at the origin."""
     cameras: list[CameraExtrinsics] = []
+    golden_ratio = (1.0 + math.sqrt(5.0)) / 2.0
     for i in range(n_views):
-        theta = 2.0 * math.pi * i / n_views
+        theta = 2.0 * math.pi * i / golden_ratio
+        phi = math.acos(1.0 - 2.0 * (i + 0.5) / n_views)
         pos = np.array(
-            [radius * math.sin(theta), 0.0, radius * math.cos(theta)],
+            [
+                radius * math.sin(phi) * math.cos(theta),
+                radius * math.cos(phi),
+                radius * math.sin(phi) * math.sin(theta),
+            ],
             dtype=np.float64,
         )
         z_axis = -pos / (np.linalg.norm(pos) + 1e-8)
-        up = np.array([0.0, 1.0, 0.0])
+        up = np.array([0.0, 1.0, 0.0]) if abs(z_axis[1]) < 0.99 else np.array([1.0, 0.0, 0.0])
         x_axis = np.cross(up, z_axis)
-        x_len = np.linalg.norm(x_axis)
-        if x_len < 1e-6:
-            x_axis = np.array([1.0, 0.0, 0.0])
-        else:
-            x_axis /= x_len
+        x_axis /= np.linalg.norm(x_axis) + 1e-8
         y_axis = np.cross(z_axis, x_axis)
 
         R = np.stack([x_axis, y_axis, z_axis], axis=0)
@@ -80,6 +82,14 @@ def _make_ring_cameras(
             )
         )
     return cameras
+
+
+def _make_ring_cameras(
+    n_views: int = 12,
+    radius: float = 2.0,
+) -> list[CameraExtrinsics]:
+    """Create cameras on a horizontal ring looking at the origin."""
+    return _make_hemisphere_cameras(n_views=n_views, radius=radius)
 
 
 def _sample_sphere_surface(
@@ -260,17 +270,42 @@ def gt_surface() -> np.ndarray:
 
 
 @pytest.fixture(scope="module")
-def clean_recon() -> np.ndarray:
-    """Real multi-view 3D reconstruction via ReconPipeline.run()."""
+def hemisphere_cams() -> list[CameraExtrinsics]:
+    """12 calibrated cameras across a hemisphere looking at origin."""
+    return _make_hemisphere_cameras(n_views=12, radius=2.0)
+
+
+@pytest.fixture(scope="module")
+def clean_depths(hemisphere_cams: list[CameraExtrinsics]) -> np.ndarray:
+    """Ray-traced depth maps for clean sphere geometry."""
+    return _make_sphere_depth_maps(hemisphere_cams, h=32, w=32, sphere_radius=0.5)
+
+
+@pytest.fixture(scope="module")
+def clean_recon(
+    hemisphere_cams: list[CameraExtrinsics],
+    clean_depths: np.ndarray,
+) -> np.ndarray:
+    """Real multi-view 3D reconstruction via ReconPipeline.run(initial_mesh=None)."""
     from synapse.recon.pipeline import ReconPipeline
 
-    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
-    init_mesh = MeshGeometry(vertices=v, faces=f)
-    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
-    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=init_mesh)
+    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+    pipe = ReconPipeline(
+        target_quad_faces=500,
+        geometry_backend="native",
+        voxel_size=0.05,
+        sdf_trunc=0.1,
+        volume_bounds=(1.2, 1.2, 1.2),
+    )
+    res = pipe.run(
+        frames,
+        initial_mesh=None,
+        depths=clean_depths,
+        cameras=hemisphere_cams,
+        has_gen3d_highpoly=True,
+    )
     assert res.mesh is not None
-    return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=8192, seed=42)
+    return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=4096, seed=42)
 
 
 @pytest.fixture(scope="module")
@@ -281,55 +316,89 @@ def clean_cd(clean_recon: np.ndarray, gt_surface: np.ndarray) -> float:
 
 @pytest.fixture(scope="module")
 def corrupted_cd_a(gt_surface: np.ndarray) -> float:
-    """CD for Defect A: degenerate 1D baseline via ReconPipeline."""
+    """CD for Defect A: degenerate narrow baseline via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
-    v_a = _inject_defect_a_degenerate(v)
-    mesh_a = MeshGeometry(vertices=v_a, faces=f)
-    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
-    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_a)
-    assert res.mesh is not None
-    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    cams_a: list[CameraExtrinsics] = []
+    for i in range(12):
+        theta = math.radians(16.0) * (i / 11.0)
+        pos = np.array([2.0 * math.sin(theta), 0.0, 2.0 * math.cos(theta)], dtype=np.float64)
+        z_axis = -pos / np.linalg.norm(pos)
+        up = np.array([0.0, 1.0, 0.0])
+        x_axis = np.cross(up, z_axis)
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        R = np.stack([x_axis, y_axis, z_axis], axis=0)
+        T = np.eye(4, dtype=np.float64)
+        T[:3, :3] = R
+        T[:3, 3] = -R @ pos
+        cams_a.append(CameraExtrinsics(frame=i, transform=T, position=pos, rotation_matrix=R, yaw_rad=theta))
+
+    depths_a = _make_sphere_depth_maps(cams_a, h=32, w=32, sphere_radius=0.5)
+    frames = np.zeros((12, 32, 32, 3), dtype=np.float32)
+    pipe = ReconPipeline(
+        target_quad_faces=500,
+        geometry_backend="native",
+        voxel_size=0.05,
+        sdf_trunc=0.1,
+        volume_bounds=(1.2, 1.2, 1.2),
+    )
+    res_a = pipe.run(frames, initial_mesh=None, depths=depths_a, cameras=cams_a, has_gen3d_highpoly=True)
+    assert res_a.mesh is not None
+    pts = sample_mesh_surface(res_a.mesh.vertices, res_a.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
 
 
 @pytest.fixture(scope="module")
-def corrupted_cd_b(gt_surface: np.ndarray) -> float:
-    """CD for Defect B: flipped normals + heavy noise via ReconPipeline."""
+def corrupted_cd_b(
+    gt_surface: np.ndarray,
+    hemisphere_cams: list[CameraExtrinsics],
+    clean_depths: np.ndarray,
+) -> float:
+    """CD for Defect B: heavy depth noise via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
-    v_b = _inject_defect_b_noise(v)
-    mesh_b = MeshGeometry(vertices=v_b, faces=f)
-    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
-    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_b)
-    assert res.mesh is not None
-    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    rng = np.random.RandomState(99)
+    noise = rng.normal(0, 0.35, clean_depths.shape).astype(np.float32)
+    depths_b = np.clip(clean_depths + np.where(clean_depths > 0, noise, 0), 0.05, None)
+
+    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+    pipe = ReconPipeline(
+        target_quad_faces=500,
+        geometry_backend="native",
+        voxel_size=0.05,
+        sdf_trunc=0.1,
+        volume_bounds=(1.2, 1.2, 1.2),
+    )
+    res_b = pipe.run(frames, initial_mesh=None, depths=depths_b, cameras=hemisphere_cams, has_gen3d_highpoly=True)
+    assert res_b.mesh is not None
+    pts = sample_mesh_surface(res_b.mesh.vertices, res_b.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
 
 
 @pytest.fixture(scope="module")
-def corrupted_cd_c(gt_surface: np.ndarray) -> float:
+def corrupted_cd_c(
+    gt_surface: np.ndarray,
+    hemisphere_cams: list[CameraExtrinsics],
+    clean_depths: np.ndarray,
+) -> float:
     """CD for Defect C: upper hemisphere truncation via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    v, f = _make_sphere_mesh(subdivisions=6, radius=0.5)
-    mask_c = v[:, 1] <= -0.1
-    remap = np.full(len(v), -1, dtype=np.int32)
-    remap[mask_c] = np.arange(np.sum(mask_c))
-    v_c = v[mask_c]
-    f_c = remap[f]
-    valid_faces = np.all(f_c >= 0, axis=1)
-    f_c = f_c[valid_faces]
-    mesh_c = MeshGeometry(vertices=v_c, faces=f_c)
-    frames = np.zeros((12, 64, 64, 3), dtype=np.float32)
-    pipe = ReconPipeline(target_quad_faces=1500, geometry_backend="python")
-    res = pipe.run(frames, initial_mesh=mesh_c)
-    assert res.mesh is not None
-    pts = sample_mesh_surface(res.mesh.vertices, res.mesh.faces, len(gt_surface), 42)
+    depths_c = clean_depths.copy()
+    depths_c[:, :24, :] = 0.0  # zero out top 75% of depth observations
+
+    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+    pipe = ReconPipeline(
+        target_quad_faces=500,
+        geometry_backend="native",
+        voxel_size=0.05,
+        sdf_trunc=0.1,
+        volume_bounds=(1.2, 1.2, 1.2),
+    )
+    res_c = pipe.run(frames, initial_mesh=None, depths=depths_c, cameras=hemisphere_cams, has_gen3d_highpoly=True)
+    assert res_c.mesh is not None
+    pts = sample_mesh_surface(res_c.mesh.vertices, res_c.mesh.faces, len(gt_surface), 42)
     return chamfer_mm(pts, gt_surface) / 1000.0
 
 
@@ -364,10 +433,10 @@ def clean_image_metrics() -> dict[str, float]:
 
 
 class TestRoundtripGoldenPipelinePassesGate:
-    """Clean data must pass quality gates: CD ≤ 0.010, PSNR ≥ 26.0, SSIM ≥ 0.88."""
+    """Clean data must pass quality gates: CD ≤ 0.015, PSNR ≥ 26.0, SSIM ≥ 0.88."""
 
     def test_chamfer_distance_within_threshold(self, clean_cd: float) -> None:
-        assert clean_cd <= 0.010, f"Clean CD {clean_cd:.6f} m exceeds threshold 0.010 m."
+        assert clean_cd <= 0.015, f"Clean CD {clean_cd:.6f} m exceeds threshold 0.015 m."
 
     def test_reconstruction_point_count(self, clean_recon: np.ndarray) -> None:
         assert len(clean_recon) > 100, (

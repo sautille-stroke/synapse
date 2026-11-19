@@ -31,6 +31,46 @@ def _encode_data_uri(file_path: Path) -> str | None:
         return None
 
 
+def _check_no_symlinks(path: Path, root: Path) -> None:
+    """Recursively check that *path* and all ancestors/children contain no symlinks
+    and remain within *root*.
+
+    Raises:
+        ContractValidationError: If a symlink or path traversal is detected.
+    """
+    # Check the path itself and its parents up to root
+    current = path
+    while True:
+        if current.is_symlink():
+            raise ContractValidationError(
+                f"Symlink detected at: {current}",
+                agent_fix_hint="Use real paths, not symlinks, for security.",
+            )
+        resolved = current.resolve()
+        if not resolved.is_relative_to(root.resolve()):
+            raise ContractValidationError(
+                f"Path traversal detected: {current} resolves outside {root}",
+                agent_fix_hint="Ensure all paths are within the dataset directory.",
+            )
+        if current == current.parent or current == root:
+            break
+        current = current.parent
+
+    # Check all children if path is a directory
+    if path.is_dir():
+        for child in path.rglob("*"):
+            if child.is_symlink():
+                raise ContractValidationError(
+                    f"Symlink detected in subdirectory: {child}",
+                    agent_fix_hint="Remove symlinks from the dataset directory.",
+                )
+            if not child.resolve().is_relative_to(root.resolve()):
+                raise ContractValidationError(
+                    f"Path traversal via child: {child} resolves outside {root}",
+                    agent_fix_hint="Ensure all files are within the dataset directory.",
+                )
+
+
 def export_static_html(
     dataset_dir: str | Path,
     output_path: str | Path | None = None,
@@ -56,25 +96,14 @@ def export_static_html(
             agent_fix_hint=f"Ensure '{dataset_path}' exists and contains manifest.json.",
         )
 
-    # Reject symlinks in dataset path
-    if dataset_path.is_symlink():
-        raise ContractValidationError(
-            f"Dataset directory is a symlink: {dataset_path}",
-            agent_fix_hint=("Symlinks are forbidden for security. Use a real directory path."),
-        )
+    # Reject symlinks in dataset path and all children before resolving
+    _check_no_symlinks(dataset_path, dataset_path)
 
     manifest_file = dataset_path / "manifest.json"
     if not manifest_file.is_file():
         raise AssetNotFoundError(
             f"manifest.json not found in dataset directory: {dataset_path}",
             agent_fix_hint="Generate a dataset first using 'synapse generate'.",
-        )
-
-    # Reject symlinked manifest
-    if manifest_file.is_symlink():
-        raise ContractValidationError(
-            f"manifest.json is a symlink: {manifest_file}",
-            agent_fix_hint="Use a real file, not a symlink.",
         )
 
     try:
@@ -91,6 +120,7 @@ def export_static_html(
     # Gather images to embed as base64
     embedded_images: dict[str, str] = {}
     image_extensions = {".png", ".jpg", ".jpeg", ".svg"}
+    frame_count = 0
     for subdir_name in ["frames", "visualizations"]:
         subdir = dataset_path / subdir_name
         if subdir.is_dir():
@@ -100,6 +130,17 @@ def export_static_html(
                     uri = _encode_data_uri(img_file)
                     if uri:
                         embedded_images[rel_key] = uri
+                    if subdir_name == "frames":
+                        frame_count += 1
+
+    if frame_count > 9999:
+        import warnings
+
+        warnings.warn(
+            f"Dataset has {frame_count} frames (>9999). "
+            "Frame index display in the viewer may overflow 4-digit fields.",
+            stacklevel=2,
+        )
 
     contact_sheet = dataset_path / "contact_sheet.png"
     if contact_sheet.is_file():

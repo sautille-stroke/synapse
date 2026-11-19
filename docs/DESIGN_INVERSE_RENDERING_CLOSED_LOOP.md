@@ -2,7 +2,7 @@
 
 - **文档状态**: `Approved Technical Spec (v1.0)`
 - **关联 RFC**: [SYN-RFC-0062: 3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md)
-- **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
+- **关联实施计划**: [PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) (`M11: PR-38 ~ PR-40`)
 - **依赖上层规约**: [SYN-RFC-0060](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) · [SYN-RFC-0061](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md)
 - **修订日期**: 2026-11-13
 
@@ -174,4 +174,4 @@ class OptimizedMaterialResult:
 
 ## 7. 实施路线 (`M11: PR-38 ~ PR-40`)
 
-本设计由 **[PLAN-M9-M12-HORIZON3-LANDING.md](plans/PLAN-M9-M12-HORIZON3-LANDING.md) 的 M11 里程碑** 分 3 个 PR（`PR-38`, `PR-39`, `PR-40`）逐步落地并在 `ubuntu24` 完成无卡全绿验收。
+本设计由 **[PLAN-M9-M12-HORIZON3-LANDING.md](archive/plans/PLAN-M9-M12-HORIZON3-LANDING.md) 的 M11 里程碑** 分 3 个 PR（`PR-38`, `PR-39`, `PR-40`）逐步落地并在 `ubuntu24` 完成无卡全绿验收。

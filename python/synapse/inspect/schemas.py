@@ -7,9 +7,10 @@ used during automated inspection sweeps.
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CameraPose(BaseModel):
@@ -40,6 +41,21 @@ class CameraPose(BaseModel):
     )
     fov_deg: float = Field(..., gt=0.0, le=180.0)
     resolution: tuple[int, int] = (512, 512)
+
+    @field_validator("rotation")
+    @classmethod
+    def _validate_rotation_length(cls, v: list[float]) -> list[float]:
+        """Ensure rotation is exactly length 4 (quaternion) or 9 (3x3 matrix) and quaternions are normalized."""
+        if len(v) not in (4, 9):
+            raise ValueError(
+                f"rotation must be length 4 (quaternion) or 9 (3x3 matrix); got length {len(v)}."
+            )
+        if len(v) == 4:
+            norm = math.sqrt(sum(x * x for x in v))
+            if norm < 1e-12:
+                raise ValueError("Quaternion rotation norm must be positive.")
+            return [float(x / norm) for x in v]
+        return v
 
 
 class DefectAnnotation3D(BaseModel):

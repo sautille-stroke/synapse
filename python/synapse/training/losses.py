@@ -168,6 +168,25 @@ class EdgePreservingLoss:
         return mag.squeeze(0).squeeze(0)
 
 
+class LatentGeometryProbe:
+    """Lightweight 1x1x1 convolutional probe projecting 16-channel DiT latent
+    velocity to geometric fields (1-ch depth or 3-ch normal)."""
+
+    def __init__(self, in_channels: int = 16, out_channels: int = 3) -> None:
+        import torch
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self._conv = torch.nn.Conv3d(in_channels, out_channels, kernel_size=1)
+
+    def to(self, *args: Any, **kwargs: Any) -> LatentGeometryProbe:
+        self._conv.to(*args, **kwargs)
+        return self
+
+    def __call__(self, z: Any) -> Any:
+        return self._conv(z)
+
+
 class NormalReconstructionLoss:
     """Cosine angular distance on normals (differentiable).
 

@@ -102,7 +102,10 @@ class ForwardGuide:
 
         # --- Synthesise frames (mock / adapter) ------------------------------
         if adapter is not None:
-            frames = self._run_adapter(adapter, conditioning, total_locked, h, w)
+            frames = self._run_adapter(
+                adapter, conditioning, total_locked, h, w,
+                n_preroll=actual_preroll, kappa=cfg.kappa,
+            )
         else:
             frames = self._mock_generate(conditioning, total_locked, h, w, n_preroll=actual_preroll)
 
@@ -206,8 +209,30 @@ class ForwardGuide:
         total_frames: int,
         h: int,
         w: int,
+        n_preroll: int = 0,
+        kappa: float = 1.0,
     ) -> np.ndarray:
-        """Delegate frame generation to the supplied VideoAdapter."""
+        """Delegate frame generation to the supplied VideoAdapter.
+
+        Injects ``n_preroll`` boundary κ=1.0 cut-scene configuration into
+        the ``ConditionScheduler`` (if the adapter supports it) BEFORE
+        calling ``adapter.generate()`` to prevent 5500K studio-lighting
+        contamination from leaking across the preroll→production window.
+        """
+        # Inject preroll boundary into ConditionScheduler if available
+        if n_preroll > 0:
+            scheduler = getattr(adapter, "condition_scheduler", None)
+            if scheduler is not None and hasattr(scheduler, "set_cut_scene"):
+                scheduler.set_cut_scene(
+                    boundary_frame=n_preroll,
+                    kappa=kappa,
+                )
+            elif hasattr(adapter, "set_preroll_boundary"):
+                adapter.set_preroll_boundary(
+                    n_preroll=n_preroll,
+                    kappa=kappa,
+                )
+
         if hasattr(adapter, "generate"):
             result = adapter.generate(
                 conditioning=conditioning,

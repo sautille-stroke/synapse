@@ -14,24 +14,60 @@ from synapse.errors import ContractValidationError
 # Link-local / metadata networks to block (SSRF protection)
 _BLOCKED_NETWORKS = (
     ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("100.100.100.200/32"),
     ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("fd00:ec2::254/128"),
+    ipaddress.ip_network("::ffff:169.254.0.0/112"),
 )
 _BLOCKED_HOSTNAMES = frozenset(
     {
         "169.254.169.254",
         "metadata.google.internal",
         "instance-data",
+        "100.100.100.200",
+        "fd00:ec2::254",
     }
 )
+
+
+def _unwrap_ip(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Unwrap IPv4-mapped, 6to4, and Teredo addresses to their underlying IPv4 IPs."""
+    ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [ip]
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ips.append(ip.ipv4_mapped)
+        if ip.sixtofour is not None:
+            ips.append(ip.sixtofour)
+        if ip.teredo is not None:
+            ips.extend([ip.teredo[0], ip.teredo[1]])
+    return ips
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if ip or any unwrapped mapping matches blocked networks/hosts."""
+    for unrapped in _unwrap_ip(ip):
+        for net in _BLOCKED_NETWORKS:
+            if unrapped in net:
+                return True
+        if str(unrapped) in _BLOCKED_HOSTNAMES:
+            return True
+    return False
 
 
 def validate_safe_url(url: str) -> str:
     """Validate that a URL uses safe HTTP/HTTPS scheme and does not target
     link-local or cloud metadata endpoints (SSRF prevention).
 
+    Resolves hostnames and checks all unwrapped IPv4/IPv6 addresses against
+    cloud metadata endpoints (e.g. 169.254.169.254, fd00:ec2::254, 100.100.100.200).
+
     Raises:
         ContractValidationError: If scheme is not http/https or target is blocked.
     """
+    import socket
+
     if not url or not isinstance(url, str):
         raise ContractValidationError(
             f"Invalid or empty URL: {url!r}",
@@ -53,18 +89,35 @@ def validate_safe_url(url: str) -> str:
     if hostname in _BLOCKED_HOSTNAMES:
         raise ContractValidationError(
             f"Blocked link-local / cloud metadata host: {hostname}",
-            agent_fix_hint="Access to cloud metadata endpoints (169.254.x.x) is forbidden.",
+            agent_fix_hint="Access to cloud metadata endpoints (169.254.x.x / fd00:ec2::254) is forbidden.",
         )
+
+    # Check if hostname is an IP literal
     try:
         ip = ipaddress.ip_address(hostname)
-        for net in _BLOCKED_NETWORKS:
-            if ip in net:
-                raise ContractValidationError(
-                    f"Blocked link-local / cloud metadata IP: {ip}",
-                    agent_fix_hint="Access to cloud metadata endpoints (169.254.x.x) is forbidden.",
-                )
+        if _is_blocked_ip(ip):
+            raise ContractValidationError(
+                f"Blocked link-local / cloud metadata IP: {ip}",
+                agent_fix_hint="Access to cloud metadata endpoints is forbidden.",
+            )
     except ValueError:
-        pass  # Hostname is not an IP literal
+        # Hostname is a domain name. Resolve via getaddrinfo to block DNS rebinding/SSRF
+        try:
+            addr_info = socket.getaddrinfo(hostname, None)
+            for _, _, _, _, sockaddr in addr_info:
+                resolved_ip_str = sockaddr[0]
+                resolved_ip = ipaddress.ip_address(resolved_ip_str)
+                if _is_blocked_ip(resolved_ip):
+                    raise ContractValidationError(
+                        f"Blocked hostname '{hostname}' resolves to cloud metadata IP: {resolved_ip}",
+                        agent_fix_hint="Access to cloud metadata endpoints is forbidden.",
+                    )
+        except ContractValidationError:
+            raise
+        except (socket.gaierror, socket.herror, TimeoutError, OSError):
+            # Offline or mocked host in test environment
+            pass
+
     return url
 
 

@@ -144,8 +144,11 @@ def evaluate_refinement_gates(
     if original_patch is not None and refined_patch is not None:
         try:
             from synapse.metrics.image_quality import lpips as compute_lpips
+            from synapse.style.aces_color import acescg_to_linear_srgb
 
-            lpips_delta = compute_lpips(refined_patch, original_patch)
+            orig_srgb = acescg_to_linear_srgb(original_patch.astype(np.float64)).astype(np.float32)
+            ref_srgb = acescg_to_linear_srgb(refined_patch.astype(np.float64)).astype(np.float32)
+            lpips_delta = compute_lpips(ref_srgb, orig_srgb)
             verdict.metrics["lpips_delta"] = lpips_delta
             if lpips_delta > max_lpips_delta:
                 tier2_pass = False

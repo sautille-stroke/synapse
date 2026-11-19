@@ -121,6 +121,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"ERROR: {exc}", file=sys.stderr)
         return int(exc.exit_code)
+    except Exception as exc:
+        # Generic fallback: always produce valid JSON in --json mode
+        if args.json_output:
+            print(json.dumps({
+                "error": str(exc),
+                "exit_code": 1,
+                "agent_fix_hint": (
+                    f"Unexpected error in evaluate_3d_models: {type(exc).__name__}. "
+                    f"Check --input-dir path exists and contains .obj/.glb/.ply files."
+                ),
+            }, indent=2, ensure_ascii=False))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
     if args.json_output:
         print(json.dumps(json_data, indent=2, ensure_ascii=False))

@@ -155,9 +155,9 @@ def compute_isotopic_residual_heatmap(
         np.sum((lab_ref - lab_ren) ** 2, axis=-1),
     ).astype(np.float32)
 
-    rgb_max = float(np.max(rgb_diff))
-    if rgb_max > 1e-8:
-        rgb_diff /= rgb_max
+    # Physical normalization: DeltaE 20.0 maps to severe defect (1.0),
+    # preventing 1-LSB quantization noise from being amplified to 1.0.
+    rgb_diff = np.clip(rgb_diff / 0.20, 0.0, 1.0)
 
     # --- Channel weights ---
     w_rgb = 0.5
@@ -174,9 +174,9 @@ def compute_isotopic_residual_heatmap(
         edge_ref = _sobel_gradient_magnitude(d_ref)
         edge_ren = _sobel_gradient_magnitude(d_ren)
         depth_diff = np.abs(edge_ref - edge_ren)
-        d_max = float(np.max(depth_diff))
-        if d_max > 1e-8:
-            depth_diff /= d_max
+        valid_d = d_ref[d_ref > 0]
+        scale = float(np.median(valid_d)) * 0.1 if len(valid_d) > 0 else 1.0
+        depth_diff = np.clip(depth_diff / max(scale, 0.05), 0.0, 1.0)
         channels_used.append(("depth", w_depth, depth_diff))
         total_weight += w_depth
 
@@ -190,10 +190,14 @@ def compute_isotopic_residual_heatmap(
             normals_rendered,
             dtype=np.float32,
         )
-        # Dot product per pixel
+        norm_ref_mag = np.linalg.norm(n_ref, axis=-1)
+        norm_ren_mag = np.linalg.norm(n_ren, axis=-1)
+        valid_norm = (norm_ref_mag > 1e-3) & (norm_ren_mag > 1e-3)
+
+        # Dot product per pixel, masking out [0,0,0] background
         dot = np.sum(n_ref * n_ren, axis=-1)
         dot = np.clip(dot, -1.0, 1.0)
-        angular_err = (np.arccos(dot) / math.pi).astype(np.float32)
+        angular_err = np.where(valid_norm, (np.arccos(dot) / math.pi), 0.0).astype(np.float32)
         channels_used.append(
             ("normal", w_normal, angular_err),
         )

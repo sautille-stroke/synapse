@@ -405,7 +405,7 @@ synapse lora merge \
 
 ## 6. 分阶段实施路线图 (映射至主计划 Phase M5: `PR-16` ~ `PR-19`)
 
-> 完整类/函数级实施蓝图详见 [docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md](plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)。
+> 完整类/函数级实施蓝图详见 [docs/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md](archive/plans/PLAN-M5-LORA-TRAINING-PIPELINE.md)。
 
 ```mermaid
 flowchart LR

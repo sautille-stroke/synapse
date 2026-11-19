@@ -12,8 +12,8 @@ from typing import Any
 
 import numpy as np
 
-from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
 from synapse.render_core.mesh import MeshData, load_obj
+from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
 
 __all__ = [
     "MeshData",
@@ -66,7 +66,7 @@ def load_mesh(name_or_path: str, normalize: bool = True) -> MeshData:
         pass
 
     if name_or_path.lower() == "humanoid_53":
-        from synapse.bench.procedural import generate_humanoid_proxy
+        from synapse.render_core.procedural import generate_humanoid_proxy
 
         verts, faces, _ = generate_humanoid_proxy()
         mesh = MeshData(

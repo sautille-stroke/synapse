@@ -204,13 +204,23 @@ class TestJsonSchemas:
         path = _SCHEMAS_DIR / filename
         schema = json.loads(path.read_text(encoding="utf-8"))
         required = schema.get("required", [])
+        if not required and "oneOf" in schema:
+            required = [
+                r
+                for branch in schema["oneOf"]
+                if isinstance(branch, dict)
+                for r in branch.get("required", [])
+            ]
         assert len(required) > 0, f"{filename} has empty 'required'"
 
     def test_job_bundle_schema_version_const(self) -> None:
         """JobBundle schema locks version to 'synapse.job_bundle.v1.0'."""
         path = _SCHEMAS_DIR / "job_bundle.v1.0.schema.json"
         schema = json.loads(path.read_text(encoding="utf-8"))
-        assert schema["properties"]["schema_version"]["const"] == "synapse.job_bundle.v1.0"
+        props = schema.get("properties", {})
+        if not props and "oneOf" in schema:
+            props = schema["oneOf"][0].get("properties", {})
+        assert props["schema_version"]["const"] == "synapse.job_bundle.v1.0"
 
     def test_lora_schema_version_const(self) -> None:
         """LoRA schema locks version to 'synapse.lora.v1.0'."""

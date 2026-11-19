@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -589,19 +587,18 @@ class TestWireGuard:
 
     def test_internal_consistency_passes(self) -> None:
         """wire_guard --check with no aether header should pass internal checks."""
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).resolve().parent.parent / "tools" / "wire_guard.py"),
-                "--check",
-                "--aether-header",
-                "/nonexistent/path/fgpp_types.h",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        assert result.returncode == 0, (
-            f"wire_guard --check failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        assert "All checks passed" in result.stdout
+        import importlib.util
+        import io
+        from contextlib import redirect_stdout
+
+        wire_guard_path = Path(__file__).resolve().parent.parent / "tools" / "wire_guard.py"
+        spec = importlib.util.spec_from_file_location("wire_guard", wire_guard_path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        stdout_buf = io.StringIO()
+        with redirect_stdout(stdout_buf):
+            ret = mod.main(["--check", "--aether-header", "/nonexistent/path/fgpp_types.h"])
+        assert ret == 0, f"wire_guard --check failed:\nstdout: {stdout_buf.getvalue()}"
+        assert "All checks passed" in stdout_buf.getvalue()

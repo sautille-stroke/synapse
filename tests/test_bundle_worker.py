@@ -143,10 +143,10 @@ class TestBundleManifest:
         m = BundleManifest(
             job_id="j4",
             stage="fgpp_validate",
-            traceparent="00-abc123-def456-01",
+            traceparent="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
             tracestate="vendor=test",
         )
-        assert m.traceparent == "00-abc123-def456-01"
+        assert m.traceparent == "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
         assert m.tracestate == "vendor=test"
 
     def test_extra_fields_forbidden(self) -> None:

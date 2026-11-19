@@ -251,12 +251,20 @@ class FeatureStoreBuilder:
         latent_encoder: LatentEncoderProtocol,
         text_encoder: TextEncoderProtocol,
         max_shard_bytes: int = 2 * 1024**3,
+        streaming: bool = False,
     ) -> None:
         self._lat_enc = latent_encoder
         self._txt_enc = text_encoder
         self._max_shard = max_shard_bytes
         self._samples: list[_BUFFERED_SAMPLE] = []
         self.rejected_count: int = 0
+        self._streaming = streaming
+        self._stream_tar: tarfile.TarFile | None = None
+        self._stream_path: Path | None = None
+        self._stream_shard_idx: int = 0
+        self._stream_shard_size: int = 0
+        self._stream_shard_paths: list[Path] = []
+        self._stream_output_dir: Path | None = None
 
     def add_sample(
         self,
@@ -317,9 +325,37 @@ class FeatureStoreBuilder:
 
         latent = self._lat_enc.encode(video_frames)
         prompt = self._txt_enc.encode(caption)
-        self._samples.append(
-            (sample_id, latent, prompt, fgpp_cond, source_sha256),
-        )
+
+        if self._streaming and self._stream_output_dir is not None:
+            # Streaming mode: write directly to tar shard, no buffering
+            entries = self._serialize_sample(
+                sample_id, latent, prompt, fgpp_cond, source_sha256,
+            )
+            sample_size = sum(len(d) for _, d in entries)
+            # Rotate shard if needed
+            if (
+                self._stream_tar is not None
+                and self._stream_shard_size > 0
+                and self._stream_shard_size + sample_size > self._max_shard
+            ):
+                self._stream_tar.close()
+                self._stream_tar = None
+            if self._stream_tar is None:
+                name = f"shard-{self._stream_shard_idx:05d}.tar"
+                self._stream_path = self._stream_output_dir / name
+                self._stream_tar = tarfile.open(self._stream_path, "w")  # noqa: SIM115
+                self._stream_shard_idx += 1
+                self._stream_shard_paths.append(self._stream_path)
+                self._stream_shard_size = 0
+            for entry_name, data in entries:
+                info = tarfile.TarInfo(name=entry_name)
+                info.size = len(data)
+                self._stream_tar.addfile(info, io.BytesIO(data))
+            self._stream_shard_size += sample_size
+        else:
+            self._samples.append(
+                (sample_id, latent, prompt, fgpp_cond, source_sha256),
+            )
 
     # ── quality ingestion gates ────────────────────────────────────
 
@@ -415,13 +451,26 @@ class FeatureStoreBuilder:
 
         # ── Wan 7ch control tensor validation (depth span & normal unit-length) ──
         if is_wan and fgpp is not None:
-            # Wan control: [7, T, H, W] — ch0=depth, ch1-3=normal
+            # Wan control: [7, T, H, W] — ch0=depth (may be log-encoded [0,1])
             wan_depth = fgpp[0]  # [T, H, W]
             valid_d = wan_depth[wan_depth > 0]
             if valid_d.size > 0:
-                span = float(valid_d.max() - valid_d.min())
-                if span < 0.1:
-                    return False, (f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m")
+                d_min, d_max = float(valid_d.min()), float(valid_d.max())
+                # Log-encoded depth in [0,1]: check log-domain span, not metric span.
+                # A span of 0.005 in log-depth corresponds to negligible depth variation.
+                if d_max <= 1.0 and d_min >= 0.0:
+                    log_span = d_max - d_min
+                    if log_span < 0.005:
+                        return False, (
+                            f"Gate 2w (Wan log-depth span): {log_span:.4f} < 0.005"
+                        )
+                else:
+                    # Metric-space depth: apply standard 0.1m span check
+                    span = d_max - d_min
+                    if span < 0.1:
+                        return False, (
+                            f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m"
+                        )
             wan_normals = fgpp[1:4]  # [3, T, H, W]
             wan_norms = np.linalg.norm(wan_normals, axis=0)  # [T, H, W]
             active_w = wan_norms > 0.01
@@ -460,6 +509,10 @@ class FeatureStoreBuilder:
     def build_shards(self, output_dir: Path) -> list[Path]:
         """Write buffered samples to ``.tar`` shard files.
 
+        In streaming mode (``streaming=True``), returns the list of shard
+        files that were incrementally written during ``add_sample`` calls
+        and flushes any open shard.  Call this to finalize.
+
         Each sample in the tar contains:
 
         - ``{sample_id}.latent.npy`` — latent tensor
@@ -479,6 +532,28 @@ class FeatureStoreBuilder:
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Streaming mode: set output_dir for future add_sample calls
+        # and flush any existing open shard
+        if self._streaming:
+            if self._stream_output_dir is None:
+                self._stream_output_dir = output_dir
+            # Flush remaining open tar
+            if self._stream_tar is not None:
+                self._stream_tar.close()
+                self._stream_tar = None
+            # Return streaming shard paths + any buffered samples
+            paths = list(self._stream_shard_paths)
+            self._stream_shard_paths.clear()
+            # Also flush any non-streaming buffered samples
+            if self._samples:
+                paths.extend(self._build_buffered_shards(output_dir))
+            return paths
+
+        return self._build_buffered_shards(output_dir)
+
+    def _build_buffered_shards(self, output_dir: Path) -> list[Path]:
+        """Write internally buffered samples to ``.tar`` shard files."""
 
         if not self._samples:
             return []

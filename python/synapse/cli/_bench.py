@@ -94,21 +94,24 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
                 agent_fix_hint=(f"Ensure '{export_dir}' is a valid writable directory path."),
             )
         for r in reports:
-            # Resolve source model from scenario asset, not from export dir
+            # Resolve source model from scenario asset via AssetRegistry
             source_model: Path | None = None
             try:
+                from synapse.bench.registry import AssetRegistry
                 from synapse.bench.scenario import load_scenario
 
                 sc = load_scenario(r.scenario_name)
-                if hasattr(sc, "asset") and hasattr(sc.asset, "path"):
-                    candidate = Path(sc.asset.path)
-                    if candidate.is_file():
-                        source_model = candidate
+                if hasattr(sc, "asset") and hasattr(sc.asset, "id"):
+                    source_model = AssetRegistry().resolve(sc.asset.id)
             except Exception:
                 pass
+            if source_model is None or not source_model.is_file():
+                from synapse.bench.registry import AssetRegistry
+
+                source_model = AssetRegistry().resolve("cube")
             export_inspection_bundle(
                 scenario_name=r.scenario_name,
-                source_model_path=source_model or export_path / "source.glb",
+                source_model_path=source_model,
                 output_dir=export_path / r.scenario_name,
                 metrics_dict=r.metrics,
             )
@@ -184,12 +187,12 @@ def _cmd_bench_evaluate(args: argparse.Namespace) -> dict[str, Any]:
 
 def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     """Export a scenario to FGPP output directory."""
-    from synapse.bench.camera import generate_cameras
     from synapse.bench.model_loader import load_mesh
-    from synapse.bench.rasterizer import SoftwareRasterizer
     from synapse.bench.scenario import load_scenario
     from synapse.fgpp.frame import FGPPFrame, FGPPSequence
     from synapse.fgpp.io import export_fgpp
+    from synapse.render_core.camera import generate_cameras
+    from synapse.render_core.rasterizer import SoftwareRasterizer
 
     try:
         scenario = load_scenario(args.scenario)

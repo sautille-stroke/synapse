@@ -113,68 +113,56 @@ def _sphere_mesh(
     return np.array(verts, dtype=np.float32), np.array(faces, dtype=np.int32)
 
 
-def _snowman_mesh() -> tuple[np.ndarray, np.ndarray]:
-    """Generate a simple snowman (two stacked spheres)."""
-    v1, f1 = _sphere_mesh(subdivisions=2, radius=0.4)
-    v2, f2 = _sphere_mesh(subdivisions=2, radius=0.25)
-    v2[:, 1] += 0.65  # stack on top
-
-    offset = len(v1)
-    f2_shifted = f2 + offset
-    verts = np.concatenate([v1, v2], axis=0)
-    faces = np.concatenate([f1, f2_shifted], axis=0)
-    return verts, faces
-
-
-def _render_depth_for_view(
-    cam_pos: np.ndarray,
-    verts: np.ndarray,
-    h: int = 64,
-    w: int = 64,
-) -> np.ndarray:
-    """Render a simplistic depth map for a view (distance from camera)."""
-    depth = np.full((h, w), 10.0, dtype=np.float32)
-    # Project vertices
-    fx = fy = float(w)
-    cx, cy = w / 2.0, h / 2.0
-    rel = verts - cam_pos[np.newaxis, :]
-    z = np.sqrt(np.sum(rel**2, axis=1))
-    forward = -cam_pos / (np.linalg.norm(cam_pos) + 1e-8)
-    z_proj = rel @ forward
-    valid = z_proj > 0.1
-    u = (fx * rel[valid, 0] / (z_proj[valid] + 1e-8) + cx).astype(int)
-    v_arr = (fy * rel[valid, 1] / (z_proj[valid] + 1e-8) + cy).astype(int)
-    z_vals = z[valid]
-    for ui, vi, zi in zip(u, v_arr, z_vals, strict=False):
-        if 0 <= ui < w and 0 <= vi < h:
-            depth[vi, ui] = min(depth[vi, ui], zi)
-    return depth
-
-
-def _render_normals_for_view(h: int = 64, w: int = 64) -> np.ndarray:
-    """Generate a constant normal map (facing camera) in [0,1]."""
-    normals = np.zeros((h, w, 3), dtype=np.float32)
-    normals[..., 2] = 1.0  # z-forward
-    return normals
-
-
-def _generate_synthetic_frames(
+def _generate_rasterized_frames(
     n_views: int,
+    verts: np.ndarray,
+    faces: np.ndarray,
     h: int = 64,
     w: int = 64,
-    seed: int = 42,
 ) -> np.ndarray:
-    """Generate synthetic RGB frames (gradient + noise)."""
-    rng = np.random.RandomState(seed)
+    """Generate multi-view RGB frames via SoftwareRasterizer.
+
+    Uses real rasterization of the given mesh from ring camera positions
+    instead of trivial synthetic gradients.
+    """
+    from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+    from synapse.render_core.rasterizer import SoftwareRasterizer
+
+    cams = generate_cameras(
+        CameraTrajectoryType.ORBIT,
+        num_frames=n_views,
+        radius=2.0,
+        elevation_deg=15.0,
+        width=w,
+        height=h,
+    )
+
+    # Compute per-vertex normals for shading
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    fn = np.cross((v1 - v0).astype(np.float64), (v2 - v0).astype(np.float64))
+    vn = np.zeros((len(verts), 3), dtype=np.float64)
+    for j in range(3):
+        np.add.at(vn, faces[:, j], fn)
+    norm_len = np.linalg.norm(vn, axis=1, keepdims=True)
+    norm_len = np.where(norm_len < 1e-12, 1.0, norm_len)
+    normals = (vn / norm_len).astype(np.float32)
+
+    rasterizer = SoftwareRasterizer(width=w, height=h)
     frames = np.zeros((n_views, h, w, 3), dtype=np.float32)
-    for i in range(n_views):
-        angle = 2.0 * math.pi * i / n_views
-        r_val = 0.4 + 0.3 * math.cos(angle)
-        g_val = 0.4 + 0.3 * math.sin(angle)
-        b_val = 0.5
-        base = np.array([r_val, g_val, b_val], dtype=np.float32)
-        frames[i] = base + rng.randn(h, w, 3).astype(np.float32) * 0.05
-    return np.clip(frames, 0.0, 1.0)
+    for i, cam in enumerate(cams):
+        result = rasterizer.render(
+            vertices=verts.astype(np.float64),
+            faces=faces.astype(np.int32),
+            normals=normals.astype(np.float64),
+            camera=cam,
+            entity_name="gt_mesh",
+        )
+        frames[i] = np.clip(
+            np.asarray(result.direct_radiance, dtype=np.float32), 0.0, 1.0
+        )
+    return frames
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +252,19 @@ def run_single_pipeline(
     frames: np.ndarray,
     gt_verts: np.ndarray,
     label: str = "clean",
+    cameras: list[Any] | None = None,
 ) -> RoundtripMetrics:
-    """Run ReconPipeline and compute metrics against ground truth."""
+    """Run ReconPipeline and compute metrics against ground truth.
+
+    Args:
+        frames: Input video frames ``(N, H, W, 3)`` in ``[0, 1]``.
+        gt_verts: Ground-truth mesh vertices for Chamfer Distance comparison.
+        label: Human-readable label for this run.
+        cameras: Optional camera extrinsics to pass transparently to
+            ``ReconPipeline.run()``.  When provided (e.g. with perturbed /
+            damaged extrinsics from defect injection), they are forwarded
+            without silent correction.
+    """
     from synapse.metrics.image_quality import psnr_db, ssim
     from synapse.metrics.roundtrip import chamfer_mm
     from synapse.recon.pipeline import ReconPipeline
@@ -273,7 +272,11 @@ def run_single_pipeline(
     from synapse.render_core.rasterizer import SoftwareRasterizer
 
     pipeline = ReconPipeline(target_quad_faces=500)
-    result = pipeline.run(video_frames=frames)
+    # Pass camera extrinsics transparently — do NOT silently correct damaged cameras
+    run_kwargs: dict[str, Any] = {"video_frames": frames}
+    if cameras is not None:
+        run_kwargs["cameras"] = cameras
+    result = pipeline.run(**run_kwargs)
 
     recon_verts = result.mesh.vertices.astype(np.float64)
     gt = gt_verts.astype(np.float64)
@@ -364,14 +367,16 @@ def run_roundtrip_comparison(config: RoundtripConfig | None = None) -> dict[str,
     # Generate ground-truth geometry
     gt_verts, gt_faces = _sphere_mesh(subdivisions=3, radius=0.5)
 
-    # Generate clean synthetic data
-    clean_frames = _generate_synthetic_frames(n, h, w, seed=42)
+    # Generate clean multi-view frames via SoftwareRasterizer
+    clean_frames = _generate_rasterized_frames(n, gt_verts, gt_faces, h, w)
 
     # Run clean pipeline
-    clean_metrics = run_single_pipeline(clean_frames, gt_verts, label="clean")
-
-    # Run corrupted pipelines
     cameras = _ring_cameras(n)
+    clean_metrics = run_single_pipeline(
+        clean_frames, gt_verts, label="clean", cameras=cameras,
+    )
+
+    # Run corrupted pipelines — pass damaged cameras through transparently
     corrupted_results: dict[str, RoundtripMetrics] = {}
 
     for defect_name, inject_fn in [
@@ -379,8 +384,10 @@ def run_roundtrip_comparison(config: RoundtripConfig | None = None) -> dict[str,
         ("defect_b", inject_defect_b),
         ("defect_c", inject_defect_c),
     ]:
-        corr_frames, _ = inject_fn(clean_frames, cameras)
-        metrics = run_single_pipeline(corr_frames, gt_verts, label=defect_name)
+        corr_frames, corr_cameras = inject_fn(clean_frames, cameras)
+        metrics = run_single_pipeline(
+            corr_frames, gt_verts, label=defect_name, cameras=corr_cameras,
+        )
         corrupted_results[defect_name] = metrics
 
     # Compute differential ratios
@@ -393,6 +400,7 @@ def run_roundtrip_comparison(config: RoundtripConfig | None = None) -> dict[str,
         "clean_metrics": clean_metrics.to_dict(),
         "corrupted_metrics": {n: m.to_dict() for n, m in corrupted_results.items()},
         "differential_ratios": ratios,
+        "quality_gate_passed": all(r >= 3.0 for r in ratios.values()),
     }
 
     # Write outputs
@@ -475,7 +483,14 @@ def main() -> None:
     report = run_roundtrip_comparison(config)
 
     print(json.dumps(report, indent=2))
-    sys.exit(0)
+
+    # Exit with code 40 (QUALITY_GATE_FAILED / CIRCUIT_BREAKER) when quality
+    # gate thresholds are not met, per AGENTS.md §3 exit code contract.
+    from synapse.errors import ExitCode
+
+    if not report.get("quality_gate_passed", True):
+        sys.exit(ExitCode.CIRCUIT_BREAKER)
+    sys.exit(ExitCode.OK)
 
 
 if __name__ == "__main__":

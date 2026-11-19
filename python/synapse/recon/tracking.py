@@ -565,12 +565,19 @@ def solve_camera_trajectory(
     *,
     frame_height: int | None = None,
     frame_width: int | None = None,
+    visibility: np.ndarray | None = None,
 ) -> CameraTrajectory:
     """Solve 6-DoF metric camera trajectory from tracked points.
 
     Recovers camera rotation and translation per frame using the fundamental
     matrix decomposition between frame pairs. All output transforms follow
     the **world-to-camera (w2c)** convention (see module docstring).
+
+    Convention: Internally all camera-space computations use the OpenCV
+    convention (+Z forward, +X right, +Y down). The ``transform`` matrices
+    in the output ``CameraExtrinsics`` are in this same convention. If your
+    downstream consumer uses OpenGL convention (-Z forward), negate the
+    Z-row of the rotation matrix.
 
     Args:
         tracks_2d: 2D feature trajectories, shape (T, N, 2).
@@ -580,10 +587,12 @@ def solve_camera_trajectory(
             falls back to 1050/1050/960/540.
         frame_height: Optional frame height in pixels.
         frame_width: Optional frame width in pixels.
+        visibility: Optional boolean visibility mask, shape (T, N). When
+            provided, only visible points are used for each frame pair.
 
     Returns:
         CameraTrajectory object with per-frame CameraExtrinsics.
-        All transforms use the w2c convention.
+        All transforms use the w2c convention (OpenCV: +Z forward).
     """
     num_frames = int(tracks_2d.shape[0])
 
@@ -620,12 +629,17 @@ def solve_camera_trajectory(
     )
 
     # Track incremental relative pose between consecutive frames
+    # Previous 3D triangulated points for inter-step scale estimation
+    prev_3d_points: np.ndarray | None = None
+
     for t in range(1, num_frames):
         pts_prev = tracks_2d[t - 1].astype(np.float64)
         pts_curr = tracks_2d[t].astype(np.float64)
 
-        # Filter out NaN/Inf points
+        # Filter out NaN/Inf points and use visibility mask if provided
         valid = np.isfinite(pts_prev).all(axis=1) & np.isfinite(pts_curr).all(axis=1)
+        if visibility is not None and visibility.shape[0] > t:
+            valid = valid & visibility[t - 1] & visibility[t]
         pts_prev_v = pts_prev[valid]
         pts_curr_v = pts_curr[valid]
 
@@ -636,6 +650,14 @@ def solve_camera_trajectory(
             # Essential matrix: E = K^T @ F @ K
             E = K.T @ F @ K
 
+            # GRIC-based pure-rotation suppression: if the essential matrix
+            # has near-zero translation component, the motion is pure rotation
+            # and we should not accumulate a spurious translation.
+            U_e, S_e, Vt_e = np.linalg.svd(E)
+            # For pure rotation, E ≈ 0 (no epipolar constraint from translation)
+            translation_magnitude = min(S_e[0], S_e[1]) if len(S_e) >= 2 else 0.0
+            is_pure_rotation = translation_magnitude < 1e-4
+
             # Decompose essential matrix
             R_rel, t_rel = _essential_to_rotation_translation(
                 E,
@@ -643,6 +665,70 @@ def solve_camera_trajectory(
                 pts_curr_v,
                 K,
             )
+
+            if is_pure_rotation:
+                # Suppress translation for pure rotation to prevent drift
+                t_rel = np.zeros(3, dtype=np.float64)
+
+            # Inter-step scale estimation from shared 3D points
+            if prev_3d_points is not None and len(pts_prev_v) >= 8:
+                # Triangulate current frame's points
+                P1 = K @ np.eye(3, 4, dtype=np.float64)
+                T_prev = extrinsics_list[t - 1].transform[:3]
+                P2_prev = K @ T_prev
+                curr_3d_pts = []
+                for idx in range(min(len(pts_prev_v), 20)):
+                    x1 = np.array([pts_prev_v[idx, 0], pts_prev_v[idx, 1], 1.0])
+                    x2 = np.array([pts_curr_v[idx, 0], pts_curr_v[idx, 1], 1.0])
+                    A_tri = np.zeros((4, 4), dtype=np.float64)
+                    A_tri[0] = x1[0] * P1[2] - P1[0]
+                    A_tri[1] = x1[1] * P1[2] - P1[1]
+                    A_tri[2] = x2[0] * P2_prev[2] - P2_prev[0]
+                    A_tri[3] = x2[1] * P2_prev[2] - P2_prev[1]
+                    _, _, Vt_tri = np.linalg.svd(A_tri)
+                    pt4 = Vt_tri[-1]
+                    if abs(pt4[3]) > 1e-8:
+                        curr_3d_pts.append(pt4[:3] / pt4[3])
+                if len(curr_3d_pts) >= 4 and len(prev_3d_points) >= 4:
+                    curr_arr = np.array(curr_3d_pts[:len(prev_3d_points)])
+                    if len(curr_arr) == len(prev_3d_points):
+                        scale_ratios = np.linalg.norm(
+                            curr_arr[1:] - curr_arr[:-1], axis=1
+                        ) / np.clip(
+                            np.linalg.norm(
+                                prev_3d_points[1:] - prev_3d_points[:-1], axis=1
+                            ),
+                            1e-8,
+                            None,
+                        )
+                        median_scale = float(np.median(scale_ratios))
+                        if 0.5 < median_scale < 2.0:
+                            t_rel *= median_scale
+                        prev_3d_points = np.array(curr_3d_pts[:20])
+                    else:
+                        prev_3d_points = np.array(curr_3d_pts[:20]) if curr_3d_pts else None
+                else:
+                    prev_3d_points = np.array(curr_3d_pts[:20]) if curr_3d_pts else None
+            elif prev_3d_points is None and len(pts_prev_v) >= 8:
+                # Initialize 3D points from first pair
+                P1 = K @ np.eye(3, 4, dtype=np.float64)
+                T_curr = np.hstack([R_rel, t_rel.reshape(3, 1)])
+                P2_curr = K @ T_curr
+                init_pts = []
+                for idx in range(min(len(pts_prev_v), 20)):
+                    x1 = np.array([pts_prev_v[idx, 0], pts_prev_v[idx, 1], 1.0])
+                    x2 = np.array([pts_curr_v[idx, 0], pts_curr_v[idx, 1], 1.0])
+                    A_tri = np.zeros((4, 4), dtype=np.float64)
+                    A_tri[0] = x1[0] * P1[2] - P1[0]
+                    A_tri[1] = x1[1] * P1[2] - P1[1]
+                    A_tri[2] = x2[0] * P2_curr[2] - P2_curr[0]
+                    A_tri[3] = x2[1] * P2_curr[2] - P2_curr[1]
+                    _, _, Vt_tri = np.linalg.svd(A_tri)
+                    pt4 = Vt_tri[-1]
+                    if abs(pt4[3]) > 1e-8:
+                        init_pts.append(pt4[:3] / pt4[3])
+                if init_pts:
+                    prev_3d_points = np.array(init_pts[:20])
         else:
             # Not enough points — assume identity relative pose
             R_rel = np.eye(3, dtype=np.float64)
@@ -683,8 +769,12 @@ def solve_camera_trajectory(
         pts_prev = tracks_2d[t - 1].astype(np.float64)
         pts_curr = tracks_2d[t].astype(np.float64)
         valid = np.isfinite(pts_prev).all(axis=1) & np.isfinite(pts_curr).all(axis=1)
+        if visibility is not None and visibility.shape[0] > t:
+            valid = valid & visibility[t - 1] & visibility[t]
         if np.sum(valid) >= 8:
-            P1 = K @ np.eye(3, 4, dtype=np.float64)
+            # Use t-1 frame extrinsics as P1 (not identity)
+            T1 = extrinsics_list[t - 1].transform[:3]
+            P1 = K @ T1
             T2 = extrinsics_list[t].transform[:3]
             P2 = K @ T2
             v_indices = np.where(valid)[0]

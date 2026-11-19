@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -217,93 +218,112 @@ def package_and_gate_lora_bundle(
     # ── Validate .safetensors header and weight keys ────────────
     _validate_safetensors_weights(src, target_modules)
 
-    # Create output directory
+    # Atomic packaging: build in temp dir, validate all gates, then rename
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    parent_dir = output_dir.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy weights to bundle
-    adapter_dst = output_dir / "adapter_model.safetensors"
-    shutil.copy2(src, adapter_dst)
+    with tempfile.TemporaryDirectory(dir=str(parent_dir), prefix=".lora_pkg_") as tmp:
+        tmp_dir = Path(tmp)
 
-    # Compute SHA256
-    adapter_sha256 = _compute_file_sha256(adapter_dst)
+        # Copy weights to temp bundle
+        adapter_dst = tmp_dir / "adapter_model.safetensors"
+        shutil.copy2(src, adapter_dst)
 
-    # Generate manifest
-    manifest_data = {
-        "schema_version": "synapse.lora.v1.0",
-        "name": f"{category}_lora_{adapter_sha256[:8]}",
-        "category": category,
-        "rank": rank,
-        "alpha": alpha,
-        "adapter_path": "adapter_model.safetensors",
-        "adapter_sha256": adapter_sha256,
-        "target_modules": target_modules,
-        "training_metadata": {
-            "steps": training_steps,
-            "final_loss": final_loss,
-            "model_tag": model_tag,
-            "dataset_sha256": training_dataset_sha256,
-        },
-    }
+        # Compute SHA256
+        adapter_sha256 = _compute_file_sha256(adapter_dst)
 
-    # Validate manifest schema and category whitelist
-    try:
-        LoRAManifest.model_validate(manifest_data)
-    except Exception as e:
-        raise ContractValidationError(
-            f"LoRA manifest validation failed: {e}",
-            agent_fix_hint=(
-                "Ensure category, rank, alpha, and target_modules match LoRAManifest schema."
-            ),
-        ) from e
+        # Generate manifest
+        manifest_data = {
+            "schema_version": "synapse.lora.v1.0",
+            "name": f"{category}_lora_{adapter_sha256[:8]}",
+            "category": category,
+            "rank": rank,
+            "alpha": alpha,
+            "adapter_path": "adapter_model.safetensors",
+            "adapter_sha256": adapter_sha256,
+            "target_modules": target_modules,
+            "training_metadata": {
+                "steps": training_steps,
+                "final_loss": final_loss,
+                "model_tag": model_tag,
+                "dataset_sha256": training_dataset_sha256,
+            },
+        }
 
-    manifest_path = output_dir / "lora_manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest_data, indent=2, default=str),
-        encoding="utf-8",
-    )
+        # Validate manifest schema and category whitelist
+        try:
+            LoRAManifest.model_validate(manifest_data)
+        except Exception as e:
+            raise ContractValidationError(
+                f"LoRA manifest validation failed: {e}",
+                agent_fix_hint=(
+                    "Ensure category, rank, alpha, and target_modules match LoRAManifest schema."
+                ),
+            ) from e
 
-    # Run quality gate evaluation
-    if bench_metrics is None and not skip_bench:
-        raise QualityGateError(
-            "LoRA quality gate requires 'bench_metrics' when "
-            "skip_bench=False, but none were provided.",
-            agent_fix_hint=(
-                "Provide measured benchmark metrics or pass skip_bench=True for un-gated packaging."
-            ),
+        manifest_path = tmp_dir / "lora_manifest.json"
+        manifest_path.write_text(
+            json.dumps(manifest_data, indent=2, default=str),
+            encoding="utf-8",
         )
-    elif bench_metrics is None:
-        bench_metrics = {}
 
-    report = _evaluate_gates(
-        bench_metrics,
-        thresholds,
-        negative_scenarios,
-        skip_bench=skip_bench,
-    )
+        # Run quality gate evaluation
+        if bench_metrics is None and not skip_bench:
+            raise QualityGateError(
+                "LoRA quality gate requires 'bench_metrics' when "
+                "skip_bench=False, but none were provided.",
+                agent_fix_hint=(
+                    "Provide measured benchmark metrics or pass skip_bench=True for un-gated packaging."
+                ),
+            )
+        elif bench_metrics is None:
+            bench_metrics = {}
 
-    # Write evaluation report
-    eval_path = output_dir / "evaluation_report.json"
-    eval_path.write_text(
-        json.dumps(report.model_dump(), indent=2, default=str),
-        encoding="utf-8",
-    )
+        report = _evaluate_gates(
+            bench_metrics,
+            thresholds,
+            negative_scenarios,
+            skip_bench=skip_bench,
+        )
+
+        # Write evaluation report
+        eval_path = tmp_dir / "evaluation_report.json"
+        eval_path.write_text(
+            json.dumps(report.model_dump(), indent=2, default=str),
+            encoding="utf-8",
+        )
+
+        # Gate check BEFORE atomic rename — gate failure = zero residue
+        if not report.passed:
+            # tmp_dir auto-cleaned by context manager
+            result = {
+                "bundle_dir": str(output_dir),
+                "manifest_path": str(output_dir / "lora_manifest.json"),
+                "evaluation_path": str(output_dir / "evaluation_report.json"),
+                "passed": False,
+                "waived": report.waived,
+                "report": report.model_dump(),
+            }
+            raise QualityGateError(
+                f"LoRA bundle failed quality gate: {'; '.join(report.failures)}",
+                agent_fix_hint=report.agent_fix_hint,
+                details=result,
+            )
+
+        # All gates passed — atomic rename to final location
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        shutil.move(str(tmp_dir), str(output_dir))
 
     result = {
         "bundle_dir": str(output_dir),
-        "manifest_path": str(manifest_path),
-        "evaluation_path": str(eval_path),
+        "manifest_path": str(output_dir / "lora_manifest.json"),
+        "evaluation_path": str(output_dir / "evaluation_report.json"),
         "passed": report.passed,
         "waived": report.waived,
         "report": report.model_dump(),
     }
-
-    if not report.passed:
-        raise QualityGateError(
-            f"LoRA bundle failed quality gate: {'; '.join(report.failures)}",
-            agent_fix_hint=report.agent_fix_hint,
-            details=result,
-        )
 
     return result
 

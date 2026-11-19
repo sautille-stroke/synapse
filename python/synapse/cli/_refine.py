@@ -104,43 +104,24 @@ def _cmd_refine_anatomical(
         )
 
     meta_path = Path(roi_meta_path)
+    if meta_path.suffix.lower() not in (".json", ".npy"):
+        raise ContractValidationError(
+            f"Unsupported ROI file extension: {meta_path.suffix!r}. Expected .json or .npy",
+            agent_fix_hint="Provide a valid .json or .npy file for --roi-meta.",
+        )
+
     rois_per_frame: list[list[RefinementROI]] = [[] for _ in range(frames.shape[0])]
     if meta_path.suffix.lower() == ".json":
+        from synapse.refine.roi_tracker import parse_rois_json
+
         meta_content = json.loads(meta_path.read_text(encoding="utf-8"))
-        roi_items = (
-            meta_content.get("rois", meta_content)
-            if isinstance(meta_content, dict)
-            else meta_content
+        rois_per_frame = parse_rois_json(
+            meta_content,
+            num_frames=frames.shape[0],
+            height=height,
+            width=width,
+            frames=frames,
         )
-        if isinstance(roi_items, list):
-            for item in roi_items:
-                if not isinstance(item, dict):
-                    continue
-                t_idx = int(item.get("frame_index", item.get("t", 0)))  # type: ignore[arg-type]
-                if t_idx < 0 or t_idx >= frames.shape[0]:
-                    continue
-                rname = str(item.get("region", "HAND")).upper()
-                region = _REGION_MAP.get(rname, _REGION_MAP.get("HAND"))
-                if region is None:
-                    continue
-                bbox = np.asarray(
-                    item.get("bbox_xyxy", item.get("bbox", [0, 0, width, height])), dtype=np.float32
-                )
-                conf = float(item.get("confidence", 0.9))
-                x1, y1 = max(0, int(round(bbox[0]))), max(0, int(round(bbox[1])))
-                x2, y2 = min(width, int(round(bbox[2]))), min(height, int(round(bbox[3])))
-                if x2 <= x1 or y2 <= y1:
-                    continue
-                crop = frames[t_idx, y1:y2, x1:x2, :].copy()
-                rois_per_frame[t_idx].append(
-                    RefinementROI(
-                        region=region,
-                        bbox_xyxy=bbox,
-                        crop_acescg=crop,
-                        confidence=conf,
-                        frame_index=t_idx,
-                    )
-                )
     elif meta_path.suffix.lower() == ".npy":
         arr = np.load(str(meta_path))
         if arr.ndim == 2 and arr.shape[1] == 4:
@@ -188,6 +169,19 @@ def _cmd_refine_anatomical(
         rois_per_frame=rois_per_frame,
         fusion_method=fusion_method,
     )
+
+    # Record action to PersistentHitlLedger to track cumulative budget
+    from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
+
+    ledger = PersistentHitlLedger()
+    group_id = str(getattr(args, "shot_id", getattr(args, "asset_id", "default_refine")))
+    elapsed = float(result.elapsed_seconds)
+    record = CommandIRRecord(
+        intent_group_id=group_id,
+        intent="anatomical_refine_cli",
+        elapsed_seconds=elapsed,
+    )
+    ledger.record_action(record, max_seconds=900.0)
 
     # Save refined frames
     np.save(str(output_dir / "refined_frames.npy"), result.frames_refined)

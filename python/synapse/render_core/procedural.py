@@ -11,9 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from synapse.render_core.mesh import MeshData
 
 
 class ProceduralMeshType(str, Enum):
@@ -54,38 +57,22 @@ class ProceduralMesh:
         min_c, max_c = self.bounding_box()
         return np.asarray((min_c + max_c) * 0.5, dtype=np.float32)
 
+    def to_mesh_data(self) -> MeshData:
+        """Convert to canonical :class:`synapse.render_core.mesh.MeshData`."""
+        from synapse.render_core.mesh import MeshData
+
+        return MeshData(
+            name=self.mesh_type,
+            vertices=self.vertices,
+            faces=self.faces,
+            normals=self.normals,
+            uvs=self.uvs,
+        )
+
     def save_obj(self, path: str | Path) -> Path:
-        """Export to Wavefront OBJ format."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        lines = [f"# Synapse-Bench procedural mesh: {self.mesh_type}"]
-        lines.append(f"# Vertices: {self.num_vertices}, Faces: {self.num_faces}")
-
-        for v in self.vertices:
-            lines.append(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}")
-
-        for n in self.normals:
-            lines.append(f"vn {n[0]:.6f} {n[1]:.6f} {n[2]:.6f}")
-
-        if self.uvs is not None:
-            for uv in self.uvs:
-                lines.append(f"vt {uv[0]:.6f} {uv[1]:.6f}")
-
-        for f in self.faces:
-            if self.uvs is not None:
-                lines.append(
-                    f"f {f[0] + 1}/{f[0] + 1}/{f[0] + 1} "
-                    f"{f[1] + 1}/{f[1] + 1}/{f[1] + 1} "
-                    f"{f[2] + 1}/{f[2] + 1}/{f[2] + 1}"
-                )
-            else:
-                lines.append(
-                    f"f {f[0] + 1}//{f[0] + 1} {f[1] + 1}//{f[1] + 1} {f[2] + 1}//{f[2] + 1}"
-                )
-
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return path
+        """Export to Wavefront OBJ format via unified MeshData."""
+        res = self.to_mesh_data().export_obj(path)
+        return Path(res)
 
     def export_obj(self, path: str | Path) -> Path:
         """Alias for save_obj."""
@@ -195,7 +182,6 @@ def _generate_plane(
     )
 
 
-
 def _generate_cone(
     radius: float = 0.5,
     height: float = 1.0,
@@ -217,7 +203,6 @@ def _generate_cone(
         uvs=d["uvs"],
         mesh_type="cone",
     )
-
 
 
 _GENERATORS: dict[ProceduralMeshType, Callable[..., ProceduralMesh]] = {

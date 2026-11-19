@@ -30,6 +30,7 @@ if str(REPO_ROOT / "python") not in sys.path:
 
 from synapse.errors import (
     BackendUnavailableError,
+    ContractValidationError,
     SynapseError,
 )
 from synapse.fgpp import FGPPSequence, import_fgpp
@@ -315,14 +316,32 @@ def _verify_e4_real_gpu(
     lora_dst = checkpoint_dir / "wan21_scene_lora.safetensors"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Use real LoRA training via StatelessLoRATrainer instead of fake torch.randn
+    # Use real LoRA training via StatelessLoRATrainer with hierarchical module
+    # containing cross_attn.to_k submodules matching category="style" patterns
     try:
         from synapse.training import LoRATrainConfig, StatelessLoRATrainer
 
         train_cfg = LoRATrainConfig(category="style", rank=16, alpha=16.0)
         trainer = StatelessLoRATrainer(train_cfg)
-        toy_module = torch.nn.Linear(64, 64).to(device)
-        trainer.inject_lora(toy_module, target_patterns=["weight"])
+
+        # Build a hierarchical module with named submodules matching real
+        # WanAdapter attention structure (cross_attn.to_k, cross_attn.to_v)
+        class _ToyAttnBlock(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.cross_attn = torch.nn.ModuleDict({
+                    "to_k": torch.nn.Linear(64, 64),
+                    "to_v": torch.nn.Linear(64, 64),
+                    "to_q": torch.nn.Linear(64, 64),
+                    "to_out": torch.nn.Linear(64, 64),
+                })
+                self.self_attn = torch.nn.ModuleDict({
+                    "to_k": torch.nn.Linear(64, 64),
+                    "to_v": torch.nn.Linear(64, 64),
+                })
+
+        toy_module = _ToyAttnBlock().to(device)
+        trainer.inject_lora(toy_module, target_patterns=["cross_attn"])
         trainer.export_checkpoint(toy_module, lora_dst)
     except (ImportError, Exception) as exc:
         # If trainer is unavailable or fails, honestly exit with code 50
@@ -345,9 +364,9 @@ def _verify_e4_real_gpu(
         category="style",
         rank=16,
         alpha=16.0,
-        adapter_path=str(lora_dst),
+        adapter_path=lora_dst.name,  # Use relative path, not absolute
         adapter_sha256=sha256,
-        target_modules=["spatial_attn.to_q"],
+        target_modules=["cross_attn.to_k", "cross_attn.to_v"],
     )
     manager = MultiLoRAManager([(manifest, 1.0)])
     assert any(m.name == "scene_style_cuda" for m, _ in manager._bundles)
@@ -445,14 +464,16 @@ def run_colab_suite(
     # Contract guard: E3 requires >= 97 frames. If fallback (17f) was used,
     # emit an explicit contract error instead of a late IndexError at frames[64].
     if "e3" in experiments and seq_b_97f.num_frames < MIN_E3_FRAMES:
-        raise ValueError(
+        raise ContractValidationError(
             f"E3 long-horizon scheduler requires a sequence with at least "
             f"{MIN_E3_FRAMES} frames, but the loaded sequence "
             f"'{seq_b_97f.scene_id}' has only {seq_b_97f.num_frames} frames. "
             f"Ensure prepare_datasets.py bundle includes "
-            f"'track_b_fulgur/course_102_pbr_97f' (97-frame sequence). "
-            f"agent_fix_hint: Re-run `python scripts/prepare_datasets.py` on "
-            f"ubuntu24 and verify the Colab bundle contains the 97f directory."
+            f"'track_b_fulgur/course_102_pbr_97f' (97-frame sequence).",
+            agent_fix_hint=(
+                "Re-run `python scripts/prepare_datasets.py` on ubuntu24 "
+                "and verify the Colab bundle contains the 97f directory."
+            ),
         )
 
     try:
@@ -596,14 +617,41 @@ def main() -> int:
         return 0
     except SynapseError as err:
         t_duration = time.time() - t_start
+        # Preserve completed experiment metrics in job.json on failure
+        completed_metrics: dict[str, Any] = {}
+        checkpoint_state = checkpoint_dir / "colab_experiment_state.json"
+        if checkpoint_state.is_file():
+            try:
+                saved = json.loads(checkpoint_state.read_text(encoding="utf-8"))
+                completed_metrics = saved.get("completed", {})
+            except (json.JSONDecodeError, OSError):
+                pass
         if is_cloud_job:
-            finalize_job_workspace(job_dir, {}, t_duration, status="FAILED")
+            finalize_job_workspace(
+                job_dir,
+                {"completed": completed_metrics, "error": err.to_json_dict()},
+                t_duration,
+                status="FAILED",
+            )
         print(json.dumps(err.to_json_dict(), indent=2), file=sys.stderr)
         return int(err.exit_code)
     except Exception as exc:
         t_duration = time.time() - t_start
+        completed_metrics_fallback: dict[str, Any] = {}
+        checkpoint_state_fb = checkpoint_dir / "colab_experiment_state.json"
+        if checkpoint_state_fb.is_file():
+            try:
+                saved_fb = json.loads(checkpoint_state_fb.read_text(encoding="utf-8"))
+                completed_metrics_fallback = saved_fb.get("completed", {})
+            except (json.JSONDecodeError, OSError):
+                pass
         if is_cloud_job:
-            finalize_job_workspace(job_dir, {}, t_duration, status="FAILED")
+            finalize_job_workspace(
+                job_dir,
+                {"completed": completed_metrics_fallback, "error": str(exc)},
+                t_duration,
+                status="FAILED",
+            )
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

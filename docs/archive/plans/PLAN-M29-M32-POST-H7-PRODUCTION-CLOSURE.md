@@ -1,13 +1,13 @@
 # M29–M32 Post-Horizon-7 生产级真闭环与跨仓契约合龙计划 (Actionable Horizon-8 Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v3.6` / `v3.7`**）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v3.6` / `v3.7`**）
 > - **触发审计基线**: [`AUDIT-POST-HORIZON7-2026-11.md`](../audits/AUDIT-POST-HORIZON7-2026-11.md)（`main` @ `cf2a49f`）
 > - **规划模型**: `[gemini4]` / 执行模型: `[opus4.6]`
-> - **当前状态**: ⚠️ **代码批次 `#112 ~ #131` 已合入（`v3.6.0`, `main` @ `df93ac7`, 2026-11-17）** — 经 [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 独立复核，`209` 文件 `mypy --strict`、`ruff` 与 `1,156` 文档链接均真实通过，但检出 4 项 H8 回归崩溃（`cli/_rsi.py` `UnboundLocalError`、`bench_runner` `applicable_keys`、`model_evaluator` 无参考必退 `40`、`data-inspector` `--shm-file` 断链与 `.glb` 32 位整数溢出、`colab_runner` E1/E4 崩溃）及未激活 `.github/workflows/ci.yml`/跨仓对齐/算子演进项，已全部移交 **Horizon 9 (`M33–M36`, `PR-133 ~ PR-152`)**（详见 [`PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md`](PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)）
+> - **当前状态**: ⚠️ **代码批次 `#112 ~ #131` 已合入（`v3.6.0`, `main` @ `df93ac7`, 2026-11-17）** — 经 [`AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md`](../audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md) 独立复核，`209` 文件 `mypy --strict`、`ruff` 与 `1,156` 文档链接均真实通过，但检出 4 项 H8 回归崩溃（`cli/_rsi.py` `UnboundLocalError`、`bench_runner` `applicable_keys`、`model_evaluator` 无参考必退 `40`、`data-inspector` `--shm-file` 断链与 `.glb` 32 位整数溢出、`colab_runner` E1/E4 崩溃）及未激活 `.github/workflows/ci.yml`/跨仓对齐/算子演进项，已全部移交 **Horizon 9 (`M33–M36`, `PR-133 ~ PR-152`)**（详见 [`PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md`](../../plans/PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)）
 > - **目标周期**: 4 个里程碑（`M29` – `M32`）、4 个并发 Execution Waves（`Wave 28` – `Wave 31`）、**18 个原子 PR**（`PR-112` – `PR-129`，编号紧接 Post-H7 审计规划 PR `#111`，实现 GitHub PR 号 1:1 严格对齐）
 
 > [!IMPORTANT]
-> **执行铁律（与 `AGENTS.md` / [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 对齐）**：
+> **执行铁律（与 `AGENTS.md` / [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/synapse-wt-prXXX`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`（注意 Bazel 相关 PR 在验证本地 `../aether` 依赖时按 `all-overview` 共享缓存与同级路径约定执行）。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. 每个原子 PR 合入前必须同时通过 **防静默失败三问**（存在问 / 接线问 / 执行问），并在云端主力机 `ubuntu24` 实跑对应门禁命令（严禁用 `-n auto` 冒充单进程耗时，严禁用局部目录冒充全量 `mypy --strict`）。
@@ -136,7 +136,7 @@ flowchart LR
   4. **修复 CI 配置并将工作流真正生效于 `.github/workflows/ci.yml`**：
      - 修正 `python-fast`：安装 `pip install -e ".[dev,image,metrics,train,mesh]"` + CPU 版 `torch`（`--index-url https://download.pytorch.org/whl/cpu`），检查 `aether` 至同级路径后运行 `python scripts/build_native.py --backend=auto`、`mypy --strict`（验证 `checked >= 207 source files`）、`ruff check`、`python tools/wire_guard.py --check --require-aether` 与 `python tools/import_dag_guard.py --check`；增设 `python-slow` Job 运行 `pytest tests/ -m slow -n auto`。
      - 修正 `native-bazel`：将 `synapse` checkout 到 `path: synapse`、将 **`dervgen/aether`** checkout 到 `path: aether`（移除吞错 `continue-on-error: true`），执行 `bazel test //... --config=opt`。
-     - 在 `.ci/workflows/ci.yml` 同步定稿并由具备 `workflow` scope 的凭据推送同步至 `.github/workflows/ci.yml`（若当前 token 仍缺 `workflow` scope，则作为硬前置阻断提示人工授权后合并生效）。
+     - 在 `.github/workflows/ci.yml` 同步定稿并由具备 `workflow` scope 的凭据推送同步至 `.github/workflows/ci.yml`（若当前 token 仍缺 `workflow` scope，则作为硬前置阻断提示人工授权后合并生效）。
 - **`ubuntu24` 实测验收命令**:
   ```bash
   /root/venv-synapse/bin/mypy --strict python/synapse tests/ scripts/ tools/
@@ -630,7 +630,7 @@ flowchart LR
 - **详细改动清单**:
   1. 在 `ubuntu24` 一次性按原样串联实跑 §6 规定的 **全部 12 项反作弊硬门禁**，录制完整运行日期、Git SHA、真实单进程/多进程耗时与检查文件计数（严禁任何命令替换或范围缩水）。
   2. 确认 `.github/workflows/ci.yml` 在远端 GitHub Actions PR 触发实跑全部 Job 绿灯（`gh run list` 非空且结论为 `success`）。
-  3. 收口更新 [`PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md`](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)、[`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) 与 [`README.md`](../../README.md) 正式封板 `Release v3.6`。
+  3. 收口更新 [`PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md`](PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)、[`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) 与 [`README.md`](../../../README.md) 正式封板 `Release v3.6`。
 - **`ubuntu24` 实测验收命令**: 参见下节 §6 全部 12 项反作弊硬门禁命令清单。
 - **三问验收标准**:
   - **存在问**: 全部治理文档同步更新至最新合入 PR 号与 SHA。

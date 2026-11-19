@@ -85,6 +85,8 @@ def export_fgpp(
     seq: FGPPSequence,
     output_dir: str | Path,
     compression: str = "ZIP",
+    *,
+    strict: bool = True,
 ) -> Path:
     """Export an ``FGPPSequence`` to a directory of OpenEXR files.
 
@@ -117,6 +119,31 @@ def export_fgpp(
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+
+    # Strict mode: require all 15 channels and sanitize boundary values
+    if strict:
+        from synapse.fgpp.schema import get_channel_names
+
+        required_channels = set(get_channel_names())
+        for frame in seq.frames:
+            avail: set[str] = set()
+            for group, ch_names in _COMPONENT_ORDER.items():
+                field_name = _GROUP_TO_FIELD[group]
+                if getattr(frame, field_name, None) is not None:
+                    avail.update(ch_names)
+            missing = required_channels - avail
+            if missing:
+                raise ContractValidationError(
+                    f"Strict export: frame {frame.frame_index} missing channels: {sorted(missing)}.",
+                    agent_fix_hint="Provide all 15 FGPP channels or set strict=False.",
+                )
+            # Boundary value sanitization
+            if frame.depth is not None:
+                if not np.all(np.isfinite(frame.depth)):
+                    raise ContractValidationError(
+                        f"Strict export: frame {frame.frame_index} depth contains NaN/Inf.",
+                        agent_fix_hint="Sanitize depth with sanitize_fgpp_frame() before export.",
+                    )
 
     # Resolve compression — Imath.Compression is a special type, not plain int
     _comp_attr = compression.upper() + "_COMPRESSION"
@@ -216,7 +243,44 @@ def _read_exr_frame(
         w = dw.max.x - dw.min.x + 1
         h = dw.max.y - dw.min.y + 1
 
+        # Validate dataWindow matches camera resolution
+        if camera.width > 0 and camera.height > 0:
+            if w != camera.width or h != camera.height:
+                raise ContractValidationError(
+                    f"EXR {exr_path} dataWindow ({w}x{h}) does not match "
+                    f"camera resolution ({camera.width}x{camera.height}).",
+                    agent_fix_hint="Regenerate EXR files with matching resolution or fix camera metadata.",
+                )
+
         available = set(exr.header()["channels"].keys())
+
+        # Validate PixelType of each FGPP channel present in the EXR
+        import Imath as _Imath
+
+        _IMATH_PT_MAP = {
+            _Imath.PixelType.UINT: PixelType.UINT32,
+            _Imath.PixelType.HALF: PixelType.HALF,
+            _Imath.PixelType.FLOAT: PixelType.FLOAT,
+        }
+        header_channels = exr.header().get("channels", {})
+        for ch_name, (_, _, expected_pt) in _CHANNEL_MAP.items():
+            if ch_name not in available:
+                continue
+            ch_info = header_channels.get(ch_name)
+            if ch_info is None or not hasattr(ch_info, "type"):
+                continue
+            actual_imath_pt = ch_info.type
+            pt_val = getattr(actual_imath_pt, "v", actual_imath_pt)
+            actual_pt = _IMATH_PT_MAP.get(pt_val)
+            # Allow legacy FLOAT storage for Cryptomatte.ID (backward compat)
+            if ch_name == "Cryptomatte.ID" and pt_val == _Imath.PixelType.FLOAT:
+                continue
+            if actual_pt is not None and actual_pt != expected_pt:
+                raise ContractValidationError(
+                    f"EXR {exr_path} channel '{ch_name}' PixelType mismatch: "
+                    f"expected {expected_pt.name}, got {actual_pt.name}.",
+                    agent_fix_hint=f"Ensure channel '{ch_name}' uses {expected_pt.name} PixelType in EXR export.",
+                )
 
         # Reject unknown channel group names
         if channels is not None:
@@ -287,9 +351,9 @@ def _read_exr_frame(
 
             field_name = _GROUP_TO_FIELD[group]
             if len(components) == 1:
-                field_arrays[field_name] = components[0].copy()
+                field_arrays[field_name] = components[0]
             else:
-                field_arrays[field_name] = np.stack(components, axis=-1).copy()
+                field_arrays[field_name] = np.stack(components, axis=-1)
     finally:
         exr.close()
 
@@ -403,6 +467,30 @@ def import_fgpp(
     return FGPPSequence(frames=frames, fps=meta_seq.fps, scene_id=meta_seq.scene_id)
 
 
+def iter_fgpp_frames(
+    input_dir: str | Path,
+    *,
+    channels: Sequence[str] | None = None,
+    allow_missing_optional: bool = False,
+) -> Iterator[FGPPFrame]:
+    """Stream FGPP frames lazily one-by-one from an OpenEXR sequence directory.
+
+    Yields individual :class:`FGPPFrame` objects to keep peak memory below 1.5 GB.
+    """
+    inp = Path(input_dir)
+    if not inp.exists():
+        raise AssetNotFoundError(
+            f"FGPP input directory does not exist: {inp}",
+            agent_fix_hint="Ensure the specified sequence directory exists on disk.",
+        )
+
+    meta_seq = FGPPSequence.load_metadata(inp)
+    channel_set = set(channels) if channels is not None else None
+    return _iter_fgpp_frames(
+        inp, meta_seq, channel_set, allow_missing_optional=allow_missing_optional
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sanitizer
 # ---------------------------------------------------------------------------
@@ -439,7 +527,7 @@ def sanitize_fgpp_frame(frame: FGPPFrame) -> FGPPFrame:
         zero_mask = norms.squeeze(-1) < 1e-8
         # Avoid division by zero
         safe_norms = np.where(norms > 1e-8, norms, 1.0)
-        normal = normal / safe_norms
+        normal = (normal / safe_norms).astype(np.float32)
         normal[zero_mask] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
         normal = normal.astype(frame.world_normal.dtype)
 

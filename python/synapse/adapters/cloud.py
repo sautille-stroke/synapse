@@ -37,7 +37,11 @@ from synapse.errors import BackendUnavailableError
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
 )
-from synapse.style.aces_color import acescg_to_linear_srgb, linear_to_srgb
+from synapse.style.aces_color import (
+    acescg_to_linear_srgb,
+    linear_to_srgb,
+    soft_knee_tonemap,
+)
 
 # ---------------------------------------------------------------------------
 # Valid camera motion enum values
@@ -92,9 +96,9 @@ class DegradedSegment:
 
 
 def _frame_to_srgb_u8(radiance: np.ndarray) -> np.ndarray:
-    """Convert ACEScg HDR radiance ``[H, W, 3]`` to sRGB uint8.
+    """Convert ACEScg HDR radiance ``[H, W, 3]`` to sRGB uint8 with soft-knee rolloff.
 
-    Applies ACEScg -> linear sRGB -> sRGB OETF -> clip -> uint8.
+    Applies ACEScg -> linear sRGB -> soft-knee tonemap -> sRGB OETF -> clip -> uint8.
 
     Args:
         radiance: HDR radiance in ACEScg, shape ``[H, W, 3]``.
@@ -103,7 +107,8 @@ def _frame_to_srgb_u8(radiance: np.ndarray) -> np.ndarray:
         ``[H, W, 3]`` uint8 sRGB image.
     """
     linear_srgb = acescg_to_linear_srgb(radiance)
-    srgb = linear_to_srgb(linear_srgb)
+    tonemapped = soft_knee_tonemap(linear_srgb)
+    srgb = linear_to_srgb(tonemapped)
     srgb_clipped = np.clip(srgb, 0.0, 1.0)
     return np.asarray(np.clip(np.round(srgb_clipped * 255.0), 0, 255).astype(np.uint8))
 
@@ -552,7 +557,12 @@ class HttpCloudTransport(CloudApiTransport):
             if segment.last_anchor_png
             else ""
         )
-        text_prompt = getattr(config, "prompt", "") or config.extra.get("text_prompt", "") or ""
+        text_prompt = (
+            getattr(config, "prompt", "")
+            or config.extra.get("text_prompt", "")
+            or getattr(segment, "text_prompt", "")
+            or ""
+        )
 
         depth_guide_b64: str | None = None
         if segment.depth_guide is not None:
@@ -566,6 +576,10 @@ class HttpCloudTransport(CloudApiTransport):
             np.save(buf, segment.normal_edge_guide)
             normal_edge_guide_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
+        trajectory_list: list[list[list[float]]] | None = None
+        if segment.camera_trajectory is not None:
+            trajectory_list = segment.camera_trajectory.tolist()
+
         req_payload = {
             "camera_motion": segment.camera_motion_enum,
             "motion_intensity": segment.motion_intensity,
@@ -578,16 +592,20 @@ class HttpCloudTransport(CloudApiTransport):
             "first_anchor_png": first_anchor_b64,
             "last_anchor_png": last_anchor_b64,
             "text_prompt": text_prompt,
+            "camera_trajectory": trajectory_list,
             "depth_guide": depth_guide_b64,
             "normal_edge_guide": normal_edge_guide_b64,
         }
+        body_bytes = json.dumps(req_payload).encode("utf-8")
+        idempotency_key = hashlib.sha256(body_bytes).hexdigest()
         trace_headers = TraceContext.current().to_headers()
         req = urllib.request.Request(
             self._endpoint_url,
-            data=json.dumps(req_payload).encode("utf-8"),
+            data=body_bytes,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._api_token}",
+                "Idempotency-Key": idempotency_key,
                 **trace_headers,
             },
             method="POST",
@@ -901,3 +919,9 @@ class VeoAdapter(_BaseCloudAdapter):
     @property
     def _supports_normal_guide(self) -> bool:
         return False
+
+
+# Alias for backward and cross-subsystem compatibility
+HttpSegmentTransport = HttpCloudTransport
+
+

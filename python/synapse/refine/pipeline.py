@@ -204,6 +204,8 @@ class LocalRefinementPipeline:
         fusion_method: FusionMethod = FusionMethod.LAPLACIAN_FREQUENCY,
         hard_negatives_path: str | None = None,
         elapsed_seconds_override: float | None = None,
+        motion_vectors: np.ndarray | None = None,
+        model_ensemble: Any | None = None,
     ) -> RefinePipelineResult:
         """Run the full refinement pipeline.
 
@@ -218,6 +220,8 @@ class LocalRefinementPipeline:
             hard_negatives_path: Optional path for hard negatives JSONL.
             elapsed_seconds_override: Optional override for elapsed time
                 (used for testing circuit breaker propagation).
+            motion_vectors: Optional motion vectors ``(T, H, W, 2)`` float32.
+            model_ensemble: Optional multi-model candidate generator.
 
         Returns:
             :class:`RefinePipelineResult` with refined frames and
@@ -241,6 +245,11 @@ class LocalRefinementPipeline:
         for t in range(t_count):
             frame_refs: list[RefinementResult] = []
             rois = rois_per_frame[t] if t < len(rois_per_frame) else []
+            used_track_ids: set[str] = set()
+
+            # Predict existing trackers for frame t
+            for tid, trk in self._bbox_trackers.items():
+                trk.predict()
 
             for roi_idx, roi in enumerate(rois):
                 total_rois += 1
@@ -256,18 +265,45 @@ class LocalRefinementPipeline:
                 ):
                     cands = candidates_per_roi[t][roi_idx]
                 else:
-                    # Dispatch to region-specific refiner instead of
-                    # identity self-merge (cands = [roi.crop_acescg]).
-                    track_id = f"{roi.region.name}_{roi_idx}"
-                    if track_id not in self._bbox_trackers:
-                        self._bbox_trackers[track_id] = KalmanBBoxTracker()
+                    # IoU-based multi-target tracking across frames
+                    best_track_id: str | None = None
+                    best_iou = 0.3
+                    from synapse.refine.roi_tracker import _cxcywh_to_xyxy, compute_bbox_iou
+
+                    for tid, trk in self._bbox_trackers.items():
+                        if tid.startswith(roi.region.name) and tid not in used_track_ids:
+                            pred_bbox = _cxcywh_to_xyxy(trk._x[:4])
+                            iou = compute_bbox_iou(roi.bbox_xyxy, pred_bbox)
+                            if iou > best_iou:
+                                best_iou = iou
+                                best_track_id = tid
+
+                    if best_track_id is not None:
+                        track_id = best_track_id
+                        tracker = self._bbox_trackers[track_id]
                     else:
-                        self._bbox_trackers[track_id].predict()
-                    tracker = self._bbox_trackers[track_id]
+                        candidate_id = f"{roi.region.name}_{roi_idx}"
+                        if candidate_id not in self._bbox_trackers:
+                            track_id = candidate_id
+                        else:
+                            track_id = f"{candidate_id}_{len(self._bbox_trackers)}"
+                        tracker = KalmanBBoxTracker()
+                        self._bbox_trackers[track_id] = tracker
+
+                    used_track_ids.add(track_id)
                     smoothed_bbox = tracker.update(roi.bbox_xyxy)
+
+                    # Re-crop frames_acescg[t] based on smoothed_bbox
+                    _h, _w = frames_acescg.shape[1], frames_acescg.shape[2]
+                    sx1 = max(0, min(_w - 1, int(round(float(smoothed_bbox[0])))))
+                    sy1 = max(0, min(_h - 1, int(round(float(smoothed_bbox[1])))))
+                    sx2 = max(sx1 + 1, min(_w, int(round(float(smoothed_bbox[2])))))
+                    sy2 = max(sy1 + 1, min(_h, int(round(float(smoothed_bbox[3])))))
+                    smoothed_crop = frames_acescg[t, sy1:sy2, sx1:sx2, :].copy()
+
                     roi_smoothed = RefinementROI(
                         bbox_xyxy=smoothed_bbox,
-                        crop_acescg=roi.crop_acescg,
+                        crop_acescg=smoothed_crop,
                         region=roi.region,
                         confidence=roi.confidence,
                         frame_index=roi.frame_index,
@@ -281,17 +317,65 @@ class LocalRefinementPipeline:
                     if not defective_rois:
                         # All tiles healthy — bypass refinement
                         is_bypassed = True
-                        cands = [roi.crop_acescg]
-                    elif roi.region == AnatomicalRegion.HAND:
-                        ref_result = self.hand_refiner.refine(roi_smoothed)
-                        cands = [ref_result.refined_acescg]
-                    elif roi.region == AnatomicalRegion.FACE:
-                        ref_result = self.face_refiner.refine(roi_smoothed)
-                        cands = [ref_result.refined_acescg]
+                        cands = [smoothed_crop]
                     else:
-                        # For other regions, use the crop as a single
-                        # candidate (no specialised refiner yet).
-                        cands = [roi.crop_acescg]
+                        crop_h, crop_w = roi_smoothed.crop_acescg.shape[:2]
+                        ts = self.tiled_executor.tile_size
+                        if roi.region == AnatomicalRegion.HAND:
+                            if crop_h > ts or crop_w > ts:
+
+                                def _tile_hand(
+                                    tile_img: np.ndarray,
+                                    curr_roi: RefinementROI = roi_smoothed,
+                                ) -> np.ndarray:
+                                    t_roi = RefinementROI(
+                                        bbox_xyxy=curr_roi.bbox_xyxy,
+                                        crop_acescg=tile_img,
+                                        region=curr_roi.region,
+                                        confidence=curr_roi.confidence,
+                                        frame_index=curr_roi.frame_index,
+                                    )
+                                    return self.hand_refiner.refine(t_roi).refined_acescg
+
+                                refined_tile = self.tiled_executor.tile_and_execute(
+                                    roi_smoothed.crop_acescg, _tile_hand
+                                )
+                                cands = [refined_tile]
+                            else:
+                                ref_result = self.hand_refiner.refine(roi_smoothed)
+                                cands = [ref_result.refined_acescg]
+                        elif roi.region == AnatomicalRegion.FACE:
+                            if crop_h > ts or crop_w > ts:
+
+                                def _tile_face(
+                                    tile_img: np.ndarray,
+                                    curr_roi: RefinementROI = roi_smoothed,
+                                ) -> np.ndarray:
+                                    t_roi = RefinementROI(
+                                        bbox_xyxy=curr_roi.bbox_xyxy,
+                                        crop_acescg=tile_img,
+                                        region=curr_roi.region,
+                                        confidence=curr_roi.confidence,
+                                        frame_index=curr_roi.frame_index,
+                                    )
+                                    return self.face_refiner.refine(t_roi).refined_acescg
+
+                                refined_tile = self.tiled_executor.tile_and_execute(
+                                    roi_smoothed.crop_acescg, _tile_face
+                                )
+                                cands = [refined_tile]
+                            else:
+                                ref_result = self.face_refiner.refine(roi_smoothed)
+                                cands = [ref_result.refined_acescg]
+                        else:
+                            cands = [smoothed_crop]
+
+                        # Multi-candidate ensemble support
+                        active_ensemble = model_ensemble or getattr(self, "model_ensemble", None)
+                        if active_ensemble is not None:
+                            ens_cands = active_ensemble.generate_candidates(roi_smoothed)
+                            if len(ens_cands) > 1:
+                                cands = ens_cands
 
                 # Fuse candidates
                 fused = self.fusion.fuse(
@@ -316,10 +400,11 @@ class LocalRefinementPipeline:
 
             refinements.append(frame_refs)
 
-        # Stitch
+        # Stitch with motion vectors
         result_frames, stitch_report = self.stitcher.stitch_sequence(
             frames_acescg,
             refinements,
+            motion_vectors=motion_vectors,
         )
 
         elapsed = (
@@ -328,7 +413,7 @@ class LocalRefinementPipeline:
             else time.monotonic() - t_start
         )
 
-        # PR-60 (AUD-P0-04): Extract real original and refined patches for gate evaluation
+        # Extract real original and refined patches for gate evaluation
         first_orig_patch: np.ndarray | None = None
         first_ref_patch: np.ndarray | None = None
         for t in range(t_count):
@@ -342,16 +427,35 @@ class LocalRefinementPipeline:
         if t_count > 1:
             diffs = []
             for t_idx in range(1, t_count):
-                diffs.append(
-                    float(
-                        np.mean(
-                            np.abs(
-                                result_frames[t_idx].astype(np.float64)
-                                - result_frames[t_idx - 1].astype(np.float64)
+                if motion_vectors is not None and t_idx < motion_vectors.shape[0]:
+                    from synapse.refine.stitcher import _backward_warp_bilinear
+
+                    warped_prev = _backward_warp_bilinear(
+                        result_frames[t_idx - 1],
+                        motion_vectors[t_idx],
+                        fallback=result_frames[t_idx],
+                    )
+                    diffs.append(
+                        float(
+                            np.mean(
+                                np.abs(
+                                    result_frames[t_idx].astype(np.float64)
+                                    - warped_prev.astype(np.float64)
+                                )
                             )
                         )
                     )
-                )
+                else:
+                    diffs.append(
+                        float(
+                            np.mean(
+                                np.abs(
+                                    result_frames[t_idx].astype(np.float64)
+                                    - result_frames[t_idx - 1].astype(np.float64)
+                                )
+                            )
+                        )
+                    )
             temporal_warp_err = float(np.mean(diffs))
 
         # --- PR-45 fix #3 & #4: Consume GateVerdict and propagate
@@ -367,16 +471,12 @@ class LocalRefinementPipeline:
                 refined_patch=first_ref_patch,
             )
         except CircuitBreakerError:
-            # PR-45 fix #4: NEVER swallow CircuitBreakerError — the
-            # 900 s HITL budget must propagate as exit_code=40.
             raise
         except Exception:
-            # Gate evaluation itself failed (non-circuit-breaker) —
-            # record hard negatives but allow pipeline to continue.
             verdict = GateVerdict(passed=False, failure_reasons=["gate_evaluation_error"])
 
         # PR-45 fix #3: Act on the verdict
-        if not verdict.passed:
+        if not verdict.passed and stitch_report.num_patches_applied > 0:
             for t in range(t_count):
                 for ref in refinements[t]:
                     hard_negatives.append(

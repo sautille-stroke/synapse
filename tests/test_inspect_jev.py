@@ -416,3 +416,66 @@ class TestStageRegistration:
         with pytest.raises(BackendUnavailableError) as exc_info:
             handle_asset_inspect_3d(manifest)
         assert int(exc_info.value.exit_code) == 30
+
+    def test_http_jev_transport_mocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """HttpJevTransport parses OpenAI logprobs format."""
+        import json
+        import urllib.request
+
+        from synapse.inspect.jev_critic import HttpJevTransport
+
+        response_payload = {
+            "choices": [
+                {
+                    "logprobs": {
+                        "content": [
+                            {
+                                "top_logprobs": [
+                                    {"token": "Yes", "logprob": -0.1},
+                                    {"token": "No", "logprob": -2.3},
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+        class MockResponse:
+            def __enter__(self) -> MockResponse:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def read(self) -> bytes:
+                return json.dumps(response_payload).encode("utf-8")
+
+        def mock_urlopen(req: urllib.request.Request, timeout: float = 30.0) -> MockResponse:
+            return MockResponse()
+
+        monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+        transport = HttpJevTransport("http://fake-vlm:8000/v1/chat/completions")
+        logprobs = transport.query_logprobs(["img.png"], "Is this crumple? Yes or No.")
+        assert logprobs["Yes"] == pytest.approx(-0.1)
+        assert logprobs["No"] == pytest.approx(-2.3)
+
+    def test_visual_jev_critic_3d_roi_alignment(self) -> None:
+        """VisualJevCritic populates 3D ROI metadata from defect_rois."""
+        transport = MockJevTransport(defect_overrides={"mesh_crumple": 0.95})
+        critic = VisualJevCritic(transport)
+        rois = [
+            {
+                "category": "mesh_crumple",
+                "center_3d": [1.5, 2.5, 3.5],
+                "bounding_radius_m": 0.12,
+                "affected_vertices_count": 88,
+            }
+        ]
+        report = critic.evaluate("a01", "Model", ["img.png"], defect_rois=rois)
+        d = next(d for d in report.defects if d.category == "mesh_crumple")
+        assert d.center_3d == [1.5, 2.5, 3.5]
+        assert d.bounding_radius_m == pytest.approx(0.12)
+        assert d.affected_vertices_count == 88
+        assert 0.0 <= d.confidence <= 1.0

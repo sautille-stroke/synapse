@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 
 from synapse.fgpp.frame import FGPPSequence
-from synapse.style.aces_color import srgb_to_linear
+from synapse.style.aces_color import linear_srgb_to_acescg, srgb_to_linear
 from synapse.style.descriptor import StyleDescriptor
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,10 @@ def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:
     y = xyz[1] / s
 
     # McCamy's formula
-    n = (x - 0.3320) / (0.1858 - y + 1e-12)
+    denom = 0.1858 - y
+    if abs(denom) < 1e-12:
+        denom = 1e-12 if denom >= 0 else -1e-12
+    n = (x - 0.3320) / denom
     cct = 449.0 * n**3 + 3525.0 * n**2 + 6823.3 * n + 5520.33
     return float(np.clip(cct, 2000.0, 20000.0))
 
@@ -74,7 +77,7 @@ def _estimate_exposure_ev(rgb_linear: np.ndarray) -> float:
         return 0.0
     median_log_lum = float(np.median(np.log2(lum_positive)))
     # 18% grey ≈ 0.18 → log2(0.18) ≈ -2.474
-    return float(median_log_lum - np.log2(0.18))
+    return float(np.clip(median_log_lum - np.log2(0.18), -20.0, 20.0))
 
 
 def _estimate_grain_sigma(rgb_linear: np.ndarray) -> float:
@@ -184,12 +187,15 @@ def _solve_half_cosine_light_irls(
         u = np.abs(residual) / scale
         huber_w = np.where(u <= 1.345, 1.0, 1.345 / np.maximum(u, 1e-6))
         # Zero out normal Jacobian for backlit faces (dot_nl <= 0)
-        # so they cannot steer the light direction estimate.
-        facing_w = np.where(dot_nl <= 0.0, 0.0, 1.0)
-        w = np.clip(huber_w * facing_w, 1e-4, 1.0)
+        # but preserve their ambient contribution via piecewise-linear
+        # Jacobian: normals contribute only where dot_nl > 0.
+        A_irls = np.column_stack([
+            np.ones(m, dtype=np.float64),
+            np.where(dot_nl[:, np.newaxis] > 0, A[:, 1:4], 0.0),
+        ])
 
-        w_sqrt = np.sqrt(w)[:, np.newaxis]
-        A_w = A * w_sqrt
+        w_sqrt = np.sqrt(np.clip(huber_w, 1e-4, 1.0))[:, np.newaxis]
+        A_w = A_irls * w_sqrt
         y_w = ratio * w_sqrt[:, 0]
         beta_new, _, _, _ = np.linalg.lstsq(A_w, y_w, rcond=None)
         if np.linalg.norm(beta_new - beta) < 1e-5:
@@ -250,13 +256,17 @@ def _frechet_mean_s2(
     for _ in range(max_iter):
         tangents: list[np.ndarray] = []
         for x in unit_dirs:
-            cos_theta = float(np.clip(np.dot(mu, x), -1.0, 1.0))
-            theta = float(np.arccos(cos_theta))
+            # Numerically stable geodesic angle via atan2
+            # avoids arccos singularity near antipodal points
+            diff = x - mu
+            sumv = x + mu
+            theta = float(2.0 * np.arctan2(np.linalg.norm(diff), np.linalg.norm(sumv)))
             if theta < 1e-7:
                 tangents.append(np.zeros(3, dtype=np.float64))
             else:
-                sin_theta = float(np.sin(theta))
-                v = (theta / max(sin_theta, 1e-12)) * (x - mu * cos_theta)
+                # Project x onto tangent plane at mu
+                cos_theta = float(np.dot(mu, x))
+                v = (theta / max(np.sin(theta), 1e-12)) * (x - mu * cos_theta)
                 tangents.append(v)
 
         mean_tangent = np.mean(tangents, axis=0)
@@ -291,12 +301,14 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     Returns:
         Populated ``StyleDescriptor`` with optical estimates.
     """
-    frames = np.asarray(frames_srgb, dtype=np.float64)
-    # Only divide by 255.0 for integer (uint8) input; float HDR input
-    # is already in [0, 1] or wider range and must NOT be re-normalised.
-    if np.issubdtype(frames_srgb.dtype, np.integer):
-        frames = frames / 255.0
-    T = frames.shape[0]
+    T = frames_srgb.shape[0]
+    if T == 0:
+        return StyleDescriptor()
+
+    is_int = np.issubdtype(frames_srgb.dtype, np.integer)
+    # Step sampling for long sequences to keep peak memory < 1.5 GB
+    step = max(1, T // 32)
+    sample_indices = range(0, T, step)
 
     cct_list: list[float] = []
     ev_list: list[float] = []
@@ -304,8 +316,11 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
     contrast_list: list[float] = []
     sat_list: list[float] = []
 
-    for t in range(T):
-        frame_linear = srgb_to_linear(frames[t])
+    for t in sample_indices:
+        frame_t = np.asarray(frames_srgb[t], dtype=np.float32)
+        if is_int:
+            frame_t = frame_t / 255.0
+        frame_linear = srgb_to_linear(frame_t)
         cct_list.append(_estimate_cct_mccamy(frame_linear))
         ev_list.append(_estimate_exposure_ev(frame_linear))
         grain_list.append(_estimate_grain_sigma(frame_linear))
@@ -341,26 +356,27 @@ def extract_style_fgpp_intrinsic(
     """
     # Start with optical estimates
     desc = extract_style_optical(frames_srgb)
-    frames_f = np.asarray(frames_srgb, dtype=np.float64)
-    # Only divide by 255.0 for integer (uint8) input; float HDR input
-    # is already in [0, 1] or wider range.
-    if np.issubdtype(frames_srgb.dtype, np.integer):
-        frames_f = frames_f / 255.0
+    is_int = np.issubdtype(frames_srgb.dtype, np.integer)
 
-    T = min(frames_f.shape[0], fgpp_seq.num_frames)
+    T = min(frames_srgb.shape[0], fgpp_seq.num_frames)
+    step = max(1, T // 32)
+    sample_indices = range(0, T, step)
 
     light_dirs: list[np.ndarray] = []
     ambient_ratios: list[float] = []
 
-    for t in range(T):
+    for t in sample_indices:
         fgpp_frame = fgpp_seq.frames[t]
 
         # Need base_color and world_normal
         if fgpp_frame.base_color is None or fgpp_frame.world_normal is None:
             continue
 
-        base_color = np.asarray(fgpp_frame.base_color, dtype=np.float64)
-        normals = np.asarray(fgpp_frame.world_normal, dtype=np.float64)
+        base_color = np.asarray(fgpp_frame.base_color, dtype=np.float32)
+        normals = np.asarray(fgpp_frame.world_normal, dtype=np.float32)
+        frame_t = np.asarray(frames_srgb[t], dtype=np.float32)
+        if is_int:
+            frame_t = frame_t / 255.0
 
         # Build foreground mask
         if fgpp_frame.cryptomatte_id is not None:
@@ -399,16 +415,22 @@ def extract_style_fgpp_intrinsic(
         if valid.sum() < 10:
             continue
 
-        # Observed radiance (sRGB frame → linear)
-        frame_linear = srgb_to_linear(frames_f[t])
+        # Observed radiance (sRGB frame → linear → ACEScg)
+        frame_linear = srgb_to_linear(frame_t)
+        frame_acescg = linear_srgb_to_acescg(frame_linear)
+        # AP1 luminance weights for ACEScg working space
         obs_lum = (
-            0.2126 * frame_linear[..., 0]
-            + 0.7152 * frame_linear[..., 1]
-            + 0.0722 * frame_linear[..., 2]
+            0.2722287 * frame_acescg[..., 0]
+            + 0.6740818 * frame_acescg[..., 1]
+            + 0.0536895 * frame_acescg[..., 2]
         ).ravel()[valid]
 
+        # Base color luminance also in ACEScg
+        base_acescg = linear_srgb_to_acescg(base_color)
         albedo_lum = (
-            0.2126 * base_color[..., 0] + 0.7152 * base_color[..., 1] + 0.0722 * base_color[..., 2]
+            0.2722287 * base_acescg[..., 0]
+            + 0.6740818 * base_acescg[..., 1]
+            + 0.0536895 * base_acescg[..., 2]
         ).ravel()[valid]
         albedo_lum = np.clip(albedo_lum, 1e-6, None)
 

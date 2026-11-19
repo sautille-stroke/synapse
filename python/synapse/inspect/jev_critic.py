@@ -2,6 +2,7 @@
 
 Provides:
 - ``JevTransportProtocol``: Protocol for VLM logprobs endpoints
+- ``HttpJevTransport``: HTTP transport for remote VLM logprobs endpoints (OpenAI/vLLM)
 - ``MockJevTransport``: Deterministic test transport
 - ``VisualJevCritic``: Temperature-scaled binary defect probe
   evaluator with severity-based action routing
@@ -12,8 +13,13 @@ Heavy dependencies are NOT required for this module (pure math).
 from __future__ import annotations
 
 import datetime
+import json
 import math
-from typing import ClassVar, Literal, Protocol, runtime_checkable
+import urllib.error
+import urllib.request
+from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
+
+import numpy as np
 
 from synapse.errors import (
     BackendUnavailableError,
@@ -58,6 +64,110 @@ class JevTransportProtocol(Protocol):
             e.g. ``{"Yes": -0.5, "No": -1.2}``.
         """
         ...
+
+
+# -------------------------------------------------------------------
+# HTTP transport for OpenAI / vLLM endpoints
+# -------------------------------------------------------------------
+
+
+class HttpJevTransport:
+    """HTTP transport for remote VLM logprobs endpoints (e.g. vLLM / OpenAI).
+
+    Queries OpenAI-compatible ``/v1/chat/completions`` endpoint requesting
+    first-token logprobs with ``top_logprobs``.
+
+    Args:
+        endpoint_url: Remote endpoint URL (e.g. ``http://localhost:8000/v1/chat/completions``).
+        model: VLM model name.
+        api_key: Optional API key / bearer token.
+        timeout: Request timeout in seconds.
+        top_logprobs: Number of top logprobs to request (default 5).
+    """
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        model: str = "default",
+        api_key: str = "",
+        timeout: float = 30.0,
+        top_logprobs: int = 5,
+    ) -> None:
+        self.endpoint_url = endpoint_url
+        self.model = model
+        self.api_key = api_key
+        self.timeout = float(timeout)
+        self.top_logprobs = int(top_logprobs)
+
+    def query_logprobs(
+        self,
+        image_uris: list[str],
+        prompt: str,
+    ) -> dict[str, float]:
+        """Query remote endpoint for top-token logprobs."""
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for uri in image_uris:
+            content.append({"type": "image_url", "image_url": {"url": uri}})
+
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": content}],
+            "max_tokens": 1,
+            "logprobs": True,
+            "top_logprobs": self.top_logprobs,
+            "temperature": 0.0,
+        }
+
+        req = urllib.request.Request(
+            self.endpoint_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        if self.api_key:
+            req.add_header("Authorization", f"Bearer {self.api_key}")
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                resp_bytes = resp.read()
+                data = json.loads(resp_bytes.decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+            raise ConnectionError(f"HTTP request to '{self.endpoint_url}' failed: {exc}") from exc
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise ContractValidationError(
+                f"No choices returned from VLM endpoint '{self.endpoint_url}'",
+                agent_fix_hint="Check remote VLM response format.",
+            )
+
+        logprobs_obj = choices[0].get("logprobs")
+        if not logprobs_obj:
+            raise ContractValidationError(
+                f"Missing 'logprobs' in VLM response from '{self.endpoint_url}'",
+                agent_fix_hint="Ensure the VLM endpoint supports logprobs=True.",
+            )
+
+        result_map: dict[str, float] = {}
+        if isinstance(logprobs_obj, dict):
+            if "content" in logprobs_obj and isinstance(logprobs_obj["content"], list) and logprobs_obj["content"]:
+                top_items = logprobs_obj["content"][0].get("top_logprobs", [])
+                for item in top_items:
+                    if isinstance(item, dict) and "token" in item and "logprob" in item:
+                        result_map[str(item["token"])] = float(item["logprob"])
+            elif "top_logprobs" in logprobs_obj and isinstance(logprobs_obj["top_logprobs"], list) and logprobs_obj["top_logprobs"]:
+                top_dict = logprobs_obj["top_logprobs"][0]
+                if isinstance(top_dict, dict):
+                    for tok, lp in top_dict.items():
+                        result_map[str(tok)] = float(lp)
+
+        if not result_map:
+            raise ContractValidationError(
+                f"Unable to extract top_logprobs from VLM response: {data}",
+                agent_fix_hint="Verify VLM server complies with OpenAI chat completions logprobs API.",
+            )
+
+        return result_map
 
 
 # -------------------------------------------------------------------
@@ -331,6 +441,10 @@ class VisualJevCritic:
         asset_id: str,
         asset_name: str,
         image_uris: list[str],
+        *,
+        defect_rois: list[dict[str, Any]] | None = None,
+        mesh_vertices: Any | None = None,
+        macro_cameras: dict[str, Any] | None = None,
     ) -> InspectionReport:
         """Run all 6 defect probes and assemble a report.
 
@@ -338,6 +452,9 @@ class VisualJevCritic:
             asset_id: Unique asset identifier.
             asset_name: Human-readable asset name.
             image_uris: URIs to rendered inspection images.
+            defect_rois: Optional list of 3D defect ROIs from macro inspection.
+            mesh_vertices: Optional mesh vertices for centroid/extent alignment.
+            macro_cameras: Optional mapping of category to macro CameraPose.
 
         Returns:
             :class:`InspectionReport` with defect annotations.
@@ -375,16 +492,53 @@ class VisualJevCritic:
                         category,
                         severity,
                     )
-                    confidence = min(1.0, severity * 1.2)
+                    # Calibrate confidence using normalized Shannon entropy
+                    p = severity
+                    if p <= 1e-12 or p >= 1.0 - 1e-12:
+                        entropy = 0.0
+                    else:
+                        entropy = -(p * math.log(p) + (1.0 - p) * math.log(1.0 - p))
+                    entropy_conf = 1.0 - (entropy / math.log(2.0))
+                    confidence = max(0.0, min(1.0, entropy_conf))
+
+                    # 3D ROI alignment with macro inspection
+                    center_3d = [0.0, 0.0, 0.0]
+                    radius_m = 0.05
+                    affected_verts = 0
+                    macro_cam = None
+
+                    matched_roi = None
+                    if defect_rois:
+                        for r in defect_rois:
+                            if r.get("category") == category:
+                                matched_roi = r
+                                break
+
+                    if matched_roi:
+                        center_3d = list(matched_roi.get("center_3d", [0.0, 0.0, 0.0]))
+                        radius_m = float(matched_roi.get("bounding_radius_m", 0.05))
+                        affected_verts = int(matched_roi.get("affected_vertices_count", 0))
+                        macro_cam = matched_roi.get("macro_camera")
+                    elif mesh_vertices is not None:
+                        verts_arr = np.asarray(mesh_vertices, dtype=np.float64)
+                        if verts_arr.ndim == 2 and verts_arr.shape[0] > 0:
+                            center_3d = verts_arr.mean(axis=0).tolist()
+                            radius_m = float(np.max(np.linalg.norm(verts_arr - center_3d, axis=1))) * 0.1
+                        if macro_cameras and category in macro_cameras:
+                            macro_cam = macro_cameras[category]
+                    elif macro_cameras and category in macro_cameras:
+                        macro_cam = macro_cameras[category]
+
                     defects.append(
                         DefectAnnotation3D(
                             defect_id=(f"{asset_id}_defect_{i:03d}"),
                             category=category,
                             severity=round(severity, 6),
                             confidence=round(confidence, 6),
-                            center_3d=[0.0, 0.0, 0.0],
-                            bounding_radius_m=0.05,
-                            affected_vertices_count=0,
+                            center_3d=center_3d,
+                            bounding_radius_m=radius_m,
+                            affected_vertices_count=affected_verts,
+                            macro_camera=macro_cam,
                             suggested_action=action,
                         )
                     )

@@ -140,7 +140,7 @@ function buildSceneTree(manifest) {
   tree.replaceChildren();
 
   const sources = manifest.sources || {};
-  const addNode = (icon, label) => {
+  const addNode = (icon, label, entityName) => {
     const node = document.createElement('div');
     node.className = 'tree-node';
     const iconSpan = document.createElement('span');
@@ -151,19 +151,32 @@ function buildSceneTree(manifest) {
     labelSpan.textContent = extractDisplayLabel(label);
     node.appendChild(iconSpan);
     node.appendChild(labelSpan);
+    // PR-146: Toggle entity visibility on click.
+    if (entityName && window.inspectorAPI) {
+      let visible = true;
+      node.addEventListener('click', () => {
+        visible = !visible;
+        node.style.opacity = visible ? '1' : '0.4';
+        window.inspectorAPI.nativeSendCommand({
+          type: 'set_entity_visible',
+          name: entityName,
+          visible,
+        }).catch(() => { /* ignore */ });
+      });
+    }
     tree.appendChild(node);
   };
 
   // Core sources.
-  if (sources.source_model) addNode('\u25B6', sources.source_model);
+  if (sources.source_model) addNode('\u25B6', sources.source_model, 'source');
   if (sources.animations) {
     for (const anim of sources.animations) {
-      addNode('\u25B7', anim);
+      addNode('\u25B7', anim, 'animation');
     }
   }
   if (sources.fgpp_sequence) addNode('\u25A0', sources.fgpp_sequence);
   if (sources.generated_video) addNode('\u25A0', sources.generated_video);
-  if (sources.reconstructed_model) addNode('\u25B6', sources.reconstructed_model);
+  if (sources.reconstructed_model) addNode('\u25B6', sources.reconstructed_model, 'reconstructed');
   if (sources.metrics) addNode('\u25CB', sources.metrics);
 
   // H6-P0-10: Multi-instance source keys (animation_*, generated_*, fgpp_*).
@@ -232,14 +245,12 @@ if (typeof ResizeObserver !== 'undefined') {
         canvas.style.height = cssH + 'px';
         imageData = ctx.createImageData(w, h);
         document.getElementById('prop-resolution').textContent = `${w}x${h}`;
-        // PR-123: Notify native process of new viewport dimensions so it can
-        // update its SHM framebuffer size on the next render tick.
+        // PR-146: Notify native process of new viewport dimensions via resize command.
         if (window.inspectorAPI) {
           window.inspectorAPI.nativeSendCommand({
-            type: 'camera',
-            action: 'orbit',
-            dx: 0,
-            dy: 0,
+            type: 'resize',
+            width: w,
+            height: h,
           }).catch(() => { /* ignore resize notification failures */ });
         }
       }
@@ -321,8 +332,15 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
       }
     }
 
-    // View switching does NOT send set_debug_view to native.
-    // Debug view mode is controlled independently by the .debug-modes buttons.
+    // Notify native process of tab switch.
+    if (nativeRunning && window.inspectorAPI) {
+      window.inspectorAPI.nativeSendCommand({
+        type: 'select_tab',
+        tab: currentView,
+      }).catch((err) => {
+        console.warn('[select_tab] Failed to send command:', err.message || err);
+      });
+    }
   });
 });
 

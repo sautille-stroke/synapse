@@ -4,6 +4,10 @@
     Import from ``synapse.render_core.procedural`` instead.
 """
 
+from __future__ import annotations
+
+import warnings
+
 from synapse.render_core.procedural import (  # noqa: F401
     _GENERATORS,
     _HUMANOID_SEGMENTS,
@@ -21,6 +25,12 @@ from synapse.render_core.procedural import (  # noqa: F401
     _make_rotation_z,
     generate_humanoid_proxy,
     generate_procedural_mesh,
+)
+
+warnings.warn(
+    "synapse.bench.procedural is deprecated; use synapse.render_core.procedural instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 __all__ = [

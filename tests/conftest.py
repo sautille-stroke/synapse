@@ -13,7 +13,12 @@ import pytest
 # will FAIL instead.  This ensures CI catches missing dep installations.
 # ---------------------------------------------------------------------------
 
-_STRICT_DEPS = os.environ.get("SYNAPSE_CI_STRICT_DEPS", "0") == "1"
+def _is_strict_deps() -> bool:
+    val = os.environ.get("SYNAPSE_CI_STRICT_DEPS", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+_STRICT_DEPS = _is_strict_deps()
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -79,7 +84,11 @@ def cached_rasterizer_64() -> Any:
             from synapse.render_core.rasterizer import SoftwareRasterizer
 
             _rasterizer_cache[key] = SoftwareRasterizer(width=64, height=64)
-        except ImportError:
+        except ImportError as exc:
+            if _STRICT_DEPS:
+                raise RuntimeError(
+                    f"SYNAPSE_CI_STRICT_DEPS=1: failed to import SoftwareRasterizer: {exc}"
+                ) from exc
             return None
     return _rasterizer_cache[key]
 
@@ -93,6 +102,10 @@ def cached_rasterizer_128() -> Any:
             from synapse.render_core.rasterizer import SoftwareRasterizer
 
             _rasterizer_cache[key] = SoftwareRasterizer(width=128, height=128)
-        except ImportError:
+        except ImportError as exc:
+            if _STRICT_DEPS:
+                raise RuntimeError(
+                    f"SYNAPSE_CI_STRICT_DEPS=1: failed to import SoftwareRasterizer: {exc}"
+                ) from exc
             return None
     return _rasterizer_cache[key]

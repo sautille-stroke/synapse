@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
 import io
 from abc import ABC, abstractmethod
 from typing import Any, cast
@@ -181,12 +182,14 @@ class FoundaryHttpTransport(WanBackendTransport):
         traceparent = (
             self._upstream_traceparent if self._upstream_traceparent else _generate_traceparent()
         )
+        idempotency_key = hashlib.sha256(body).hexdigest()
 
         req = urllib.request.Request(
             self.endpoint_url,
             data=body,
             headers={
                 "Content-Type": "application/json",
+                "Idempotency-Key": idempotency_key,
                 "traceparent": traceparent,
             },
             method="POST",
@@ -579,6 +582,7 @@ class WanAdapter(VideoModelAdapter):
         return PreparedConditionPayload(
             control_tensor=condition_tensor,
             cryptomatte_id=cryptomatte_id_tensor,
+            fgpp_frames=list(fgpp_sequence.frames),
             extra=flow_meta,
         )
 
@@ -704,7 +708,22 @@ class WanAdapter(VideoModelAdapter):
         # Compute latent flow operator if gamma_flow_bias > 0
         if self.gamma_flow_bias > 0:
             mv = conditions_to_use.extra.get("motion_vectors")
-            depth = conditions_to_use.extra.get("depth")
+            depth = conditions_to_use.depth
+            if depth is None:
+                depth = conditions_to_use.extra.get("depth")
+            if depth is None and fgpp_frames:
+                depth_maps = [f.depth for f in fgpp_frames if getattr(f, "depth", None) is not None]
+                if len(depth_maps) == len(fgpp_frames):
+                    depth = np.stack(depth_maps, axis=0)
+            if mv is None and fgpp_frames:
+                mv_maps = [
+                    m
+                    for f in fgpp_frames
+                    if (m := getattr(f, "motion_vector", None)) is not None
+                ]
+                if len(mv_maps) == len(fgpp_frames):
+                    mv = np.stack(mv_maps, axis=0)
+
             if (
                 mv is not None
                 and depth is not None
@@ -717,11 +736,14 @@ class WanAdapter(VideoModelAdapter):
                     flow_op = compute_latent_flow_operator(mv, depth)
                     flow_meta = conditions_to_use.extra.setdefault("flow_meta", {})
                     flow_meta["occlusion_mask"] = flow_op
-                except Exception:
-                    pass
+                except Exception as exc:
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "compute_latent_flow_operator failed: %s", exc,
+                    )
 
         # Determine whether LoRA application is needed this call
-        _lora_applied = False
         cryptomatte_ids: np.ndarray | None = None
         target_entity_ids: set[int] | None = None
 
@@ -743,9 +765,6 @@ class WanAdapter(VideoModelAdapter):
                     target_entity_ids = set(target_ids_extra)
                 else:
                     target_entity_ids = {int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0}
-                self._lora_manager.build_spatial_lora_masks(cryptomatte_ids, target_entity_ids)
-                self._lora_manager.apply_merged_weights(model)
-                _lora_applied = True
 
         total_frames = config.num_frames
         if working_control is not None:
@@ -755,8 +774,148 @@ class WanAdapter(VideoModelAdapter):
 
         window_size = int(config.extra.get("window_frames", 97))
 
-        try:
-            hook_ctx = (
+        if total_frames > window_size:
+            from synapse.adapters.scheduler import (
+                CausalWindowPlan,
+                ConditionScheduler,
+                DiscontinuityDetector,
+                cross_dissolve_pixels,
+            )
+
+            stride = int(config.extra.get("stride_frames", 64))
+            overlap = int(config.extra.get("overlap_frames", 33))
+            plan = CausalWindowPlan(
+                window_frames=window_size,
+                stride_frames=stride,
+                overlap_frames=overlap,
+                total_frames=total_frames,
+            )
+            detector = DiscontinuityDetector()
+            scheduler = ConditionScheduler(plan=plan, detector=detector)
+
+            class _SeqWrapper:
+                def __init__(self, f_list: list[Any]) -> None:
+                    self.frames = f_list
+
+            scheduled_windows = scheduler.schedule(_SeqWrapper(fgpp_frames or []))
+
+            if len(scheduled_windows) > 1:
+                accumulated_frames: np.ndarray | None = None
+                prev_window_tail: list[np.ndarray] = []
+
+                for w_idx, sw in enumerate(scheduled_windows):
+                    w = sw.window
+                    w_num_frames = w.end - w.start
+                    sub_control = (
+                        working_control[:, w.start : w.end]
+                        if working_control is not None
+                        else None
+                    )
+                    sub_crypt = (
+                        conditions_to_use.cryptomatte_id[w.start : w.end]
+                        if conditions_to_use.cryptomatte_id is not None
+                        else None
+                    )
+
+                    sub_cfg = VideoGenerationConfig(
+                        seed=config.seed + w_idx * 17,
+                        fps=config.fps,
+                        width=config.width,
+                        height=config.height,
+                        num_frames=w_num_frames,
+                        guidance_scale=config.guidance_scale,
+                        num_inference_steps=config.num_inference_steps,
+                        extra=dict(config.extra),
+                    )
+
+                    if (
+                        w_idx > 0
+                        and sw.window.causal_warmup_prefix_indices
+                        and prev_window_tail
+                    ):
+                        warm_start = list(
+                            prev_window_tail[max(0, stride - 3) : stride]
+                        )
+                    else:
+                        warm_start = []
+
+                    sub_payload = PreparedConditionPayload(
+                        control_tensor=sub_control,
+                        keyframe_images=warm_start,
+                        text_prompt=conditions_to_use.text_prompt,
+                        negative_prompt=conditions_to_use.negative_prompt,
+                        cryptomatte_id=sub_crypt,
+                        fgpp_frames=fgpp_frames[w.start : w.end] if fgpp_frames else [],
+                        extra=dict(conditions_to_use.extra),
+                    )
+                    if warm_start:
+                        sub_payload.extra["warm_start_frames"] = warm_start
+
+                    sub_hook_ctx = (
+                        self._lora_manager.manage_spatial_hooks(
+                            model,
+                            cryptomatte_ids=sub_crypt,
+                            target_entity_ids=target_entity_ids,
+                        )
+                        if (self._lora_manager is not None and model is not None)
+                        else contextlib.nullcontext()
+                    )
+
+                    with sub_hook_ctx:
+                        sub_result = self._backend.submit(sub_payload, sub_cfg)
+
+                    prev_window_tail = [sub_result[idx] for idx in range(len(sub_result))]
+
+                    if accumulated_frames is None:
+                        accumulated_frames = sub_result
+                    else:
+                        actual_overlap = min(
+                            overlap, len(accumulated_frames), len(sub_result)
+                        )
+                        if actual_overlap > 0:
+                            prev_tail = accumulated_frames[-actual_overlap:].astype(
+                                np.float32
+                            )
+                            curr_head = sub_result[:actual_overlap].astype(np.float32)
+                            fused = cross_dissolve_pixels(
+                                prev_tail,
+                                curr_head,
+                                overlap_steps=actual_overlap,
+                            )
+                            fused_u8 = np.clip(np.rint(fused), 0, 255).astype(np.uint8)
+                            accumulated_frames = np.concatenate(
+                                [
+                                    accumulated_frames[:-actual_overlap],
+                                    fused_u8,
+                                    sub_result[actual_overlap:],
+                                ],
+                                axis=0,
+                            )
+                        else:
+                            accumulated_frames = np.concatenate(
+                                [accumulated_frames, sub_result],
+                                axis=0,
+                            )
+
+                raw_frames = (
+                    accumulated_frames[:total_frames]
+                    if accumulated_frames is not None
+                    else np.zeros((0, config.height, config.width, 3), dtype=np.uint8)
+                )
+            else:
+                single_hook_ctx = (
+                    self._lora_manager.manage_spatial_hooks(
+                        model,
+                        cryptomatte_ids=cryptomatte_ids,
+                        target_entity_ids=target_entity_ids,
+                    )
+                    if (self._lora_manager is not None and model is not None)
+                    else contextlib.nullcontext()
+                )
+                with single_hook_ctx:
+                    raw_frames = self._backend.submit(conditions_to_use, config)
+        else:
+            single_hook_ctx = (
                 self._lora_manager.manage_spatial_hooks(
                     model,
                     cryptomatte_ids=cryptomatte_ids,
@@ -765,120 +924,8 @@ class WanAdapter(VideoModelAdapter):
                 if (self._lora_manager is not None and model is not None)
                 else contextlib.nullcontext()
             )
-
-            with hook_ctx:
-                if total_frames > window_size:
-                    from synapse.adapters.scheduler import (
-                        CausalWindowPlan,
-                        ConditionScheduler,
-                        DiscontinuityDetector,
-                        fuse_overlapping_latents,
-                    )
-
-                    stride = int(config.extra.get("stride_frames", 64))
-                    overlap = int(config.extra.get("overlap_frames", 33))
-                    plan = CausalWindowPlan(
-                        window_frames=window_size,
-                        stride_frames=stride,
-                        overlap_frames=overlap,
-                        total_frames=total_frames,
-                    )
-                    detector = DiscontinuityDetector()
-                    scheduler = ConditionScheduler(plan=plan, detector=detector)
-
-                    class _SeqWrapper:
-                        def __init__(self, f_list: list[Any]) -> None:
-                            self.frames = f_list
-
-                    scheduled_windows = scheduler.schedule(_SeqWrapper(fgpp_frames or []))
-
-                    if len(scheduled_windows) > 1:
-                        accumulated_frames: np.ndarray | None = None
-                        prev_window_tail: list[np.ndarray] = []
-
-                        for w_idx, sw in enumerate(scheduled_windows):
-                            w = sw.window
-                            w_num_frames = w.end - w.start
-                            sub_control = (
-                                working_control[:, w.start : w.end]
-                                if working_control is not None
-                                else None
-                            )
-                            sub_crypt = (
-                                conditions_to_use.cryptomatte_id[w.start : w.end]
-                                if conditions_to_use.cryptomatte_id is not None
-                                else None
-                            )
-
-                            sub_cfg = VideoGenerationConfig(
-                                seed=config.seed + w_idx * 17,
-                                fps=config.fps,
-                                width=config.width,
-                                height=config.height,
-                                num_frames=w_num_frames,
-                                guidance_scale=config.guidance_scale,
-                                num_inference_steps=config.num_inference_steps,
-                                extra=dict(config.extra),
-                            )
-                            sub_payload = PreparedConditionPayload(
-                                control_tensor=sub_control,
-                                keyframe_images=list(prev_window_tail[-3:])
-                                if prev_window_tail
-                                else [],
-                                text_prompt=conditions_to_use.text_prompt,
-                                negative_prompt=conditions_to_use.negative_prompt,
-                                cryptomatte_id=sub_crypt,
-                                extra=dict(conditions_to_use.extra),
-                            )
-                            if prev_window_tail:
-                                sub_payload.extra["warm_start_frames"] = list(prev_window_tail[-3:])
-
-                            sub_result = self._backend.submit(sub_payload, sub_cfg)
-                            prev_window_tail = [sub_result[idx] for idx in range(len(sub_result))]
-
-                            if accumulated_frames is None:
-                                accumulated_frames = sub_result
-                            else:
-                                actual_overlap = min(
-                                    overlap, len(accumulated_frames), len(sub_result)
-                                )
-                                if actual_overlap > 0:
-                                    prev_tail = accumulated_frames[-actual_overlap:].astype(
-                                        np.float32
-                                    )
-                                    curr_head = sub_result[:actual_overlap].astype(np.float32)
-                                    fused = fuse_overlapping_latents(
-                                        prev_tail,
-                                        curr_head,
-                                        overlap_steps=actual_overlap,
-                                    )
-                                    fused_u8 = np.clip(np.rint(fused), 0, 255).astype(np.uint8)
-                                    accumulated_frames = np.concatenate(
-                                        [
-                                            accumulated_frames[:-actual_overlap],
-                                            fused_u8,
-                                            sub_result[actual_overlap:],
-                                        ],
-                                        axis=0,
-                                    )
-                                else:
-                                    accumulated_frames = np.concatenate(
-                                        [accumulated_frames, sub_result],
-                                        axis=0,
-                                    )
-
-                        raw_frames = (
-                            accumulated_frames[:total_frames]
-                            if accumulated_frames is not None
-                            else np.zeros((0, config.height, config.width, 3), dtype=np.uint8)
-                        )
-                    else:
-                        raw_frames = self._backend.submit(conditions_to_use, config)
-                else:
-                    raw_frames = self._backend.submit(conditions_to_use, config)
-        finally:
-            if _lora_applied and self._lora_manager is not None:
-                self._lora_manager.restore_base_weights(model)
+            with single_hook_ctx:
+                raw_frames = self._backend.submit(conditions_to_use, config)
 
         if check_non_degenerate:
             from synapse.metrics.image_quality import validate_output_non_degenerate

@@ -370,44 +370,38 @@ class TestEvalScript:
         script_path: Path,
         tmp_path: Path,
     ) -> None:
-        result = subprocess.run(
+        from scripts.evaluate_3d_models import main
+
+        ret = main(
             [
-                sys.executable,
-                str(script_path),
                 "--input-dir",
                 str(tmp_path / "nonexistent"),
                 "--output-dir",
                 str(tmp_path / "output"),
                 "--json",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+            ]
         )
-        assert result.returncode == 20
+        assert ret == 20
 
     def test_empty_input_dir(
         self,
         script_path: Path,
         tmp_path: Path,
     ) -> None:
+        from scripts.evaluate_3d_models import main
+
         empty = tmp_path / "empty_models"
         empty.mkdir()
-        result = subprocess.run(
+        ret = main(
             [
-                sys.executable,
-                str(script_path),
                 "--input-dir",
                 str(empty),
                 "--output-dir",
                 str(tmp_path / "output"),
                 "--json",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+            ]
         )
-        assert result.returncode == 20
+        assert ret == 20
 
     def test_invalid_profile_fails_closed_exit_10(
         self,
@@ -415,24 +409,26 @@ class TestEvalScript:
         model_dir: Path,
         tmp_path: Path,
     ) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(script_path),
-                "--input-dir",
-                str(model_dir),
-                "--output-dir",
-                str(tmp_path / "output"),
-                "--profile",
-                "NON_EXISTENT_PROFILE",
-                "--json",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        assert result.returncode == 10
-        payload = json.loads(result.stdout)
+        import io
+        from contextlib import redirect_stdout
+
+        from scripts.evaluate_3d_models import main
+
+        stdout_buf = io.StringIO()
+        with redirect_stdout(stdout_buf):
+            ret = main(
+                [
+                    "--input-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(tmp_path / "output"),
+                    "--profile",
+                    "NON_EXISTENT_PROFILE",
+                    "--json",
+                ]
+            )
+        assert ret == 10
+        payload = json.loads(stdout_buf.getvalue())
         assert payload["status"] == "error"
         assert payload["exit_code"] == 10
         assert payload["agent_fix_hint"]

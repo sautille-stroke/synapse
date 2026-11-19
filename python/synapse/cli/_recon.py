@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
+import numpy as np
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -41,6 +43,12 @@ def _cmd_recon_invert_video(
 
     frames = np.load(video_path_raw)
 
+    # FGPP re-ingestion: read EXR conditioning from --fgpp-dir
+    fgpp_dir = getattr(args, "fgpp_dir", None)
+    fgpp_conditioning: dict[str, Any] = {}
+    if fgpp_dir and Path(fgpp_dir).is_dir():
+        fgpp_conditioning = _load_fgpp_exr_dir(Path(fgpp_dir))
+
     pipe = ReconPipeline(target_quad_faces=target_faces)
     result = pipe.run(frames)
 
@@ -60,17 +68,97 @@ def _cmd_recon_invert_video(
         )
         output_info["trajectory_path"] = str(traj_path)
 
-    # FGPP re-ingestion check
-    fgpp_dir = getattr(args, "fgpp_dir", None)
-    if fgpp_dir and Path(fgpp_dir).is_dir():
-        output_info["fgpp_dir"] = fgpp_dir
+    # Persist mesh as .obj + OpenPBR textures
+    if result.mesh is not None:
+        obj_path = output_dir / "mesh.obj"
+        _write_obj(obj_path, result.mesh.vertices, result.mesh.faces, result.mesh.uvs)
+        output_info["mesh_obj"] = str(obj_path)
 
-    if not args.json:
+        # Save albedo texture as PNG if delight available
+        if result.delight is not None and result.delight.albedo is not None:
+            try:
+                from synapse.recon.loop.texture_extractor import extract_and_pack_pbr_textures
+
+                extract_and_pack_pbr_textures(
+                    result.delight.albedo,
+                    output_dir=str(output_dir / "textures"),
+                )
+                output_info["pbr_textures_dir"] = str(output_dir / "textures")
+            except Exception:
+                # Fallback: save raw albedo npy
+                np.save(str(output_dir / "albedo.npy"), result.delight.albedo)
+                output_info["albedo_npy"] = str(output_dir / "albedo.npy")
+
+        # Write minimal USDA referencing OBJ + textures
+        usda_path = output_dir / "mesh.usda"
+        _write_minimal_usda(usda_path, obj_path.name)
+        output_info["mesh_usda"] = str(usda_path)
+
+    if fgpp_conditioning:
+        output_info["fgpp_dir"] = fgpp_dir
+        output_info["fgpp_channels_loaded"] = list(fgpp_conditioning.keys())
+
+    if not getattr(args, "json", False):
         print("[Recon] Video-to-3D inverse reconstruction complete")
         for k, v in output_info.items():
             print(f"  {k}: {v}")
 
     return output_info
+
+
+def _load_fgpp_exr_dir(fgpp_dir: Path) -> dict[str, Any]:
+    """Load FGPP OpenEXR channel files from a directory.
+
+    Reads ``*.exr`` files from the given directory and returns them
+    as FGPP frames keyed by stem name.  Falls back to an empty dict
+    if ``OpenEXR`` is not available.
+    """
+    result: dict[str, Any] = {}
+    try:
+        from synapse.fgpp.io import import_fgpp
+    except ImportError:
+        # OpenEXR not available — return empty conditioning
+        return result
+
+    for exr_file in sorted(fgpp_dir.glob("*.exr")):
+        try:
+            frame = import_fgpp(exr_file)
+            result[exr_file.stem] = frame
+        except Exception:
+            continue
+    return result
+
+
+def _write_obj(
+    path: Path,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray | None = None,
+) -> None:
+    """Write a simple Wavefront OBJ file."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("# Synapse reconstructed mesh\n")
+        for v in np.asarray(vertices):
+            f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+        if uvs is not None:
+            for uv in np.asarray(uvs):
+                f.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+        for face in np.asarray(faces):
+            indices = [str(int(idx) + 1) for idx in face]
+            if uvs is not None:
+                face_str = " ".join(f"{idx}/{idx}" for idx in indices)
+            else:
+                face_str = " ".join(indices)
+            f.write(f"f {face_str}\n")
+
+
+def _write_minimal_usda(path: Path, obj_filename: str) -> None:
+    """Write a minimal USD ASCII file referencing the OBJ mesh."""
+    path.write_text(
+        f'#usda 1.0\n(\n    defaultPrim = "Mesh"\n)\n\n'
+        f'def Xform "Mesh" (\n    prepend references = @./{obj_filename}@\n)\n{{\n}}\n',
+        encoding="utf-8",
+    )
 
 
 def _cmd_recon_closed_loop(
@@ -185,7 +273,7 @@ def _cmd_recon_closed_loop(
         **diag,
     }
 
-    if not args.json:
+    if not getattr(args, "json", False):
         print("[Recon] Closed-loop inverse rendering complete")
         for k, v in output_info.items():
             if isinstance(v, dict):

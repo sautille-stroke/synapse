@@ -52,6 +52,32 @@ struct InspectorMesh {
   std::vector<float> vertices;      ///< 3 floats per vertex (x, y, z)
   std::vector<uint32_t> faces;      ///< 3 vertex indices per triangle
   std::vector<float> faceNormals;   ///< 3 floats per triangle face normal
+  std::vector<float> uvs;           ///< 2 floats per vertex (u, v) (optional)
+  std::vector<float> albedoColors;  ///< 3 floats per vertex or face (RGB) (optional)
+};
+
+/// @brief Named mesh entity slot (e.g. source, animation, reconstructed).
+struct MeshEntity {
+  std::string name;                 ///< Entity identifier ("source", "animation", "reconstructed")
+  std::string filePath;             ///< Relative or resolved path to model asset
+  InspectorMesh mesh;               ///< Geometry container
+  bool visible = true;              ///< Independent visibility toggle
+  size_t submeshCount = 1;          ///< Submesh partition count
+  size_t materialCount = 1;         ///< Material slot count
+};
+
+/// @brief Decoded 15-channel FGPP OpenEXR AOV container.
+struct FgppAovData {
+  uint32_t width = 0;
+  uint32_t height = 0;
+  std::vector<float> radiance;          ///< 3 floats/px (DirectRadiance R, G, B)
+  std::vector<float> depth;             ///< 1 float/px (CameraLinearDepth Z in meters)
+  std::vector<float> normal;            ///< 3 floats/px (WorldNormal X, Y, Z)
+  std::vector<float> motion;            ///< 2 floats/px (MotionVector X, Y)
+  std::vector<float> baseColor;         ///< 3 floats/px (BaseColor R, G, B)
+  std::vector<float> roughnessMetallic; ///< 2 floats/px (Roughness, Metallic)
+  std::vector<uint32_t> cryptomatte;    ///< 1 u32/px (Cryptomatte ID)
+  bool hasData = false;
 };
 
 /// @brief Main application class for the Data Inspector native process.
@@ -91,14 +117,36 @@ class InspectorApp {
   [[nodiscard]] DebugViewMode debugViewMode() const noexcept { return m_debugView; }
   [[nodiscard]] bool hasCustomMesh() const noexcept { return m_hasCustomMesh; }
 
+  /// @brief Multi-entity mesh management accessors.
+  [[nodiscard]] size_t entityCount() const noexcept { return m_entities.size(); }
+  [[nodiscard]] const std::vector<MeshEntity>& entities() const noexcept { return m_entities; }
+  [[nodiscard]] const MeshEntity* findEntity(std::string_view name) const noexcept;
+  [[nodiscard]] MeshEntity* findEntity(std::string_view name) noexcept;
+  bool setEntityVisible(std::string_view name, bool visible) noexcept;
+  [[nodiscard]] bool isEntityVisible(std::string_view name) const noexcept;
+
+  /// @brief Active navigation tab.
+  [[nodiscard]] const std::string& activeTab() const noexcept { return m_activeTab; }
+  void setActiveTab(std::string_view tab) noexcept;
+
+  /// @brief Dynamically resize viewport and recreate SHM framebuffer.
+  [[nodiscard]] bool resizeViewport(uint32_t width, uint32_t height);
+
+  /// @brief FGPP 15-channel AOV container access.
+  [[nodiscard]] const FgppAovData& fgppAov() const noexcept { return m_fgppAov; }
+
  private:
   InspectorConfig m_config;
   InspectorShmServer m_shm;
   std::atomic<bool> m_running{false};
   DebugViewMode m_debugView = DebugViewMode::kLit;
   bool m_entityVisible = true;
+  std::string m_activeTab = "source";
 
-  // Real 3D geometry container
+  // Multi-entity mesh slots (source, animation, reconstructed).
+  std::vector<MeshEntity> m_entities;
+
+  // Active primary mesh container (for backward compatibility with tests/view).
   InspectorMesh m_mesh;
   bool m_hasCustomMesh = false;
 
@@ -112,7 +160,10 @@ class InspectorApp {
   float m_panX = 0.0f;
   float m_panY = 0.0f;
 
-  // AOV overlay from loaded .exr file.
+  // 15-channel FGPP AOV container.
+  FgppAovData m_fgppAov;
+
+  // AOV overlay from loaded .exr file (backward compatibility).
   std::vector<float> m_exrAovData;
   uint32_t m_exrAovWidth = 0;
   uint32_t m_exrAovHeight = 0;
@@ -123,8 +174,10 @@ class InspectorApp {
 
   [[nodiscard]] bool validateAndLoadBundle(std::string_view bundlePath);
   void initDefaultMesh();
-  bool loadObjMesh(std::string_view objPath);
-  bool loadGlbMesh(std::string_view glbPath);
+  bool loadObjMesh(std::string_view objPath, InspectorMesh& outMesh);
+  bool loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh);
+  bool loadObjMesh(std::string_view objPath) { return loadObjMesh(objPath, m_mesh); }
+  bool loadGlbMesh(std::string_view glbPath) { return loadGlbMesh(glbPath, m_mesh); }
   bool loadExrAov(const std::string& path);
   bool pollStdinCommands();
 };

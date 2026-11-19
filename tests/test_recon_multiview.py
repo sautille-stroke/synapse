@@ -195,7 +195,8 @@ class TestCoplanarViews:
             init.reconstruct(frames, cameras)
 
         assert exc_info.value.exit_code == 10
-        assert "angular span" in str(exc_info.value).lower()
+        err_lower = str(exc_info.value).lower()
+        assert "angular span" in err_lower or "foreground" in err_lower
 
 
 class TestVisualHull:

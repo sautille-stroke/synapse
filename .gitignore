@@ -76,3 +76,18 @@ node_modules/
 
 # Ruff cache
 .ruff_cache/
+
+# uv lock (local-only, not version-tracked per pyproject.toml strategy)
+uv.lock
+
+# Evaluation output
+eval_output/
+
+
+# OS-specific metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Per-user Bazel config
+.bazelrc.user

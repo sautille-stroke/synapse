@@ -99,17 +99,41 @@ def test_prepare_benchmark_assets_external_target_dir(tmp_path: Path) -> None:
         assert staged_file.is_file(), f"Referenced asset does not exist: {staged_file}"
 
 
+def _run_script(args: list[str]) -> subprocess.CompletedProcess[str]:
+    """Execute prepare_benchmark_assets main in-process for speed while preserving API contract."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from scripts.prepare_benchmark_assets import main
+
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    old_argv = sys.argv
+    sys.argv = [str(SCRIPT_PATH)] + args
+    try:
+        with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+            ret = main()
+    except SystemExit as e:
+        ret = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    finally:
+        sys.argv = old_argv
+    return subprocess.CompletedProcess(
+        args=[sys.executable, str(SCRIPT_PATH)] + args,
+        returncode=ret,
+        stdout=stdout_buf.getvalue(),
+        stderr=stderr_buf.getvalue(),
+    )
+
+
 def test_vbench_16_dimensions_completeness(tmp_path: Path) -> None:
     """Verify that all 16 canonical VBench dimensions are generated."""
     target_dir = tmp_path / "benchmarks"
     cmd = [
-        sys.executable,
-        str(SCRIPT_PATH),
         "--target-dir",
         str(target_dir),
         "--allow-synthetic-smoke",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = _run_script(cmd)
     assert result.returncode == 0, f"Script failed: {result.stderr}"
 
     prompts_file = target_dir / "vbench_prompts" / "prompts_per_dimension.json"
@@ -152,8 +176,6 @@ def test_tier_aliases_normalization(tmp_path: Path) -> None:
     """Verify tier alias normalization ('starter' -> 'starter_dev')."""
     target_dir = tmp_path / "tier_test"
     cmd = [
-        sys.executable,
-        str(SCRIPT_PATH),
         "--tier",
         "starter",
         "--target-dir",
@@ -161,7 +183,7 @@ def test_tier_aliases_normalization(tmp_path: Path) -> None:
         "--allow-synthetic-smoke",
         "--json",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = _run_script(cmd)
     assert result.returncode == 0
 
     output = json.loads(result.stdout)
@@ -175,15 +197,13 @@ def test_fail_closed_without_synthetic_smoke(tmp_path: Path) -> None:
     target_dir = tmp_path / "target"
 
     cmd = [
-        sys.executable,
-        str(SCRIPT_PATH),
         "--source-root",
         str(empty_source),
         "--target-dir",
         str(target_dir),
         "--json",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = _run_script(cmd)
     assert result.returncode == 20, f"Expected exit code 20, got {result.returncode}"
 
     output = json.loads(result.stdout)
@@ -200,13 +220,11 @@ def test_repo_manifest_never_modified_by_default(tmp_path: Path) -> None:
     target_dir = tmp_path / "target_isolation"
 
     cmd = [
-        sys.executable,
-        str(SCRIPT_PATH),
         "--target-dir",
         str(target_dir),
         "--allow-synthetic-smoke",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = _run_script(cmd)
     assert result.returncode == 0
 
     mtime_after = REPO_MANIFEST.stat().st_mtime

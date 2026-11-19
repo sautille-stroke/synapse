@@ -318,20 +318,25 @@ class TestMultiLoRAManagerSafetensors:
         pytest.importorskip("safetensors")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, "lora.safetensors")
-            sha = _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                rel_path = "lora.safetensors"
+                sha = _create_safetensors_file(rel_path, rank=16, in_features=8, out_features=4)
 
-            manifest = _make_manifest(
-                adapter_path=path,
-                sha=sha,
-                rank=16,
-                target_modules=["ffn.proj"],
-                category="control",
-            )
-            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
-            state_dict = mgr.load_lora(manifest)
-            assert "lora_A.weight" in state_dict
-            assert "lora_B.weight" in state_dict
+                manifest = _make_manifest(
+                    adapter_path=rel_path,
+                    sha=sha,
+                    rank=16,
+                    target_modules=["ffn.proj"],
+                    category="control",
+                )
+                mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+                state_dict = mgr.load_lora(manifest)
+                assert "lora_A.weight" in state_dict
+                assert "lora_B.weight" in state_dict
+            finally:
+                os.chdir(old_cwd)
 
     def test_tampered_safetensors_rejected_exit_10(self) -> None:
         """PR-76(a): Tampered .safetensors file rejected (exit code 10)."""
@@ -339,30 +344,35 @@ class TestMultiLoRAManagerSafetensors:
         pytest.importorskip("safetensors")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, "lora.safetensors")
-            _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                rel_path = "lora.safetensors"
+                _create_safetensors_file(rel_path, rank=16, in_features=8, out_features=4)
 
-            # Tamper the file — append garbage bytes
-            with open(path, "ab") as f:
-                f.write(b"\x00" * 64)
+                # Tamper the file — append garbage bytes
+                with open(rel_path, "ab") as f:
+                    f.write(b"\x00" * 64)
 
-            # Compute the *wrong* (original) SHA
-            manifest = _make_manifest(
-                adapter_path=path,
-                sha="b" * 64,  # deliberate wrong hash
-                rank=16,
-                target_modules=["ffn.proj"],
-                category="control",
-            )
-            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
-            with pytest.raises(ContractValidationError) as exc_info:
-                mgr.load_lora(manifest)
-            assert exc_info.value.exit_code == ExitCode.CONTRACT_ERROR  # 10
+                # Compute the *wrong* (original) SHA
+                manifest = _make_manifest(
+                    adapter_path=rel_path,
+                    sha="b" * 64,  # deliberate wrong hash
+                    rank=16,
+                    target_modules=["ffn.proj"],
+                    category="control",
+                )
+                mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+                with pytest.raises(ContractValidationError) as exc_info:
+                    mgr.load_lora(manifest)
+                assert exc_info.value.exit_code == ExitCode.CONTRACT_ERROR  # 10
+            finally:
+                os.chdir(old_cwd)
 
     def test_missing_safetensors_raises_exit_20(self) -> None:
         """Missing .safetensors file raises AssetNotFoundError (exit 20)."""
         manifest = _make_manifest(
-            adapter_path="/nonexistent/path/model.safetensors",
+            adapter_path="nonexistent/path/model.safetensors",
             sha=_VALID_SHA,
             target_modules=["ffn.proj"],
             category="control",
@@ -378,30 +388,35 @@ class TestMultiLoRAManagerSafetensors:
         pytest.importorskip("safetensors")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, "lora.safetensors")
-            sha = _create_safetensors_file(path, rank=16, in_features=8, out_features=4)
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                rel_path = "lora.safetensors"
+                sha = _create_safetensors_file(rel_path, rank=16, in_features=8, out_features=4)
 
-            manifest = _make_manifest(
-                adapter_path=path,
-                sha=sha,
-                rank=16,
-                target_modules=["ffn.proj"],
-                category="control",
-            )
+                manifest = _make_manifest(
+                    adapter_path=rel_path,
+                    sha=sha,
+                    rank=16,
+                    target_modules=["ffn.proj"],
+                    category="control",
+                )
 
-            linear = torch.nn.Linear(8, 4, bias=False)
-            original = linear.weight.data.clone()
-            root = torch.nn.Module()
-            ffn = torch.nn.Module()
-            root.add_module("ffn", ffn)
-            ffn.add_module("proj", linear)
+                linear = torch.nn.Linear(8, 4, bias=False)
+                original = linear.weight.data.clone()
+                root = torch.nn.Module()
+                ffn = torch.nn.Module()
+                root.add_module("ffn", ffn)
+                ffn.add_module("proj", linear)
 
-            mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
-            mgr.apply_lora_stack(root)
+                mgr = MultiLoRAManager(lora_bundles=[(manifest, 1.0)])
+                mgr.apply_lora_stack(root)
 
-            diff = (linear.weight.data - original).abs().max().item()
-            assert diff > 1e-10, "apply_lora_stack should modify weights"
-            mgr.restore_base_weights(root)
+                diff = (linear.weight.data - original).abs().max().item()
+                assert diff > 1e-10, "apply_lora_stack should modify weights"
+                mgr.restore_base_weights(root)
+            finally:
+                os.chdir(old_cwd)
 
 
 # ===================================================================

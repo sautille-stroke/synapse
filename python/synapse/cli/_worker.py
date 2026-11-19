@@ -37,6 +37,11 @@ def register_worker_subparser(
         required=True,
         help="Path to bundle directory or manifest JSON file",
     )
+    worker_run.add_argument(
+        "--workspace-root",
+        default=None,
+        help="Optional workspace root for strict path sandboxing",
+    )
     return cast(argparse.ArgumentParser, worker_parser)
 
 
@@ -57,6 +62,7 @@ def dispatch_worker(
             bundle_path=parsed.bundle,
             json_mode=json_mode,
             trace_ctx=trace_ctx,
+            workspace_root=getattr(parsed, "workspace_root", None),
         )
     else:
         if json_mode:

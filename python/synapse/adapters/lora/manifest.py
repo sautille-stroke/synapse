@@ -20,24 +20,51 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 _CATEGORY_WHITELIST: dict[str, list[str]] = {
     "style": [
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_k",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_v",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn2\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?add_k_proj",
+        r"(?:blocks\.(?:\d+|\*)\.)?add_v_proj",
         r"cross_attn\.to_k",
         r"cross_attn\.to_v",
+        r"attn2\..*",
         r"ffn\..*",
+        r"add_k_proj",
+        r"add_v_proj",
     ],
     "identity": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_k",
+        r"(?:blocks\.(?:\d+|\*)\.)?cross_attn\.to_v",
+        r"(?:blocks\.(?:\d+|\*)\.)?add_k_proj",
+        r"(?:blocks\.(?:\d+|\*)\.)?add_v_proj",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"cross_attn\.to_k",
         r"cross_attn\.to_v",
+        r"add_k_proj",
+        r"add_v_proj",
     ],
     "control": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"ffn\..*",
     ],
     "whitebox": [
+        r"(?:blocks\.(?:\d+|\*)\.)?spatial_attn\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?attn1\..*",
+        r"(?:blocks\.(?:\d+|\*)\.)?ffn\..*",
         r"spatial_attn\..*",
+        r"attn1\..*",
         r"ffn\..*",
     ],
     "motion": [
+        r"(?:blocks\.(?:\d+|\*)\.)?temporal_attn\..*",
         r"temporal_attn\..*",
     ],
 }
@@ -45,7 +72,10 @@ _CATEGORY_WHITELIST: dict[str, list[str]] = {
 
 def _matches_any_pattern(module_name: str, patterns: list[str]) -> bool:
     """Return True if *module_name* fully matches any regex in *patterns*."""
-    return any(re.fullmatch(p, module_name) for p in patterns)
+    if any(re.fullmatch(p, module_name) for p in patterns):
+        return True
+    sample = re.sub(r"\*", "0", module_name)
+    return any(re.fullmatch(p, sample) for p in patterns)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +131,18 @@ class LoRAManifest(BaseModel):
             raise ValueError(f"rank must be >= 1; got {v}.")
         return v
 
+    @field_validator("alpha")
+    @classmethod
+    def _validate_alpha_finite_nonneg(cls, v: float) -> float:
+        """Ensure alpha is finite and non-negative."""
+        import math
+
+        if not math.isfinite(v):
+            raise ValueError(f"alpha must be finite; got {v}.")
+        if v < 0:
+            raise ValueError(f"alpha must be non-negative; got {v}.")
+        return v
+
     @field_validator("target_modules")
     @classmethod
     def _validate_target_modules_non_empty(cls, v: list[str]) -> list[str]:
@@ -112,12 +154,25 @@ class LoRAManifest(BaseModel):
     @field_validator("adapter_path")
     @classmethod
     def _reject_unsafe_formats(cls, v: str) -> str:
-        """Reject pickle-based adapter formats (.bin, .pt)."""
+        """Reject pickle-based adapter formats and path traversal attempts."""
         if not v.endswith(".safetensors"):
             raise ValueError(
                 f"Only .safetensors adapters are allowed; "
                 f"got '{v}'. Pickle-based formats (.bin, .pt) "
                 f"are rejected for security."
+            )
+        # Path traversal protection: reject .., absolute paths, and Windows drive letters
+        if ".." in v:
+            raise ValueError(
+                f"adapter_path must not contain '..': got '{v}'."
+            )
+        if v.startswith("/") or v.startswith("\\"):
+            raise ValueError(
+                f"adapter_path must be relative, not absolute: got '{v}'."
+            )
+        if len(v) >= 2 and v[1] == ":" and v[0].isalpha():
+            raise ValueError(
+                f"adapter_path must not contain Windows drive letters: got '{v}'."
             )
         return v
 

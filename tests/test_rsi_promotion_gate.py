@@ -512,6 +512,7 @@ class TestRSICLI:
                     "--json",
                     "rsi",
                     "gate-promote",
+                    "--strict",
                     "--baseline-overall",
                     "0.8",
                     "--candidate-overall",
@@ -583,3 +584,54 @@ class TestCurriculumManager:
         mgr = CurriculumManager()
         result = mgr.record_quarantine([{"scenario_id": "t01"}])
         assert result is None
+
+    def test_duplicate_scenarios_rejected(self) -> None:
+        """Duplicate scenario IDs in BenchReport are rejected (anti-silent-dedup)."""
+        from synapse.errors import ContractValidationError
+        from synapse.rsi.promotion_gate import (
+            BenchReport,
+            BenchScenarioScore,
+            evaluate_monotonic_promotion,
+        )
+
+        scenarios = [
+            BenchScenarioScore(scenario_id="t01", overall=0.8),
+            BenchScenarioScore(scenario_id="t01", overall=0.8),  # duplicate
+        ]
+        report = BenchReport(overall_score=0.8, scenarios=scenarios)
+        with pytest.raises(ContractValidationError, match="Duplicate scenario_id"):
+            evaluate_monotonic_promotion(baseline=report, candidate=report)
+
+    def test_challenge_to_bench_scenario_and_bridge(self) -> None:
+        """ChallengeScenario.to_bench_scenario and scenario_reports_to_bench_report bridge cleanly."""
+        from synapse.rsi.curriculum import ChallengeScenario, scenario_reports_to_bench_report
+        from synapse.rsi.promotion_gate import evaluate_monotonic_promotion
+
+        challenge = ChallengeScenario(
+            scenario_id="c01",
+            factor="lighting",
+            level="L3",
+            description="Hard light",
+        )
+        bench_sc = challenge.to_bench_scenario()
+        assert bench_sc.id == "c01"
+        assert bench_sc.conditions == {"lighting": "L3"}
+
+        mock_reports_base = [
+            {"scenario_name": "c01", "metrics": {"f_score_1mm": 0.70, "temporal_consistency": 0.70}},
+        ]
+        mock_reports_cand = [
+            {"scenario_name": "c01", "metrics": {"f_score_1mm": 0.85, "temporal_consistency": 0.85}},
+        ]
+        base_rep = scenario_reports_to_bench_report(mock_reports_base, lora_sha256="base")
+        cand_rep = scenario_reports_to_bench_report(mock_reports_cand, lora_sha256="cand")
+
+        assert len(base_rep.scenarios) == 1
+        assert base_rep.overall_score < cand_rep.overall_score
+
+        res = evaluate_monotonic_promotion(
+            baseline=base_rep,
+            candidate=cand_rep,
+            min_scenarios=1,
+        )
+        assert res.promoted is True

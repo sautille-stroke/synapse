@@ -374,14 +374,34 @@ class ClosedLoopRunner:
         rerendered: np.ndarray,
         source: np.ndarray,
     ) -> list[list[RefinementResult]]:
-        """Build per-frame RefinementResults covering the entire frame.
+        """Build per-frame RefinementResults with tight foreground ROI bbox.
 
-        Each frame gets a single FULL_BODY region covering the whole image.
+        Derives the bounding box from non-black foreground pixels in the
+        re-rendered frames (using color normal energy) rather than always
+        covering the full frame.
         """
         t_count, h, w, _ = source.shape
         refinements: list[list[RefinementResult]] = []
 
         for t in range(t_count):
+            # Derive tight ROI bbox from foreground (non-zero) pixels
+            fg_energy = np.sum(rerendered[t] ** 2, axis=-1)  # (H, W)
+            fg_mask = fg_energy > 0.001
+
+            if np.any(fg_mask):
+                rows = np.where(np.any(fg_mask, axis=1))[0]
+                cols = np.where(np.any(fg_mask, axis=0))[0]
+                y0, y1 = int(rows[0]), int(rows[-1]) + 1
+                x0, x1 = int(cols[0]), int(cols[-1]) + 1
+                # Add small padding
+                pad = max(2, min(h, w) // 50)
+                x0 = max(0, x0 - pad)
+                y0 = max(0, y0 - pad)
+                x1 = min(w, x1 + pad)
+                y1 = min(h, y1 + pad)
+            else:
+                x0, y0, x1, y1 = 0, 0, w, h
+
             ref = RefinementResult(
                 refined_acescg=rerendered[t],
                 region=AnatomicalRegion.FULL_BODY,
@@ -389,7 +409,7 @@ class ClosedLoopRunner:
                 quality_score=1.0,
                 frame_index=t,
                 bbox_xyxy=np.array(
-                    [0, 0, w, h],
+                    [x0, y0, x1, y1],
                     dtype=np.float32,
                 ),
             )

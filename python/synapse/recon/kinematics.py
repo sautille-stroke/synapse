@@ -173,8 +173,24 @@ def solve_zero_slip_ik(
         j_knee = joint_indices.get(knee_k, 0)
         j_foot = joint_indices.get(foot_k, 0)
 
-        # Detect contiguous stance intervals
+        # Detect contiguous stance intervals using adaptive detection:
+        # Combine contact signal with ankle height + velocity heuristics
         is_stance = contacts[:, foot_idx] >= 0.5
+
+        # Enhance stance detection with ankle height and velocity
+        for frame_idx in range(num_frames):
+            ankle_y = positions[frame_idx, j_foot, 1]
+            # Low ankle height suggests ground contact
+            if ankle_y <= 0.05:  # 5cm threshold
+                if frame_idx > 0:
+                    ankle_vel = np.linalg.norm(
+                        positions[frame_idx, j_foot] - positions[frame_idx - 1, j_foot]
+                    ) / dt
+                    # Low velocity + low height = likely stance
+                    if ankle_vel < 0.5:  # < 0.5 m/s
+                        is_stance[frame_idx] = True
+                else:
+                    is_stance[frame_idx] = True
         t = 0
         while t < num_frames:
             if not is_stance[t]:
@@ -240,6 +256,17 @@ def solve_zero_slip_ik(
                     )
                     positions[frame, j_knee] = new_knee
                     positions[frame, j_foot] = new_ankle
+
+                    # Recalculate slip AFTER Two-Bone IK clamping
+                    # (IK may adjust the ankle position from target_pos)
+                    if frame > start_t:
+                        prev_clamped = positions[frame - 1, j_foot]
+                        post_ik_dist = np.linalg.norm(
+                            positions[frame, j_foot][[0, 2]] - prev_clamped[[0, 2]]
+                        )
+                        clamped_speed_cm_s = (post_ik_dist / dt) * 100.0
+                        # Update the last recorded slip value
+                        clamped_slips_cm_s[-1] = float(clamped_speed_cm_s)
                 else:
                     positions[frame, j_foot] = target_pos
 
