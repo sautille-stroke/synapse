@@ -294,6 +294,7 @@ def refine_pose_6dof(
     ) -> tuple[np.ndarray, np.ndarray]:
         """Find nearest-neighbor indices and distances from source to target."""
         if _has_cg_bvh:
+            assert _cg is not None
             return cast(tuple[np.ndarray, np.ndarray], _cg.bvh_closest_points(target, source))
         elif _has_scipy_tree:
             tree = cKDTree(target)

@@ -83,7 +83,8 @@ def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]
     """Delegate primitive mesh generation to @aether//geo via aether_geo."""
     from synapse.bridge.aether_bridge import require_aether_geo
 
-    return require_aether_geo().create_primitive_mesh(primitive_type, **kwargs)
+    result: dict[str, Any] = require_aether_geo().create_primitive_mesh(primitive_type, **kwargs)
+    return result
 
 
 def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
