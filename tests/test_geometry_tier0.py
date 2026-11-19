@@ -848,3 +848,15 @@ class TestQuadRemeshNoDuplicateVertex:
             assert len(unique_verts) == 4, (
                 f"Face {face_idx} has duplicate vertices: {face.tolist()}"
             )
+
+
+class TestAetherBridgeNoRelativeProbe:
+    """Verify aether_bridge does not probe relative sibling paths when AETHER_ROOT is unset."""
+
+    def test_candidate_dirs_empty_without_aether_root(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from synapse.bridge.aether_bridge import _candidate_aether_python_dirs
+
+        monkeypatch.delenv("AETHER_ROOT", raising=False)
+        assert _candidate_aether_python_dirs() == []

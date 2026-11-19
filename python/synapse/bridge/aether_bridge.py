@@ -1,8 +1,7 @@
-"""Bridge to @aether//metrics and @aether//color native C++20 acceleration.
+"""Bridge to @aether//metrics, @aether//color, and @aether//geo native C++20 acceleration.
 
-Provides turnkey auto-detection and graceful fallback for upstream Aether
-computational kernels:
-1. Probes for pre-installed ``aether_metrics`` or builds in sibling ``../aether``.
+Provides turnkey auto-detection for upstream Aether computational kernels:
+1. Imports via ``aether_py`` umbrella or installed ``aether_*`` modules (optional ``AETHER_ROOT`` override).
 2. Wraps SIMD-accelerated image quality metrics (PSNR, masked PSNR, SSIM, CIEDE2000, FLIP).
 3. Wraps high-performance color space conversions and tone mapping.
 """
@@ -25,21 +24,23 @@ _aether_metrics_mod: Any = None
 _aether_color_mod: Any = None
 _PROBED = False
 
+_AETHER_PY_SUBMODULES: dict[str, str] = {
+    "aether_geo": "geo",
+    "aether_metrics": "metrics",
+    "aether_spectra": "spectra",
+    "aether_scene": "scene",
+}
+
 
 def _candidate_aether_python_dirs() -> list[Path]:
-    """Return candidate directories that may contain built aether extensions."""
+    """Return candidate directories from explicit ``AETHER_ROOT`` override only."""
     dirs: list[Path] = []
     if "AETHER_ROOT" in os.environ:
         cand_root = Path(os.environ["AETHER_ROOT"]).resolve()
         for sub in ("bazel-bin/python", "python"):
             cand = cand_root / sub
-            if cand.is_dir():
+            if cand.is_dir() and cand not in dirs:
                 dirs.append(cand)
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    for parent in (repo_root.parent, repo_root):
-        cand = parent / "aether" / "bazel-bin" / "python"
-        if cand.is_dir() and cand not in dirs:
-            dirs.append(cand)
     return dirs
 
 
@@ -57,6 +58,15 @@ def _import_aether_extension(stem: str) -> Any:
     """Locate and import a compiled aether Python extension module."""
     if stem in sys.modules:
         return sys.modules[stem]
+    sub_attr = _AETHER_PY_SUBMODULES.get(stem)
+    if sub_attr is not None:
+        try:
+            aether_py = importlib.import_module("aether_py")
+            mod = getattr(aether_py, sub_attr, None)
+            if mod is not None:
+                return mod
+        except Exception:
+            pass
     try:
         return importlib.import_module(stem)
     except ImportError:
