@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from synapse.bench.model_loader import load_mesh
+from synapse.bridge.aether_bridge import has_aether_geo
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.inspect.model_evaluator import (
     GATE_PROFILES,
@@ -22,8 +23,6 @@ from synapse.metrics.profiles import (
     TRACK_A_ASSET,
     TRACK_B_VIDEO,
 )
-
-from synapse.bridge.aether_bridge import has_aether_geo
 
 _BACKEND = "native" if has_aether_geo() else "python"
 

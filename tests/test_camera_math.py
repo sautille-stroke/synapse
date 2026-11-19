@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from synapse.errors import ContractValidationError
 from synapse.render_core.camera_math import (
     look_at,
