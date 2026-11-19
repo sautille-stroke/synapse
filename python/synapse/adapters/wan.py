@@ -24,7 +24,15 @@ import contextlib
 import hashlib
 import io
 from abc import ABC, abstractmethod
-from typing import Any, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import torch.nn as nn
+
+    from synapse.adapters.lora.manager import MultiLoRAManager
+    from synapse.adapters.lora.manifest import LoRAManifest
+    from synapse.fgpp.frame import FGPPFrame, FGPPSequence
 
 import numpy as np
 
@@ -261,7 +269,7 @@ class LocalCallableBackend(WanBackendTransport):
 
     def __init__(
         self,
-        pipeline_fn: Any,  # Callable[[PreparedConditionPayload, ...], ndarray]
+        pipeline_fn: Callable[..., np.ndarray],
     ) -> None:
         self._fn = pipeline_fn
 
@@ -279,7 +287,7 @@ class LocalCallableBackend(WanBackendTransport):
         Returns:
             ``[T, H, W, 3]`` uint8 sRGB frames.
         """
-        return cast(np.ndarray, self._fn(payload, config))
+        return self._fn(payload, config)
 
     def is_available(self) -> bool:
         """Local backend is always available."""
@@ -432,13 +440,13 @@ class WanAdapter(VideoModelAdapter):
         self,
         backend: WanBackendTransport | None = None,
         gamma_flow_bias: float = 0.0,
-        lora_manifests: list[Any] | None = None,
+        lora_manifests: list[tuple[LoRAManifest, float]] | None = None,
         *,
         test_synthetic: bool = False,
     ) -> None:
         self._backend = backend
         self._gamma_flow_bias = float(np.clip(gamma_flow_bias, 0.0, _FLOW_BIAS_GAMMA_MAX))
-        self._lora_manager: Any | None = None
+        self._lora_manager: MultiLoRAManager | None = None
         if lora_manifests is not None:
             from synapse.adapters.lora.manager import MultiLoRAManager  # lazy
 
@@ -466,7 +474,7 @@ class WanAdapter(VideoModelAdapter):
 
     def prepare_conditions(
         self,
-        fgpp_sequence: Any,  # FGPPSequence
+        fgpp_sequence: FGPPSequence,
         config: VideoGenerationConfig,
     ) -> PreparedConditionPayload:
         """Transform an FGPP sequence into ControlNeXt condition tensors.
@@ -546,7 +554,7 @@ class WanAdapter(VideoModelAdapter):
             per_frame_tensors.append(control)
 
             # Collect Cryptomatte IDs for passthrough
-            if getattr(frame, "cryptomatte_id", None) is not None:
+            if frame.cryptomatte_id is not None:
                 cryptomatte_maps.append(frame.cryptomatte_id)
 
         # Stack into [T, C, H, W] then transpose to [C, T, H, W]
@@ -588,7 +596,7 @@ class WanAdapter(VideoModelAdapter):
 
     def reanchor_physical_frame(
         self,
-        frame: Any,  # FGPPFrame
+        frame: FGPPFrame,
         frame_index: int = 0,
     ) -> np.ndarray:
         """Extract ground-truth physical conditioning slice for an anchor frame.
@@ -642,8 +650,8 @@ class WanAdapter(VideoModelAdapter):
         self,
         conditions: PreparedConditionPayload,
         config: VideoGenerationConfig,
-        model: Any | None = None,
-        fgpp_frames: list[Any] | None = None,
+        model: nn.Module | None = None,
+        fgpp_frames: list[FGPPFrame] | None = None,
         check_non_degenerate: bool = True,
     ) -> VideoResult:
         """Generate video frames via the configured backend transport.
@@ -752,7 +760,7 @@ class WanAdapter(VideoModelAdapter):
                 crypt_maps = [
                     f.cryptomatte_id
                     for f in fgpp_frames
-                    if getattr(f, "cryptomatte_id", None) is not None
+                    if f.cryptomatte_id is not None
                 ]
                 if crypt_maps:
                     cryptomatte_ids = np.stack(crypt_maps, axis=0)
@@ -794,7 +802,7 @@ class WanAdapter(VideoModelAdapter):
             scheduler = ConditionScheduler(plan=plan, detector=detector)
 
             class _SeqWrapper:
-                def __init__(self, f_list: list[Any]) -> None:
+                def __init__(self, f_list: list[FGPPFrame]) -> None:
                     self.frames = f_list
 
             scheduled_windows = scheduler.schedule(_SeqWrapper(fgpp_frames or []))
