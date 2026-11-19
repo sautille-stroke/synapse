@@ -20,9 +20,8 @@ used for inner loops; otherwise falls back to pure NumPy vectorised code.
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Psyop Cryptomatte MD5-based entity hashing
+# Psyop Cryptomatte MurmurHash3_x86_32-based entity hashing
 # ---------------------------------------------------------------------------
-import hashlib
 import math
 import struct
 from dataclasses import dataclass
@@ -32,30 +31,118 @@ import numpy as np
 from synapse.fgpp.frame import CameraParams, FGPPFrame
 
 
+def _murmurhash3_32(key: bytes, seed: int = 0) -> int:
+    """Pure-Python MurmurHash3_x86_32 (reference implementation).
+
+    Exactly reproduces the canonical C reference by Austin Appleby
+    (public domain): processes 4-byte blocks with tail handling and
+    finalization mixing.
+
+    Parameters
+    ----------
+    key : bytes
+        Input bytes to hash.
+    seed : int
+        Hash seed (Cryptomatte uses 0).
+
+    Returns
+    -------
+    int
+        32-bit unsigned integer hash.
+    """
+    _MASK32 = 0xFFFFFFFF
+    c1 = 0xCC9E2D51
+    c2 = 0x1B873593
+
+    h = seed & _MASK32
+    length = len(key)
+    n_blocks = length // 4
+
+    # Body: process 4-byte blocks
+    for i in range(n_blocks):
+        k = struct.unpack_from("<I", key, i * 4)[0]
+        k = (k * c1) & _MASK32
+        k = ((k << 15) | (k >> 17)) & _MASK32
+        k = (k * c2) & _MASK32
+        h ^= k
+        h = ((h << 13) | (h >> 19)) & _MASK32
+        h = (h * 5 + 0xE6546B64) & _MASK32
+
+    # Tail: remaining bytes
+    tail_start = n_blocks * 4
+    k1 = 0
+    tail_len = length & 3
+    if tail_len >= 3:
+        k1 ^= key[tail_start + 2] << 16
+    if tail_len >= 2:
+        k1 ^= key[tail_start + 1] << 8
+    if tail_len >= 1:
+        k1 ^= key[tail_start]
+        k1 = (k1 * c1) & _MASK32
+        k1 = ((k1 << 15) | (k1 >> 17)) & _MASK32
+        k1 = (k1 * c2) & _MASK32
+        h ^= k1
+
+    # Finalization mix (fmix32)
+    h ^= length
+    h ^= (h >> 16)
+    h = (h * 0x85EBCA6B) & _MASK32
+    h ^= (h >> 13)
+    h = (h * 0xC2B2AE35) & _MASK32
+    h ^= (h >> 16)
+
+    return h
+
+
+def _sanitize_cryptomatte_exponent(h: int) -> int:
+    """Sanitize IEEE 754 float32 exponent for safe Cryptomatte reinterpretation.
+
+    Per the Psyop Cryptomatte specification, the uint32 hash must be
+    reinterpretable as a valid, finite float32. If the IEEE 754 exponent
+    bits (bits 23–30) are all-zero (denorm/zero) or all-one (Inf/NaN),
+    toggle bit 23 to push into the normal range.
+
+    Parameters
+    ----------
+    h : int
+        Raw 32-bit unsigned hash.
+
+    Returns
+    -------
+    int
+        Sanitized 32-bit unsigned hash safe for float32 reinterpretation.
+    """
+    exponent = (h >> 23) & 0xFF
+    if exponent == 0 or exponent == 0xFF:
+        h ^= 1 << 23
+    return h
+
+
 def _cryptomatte_name_hash(name: str) -> int:
     """Compute the Psyop Cryptomatte entity ID from an entity name.
 
-    Uses the industry-standard MD5-based algorithm defined by the
-    `Cryptomatte specification <https://github.com/Psyop/Cryptomatte>`_:
+    Uses the industry-standard MurmurHash3_x86_32 algorithm (seed=0)
+    defined by the `Cryptomatte specification
+    <https://github.com/Psyop/Cryptomatte>`_:
 
-    1. MD5-hash the UTF-8 encoded name.
-    2. Take the first 4 bytes of the digest.
-    3. Interpret as a little-endian ``uint32``.
+    1. MurmurHash3_x86_32 the UTF-8 encoded name with seed 0.
+    2. Sanitize the IEEE 754 exponent for safe float32 reinterpretation.
 
     Returns
     -------
     int
         32-bit unsigned integer entity hash.
     """
-    digest = hashlib.md5(name.encode("utf-8")).digest()
-    h = struct.unpack("<I", digest[:4])[0]
-    return int(h)
+    h = _murmurhash3_32(name.encode("utf-8"), seed=0)
+    h = _sanitize_cryptomatte_exponent(h)
+    return h
 
 
 def entity_hash(name: str) -> int:
     """Compute a 32-bit Cryptomatte entity ID for *name*.
 
-    Uses the Psyop Cryptomatte MD5 algorithm. Returns a non-zero hash;
+    Uses the Psyop Cryptomatte MurmurHash3_x86_32 algorithm (seed=0)
+    with IEEE 754 exponent sanitization. Returns a non-zero hash;
     background ``0`` is reserved.
     """
     h = _cryptomatte_name_hash(name)

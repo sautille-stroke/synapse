@@ -30,43 +30,21 @@ __all__ = [
 def _nearest_neighbor_distances(
     src: np.ndarray,
     tgt: np.ndarray,
-    chunk_size: int = 512,
 ) -> np.ndarray:
     """Compute exact Euclidean nearest-neighbour distance from each *src* point to *tgt*.
 
     Uses ``synapse._c_geometry.bvh_closest_points`` for exact BVH-accelerated
-    nearest-neighbour queries (C++ extension required).
+    nearest-neighbour queries.
+
+    .. note:: C++ extension is **mandatory** (v3.0).  No Python fallback.
     """
     if len(src) == 0 or len(tgt) == 0:
         return np.zeros(len(src), dtype=np.float64)
 
-    try:
-        from synapse._c_geometry import bvh_closest_points
+    from synapse._c_geometry import bvh_closest_points
 
-        _, dists = bvh_closest_points(tgt, src)
-        return np.asarray(dists, dtype=np.float64)
-    except (ImportError, AttributeError, RuntimeError):
-        pass
-
-    try:
-        from scipy.spatial import cKDTree  # lazy import
-
-        tree = cKDTree(tgt)
-        dists, _ = tree.query(src, k=1)
-        return np.asarray(dists, dtype=np.float64)
-    except ImportError:
-        tgt_sq = np.sum(tgt * tgt, axis=1)  # [M]
-        min_dists = np.empty(len(src), dtype=np.float64)
-        for start in range(0, len(src), chunk_size):
-            end = min(start + chunk_size, len(src))
-            chunk = src[start:end]  # [C, 3]
-            chunk_sq = np.sum(chunk * chunk, axis=1, keepdims=True)  # [C, 1]
-            # Exact refinement on nearest candidates to avoid cancellation drift
-            approx_d2 = np.maximum(chunk_sq + tgt_sq[np.newaxis, :] - 2.0 * (chunk @ tgt.T), 0.0)
-            nn_idx = np.argmin(approx_d2, axis=1)
-            diff = chunk - tgt[nn_idx]
-            min_dists[start:end] = np.linalg.norm(diff, axis=1)
-        return min_dists
+    _, dists = bvh_closest_points(tgt, src)
+    return np.asarray(dists, dtype=np.float64)
 
 
 def chamfer_mm(
@@ -379,15 +357,15 @@ def _is_mesh_watertight(faces_or_vertices: Any, faces: Any = None) -> bool:
 
     # Fast path: checkWatertight via native extension if uniform faces and vertices are provided
     if verts is not None and isinstance(raw_faces, np.ndarray) and raw_faces.ndim == 2:
-            from synapse._c_geometry import check_watertight
+        from synapse._c_geometry import check_watertight
 
-            return bool(
+        return bool(
             check_watertight(
                 verts,
                 raw_faces.astype(np.int64, copy=False),
                 int(raw_faces.shape[1]),
             )
-            )
+        )
 
     # Can be a list of polygons or a numpy array
     f: list[Any] | np.ndarray

@@ -39,7 +39,19 @@ from synapse.bridge.aether_bridge import (
     native_srgb_to_linear,
 )
 
-_HAS_NATIVE = has_aether_color()
+_HAS_NATIVE: bool | None = None  # lazy sentinel — probed on first use
+
+
+def _has_native() -> bool:
+    """Return True if aether native color bindings are available.
+
+    Defers the probe to first call to avoid import-time side effects
+    (§3.2 zero-hidden-global-state).
+    """
+    global _HAS_NATIVE
+    if _HAS_NATIVE is None:
+        _HAS_NATIVE = has_aether_color()
+    return _HAS_NATIVE
 
 
 def _warn_fallback() -> None:
@@ -330,7 +342,7 @@ def srgb_to_linear(srgb: np.ndarray) -> np.ndarray:
     Returns:
         Linear RGB array with the same shape.
     """
-    if _HAS_NATIVE:
+    if _has_native():
         native_res = native_srgb_to_linear(srgb)
         if native_res is not None:
             return native_res
@@ -347,7 +359,7 @@ def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
     Returns:
         sRGB array with the same shape.
     """
-    if _HAS_NATIVE:
+    if _has_native():
         native_res = native_linear_to_srgb(linear)
         if native_res is not None:
             return native_res

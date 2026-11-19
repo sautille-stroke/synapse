@@ -38,10 +38,6 @@ from synapse.bench.procedural import (
     generate_humanoid_proxy,
     generate_procedural_mesh,
 )
-from synapse.bench.rasterizer import (
-    SoftwareRasterizer,
-    entity_hash,
-)
 from synapse.bench.registry import (
     AssetEntry,
     AssetRegistry,
@@ -58,6 +54,10 @@ from synapse.bench.scenario import (
     ScenarioTier,
     list_scenarios,
     load_scenario,
+)
+from synapse.render_core.rasterizer import (
+    SoftwareRasterizer,
+    entity_hash,
 )
 
 __all__ = [

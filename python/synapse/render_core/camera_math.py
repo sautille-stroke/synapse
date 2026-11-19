@@ -49,12 +49,23 @@ def look_at(
     -------
     np.ndarray
         ``[4, 4]`` world-to-camera view matrix.
+
+    Raises
+    ------
+    ContractValidationError
+        If ``eye`` and ``target`` are coincident (zero-length forward vector).
     """
     if up is None:
         up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
     forward = target - eye
-    forward = forward / (np.linalg.norm(forward) + 1e-12)
+    f_len = float(np.linalg.norm(forward))
+    if f_len < 1e-12:
+        raise ContractValidationError(
+            "look_at: eye and target are coincident (zero-length forward vector).",
+            agent_fix_hint="Ensure eye != target when calling look_at().",
+        )
+    forward = forward / f_len
 
     up_norm = up / (np.linalg.norm(up) + 1e-12)
 
@@ -70,6 +81,7 @@ def look_at(
 
     right = right / (np.linalg.norm(right) + 1e-12)
     new_up = np.cross(right, forward)
+    new_up = new_up / (np.linalg.norm(new_up) + 1e-12)  # normalize
 
     view = np.eye(4, dtype=np.float64)
     view[0, :3] = right
@@ -121,7 +133,12 @@ def look_at_rotation(
     right = np.cross(forward, up)
     r_len = float(np.linalg.norm(right))
     if r_len < 1e-12:
-        alt_up = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+        # Singularity: forward parallel to up — use Z-axis fallback
+        # (consistent with look_at() above)
+        alt_up = np.array(
+            [0.0, 0.0, -1.0 if forward[1] > 0 else 1.0],
+            dtype=np.float64,
+        )
         right = np.cross(forward, alt_up)
         r_len = float(np.linalg.norm(right))
         if r_len < 1e-12:
@@ -205,7 +222,7 @@ def view_matrix_from_pose(
         rot_col = np.array(rotation, dtype=np.float64).reshape(3, 3)
         rot = rot_col.T  # column-major → row-major
     elif len(rotation) == 4:
-        rot = _quat_to_matrix(rotation)
+        rot = quat_to_matrix(rotation)
     else:
         rot = np.eye(3, dtype=np.float64)
 
@@ -239,9 +256,17 @@ def pose_from_view_matrix(
 # ---------------------------------------------------------------------------
 
 
-def _quat_to_matrix(q: list[float]) -> np.ndarray:
-    """Convert quaternion ``[x, y, z, w]`` to 3×3 rotation matrix."""
+def quat_to_matrix(q: list[float]) -> np.ndarray:
+    """Convert quaternion ``[x, y, z, w]`` to 3×3 rotation matrix.
+
+    Normalizes the quaternion before conversion to handle
+    near-unit inputs robustly.
+    """
     x, y, z, w = q
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    if norm < 1e-12:
+        return np.eye(3, dtype=np.float64)
+    x, y, z, w = x / norm, y / norm, z / norm, w / norm
     return np.array(
         [
             [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
@@ -250,3 +275,7 @@ def _quat_to_matrix(q: list[float]) -> np.ndarray:
         ],
         dtype=np.float64,
     )
+
+
+# Backward-compatible alias
+_quat_to_matrix = quat_to_matrix
