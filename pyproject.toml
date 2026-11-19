@@ -105,7 +105,6 @@ module = [
     "scipy.*",
     "pybind11",
     "pybind11.*",
-    "synapse._c_geometry",
     "aether_geo",
     "aether_geo.*",
     "aether.color",

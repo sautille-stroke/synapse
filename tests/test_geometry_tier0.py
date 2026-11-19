@@ -488,14 +488,14 @@ class TestValidateMeshGeometry:
             validate_mesh_geometry(verts, faces, backend="auto")  # type: ignore[arg-type]
 
     def test_native_backend_unavailable_raises(self, tetrahedron: Any) -> None:
-        """Native backend raises BackendUnavailableError(exit_code=30) when _c_geometry missing (P1-ARCH-03)."""
+        """Native backend raises BackendUnavailableError(exit_code=30) when aether_geo missing."""
         import sys
         from unittest.mock import patch
 
         from synapse.errors import BackendUnavailableError
 
         verts, faces = tetrahedron
-        with patch.dict(sys.modules, {"synapse._c_geometry": None}):
+        with patch.dict(sys.modules, {"aether_geo": None}):
             with pytest.raises(BackendUnavailableError) as exc_info:
                 validate_mesh_geometry(verts, faces, backend="native")
             assert exc_info.value.exit_code == 30
@@ -503,7 +503,7 @@ class TestValidateMeshGeometry:
 
 
 class TestBuildNativeScript:
-    """PR-62 (AUD-P0-02): Verify build_native.py dry-run and direct backend support."""
+    """PR-U20: Verify build_native.py targets @aether//python:aether_geo cleanly."""
 
     def test_build_native_dry_run_exits_zero(self) -> None:
         import subprocess
@@ -518,8 +518,9 @@ class TestBuildNativeScript:
             text=True,
         )
         assert res.returncode == 0, f"build_native.py --dry-run failed: {res.stderr}"
+        assert "//python:aether_geo" in (res.stdout + res.stderr)
 
-    def test_build_native_direct_dry_run(self) -> None:
+    def test_build_native_bazel_dry_run(self) -> None:
         import subprocess
         import sys
         from pathlib import Path
@@ -527,140 +528,109 @@ class TestBuildNativeScript:
         repo_root = Path(__file__).resolve().parent.parent
         script = repo_root / "scripts" / "build_native.py"
         res = subprocess.run(
-            [sys.executable, str(script), "--dry-run", "--backend=direct"],
+            [sys.executable, str(script), "--dry-run", "--backend=bazel"],
             capture_output=True,
             text=True,
         )
         assert res.returncode == 0, (
-            f"build_native.py --dry-run --backend=direct failed: {res.stderr}"
+            f"build_native.py --dry-run --backend=bazel failed: {res.stderr}"
         )
+        assert "//python:aether_geo" in (res.stdout + res.stderr)
 
-    def test_build_native_pybind11_missing_exit_30(self) -> None:
-        """When pybind11 is absent, build_native.py must exit with code 30 (BACKEND_UNAVAILABLE).
-
-        Tests the _emit_error path by directly invoking _find_pybind11_include
-        and _build_direct_fallback with a rigged environment where pybind11
-        is genuinely unreachable.
-        """
+    def test_build_native_direct_retired_exit_30(self) -> None:
+        """Non-dry-run --backend=direct emits exit code 30 after PR-U20 retirement."""
         import subprocess
         import sys
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent
         script = repo_root / "scripts" / "build_native.py"
-
-        # Create a wrapper that blocks pybind11 AND clears bazel cache path
-        wrapper = (
-            "import sys, os, importlib, importlib.util\n"
-            "# Block pybind11 from import (Python 3.12+ requires find_spec)\n"
-            "from importlib.abc import MetaPathFinder\n"
-            "class _Block(MetaPathFinder):\n"
-            "    def find_spec(self, fullname, path, target=None):\n"
-            "        if fullname == 'pybind11' or fullname.startswith('pybind11.'):\n"
-            "            raise ImportError('blocked by test')\n"
-            "        return None\n"
-            "sys.meta_path.insert(0, _Block())\n"
-            "sys.modules.pop('pybind11', None)\n"
-            "# Redirect HOME to a temp dir so bazel cache is not found\n"
-            "import tempfile\n"
-            "os.environ['HOME'] = tempfile.mkdtemp()\n"
-            f"sys.argv = ['{script}', '--backend=direct']\n"
-            f"spec = importlib.util.spec_from_file_location('build_native', r'{script}')\n"
-            "mod = importlib.util.module_from_spec(spec)\n"
-            "spec.loader.exec_module(mod)\n"
-            "sys.exit(mod.main())\n"
-        )
         res = subprocess.run(
-            [sys.executable, "-c", wrapper],
+            [sys.executable, str(script), "--backend=direct"],
             capture_output=True,
             text=True,
             cwd=str(repo_root),
         )
-        # Should exit 30 when pybind11 is missing
         assert res.returncode == 30, (
             f"Expected exit code 30, got {res.returncode}.\n"
             f"stdout: {res.stdout}\nstderr: {res.stderr}"
         )
         assert "agent_fix_hint" in res.stderr
 
-    def test_build_native_includes_aether_core_spatial(self) -> None:
-        """Dry-run must include aether/core/include and aether/spatial/include in compiler args."""
+    def test_build_native_aether_missing_exit_30(self, tmp_path: Path) -> None:
+        """Missing AETHER_ROOT fails closed with exit code 30 and agent_fix_hint."""
         import subprocess
         import sys
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent
         script = repo_root / "scripts" / "build_native.py"
-        aether_root = repo_root.parent / "aether"
-        if not aether_root.is_dir():
-            pytest.skip("aether sibling directory not found")
-
         env = os.environ.copy()
-        env.pop("AETHER_ROOT", None)
+        env["AETHER_ROOT"] = str(tmp_path / "nonexistent_aether")
         res = subprocess.run(
-            [sys.executable, str(script), "--dry-run", "--backend=direct"],
+            [sys.executable, str(script), "--backend=bazel"],
             capture_output=True,
             text=True,
             env=env,
         )
-        assert res.returncode == 0, f"dry-run failed: {res.stderr}"
-        # Check that aether core and spatial includes appear in the compiler command
-        output = res.stdout + res.stderr
-        assert "core/include" in output, "aether/core/include not found in compiler args"
-        assert "spatial/include" in output, "aether/spatial/include not found in compiler args"
+        assert res.returncode == 30, (
+            f"Expected exit code 30, got {res.returncode}.\n"
+            f"stdout: {res.stdout}\nstderr: {res.stderr}"
+        )
+        assert "agent_fix_hint" in res.stderr
 
 
 @pytest.mark.slow
 @pytest.mark.skipif(
     sys.platform == "win32" or sys.platform == "darwin",
-    reason="Real native compile requires Linux (ubuntu24)",
+    reason="Real native Bazel verify requires Linux (ubuntu24)",
 )
 class TestBuildNativeRealCompile:
-    """PR-84: Real compile test — build_native.py produces a loadable .so."""
+    """PR-U20: Verify build_native.py builds/copies loadable aether_geo .so."""
 
-    def test_real_direct_compile_and_load(self, tmp_path: Path) -> None:
-        """build_native.py --backend=direct --output-dir=<tmp> produces a
-        loadable _c_geometry .so with working validate_mesh exported."""
+    def test_real_bazel_build_and_load(self, tmp_path: Path) -> None:
+        """build_native.py --backend=bazel --output-dir=<tmp> produces a
+        loadable aether_geo .so with working validate_mesh_geometry."""
         import importlib
+        import shutil
         import subprocess
         import sys
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parent.parent
-        script = repo_root / "scripts" / "build_native.py"
+        aether_root = Path(os.environ.get("AETHER_ROOT", str(repo_root.parent / "aether")))
+        if not (aether_root / "python" / "BUILD.bazel").is_file() or shutil.which("bazel") is None:
+            pytest.skip("Bazel or aether checkout not available")
 
-        # Build into tmp_path
+        script = repo_root / "scripts" / "build_native.py"
         res = subprocess.run(
             [
                 sys.executable,
                 str(script),
-                "--backend=direct",
+                "--backend=bazel",
                 f"--output-dir={tmp_path}",
             ],
             capture_output=True,
             text=True,
             cwd=str(repo_root),
-            timeout=120,
+            timeout=180,
         )
         assert res.returncode == 0, (
-            f"build_native.py real compile failed (rc={res.returncode}):\n"
+            f"build_native.py bazel build failed (rc={res.returncode}):\n"
             f"stdout: {res.stdout}\nstderr: {res.stderr}"
         )
 
-        # Locate the built .so
-        so_files = list(tmp_path.glob("_c_geometry*"))
+        so_files = list(tmp_path.glob("aether_geo*"))
         assert len(so_files) >= 1, (
-            f"No _c_geometry .so found in {tmp_path}: {list(tmp_path.iterdir())}"
+            f"No aether_geo .so found in {tmp_path}: {list(tmp_path.iterdir())}"
         )
 
-        # Load the module dynamically
-        spec = importlib.util.spec_from_file_location("_c_geometry", str(so_files[0]))
+        spec = importlib.util.spec_from_file_location("aether_geo", str(so_files[0]))
         assert spec is not None, f"Failed to create module spec from {so_files[0]}"
         assert spec.loader is not None
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        # Verify validate_mesh_geometry is exported and callable
         assert hasattr(mod, "validate_mesh_geometry"), (
             f"Module does not export validate_mesh_geometry. Dir: {dir(mod)}"
         )
@@ -698,18 +668,16 @@ class TestGeometryGateNativeBackend:
     without fallback exception (test-a)."""
 
     def test_native_backend_validate_recon_mesh_manifold_dict_access(self) -> None:
-        """When _c_geometry returns a dict, validate_recon_mesh_manifold
+        """When aether_geo returns a dict, validate_recon_mesh_manifold
         reads result["is_manifold"] without AttributeError."""
         import sys
-        from unittest.mock import MagicMock
+        from unittest.mock import MagicMock, patch
 
-        import synapse
         from synapse.recon.geometry import validate_recon_mesh_manifold
 
         v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
         f = np.array([[0, 1, 2]], dtype=np.int64)
 
-        # Mock _c_geometry returning a dict (not an object with attributes)
         mock_cg = MagicMock()
         mock_cg.validate_mesh_geometry.return_value = {
             "is_manifold": True,
@@ -721,32 +689,16 @@ class TestGeometryGateNativeBackend:
             "num_faces": 1,
         }
 
-        old_mod = sys.modules.get("synapse._c_geometry")
-        old_attr = getattr(synapse, "_c_geometry", None)
-        sys.modules["synapse._c_geometry"] = mock_cg
-        synapse._c_geometry = mock_cg
-        try:
+        with patch.dict(sys.modules, {"aether_geo": mock_cg}):
             result = validate_recon_mesh_manifold(v, f, backend="native")
             assert result is True
             mock_cg.validate_mesh_geometry.assert_called_once()
-        finally:
-            if old_mod is None:
-                sys.modules.pop("synapse._c_geometry", None)
-            else:
-                sys.modules["synapse._c_geometry"] = old_mod
-            if old_attr is None:
-                if hasattr(synapse, "_c_geometry"):
-                    delattr(synapse, "_c_geometry")
-            else:
-                synapse._c_geometry = old_attr
 
     def test_native_backend_validate_mesh_geometry_dict_access(self) -> None:
         """validate_mesh_geometry with backend='native' reads dict keys
         without AttributeError."""
         import sys
-        from unittest.mock import MagicMock
-
-        import synapse
+        from unittest.mock import MagicMock, patch
 
         mock_cg = MagicMock()
         mock_cg.validate_mesh_geometry.return_value = {
@@ -778,25 +730,11 @@ class TestGeometryGateNativeBackend:
             dtype=np.int64,
         )
 
-        old_mod = sys.modules.get("synapse._c_geometry")
-        old_attr = getattr(synapse, "_c_geometry", None)
-        sys.modules["synapse._c_geometry"] = mock_cg
-        synapse._c_geometry = mock_cg
-        try:
+        with patch.dict(sys.modules, {"aether_geo": mock_cg}):
             result = validate_mesh_geometry(v, f, backend="native")
             assert result.passed is True
             assert result.is_manifold is True
             mock_cg.validate_mesh_geometry.assert_called_once()
-        finally:
-            if old_mod is None:
-                sys.modules.pop("synapse._c_geometry", None)
-            else:
-                sys.modules["synapse._c_geometry"] = old_mod
-            if old_attr is None:
-                if hasattr(synapse, "_c_geometry"):
-                    delattr(synapse, "_c_geometry")
-            else:
-                synapse._c_geometry = old_attr
 
 
 # ===================================================================

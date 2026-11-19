@@ -3,7 +3,7 @@
 Verifies edge cases in ``synapse.recon.geometry`` (coplanar disjoint grids,
 coplanar overlapping triangles, parallel planes, quad diagonal umbrellas,
 out-of-bounds/NaN safety, IEEE-754 floating-island ratios) and enforces 100%
-output parity with ``synapse._c_geometry`` whenever the native pybind11
+output parity with ``aether_geo`` whenever the native pybind11
 extension is built.
 """
 
@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from synapse.bridge.aether_bridge import get_aether_geo
 from synapse.inspect.geometry_gate import validate_mesh_geometry
 from synapse.recon.geometry import (
     check_degenerate_faces,
@@ -22,16 +23,8 @@ from synapse.recon.geometry import (
     find_connected_components,
 )
 
-try:
-    try:
-        import aether_geo as _c_geometry
-    except ImportError:
-        import synapse._c_geometry as _c_geometry
-
-    HAS_NATIVE_GEOMETRY = True
-except ImportError:
-    _c_geometry = None
-    HAS_NATIVE_GEOMETRY = False
+_c_geometry = get_aether_geo()
+HAS_NATIVE_GEOMETRY = _c_geometry is not None
 
 
 # ===================================================================
@@ -433,10 +426,10 @@ class TestGeometryOracleExactness:
 
 @pytest.mark.skipif(
     not HAS_NATIVE_GEOMETRY,
-    reason="synapse._c_geometry native extension not compiled in current Python path",
+    reason="aether_geo native extension not compiled in current Python path",
 )
 class TestNativeVsPythonOracleParity:
-    """Enforce 100% parity between synapse._c_geometry and Python Oracle."""
+    """Enforce 100% parity between aether_geo and Python Oracle."""
 
     @pytest.mark.parametrize(
         "mesh_builder",

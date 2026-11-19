@@ -18,12 +18,58 @@ from typing import Any
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Upstream aether_metrics probe & lazy loader
+# Upstream aether extension probe & lazy loader
 # ---------------------------------------------------------------------------
 
 _aether_metrics_mod: Any = None
 _aether_color_mod: Any = None
 _PROBED = False
+
+
+def _candidate_aether_python_dirs() -> list[Path]:
+    """Return candidate directories that may contain built aether extensions."""
+    dirs: list[Path] = []
+    if "AETHER_ROOT" in os.environ:
+        cand_root = Path(os.environ["AETHER_ROOT"]).resolve()
+        for sub in ("bazel-bin/python", "python"):
+            cand = cand_root / sub
+            if cand.is_dir():
+                dirs.append(cand)
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    for parent in (repo_root.parent, repo_root):
+        cand = parent / "aether" / "bazel-bin" / "python"
+        if cand.is_dir() and cand not in dirs:
+            dirs.append(cand)
+    return dirs
+
+
+def _has_extension(directory: Path, stem: str) -> bool:
+    """Return True if *directory* contains a built shared library for *stem*."""
+    return (
+        (directory / f"{stem}.so").is_file()
+        or (directory / f"{stem}.pyd").is_file()
+        or any(directory.glob(f"{stem}.cpython-*.so"))
+        or any(directory.glob(f"{stem}.cp*-*.pyd"))
+    )
+
+
+def _import_aether_extension(stem: str) -> Any:
+    """Locate and import a compiled aether Python extension module."""
+    if stem in sys.modules:
+        return sys.modules[stem]
+    try:
+        return importlib.import_module(stem)
+    except ImportError:
+        pass
+    for cand in _candidate_aether_python_dirs():
+        if _has_extension(cand, stem):
+            if str(cand) not in sys.path:
+                sys.path.insert(0, str(cand))
+            try:
+                return importlib.import_module(stem)
+            except ImportError:
+                pass
+    return None
 
 
 def _find_and_import_aether_metrics() -> Any:
@@ -33,54 +79,33 @@ def _find_and_import_aether_metrics() -> Any:
         return _aether_metrics_mod
 
     _PROBED = True
+    _aether_metrics_mod = _import_aether_extension("aether_metrics")
+    if _aether_metrics_mod is not None:
+        _aether_color_mod = getattr(_aether_metrics_mod, "color", None)
+    return _aether_metrics_mod
 
-    # 1. Try standard import (site-packages or existing PYTHONPATH)
-    try:
-        aether_metrics = importlib.import_module("aether_metrics")
-        _aether_metrics_mod = aether_metrics
-        _aether_color_mod = getattr(aether_metrics, "color", None)
-        return _aether_metrics_mod
-    except ImportError:
-        pass
 
-    # 2. Try explicit AETHER_ROOT override if defined
-    if "AETHER_ROOT" in os.environ:
-        cand_root = Path(os.environ["AETHER_ROOT"]).resolve()
-        for sub in ["bazel-bin/python", "python"]:
-            cand = cand_root / sub
-            if cand.is_dir() and (
-                (cand / "aether_metrics.so").is_file()
-                or (cand / "aether_metrics.pyd").is_file()
-            ):
-                if str(cand) not in sys.path:
-                    sys.path.insert(0, str(cand))
-                try:
-                    aether_metrics = importlib.import_module("aether_metrics")
-                    _aether_metrics_mod = aether_metrics
-                    _aether_color_mod = getattr(aether_metrics, "color", None)
-                    return _aether_metrics_mod
-                except ImportError:
-                    pass
+def get_aether_geo() -> Any:
+    """Return the loaded aether_geo extension module or None."""
+    return _import_aether_extension("aether_geo")
 
-    # 3. Try sibling directory checkouts (../aether/bazel-bin/python)
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    for parent in [repo_root.parent, repo_root]:
-        cand = parent / "aether" / "bazel-bin" / "python"
-        if cand.is_dir() and (
-            (cand / "aether_metrics.so").is_file()
-            or (cand / "aether_metrics.pyd").is_file()
-        ):
-            if str(cand) not in sys.path:
-                sys.path.insert(0, str(cand))
-            try:
-                aether_metrics = importlib.import_module("aether_metrics")
-                _aether_metrics_mod = aether_metrics
-                _aether_color_mod = getattr(aether_metrics, "color", None)
-                return _aether_metrics_mod
-            except ImportError:
-                pass
 
-    return None
+def has_aether_geo() -> bool:
+    """Return True if the aether_geo native module is accessible."""
+    return get_aether_geo() is not None
+
+
+def require_aether_geo() -> Any:
+    """Return the loaded aether_geo module or raise BackendUnavailableError."""
+    mod = get_aether_geo()
+    if mod is None:
+        from synapse.errors import BackendUnavailableError
+
+        raise BackendUnavailableError(
+            "aether_geo C++20 extension is not available",
+            agent_fix_hint="Install aether_geo or run: python scripts/build_native.py",
+        )
+    return mod
 
 
 def get_aether_metrics() -> Any:

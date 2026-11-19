@@ -59,18 +59,18 @@ class SynapseReconBackend(VgBackend):
     ) -> bool:
         """Check 2-manifold status using native C++ kernel with Oracle fallback."""
         try:
-            try:
-                import aether_geo as _cg
-            except ImportError:
-                import synapse._c_geometry as _cg
+            from synapse.bridge.aether_bridge import get_aether_geo
 
-            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
-            f_arr = np.ascontiguousarray(faces, dtype=np.int32)
-            return bool(_cg.check_manifold(v_arr, f_arr))
-        except (ImportError, AttributeError):
-            from synapse.recon.geometry import check_manifold as recon_check_manifold
+            _cg = get_aether_geo()
+            if _cg is not None:
+                v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
+                f_arr = np.ascontiguousarray(faces, dtype=np.int32)
+                return bool(_cg.check_manifold(v_arr, f_arr))
+        except AttributeError:
+            pass
+        from synapse.recon.geometry import check_manifold as recon_check_manifold
 
-            return recon_check_manifold(vertices, faces)
+        return recon_check_manifold(vertices, faces)
 
     def check_watertight(
         self,
@@ -79,22 +79,18 @@ class SynapseReconBackend(VgBackend):
     ) -> bool:
         """Check watertight status using native C++ kernel with Oracle fallback."""
         try:
-            try:
-                import aether_geo as _cg
-            except ImportError:
-                import synapse._c_geometry as _cg
+            from synapse.bridge.aether_bridge import get_aether_geo
 
-            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
-            f_arr = np.ascontiguousarray(faces, dtype=np.int32)
-            if hasattr(_cg, "check_watertight"):
+            _cg = get_aether_geo()
+            if _cg is not None and hasattr(_cg, "check_watertight"):
+                v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
+                f_arr = np.ascontiguousarray(faces, dtype=np.int32)
                 return bool(_cg.check_watertight(v_arr, f_arr))
-            from synapse.recon.geometry import check_watertight as recon_check_watertight
+        except AttributeError:
+            pass
+        from synapse.recon.geometry import check_watertight as recon_check_watertight
 
-            return recon_check_watertight(vertices, faces)
-        except (ImportError, AttributeError):
-            from synapse.recon.geometry import check_watertight as recon_check_watertight
-
-            return recon_check_watertight(vertices, faces)
+        return recon_check_watertight(vertices, faces)
 
     def solve_zero_slip_ik(
         self,

@@ -33,17 +33,16 @@ def _nearest_neighbor_distances(
 ) -> np.ndarray:
     """Compute exact Euclidean nearest-neighbour distance from each *src* point to *tgt*.
 
-    Uses ``synapse._c_geometry.bvh_closest_points`` for exact BVH-accelerated
-    nearest-neighbour queries.
+    Uses ``aether_geo.bvh_closest_points`` for exact KD-Tree/BVH nearest-neighbour queries.
 
     .. note:: C++ extension is **mandatory** (v3.0).  No Python fallback.
     """
     if len(src) == 0 or len(tgt) == 0:
         return np.zeros(len(src), dtype=np.float64)
 
-    from synapse._c_geometry import bvh_closest_points
+    from synapse.bridge.aether_bridge import require_aether_geo
 
-    _, dists = bvh_closest_points(tgt, src)
+    _, dists = require_aether_geo().bvh_closest_points(tgt, src)
     return np.asarray(dists, dtype=np.float64)
 
 
@@ -77,9 +76,9 @@ def chamfer_mm(
     if len(a) == 0 or len(b) == 0:
         return 0.0
 
-    from synapse._c_geometry import compute_chamfer_distance
+    from synapse.bridge.aether_bridge import require_aether_geo
 
-    return float(compute_chamfer_distance(a, b, reduction=reduction))
+    return float(require_aether_geo().compute_chamfer_distance(a, b, reduction=reduction))
 
 
 
@@ -357,10 +356,10 @@ def _is_mesh_watertight(faces_or_vertices: Any, faces: Any = None) -> bool:
 
     # Fast path: checkWatertight via native extension if uniform faces and vertices are provided
     if verts is not None and isinstance(raw_faces, np.ndarray) and raw_faces.ndim == 2:
-        from synapse._c_geometry import check_watertight
+        from synapse.bridge.aether_bridge import require_aether_geo
 
         return bool(
-            check_watertight(
+            require_aether_geo().check_watertight(
                 verts,
                 raw_faces.astype(np.int64, copy=False),
                 int(raw_faces.shape[1]),

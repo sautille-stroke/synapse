@@ -92,11 +92,16 @@ class ProceduralMesh:
         return self.save_obj(path)
 
 
+def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]:
+    """Delegate primitive mesh generation to @aether//geo via aether_geo."""
+    from synapse.bridge.aether_bridge import require_aether_geo
+
+    return require_aether_geo().create_primitive_mesh(primitive_type, **kwargs)
+
+
 def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     """Unit cube centered at origin."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh("cube", size=size, **kwargs)
+    d = _create_primitive_mesh("cube", size=size, **kwargs)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -114,9 +119,7 @@ def _generate_sphere(
     **kwargs: Any,
 ) -> ProceduralMesh:
     """UV sphere centered at origin."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh("sphere", radius=radius, segments=segments, rings=rings, **kwargs)
+    d = _create_primitive_mesh("sphere", radius=radius, segments=segments, rings=rings, **kwargs)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -134,9 +137,7 @@ def _generate_cylinder(
     **kwargs: Any,
 ) -> ProceduralMesh:
     """Cylinder centered at origin, axis along Y."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh("cylinder", radius=radius, height=height, segments=segments, **kwargs)
+    d = _create_primitive_mesh("cylinder", radius=radius, height=height, segments=segments, **kwargs)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -155,9 +156,7 @@ def _generate_torus(
     **kwargs: Any,
 ) -> ProceduralMesh:
     """Torus centered at origin, lying in XZ plane."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh(
+    d = _create_primitive_mesh(
         "torus",
         major_radius=major_radius,
         minor_radius=minor_radius,
@@ -181,14 +180,12 @@ def _generate_plane(
     **kwargs: Any,
 ) -> ProceduralMesh:
     """Flat XZ plane centered at origin (Y=0)."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh(
-        "plane",
-        size=size,
-        subdivisions=subdivisions,
-        **kwargs,
-    )
+    plane_kwargs = dict(kwargs)
+    plane_kwargs.setdefault("width", size)
+    plane_kwargs.setdefault("depth", size)
+    plane_kwargs.setdefault("subdiv_x", subdivisions)
+    plane_kwargs.setdefault("subdiv_z", subdivisions)
+    d = _create_primitive_mesh("plane", **plane_kwargs)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -206,9 +203,7 @@ def _generate_cone(
     **kwargs: Any,
 ) -> ProceduralMesh:
     """Watertight cone primitive centered at origin with apex pointing up (+Y)."""
-    from synapse._c_geometry import create_primitive_mesh
-
-    d = create_primitive_mesh(
+    d = _create_primitive_mesh(
         "cone",
         radius=radius,
         height=height,
