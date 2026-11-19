@@ -15,12 +15,12 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 
+from synapse.bridge.backend import MockVgBackend, VgBackend
 from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     MIN_CHARACTER_WHITEBOX_VERTICES,
     validate_whitebox_coarseness_floor,
 )
-from synapse.render_core.backend import MockVgBackend, VgBackend
 
 # Tier-0 Registry: Tier 2 (synapse.recon) registers its concrete implementation
 # to prevent upward architectural imports from Tier 0 to Tier 2.
