@@ -10,8 +10,6 @@ See: https://github.com/sautille-stroke/synapse/issues/34
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 
 __all__ = [
@@ -21,43 +19,27 @@ __all__ = [
     "acescg_to_linear_srgb",
     "soft_knee_inverse_tonemap",
     "soft_knee_forward_tonemap",
+    "soft_knee_tonemap",
     "rgb_to_cielab",
+    "rgb_to_lab",
+    "cielab_to_linear_srgb",
+    "cielab_to_srgb",
     "ciede2000_delta_e",
+    "SRGB_TO_AP1",
+    "AP1_TO_SRGB",
 ]
 
 # ---------------------------------------------------------------------------
-# Upstream native extension probe (@aether//color)
+# Upstream native extension probe (@aether//color via aether_bridge)
 # ---------------------------------------------------------------------------
 
-try:
-    from aether.color import (
-        acescg_to_linear_srgb as _native_acescg_to_linear_srgb,
-    )
-    from aether.color import (
-        ciede2000_delta_e as _native_ciede2000_delta_e,
-    )
-    from aether.color import (
-        linear_srgb_to_acescg as _native_linear_srgb_to_acescg,
-    )
-    from aether.color import (
-        linear_to_srgb as _native_linear_to_srgb,
-    )
-    from aether.color import (
-        rgb_to_cielab as _native_rgb_to_cielab,
-    )
-    from aether.color import (
-        srgb_to_linear as _native_srgb_to_linear,
-    )
+from synapse.bridge.aether_bridge import (
+    has_aether_color,
+    native_linear_to_srgb,
+    native_srgb_to_linear,
+)
 
-    _HAS_NATIVE = True
-except ImportError:
-    _HAS_NATIVE = False
-    _native_srgb_to_linear = None
-    _native_linear_to_srgb = None
-    _native_linear_srgb_to_acescg = None
-    _native_acescg_to_linear_srgb = None
-    _native_rgb_to_cielab = None
-    _native_ciede2000_delta_e = None
+_HAS_NATIVE = has_aether_color()
 
 
 def _warn_fallback() -> None:
@@ -111,6 +93,10 @@ _M_SRGB_TO_ACESCG: np.ndarray = np.array(
 )
 
 _M_ACESCG_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_ACESCG)
+
+# Public colour-space transformation matrices
+SRGB_TO_AP1: np.ndarray = _M_SRGB_TO_ACESCG
+AP1_TO_SRGB: np.ndarray = _M_ACESCG_TO_SRGB
 
 
 def _fallback_linear_srgb_to_acescg(rgb: np.ndarray) -> np.ndarray:
@@ -214,6 +200,27 @@ def _fallback_rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
     return np.stack([L, a, b], axis=-1)
 
 
+_M_XYZ_TO_SRGB: np.ndarray = np.linalg.inv(_M_SRGB_TO_XYZ)
+
+
+def _fallback_cielab_to_rgb(lab: np.ndarray) -> np.ndarray:
+    """Convert CIE L*a*b* back to linear sRGB [0, 1]."""
+    arr = np.asarray(lab, dtype=np.float64)
+    L, a, b = arr[..., 0], arr[..., 1], arr[..., 2]
+
+    fy = (L + 16.0) / 116.0
+    fx = a / 500.0 + fy
+    fz = fy - b / 200.0
+
+    x = np.where(fx > _LAB_DELTA, fx**3, 3.0 * _LAB_DELTA_SQ * (fx - 4.0 / 29.0)) * _D65_X
+    y = np.where(fy > _LAB_DELTA, fy**3, 3.0 * _LAB_DELTA_SQ * (fy - 4.0 / 29.0)) * _D65_Y
+    z = np.where(fz > _LAB_DELTA, fz**3, 3.0 * _LAB_DELTA_SQ * (fz - 4.0 / 29.0)) * _D65_Z
+
+    xyz = np.stack([x, y, z], axis=-1)
+    linear_rgb = xyz @ _M_XYZ_TO_SRGB.T
+    return np.asarray(np.clip(linear_rgb, 0.0, None))
+
+
 def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     """Full CIEDE2000 ΔE₀₀ including S_L, S_C, S_H weighting and R_T."""
     lab1 = np.asarray(lab1, dtype=np.float64)
@@ -305,7 +312,7 @@ def _fallback_ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarra
     term_C = dC_prime / S_C
     term_H = dH_prime / S_H
 
-    dE = np.sqrt(term_L**2 + term_C**2 + term_H**2 + R_T * term_C * term_H)
+    dE = np.sqrt(np.maximum(term_L**2 + term_C**2 + term_H**2 + R_T * term_C * term_H, 0.0))
     return np.asarray(dE)
 
 
@@ -324,7 +331,9 @@ def srgb_to_linear(srgb: np.ndarray) -> np.ndarray:
         Linear RGB array with the same shape.
     """
     if _HAS_NATIVE:
-        return cast(np.ndarray, _native_srgb_to_linear(srgb))
+        native_res = native_srgb_to_linear(srgb)
+        if native_res is not None:
+            return native_res
     _warn_fallback()
     return _fallback_srgb_to_linear(srgb)
 
@@ -339,7 +348,9 @@ def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
         sRGB array with the same shape.
     """
     if _HAS_NATIVE:
-        return cast(np.ndarray, _native_linear_to_srgb(linear))
+        native_res = native_linear_to_srgb(linear)
+        if native_res is not None:
+            return native_res
     _warn_fallback()
     return _fallback_linear_to_srgb(linear)
 
@@ -353,9 +364,6 @@ def linear_srgb_to_acescg(rgb: np.ndarray) -> np.ndarray:
     Returns:
         ACEScg array with the same shape.
     """
-    if _HAS_NATIVE:
-        return cast(np.ndarray, _native_linear_srgb_to_acescg(rgb))
-    _warn_fallback()
     return _fallback_linear_srgb_to_acescg(rgb)
 
 
@@ -368,9 +376,6 @@ def acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
     Returns:
         Linear sRGB array with the same shape.
     """
-    if _HAS_NATIVE:
-        return cast(np.ndarray, _native_acescg_to_linear_srgb(acescg))
-    _warn_fallback()
     return _fallback_acescg_to_linear_srgb(acescg)
 
 
@@ -409,6 +414,10 @@ def soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
     return _fallback_soft_knee_forward_tonemap(hdr_linear)
 
 
+soft_knee_tonemap = soft_knee_forward_tonemap
+
+
+
 def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
     """Convert linear RGB (D65) to CIE L*a*b*.
 
@@ -418,10 +427,47 @@ def rgb_to_cielab(rgb_linear: np.ndarray) -> np.ndarray:
     Returns:
         CIE Lab array with shape (..., 3) where channels are [L, a, b].
     """
-    if _HAS_NATIVE:
-        return cast(np.ndarray, _native_rgb_to_cielab(rgb_linear))
-    _warn_fallback()
     return _fallback_rgb_to_cielab(rgb_linear)
+
+
+def rgb_to_lab(rgb: np.ndarray, is_linear: bool = False) -> np.ndarray:
+    """Convert RGB to CIE L*a*b*, accepting either linear or non-linear sRGB.
+
+    Args:
+        rgb: Color array, values in [0, 1], shape (..., 3).
+        is_linear: If True, input is already linear (skips sRGB expansion).
+
+    Returns:
+        CIE Lab array with shape (..., 3) where channels are [L, a, b].
+    """
+    lin = np.asarray(rgb, dtype=np.float64) if is_linear else srgb_to_linear(rgb)
+    return rgb_to_cielab(lin)
+
+
+def cielab_to_linear_srgb(lab: np.ndarray) -> np.ndarray:
+    """Convert CIE L*a*b* (D65) back to linear sRGB.
+
+    Args:
+        lab: CIE Lab array with shape (..., 3) where channels are [L, a, b].
+
+    Returns:
+        Linear sRGB array with shape (..., 3).
+    """
+    return _fallback_cielab_to_rgb(lab)
+
+
+def cielab_to_srgb(lab: np.ndarray) -> np.ndarray:
+    """Convert CIE L*a*b* (D65) back to non-linear sRGB [0, 1].
+
+    Args:
+        lab: CIE Lab array with shape (..., 3) where channels are [L, a, b].
+
+    Returns:
+        sRGB array in [0, 1] with shape (..., 3).
+    """
+    linear = cielab_to_linear_srgb(lab)
+    srgb = linear_to_srgb(linear)
+    return np.asarray(np.clip(srgb, 0.0, 1.0))
 
 
 def ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
@@ -437,7 +483,4 @@ def ciede2000_delta_e(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     Returns:
         ΔE₀₀ array with shape (...).
     """
-    if _HAS_NATIVE:
-        return cast(np.ndarray, _native_ciede2000_delta_e(lab1, lab2))
-    _warn_fallback()
     return _fallback_ciede2000_delta_e(lab1, lab2)

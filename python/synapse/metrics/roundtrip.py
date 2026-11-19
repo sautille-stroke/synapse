@@ -34,11 +34,19 @@ def _nearest_neighbor_distances(
 ) -> np.ndarray:
     """Compute exact Euclidean nearest-neighbour distance from each *src* point to *tgt*.
 
-    Uses ``scipy.spatial.cKDTree`` when available, falling back to a memory-safe
-    chunked pure-NumPy implementation (avoiding O(N*M*3) memory blowup).
+    Uses ``synapse._c_geometry.bvh_closest_points`` for exact BVH-accelerated
+    nearest-neighbour queries (C++ extension required).
     """
     if len(src) == 0 or len(tgt) == 0:
         return np.zeros(len(src), dtype=np.float64)
+
+    try:
+        from synapse._c_geometry import bvh_closest_points
+
+        _, dists = bvh_closest_points(tgt, src)
+        return np.asarray(dists, dtype=np.float64)
+    except (ImportError, AttributeError, RuntimeError):
+        pass
 
     try:
         from scipy.spatial import cKDTree  # lazy import
@@ -91,17 +99,10 @@ def chamfer_mm(
     if len(a) == 0 or len(b) == 0:
         return 0.0
 
-    d_a2b = _nearest_neighbor_distances(a, b)
-    d_b2a = _nearest_neighbor_distances(b, a)
+    from synapse._c_geometry import compute_chamfer_distance
 
-    if reduction == "mean":
-        chamfer_m = float(d_a2b.mean() + d_b2a.mean()) / 2.0
-    elif reduction == "sum":
-        chamfer_m = float(d_a2b.mean() + d_b2a.mean())
-    else:
-        raise ValueError(f"Unsupported reduction: '{reduction}'. Choose 'mean' or 'sum'.")
+    return float(compute_chamfer_distance(a, b, reduction=reduction))
 
-    return chamfer_m * 1000.0  # metres → mm
 
 
 def _triangulate_polygons(faces: Any) -> np.ndarray:
@@ -373,7 +374,20 @@ def _is_mesh_watertight(faces_or_vertices: Any, faces: Any = None) -> bool:
             return False
         raw_faces = faces
     else:
+        verts = None
         raw_faces = faces_or_vertices
+
+    # Fast path: checkWatertight via native extension if uniform faces and vertices are provided
+    if verts is not None and isinstance(raw_faces, np.ndarray) and raw_faces.ndim == 2:
+            from synapse._c_geometry import check_watertight
+
+            return bool(
+            check_watertight(
+                verts,
+                raw_faces.astype(np.int64, copy=False),
+                int(raw_faces.shape[1]),
+            )
+            )
 
     # Can be a list of polygons or a numpy array
     f: list[Any] | np.ndarray

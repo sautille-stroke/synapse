@@ -106,6 +106,8 @@ module = [
     "pybind11",
     "pybind11.*",
     "synapse._c_geometry",
+    "aether_geo",
+    "aether_geo.*",
     "aether.color",
     "aether.color.*",
     "aether.metrics",
@@ -122,7 +124,6 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
-extend = "../rules_dervgen_env/config/ruff.toml"
 target-version = "py310"
 line-length = 100
 exclude = ["._*"]

@@ -19,58 +19,44 @@ used for inner loops; otherwise falls back to pure NumPy vectorised code.
 
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# Psyop Cryptomatte MD5-based entity hashing
+# ---------------------------------------------------------------------------
+import hashlib
 import math
+import struct
 from dataclasses import dataclass
 
 import numpy as np
 
 from synapse.fgpp.frame import CameraParams, FGPPFrame
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Cryptomatte entity ID hashing (Psyop Cryptomatte spec: MD5 → float32 bits)
-# ---------------------------------------------------------------------------
-
 
 def _cryptomatte_name_hash(name: str) -> int:
-    """Compute a Cryptomatte entity ID per the Psyop Cryptomatte specification.
+    """Compute the Psyop Cryptomatte entity ID from an entity name.
 
-    Algorithm: MD5(UTF-8 name) → take first 4 bytes LE → uint32 →
-    sanitize IEEE 754 exponent (clamp NaN/Inf/denormals) → store as uint32.
+    Uses the industry-standard MD5-based algorithm defined by the
+    `Cryptomatte specification <https://github.com/Psyop/Cryptomatte>`_:
 
-    This matches ``aether::core::cryptomatteNameHash`` in
-    ``aether/core/include/aether/core/hash.h`` and is compatible with
-    Cryptomatte IDs produced by ``fulgur`` and ``caelum-core``.
+    1. MD5-hash the UTF-8 encoded name.
+    2. Take the first 4 bytes of the digest.
+    3. Interpret as a little-endian ``uint32``.
 
-    Returns a ``uint32`` integer representing the float32 bit-pattern.
+    Returns
+    -------
+    int
+        32-bit unsigned integer entity hash.
     """
-    import hashlib
-    import struct
-
     digest = hashlib.md5(name.encode("utf-8")).digest()
-
-    # First 4 bytes, little-endian → uint32
     h = struct.unpack("<I", digest[:4])[0]
-
-    # Sanitize IEEE 754 exponent field
-    exponent = (h >> 23) & 0xFF
-    if exponent == 0xFF:
-        # NaN or Inf — clear one exponent bit to make it finite
-        h &= ~(1 << 23)
-    elif exponent == 0x00:
-        # Denormal — set one exponent bit to make it normal
-        h |= 1 << 23
-
     return int(h)
 
 
 def entity_hash(name: str) -> int:
     """Compute a 32-bit Cryptomatte entity ID for *name*.
 
-    Uses the Psyop Cryptomatte specification (MD5-based) for cross-engine
-    compatibility with ``fulgur`` and ``caelum-core``.
-
-    Returns a non-zero hash; background ``0`` is reserved.
+    Uses the Psyop Cryptomatte MD5 algorithm. Returns a non-zero hash;
+    background ``0`` is reserved.
     """
     h = _cryptomatte_name_hash(name)
     return h if h != 0 else 1
@@ -298,7 +284,6 @@ class SoftwareRasterizer:
 
         # Init buffers
         depth_buf = np.full((H, W), np.inf, dtype=np.float64)
-        color_buf = np.zeros((H, W, 3), dtype=np.float64)
         normal_buf = np.tile(
             np.array([0.0, 0.0, 1.0], dtype=np.float64),
             (H, W, 1),
@@ -355,7 +340,6 @@ class SoftwareRasterizer:
                     clipped_poly[ti],
                     clipped_poly[ti + 1],
                     depth_buf,
-                    color_buf,
                     normal_buf,
                     radiance_buf,
                     bcolor_buf,
@@ -395,7 +379,6 @@ class SoftwareRasterizer:
         v1: _ClipVertex,
         v2: _ClipVertex,
         depth_buf: np.ndarray,
-        color_buf: np.ndarray,
         normal_buf: np.ndarray,
         radiance_buf: np.ndarray,
         bcolor_buf: np.ndarray,
@@ -522,11 +505,6 @@ class SoftwareRasterizer:
         rad_box[closer, 0] = diff_r[closer]
         rad_box[closer, 1] = diff_g[closer]
         rad_box[closer, 2] = diff_b[closer]
-
-        col_box = color_buf[min_y : max_y + 1, min_x : max_x + 1]
-        col_box[closer, 0] = diff_r[closer]
-        col_box[closer, 1] = diff_g[closer]
-        col_box[closer, 2] = diff_b[closer]
 
         mask_box = mask_buf[min_y : max_y + 1, min_x : max_x + 1]
         mask_box[closer] = eid
