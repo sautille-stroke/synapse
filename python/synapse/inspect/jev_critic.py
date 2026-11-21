@@ -92,12 +92,14 @@ class HttpJevTransport:
         api_key: str = "",
         timeout: float = 30.0,
         top_logprobs: int = 5,
+        allow_loopback: bool = True,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model = model
         self.api_key = api_key
         self.timeout = float(timeout)
         self.top_logprobs = int(top_logprobs)
+        self.allow_loopback = allow_loopback
 
     def query_logprobs(
         self,
@@ -130,7 +132,9 @@ class HttpJevTransport:
         try:
             from synapse.bridge.http_security import safe_urlopen
 
-            with safe_urlopen(req, timeout=self.timeout) as resp:
+            with safe_urlopen(
+                req, timeout=self.timeout, allow_loopback=self.allow_loopback
+            ) as resp:
                 resp_bytes = resp.read()
                 data = json.loads(resp_bytes.decode("utf-8"))
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:

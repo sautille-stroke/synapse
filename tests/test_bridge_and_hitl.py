@@ -419,10 +419,19 @@ class TestHttpSecurityAndLedger:
             "http://[fd00:ec2::254]/",
             "http://100.100.100.200/",
             "http://metadata.google.internal/",
+            "http://0.0.0.0:8080/",
+            "http://[::]:8080/",
+            "http://127.0.0.1:8080/",
+            "http://localhost:8080/",
         ):
             with pytest.raises(ContractValidationError) as exc_info:
                 validate_safe_url(target)
             assert exc_info.value.exit_code == 10
+
+        # Unspecified addresses remain blocked even when allow_loopback=True
+        for unspec in ("http://0.0.0.0:8080/", "http://[::]:8080/"):
+            with pytest.raises(ContractValidationError):
+                validate_safe_url(unspec, allow_loopback=True)
 
     def test_foundary_transport_rejects_ssrf(self) -> None:
         from synapse.bridge.foundary_client import HttpFoundaryTransport

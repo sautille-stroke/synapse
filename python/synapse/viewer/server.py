@@ -89,15 +89,21 @@ def export_static_html(
     Returns:
         Path to the generated self-contained HTML file.
     """
-    dataset_path = Path(dataset_dir).resolve()
-    if not dataset_path.exists():
+    raw_dataset_path = Path(dataset_dir)
+    if raw_dataset_path.is_symlink():
+        raise ContractValidationError(
+            f"Symlink detected at dataset directory: {raw_dataset_path}",
+            agent_fix_hint="Provide a real directory path, not a symlink.",
+        )
+    if not raw_dataset_path.exists():
         raise AssetNotFoundError(
-            f"Dataset directory not found: {dataset_path}",
-            agent_fix_hint=f"Ensure '{dataset_path}' exists and contains manifest.json.",
+            f"Dataset directory not found: {raw_dataset_path}",
+            agent_fix_hint=f"Ensure '{raw_dataset_path}' exists and contains manifest.json.",
         )
 
     # Reject symlinks in dataset path and all children before resolving
-    _check_no_symlinks(dataset_path, dataset_path)
+    _check_no_symlinks(raw_dataset_path, raw_dataset_path)
+    dataset_path = raw_dataset_path.resolve()
 
     manifest_file = dataset_path / "manifest.json"
     if not manifest_file.is_file():
@@ -163,19 +169,25 @@ def export_static_html(
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
     )
-    html_content = html_content.replace(
-        "/*__EMBEDDED_MANIFEST__*/ null",
-        safe_manifest,
-    )
-    html_content = html_content.replace(
-        "/*__EMBEDDED_IMAGES__*/ {}",
-        safe_images,
-    )
+    import re
+
+    replacements = {
+        "/*__EMBEDDED_MANIFEST__*/ null": safe_manifest,
+        "/*__EMBEDDED_IMAGES__*/ {}": safe_images,
+    }
+    placeholder_re = re.compile("|".join(re.escape(k) for k in replacements))
+    html_content = placeholder_re.sub(lambda m: replacements[m.group(0)], html_content)
 
     if output_path is None:
         target_path = dataset_path / "viewer.html"
     else:
-        target_path = Path(output_path).resolve()
+        raw_out = Path(output_path)
+        if raw_out.is_symlink():
+            raise ContractValidationError(
+                f"Symlink detected at output path: {raw_out}",
+                agent_fix_hint="Provide a non-symlink output path for viewer HTML.",
+            )
+        target_path = raw_out.resolve()
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(html_content, encoding="utf-8")

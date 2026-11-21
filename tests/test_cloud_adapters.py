@@ -589,12 +589,11 @@ class TestDegenerateOutputValidation:
         """PR-116: submit_segment serializes anchors in b64, text_prompt, and guides."""
         import base64
         import json
-        from unittest.mock import MagicMock
 
         from synapse.adapters.cloud import DegradedSegment, HttpCloudTransport
 
         transport = HttpCloudTransport(
-            "runway", "test_tok", endpoint_url="http://localhost:9000/gen"
+            "runway", "test_tok", endpoint_url="https://93.184.216.34:9000/gen"
         )
 
         seg = DegradedSegment(
@@ -618,16 +617,22 @@ class TestDegenerateOutputValidation:
 
         captured_body: dict[str, Any] = {}
 
-        def mock_open(req: Any, timeout: float = 30.0) -> Any:
+        class _StubHttpResponse:
+            def __enter__(self) -> _StubHttpResponse:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def read(self) -> bytes:
+                return json.dumps(
+                    {"frames": np.zeros((4, 8, 8, 3), dtype=np.uint8).tolist()}
+                ).encode("utf-8")
+
+        def mock_open(req: Any, timeout: float = 30.0) -> _StubHttpResponse:
             nonlocal captured_body
             captured_body = json.loads(req.data.decode("utf-8"))
-            resp = MagicMock()
-            resp.read.return_value = json.dumps(
-                {"frames": np.zeros((4, 8, 8, 3), dtype=np.uint8).tolist()}
-            ).encode("utf-8")
-            resp.__enter__.return_value = resp
-            resp.__exit__.return_value = None
-            return resp
+            return _StubHttpResponse()
 
         monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", mock_open)
 
