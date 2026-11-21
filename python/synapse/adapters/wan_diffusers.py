@@ -11,15 +11,85 @@ latent-space variance-preserving window blending.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from synapse.adapters.base import PreparedConditionPayload, VideoGenerationConfig
 from synapse.adapters.wan import WanBackendTransport
-from synapse.errors import BackendUnavailableError
+from synapse.errors import AssetNotFoundError, BackendUnavailableError, SynapseError
 
 logger = logging.getLogger(__name__)
+
+
+def _build_controlnext_patchify_stem(
+    in_channels: int,
+    hidden_dim: int,
+    spatial_stride_h: int = 16,
+    spatial_stride_w: int = 16,
+    temporal_stride: int = 4,
+) -> Any:
+    """Create a strided ControlNeXtPatchifyStem ``nn.Module`` lazily.
+
+    Compresses pixel-space ``[B, C_cond, T, H, W]`` conditions by causal 4x
+    temporal binning (isolating frame 0) and ``(spatial_stride_h, spatial_stride_w)``
+    strided patchify projection directly into ``[B, hidden_dim, tau, H//sh, W//sw]``,
+    reducing activation memory by ~1024x compared to full-resolution ``kernel_size=1``.
+    """
+    import torch
+
+    class ControlNeXtPatchifyStem(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.in_channels = in_channels
+            self.hidden_dim = hidden_dim
+            self.temporal_stride = max(1, temporal_stride)
+            self.spatial_stride_h = max(1, spatial_stride_h)
+            self.spatial_stride_w = max(1, spatial_stride_w)
+            self.proj = torch.nn.Conv3d(
+                in_channels,
+                hidden_dim,
+                kernel_size=(1, self.spatial_stride_h, self.spatial_stride_w),
+                stride=(1, self.spatial_stride_h, self.spatial_stride_w),
+                bias=False,
+            )
+
+        def forward(self, x: Any) -> Any:
+            # Causal temporal compression: frame 0 isolated, rest binned by temporal_stride
+            _, _, t, h, w = x.shape
+            if t > 1 and self.temporal_stride > 1:
+                tau = (t - 1) // self.temporal_stride + 1
+                chunks = [x[:, :, 0:1]]
+                for i in range(1, tau):
+                    s = 1 + (i - 1) * self.temporal_stride
+                    e = min(s + self.temporal_stride, t)
+                    chunks.append(x[:, :, s:e].mean(dim=2, keepdim=True))
+                x = torch.cat(chunks, dim=2)
+            # Pad spatial dims if not divisible by stride
+            pad_h = (self.spatial_stride_h - (h % self.spatial_stride_h)) % self.spatial_stride_h
+            pad_w = (self.spatial_stride_w - (w % self.spatial_stride_w)) % self.spatial_stride_w
+            if pad_h > 0 or pad_w > 0:
+                x = torch.nn.functional.pad(x, (0, pad_w, 0, pad_h), mode="replicate")
+            return self.proj(x)
+
+    return ControlNeXtPatchifyStem()
+
+
+def _get_vae_latent_stats(vae: Any, device: Any, dtype: Any) -> tuple[Any, Any]:
+    """Extract AutoencoderKLWan ``latents_mean`` and ``latents_std`` as ``[1, C, 1, 1, 1]``."""
+    import torch
+
+    cfg = getattr(vae, "config", None)
+    if cfg is None:
+        return None, None
+    mean_raw = getattr(cfg, "latents_mean", None)
+    std_raw = getattr(cfg, "latents_std", None)
+    if mean_raw is None or std_raw is None:
+        return None, None
+    mean_t = torch.as_tensor(mean_raw, device=device, dtype=dtype).view(1, -1, 1, 1, 1)
+    std_t = torch.as_tensor(std_raw, device=device, dtype=dtype).view(1, -1, 1, 1, 1)
+    return mean_t, std_t
 
 
 class DiffusersWanBackend(WanBackendTransport):
@@ -53,6 +123,9 @@ class DiffusersWanBackend(WanBackendTransport):
         transformer: Any | None = None,
         vae: Any | None = None,
         enable_cpu_offload: bool = False,
+        control_weights_path: str | Path | None = None,
+        control_scale: float = 1.0,
+        allow_untrained_control: bool = False,
     ) -> None:
         self.model_id_or_path = model_id_or_path
         self._device_str = device
@@ -61,8 +134,14 @@ class DiffusersWanBackend(WanBackendTransport):
         self._transformer = transformer
         self._vae = vae
         self._enable_cpu_offload = enable_cpu_offload
+        self._control_weights_path = (
+            Path(control_weights_path) if control_weights_path is not None else None
+        )
+        self._control_scale = float(control_scale)
+        self._allow_untrained_control = bool(allow_untrained_control)
         self._initialized = False
         self._control_hook_handle: Any | None = None
+        self._control_stem: Any | None = None
 
     @property
     def model(self) -> Any:
@@ -187,19 +266,65 @@ class DiffusersWanBackend(WanBackendTransport):
             )
             return None
 
-        # Project control channels (7) to match transformer hidden dim
+        # Project control channels (7) via strided ControlNeXtPatchifyStem
+        # (stride=(4, 16, 16) clamped to input dims) to avoid full-res OOM.
         hidden_dim = getattr(transformer.config, "num_attention_heads", 16) * getattr(
             transformer.config, "attention_head_dim", 128
         )
-        ctrl_proj = torch.nn.Conv3d(
-            control_tensor.shape[1], hidden_dim, kernel_size=1, bias=False,
-        ).to(device=control_tensor.device, dtype=control_tensor.dtype)
-        torch.nn.init.zeros_(ctrl_proj.weight)  # start with zero residual
+        _, in_ch, _, h_in, w_in = control_tensor.shape
+        sh = min(16, int(h_in))
+        sw = min(16, int(w_in))
 
-        projected_ctrl = ctrl_proj(control_tensor)  # [1, hidden_dim, T, H, W]
+        if self._control_weights_path is None and not self._allow_untrained_control:
+            raise BackendUnavailableError(
+                "ControlNeXt weights are required for 7-channel FGPP control injection "
+                "(refusing to silently execute a zero-initialized no-op hook).",
+                agent_fix_hint=(
+                    "Pass control_weights_path=<path/to/controlnext.safetensors> to "
+                    "DiffusersWanBackend, or set allow_untrained_control=True for synthetic tests."
+                ),
+            )
+
+        stem = _build_controlnext_patchify_stem(
+            in_channels=int(in_ch),
+            hidden_dim=int(hidden_dim),
+            spatial_stride_h=sh,
+            spatial_stride_w=sw,
+            temporal_stride=4,
+        ).to(device=control_tensor.device, dtype=control_tensor.dtype)
+
+        if self._control_weights_path is not None:
+            if not self._control_weights_path.is_file():
+                raise AssetNotFoundError(
+                    f"ControlNeXt weights file not found: {self._control_weights_path}",
+                    agent_fix_hint=(
+                        "Verify control_weights_path points to an existing .safetensors or .pt file."
+                    ),
+                )
+            if self._control_weights_path.suffix == ".safetensors":
+                from safetensors.torch import load_file
+
+                state_dict = load_file(str(self._control_weights_path), device=str(control_tensor.device))
+            else:
+                state_dict = torch.load(
+                    str(self._control_weights_path),
+                    map_location=control_tensor.device,
+                    weights_only=True,
+                )
+            stem.load_state_dict(state_dict, strict=True)
+        else:
+            # Deterministic non-zero small initialization for explicit allow_untrained_control tests
+            gen = torch.Generator(device="cpu").manual_seed(42)
+            with torch.no_grad():
+                w_init = torch.randn(stem.proj.weight.shape, generator=gen, dtype=torch.float32) * 0.02
+                stem.proj.weight.copy_(w_init.to(device=control_tensor.device, dtype=control_tensor.dtype))
+
+        self._control_stem = stem
+        with torch.no_grad():
+            projected_ctrl = stem(control_tensor) * self._control_scale  # [1, hidden_dim, tau, H', W']
 
         def _hook(module: Any, input: Any, output: Any) -> Any:
-            # Adapt projected control spatially if shapes differ
+            # Adapt projected control spatially & batch-wise (CFG B=2 broadcast)
             nonlocal projected_ctrl
             if isinstance(output, tuple):
                 main_out = output[0]
@@ -208,8 +333,8 @@ class DiffusersWanBackend(WanBackendTransport):
                 main_out = output
                 rest = None
 
-            # Flatten projected_ctrl to match main_out token layout
-            ctrl_flat = projected_ctrl.flatten(2).transpose(1, 2)  # [1, T*H*W, hidden_dim]
+            # Flatten projected_ctrl to match main_out token layout: [B_c, L_c, hidden_dim]
+            ctrl_flat = projected_ctrl.flatten(2).transpose(1, 2)
             if ctrl_flat.shape[1] != main_out.shape[1]:
                 # Interpolate token count if mismatched
                 ctrl_flat = torch.nn.functional.interpolate(
@@ -219,6 +344,11 @@ class DiffusersWanBackend(WanBackendTransport):
                     align_corners=False,
                 ).transpose(1, 2)
 
+            # CFG batch broadcast (e.g. main_out has B=2 for uncond+cond while ctrl has B=1)
+            if ctrl_flat.shape[0] == 1 and main_out.shape[0] > 1:
+                ctrl_flat = ctrl_flat.expand(main_out.shape[0], -1, -1)
+
+            ctrl_flat = ctrl_flat.to(device=main_out.device, dtype=main_out.dtype)
             main_out = main_out + ctrl_flat
 
             if rest is not None:
@@ -267,6 +397,11 @@ class DiffusersWanBackend(WanBackendTransport):
                 latents = latent_dist.sample()
             else:
                 latents = latent_dist
+
+            # Normalize into AutoencoderKLWan's standardized latent space
+            lat_mean, lat_std = _get_vae_latent_stats(self._vae, latents.device, latents.dtype)
+            if lat_mean is not None and lat_std is not None:
+                latents = (latents - lat_mean) / lat_std
 
         return latents
 
@@ -347,6 +482,8 @@ class DiffusersWanBackend(WanBackendTransport):
                 if ctrl.ndim == 4:
                     ctrl = ctrl.unsqueeze(0)
                 hook_handle = self._register_control_hook(ctrl)
+            except SynapseError:
+                raise
             except Exception as exc:
                 logger.warning("Failed to register control hook: %s", exc)
 
@@ -387,7 +524,13 @@ class DiffusersWanBackend(WanBackendTransport):
                 # Decode latents through VAE for final pixel output
                 if self._vae is not None and isinstance(latents, torch.Tensor):
                     with torch.no_grad():
-                        decoded = self._vae.decode(latents).sample
+                        decode_in = latents
+                        lat_mean, lat_std = _get_vae_latent_stats(
+                            self._vae, decode_in.device, decode_in.dtype
+                        )
+                        if lat_mean is not None and lat_std is not None:
+                            decode_in = decode_in * lat_std + lat_mean
+                        decoded = self._vae.decode(decode_in).sample
                     # [1, 3, T, H, W] → [T, H, W, 3] in [0, 1]
                     frames = decoded[0].permute(1, 2, 3, 0).cpu().float().numpy()
                     frames = (frames + 1.0) / 2.0  # [-1,1] → [0,1]

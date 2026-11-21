@@ -106,12 +106,15 @@ def init_job_workspace(job_dir: Path, user: str, job_id: str, date_str: str) -> 
         ValueError: If job_dir path does not contain ``/dervgen/`` segment,
             preventing accidental writes outside the designated workspace.
     """
-    # Path guard: prevent polluting directories outside /dervgen/ workspace
-    if "/dervgen/" not in str(job_dir):
+    # Path guard: enforce SSOT V2.0 /dervgen/ isolation for Google Drive paths
+    # to prevent polluting MyDrive root, while allowing local/temp workspaces.
+    norm_path = str(job_dir).replace("\\", "/")
+    is_drive_path = "/drive/" in norm_path or "MyDrive" in norm_path
+    if is_drive_path and "/dervgen/" not in norm_path:
         raise ValueError(
-            f"Job directory '{job_dir}' does not contain '/dervgen/' path segment. "
-            "All Colab outputs must reside under the SSOT V2.0 /dervgen/ workspace "
-            "to prevent polluting MyDrive root or other directories."
+            f"Google Drive job directory '{job_dir}' does not contain '/dervgen/' path segment. "
+            "All Colab Drive outputs must reside under the SSOT V2.0 /dervgen/ workspace "
+            "to prevent polluting MyDrive root."
         )
     (job_dir / "input").mkdir(parents=True, exist_ok=True)
     (job_dir / "output").mkdir(parents=True, exist_ok=True)
@@ -237,6 +240,19 @@ def _persist_state(state_path: Path, state: dict[str, Any]) -> None:
     tmp_path.replace(state_path)
 
 
+def _has_wan_weights(model_id: str) -> bool:
+    """Return True if *model_id* exists locally or in the HuggingFace cache."""
+    if Path(model_id).exists():
+        return True
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        cached = try_to_load_from_cache(model_id, "model_index.json")
+        return bool(cached and isinstance(cached, str))
+    except ImportError:
+        return False
+
+
 def _verify_e1_real_gpu(
     seq_track_b: FGPPSequence,
     seq_track_a: FGPPSequence,
@@ -245,26 +261,18 @@ def _verify_e1_real_gpu(
     """Verify E1 with real CUDA WanAdapter and DiffusersWanBackend pipeline."""
     from synapse.adapters import DiffusersWanBackend, VideoGenerationConfig, WanAdapter
 
-    model_id = os.environ.get("WAN_MODEL_PATH") or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
-    weights_path = Path(model_id)
-    if not weights_path.exists():
-        try:
-            from huggingface_hub import try_to_load_from_cache
-
-            cached = try_to_load_from_cache(model_id, "model_index.json")
-            if not cached or not isinstance(cached, str):
-                raise BackendUnavailableError(
-                    f"Wan 2.1 Diffusers model weights '{model_id}' not found locally or in cache.",
-                    agent_fix_hint=(
-                        f"Download weights before running real GPU mode: "
-                        f"huggingface-cli download {model_id} --local-dir /content/models/wan21"
-                    ),
-                )
-        except ImportError:
-            raise BackendUnavailableError(
-                f"Wan 2.1 Diffusers model weights '{model_id}' not found locally.",
-                agent_fix_hint="Install huggingface_hub and download Wan 2.1 model weights.",
-            ) from None
+    gpu_profile = detect_gpu_profile()
+    model_id = os.environ.get("WAN_MODEL_PATH") or str(
+        gpu_profile.get("recommended_wan_model", "Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
+    )
+    if not _has_wan_weights(model_id):
+        raise BackendUnavailableError(
+            f"Wan 2.1 Diffusers model weights '{model_id}' not found locally or in cache.",
+            agent_fix_hint=(
+                f"Download weights before running real GPU mode: "
+                f"huggingface-cli download {model_id} --local-dir /content/models/wan21"
+            ),
+        )
 
     adapter = WanAdapter()
     f0 = seq_track_b.frames[0]
@@ -283,18 +291,23 @@ def _verify_e1_real_gpu(
     try:
         import torch
 
-        gpu_profile = detect_gpu_profile()
         dtype_name = str(gpu_profile.get("dtype", "float16"))
         torch_dtype = getattr(torch, dtype_name, torch.float16)
+        ctrl_weights = os.environ.get("SYNAPSE_CONTROLNEXT_WEIGHTS") or None
+        allow_untrained = os.environ.get("SYNAPSE_ALLOW_UNTRAINED_CONTROL") == "1"
         backend = DiffusersWanBackend(
             model_id_or_path=model_id,
             torch_dtype=torch_dtype,
             enable_cpu_offload=bool(gpu_profile.get("enable_model_cpu_offload", True)),
+            control_weights_path=ctrl_weights,
+            allow_untrained_control=allow_untrained,
         )
         gpu_adapter = WanAdapter(backend=backend)
         result_b = gpu_adapter.generate(payload_b, cfg)
         assert result_b is not None, "WanAdapter.generate() returned None for Track-B"
         result_shape = list(result_b.frames_srgb_u8.shape)
+    except SynapseError:
+        raise
     except Exception as exc:
         raise BackendUnavailableError(
             f"DiffusersWanBackend inference failed on real GPU: {exc}",
@@ -341,10 +354,11 @@ def _verify_e4_real_gpu(
 
     # Use real LoRA training via StatelessLoRATrainer with hierarchical module
     # containing cross_attn.to_k submodules matching category="style" patterns
+    lora_rank = int(detect_gpu_profile().get("lora_rank", 16))
     try:
         from synapse.training import LoRATrainConfig, StatelessLoRATrainer
 
-        train_cfg = LoRATrainConfig(category="style", rank=16, alpha=16.0)
+        train_cfg = LoRATrainConfig(category="style", rank=lora_rank, alpha=float(lora_rank))
         trainer = StatelessLoRATrainer(train_cfg)
 
         # Build a hierarchical module with named submodules matching real
@@ -362,6 +376,15 @@ def _verify_e4_real_gpu(
                     "to_k": torch.nn.Linear(64, 64),
                     "to_v": torch.nn.Linear(64, 64),
                 })
+
+            def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
+                orig_shape = x.shape
+                h = x.reshape(orig_shape[0], -1, 64)
+                q = self.cross_attn["to_q"](h)
+                k = self.cross_attn["to_k"](h)
+                v = self.cross_attn["to_v"](h)
+                out = self.cross_attn["to_out"]((q + k + v) / 3.0)
+                return out.reshape(orig_shape)
 
         toy_module = _ToyAttnBlock().to(device)
         trainer.inject_lora(toy_module, target_patterns=["cross_attn"])
@@ -395,8 +418,8 @@ def _verify_e4_real_gpu(
     manifest = LoRAManifest(
         name="scene_style_cuda",
         category="style",
-        rank=16,
-        alpha=16.0,
+        rank=lora_rank,
+        alpha=float(lora_rank),
         adapter_path=lora_dst.name,  # Use relative path, not absolute
         adapter_sha256=sha256,
         target_modules=["cross_attn.to_k", "cross_attn.to_v"],
@@ -449,10 +472,28 @@ def run_colab_suite(
             import accelerate  # noqa: F401
             import diffusers  # noqa: F401
         except ImportError as exc:
-            raise BackendUnavailableError(
-                f"real-gpu mode requires diffusers and accelerate: {exc}",
-                agent_fix_hint="Install with `pip install 'diffusers>=0.30.0' accelerate`",
-            ) from exc
+            if mode == "auto":
+                print(
+                    f"[auto] diffusers/accelerate unavailable ({exc}); falling back to mock mode.",
+                    file=sys.stderr,
+                )
+                use_real_gpu = False
+            else:
+                raise BackendUnavailableError(
+                    f"real-gpu mode requires diffusers and accelerate: {exc}",
+                    agent_fix_hint="Install with `pip install 'diffusers>=0.30.0' accelerate`",
+                ) from exc
+
+    if use_real_gpu and mode == "auto" and "e1" in experiments:
+        model_id = os.environ.get("WAN_MODEL_PATH") or str(
+            gpu_profile.get("recommended_wan_model", "Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
+        )
+        if not _has_wan_weights(model_id):
+            print(
+                f"[auto] Wan weights '{model_id}' not cached locally; falling back to mock mode.",
+                file=sys.stderr,
+            )
+            use_real_gpu = False
 
     from scripts.run_cpu_verification import (
         _verify_e1_conditioning_ablation,
@@ -659,23 +700,6 @@ def main() -> int:
         if is_cloud_job:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")
         print(json.dumps(state, indent=2))
-
-        # Auto-release GPU VRAM and optionally disconnect Colab runtime
-        if args.auto_release:
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    print("[auto-release] GPU VRAM cache cleared.")
-            except ImportError:
-                pass
-            try:
-                from google.colab import runtime as colab_runtime  # type: ignore[import-not-found]
-                print("[auto-release] Disconnecting Colab runtime...")
-                colab_runtime.unassign()
-            except (ImportError, Exception):
-                pass  # Not running in Colab or runtime API unavailable
-
         return 0
     except SynapseError as err:
         t_duration = time.time() - t_start
@@ -716,6 +740,24 @@ def main() -> int:
             )
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    finally:
+        # Always honor --auto-release even when experiments fail to avoid idle GPU billing
+        if args.auto_release:
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    print("[auto-release] GPU VRAM cache cleared.")
+            except ImportError:
+                pass
+            try:
+                from google.colab import runtime as colab_runtime  # type: ignore[import-not-found]
+
+                print("[auto-release] Disconnecting Colab runtime...")
+                colab_runtime.unassign()
+            except (ImportError, Exception):
+                pass  # Not running in Colab or runtime API unavailable
 
 
 if __name__ == "__main__":

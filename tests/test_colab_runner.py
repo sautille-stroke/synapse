@@ -369,3 +369,54 @@ def test_colab_scripts_no_insecure_curl() -> None:
                 f"Insecure TLS bypass (curl -k / --insecure) found in {script_path}: {match.group(0)}"
             )
 
+
+def test_init_job_workspace_rejects_drive_root_without_dervgen() -> None:
+    """Google Drive paths outside /dervgen/ must still be rejected."""
+    with pytest.raises(ValueError, match="/dervgen/"):
+        init_job_workspace(
+            Path("/content/drive/MyDrive/polluted_job"),
+            user="user1",
+            job_id="job_bad",
+            date_str="2026-11-21",
+        )
+
+
+def test_colab_runner_auto_mode_falls_back_to_mock_when_weights_absent(tmp_path: Path) -> None:
+    """--mode=auto falls back cleanly to mock when CUDA exists but Wan weights are uncached."""
+    fake_profile = {
+        "cuda_available": True,
+        "device_name": "NVIDIA L4",
+        "vram_gb": 24.0,
+        "recommended_wan_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+        "enable_model_cpu_offload": True,
+        "dtype": "bfloat16",
+        "lora_rank": 32,
+    }
+    dummy_seq_b = _make_dummy_sequence(17, "fulgur_export")
+    dummy_seq_a = _make_dummy_sequence(17, "caelum_17f")
+    # Provide non-degenerate spatial depth gradient required by E1 verification
+    grad = np.linspace(1.0, 10.0, 64, dtype=np.float32)[None, :].repeat(64, axis=0)
+    for seq in (dummy_seq_b, dummy_seq_a):
+        for frame in seq.frames:
+            frame.depth = grad.copy()
+
+    with (
+        mock.patch("scripts.colab_runner.detect_gpu_profile", return_value=fake_profile),
+        mock.patch("scripts.colab_runner._has_wan_weights", return_value=False),
+        mock.patch(
+            "scripts.colab_runner.import_fgpp", side_effect=[dummy_seq_b, dummy_seq_a, dummy_seq_b]
+        ),
+        mock.patch.dict(
+            "sys.modules", {"accelerate": mock.MagicMock(), "diffusers": mock.MagicMock()}
+        ),
+    ):
+        state = run_colab_suite(
+            dataset_dir=tmp_path / "datasets",
+            checkpoint_dir=tmp_path / "checkpoints",
+            experiments=["e1"],
+            mode="auto",
+        )
+        assert "e1" in state["completed"]
+        assert state["completed"]["e1"]["status"] == "PASS"
+
+
