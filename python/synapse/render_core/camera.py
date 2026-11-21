@@ -350,7 +350,7 @@ def _generate_pan(
         target = pos + np.array(
             [
                 math.sin(pan_rad) * math.cos(el_rad) * 5.0,
-                math.sin(el_rad) * 5.0,
+                -math.sin(el_rad) * 5.0,
                 -math.cos(pan_rad) * math.cos(el_rad) * 5.0,
             ]
         )
