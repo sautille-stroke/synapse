@@ -28,7 +28,7 @@ import os
 import re
 import time
 from collections.abc import Callable, Iterator
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field, field_validator
 # ---------------------------------------------------------------------------
 
 
-class ClosureType(str, Enum):
+class ClosureType(StrEnum):
     """RFC 0039 closure type identifiers from ``render-farm`` / ``grand-studio``.
 
     Maps upstream job closure semantics to synapse stage names.
@@ -230,7 +230,7 @@ class BundleManifest(BaseModel):
             :class:`~synapse.errors.AssetNotFoundError`:
                 SHA-256 mismatch in ``asset_manifest``.
         """
-        from synapse.errors import AssetNotFoundError, ContractValidationError
+        from synapse.errors import ContractValidationError
 
         job_id = raw.get("job_id", "")
         if not job_id:
@@ -257,15 +257,17 @@ class BundleManifest(BaseModel):
 
         scene_spec_raw = raw.get("scene_spec", {}) or {}
         payload_raw = raw.get("payload", {}) or {}
-        inputs_raw = raw.get("inputs", {}) or {}
-        input_sha256s: dict[str, str] = raw.get("input_sha256s", {})
+        inputs_raw: dict[str, str] = raw.get("inputs", {}) or {}
+        input_sha256s: dict[str, str] = raw.get("input_sha256s", {}) or {}
 
         # Build normalised inputs/outputs/params from scene_spec + payload
         output_sink_raw = raw.get("output_sink", {}) or {}
 
-        inputs: dict[str, str] = {}
+        inputs: dict[str, str] = {str(k): str(v) for k, v in inputs_raw.items() if isinstance(v, str)}
         outputs: dict[str, str] = {}
         params: dict[str, Any] = {}
+        if input_sha256s:
+            params["_input_sha256s"] = dict(input_sha256s)
 
         # Parse SceneSpec and map string fields to inputs, structured fields to params
         if isinstance(scene_spec_raw, dict):
@@ -1152,7 +1154,6 @@ class JobBundleWorker:
         # so it only reads files inside the established workspace sandbox.
         deferred_manifest = manifest.params.get("_asset_manifest", [])
         if deferred_manifest:
-            from synapse.errors import AssetNotFoundError
 
             for entry in deferred_manifest:
                 if not isinstance(entry, dict):

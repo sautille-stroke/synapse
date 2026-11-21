@@ -22,7 +22,7 @@ alignment, and quad-dominant remeshing — utilities used by the recon pipeline.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 
@@ -291,7 +291,7 @@ def refine_pose_6dof(
 
     # Cache KD-trees to avoid rebuilding the same tree multiple times per
     # iteration (forward NN + reverse NN both query the target tree).
-    _tree_cache: dict[int, object] = {}  # id(array) -> tree
+    _tree_cache: dict[int, Any] = {}  # id(array) -> tree
 
     def _find_nn(
         source: np.ndarray, target: np.ndarray
@@ -595,8 +595,8 @@ def _qem_decimate(
             Q_sum = quadrics[va] + quadrics[nb]
             mid = (v[va] + v[nb]) * 0.5
             v_hom = np.array([mid[0], mid[1], mid[2], 1.0])
-            c = float(v_hom @ Q_sum @ v_hom)
-            heapq.heappush(heap, (c, seq_counter, va, nb))
+            cost = float(v_hom @ Q_sum @ v_hom)
+            heapq.heappush(heap, (cost, seq_counter, va, nb))
             seq_counter += 1
 
     # Compact output

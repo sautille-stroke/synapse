@@ -160,13 +160,13 @@ def validate_safe_url(url: str) -> tuple[str, list[str]]:
                     os.environ[var] = val
 
         for _, _, _, _, sockaddr in addr_info:
-            resolved_ip_str = sockaddr[0]
+            resolved_ip_str = str(sockaddr[0])
             resolved_ip = ipaddress.ip_address(resolved_ip_str)
             if _is_blocked_ip(resolved_ip):
                 raise ContractValidationError(
                     f"Blocked hostname '{hostname}' resolves to blocked IP: {resolved_ip}",
                     agent_fix_hint="Access to cloud metadata endpoints, loopback, and NAT64 is forbidden.",
-                )
+                ) from None
             resolved_ips.append(resolved_ip_str)
 
     return url, resolved_ips
@@ -204,9 +204,6 @@ def safe_urlopen(
     the connection is made directly to that IP (with the original ``Host``
     header) so a second DNS lookup cannot return a different address.
     """
-    import socket
-    import ssl
-
     if isinstance(url_or_req, str):
         _, resolved_ips = validate_safe_url(url_or_req)
         req = urllib.request.Request(url_or_req)

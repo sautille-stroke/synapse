@@ -14,12 +14,12 @@ from __future__ import annotations
 import importlib.resources
 import json
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
 
-class ScenarioTier(str, Enum):
+class ScenarioTier(StrEnum):
     """Scenario complexity tier."""
 
     T1_RIGID = "T1"  # Static rigid body, 360° orbit
@@ -29,7 +29,7 @@ class ScenarioTier(str, Enum):
     T5_E2E = "T5"  # End-to-end pipeline
 
 
-class AssetSource(str, Enum):
+class AssetSource(StrEnum):
     """Where the scenario asset comes from."""
 
     PROCEDURAL = "procedural"

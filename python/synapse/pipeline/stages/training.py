@@ -172,7 +172,7 @@ def handle_lora_train(
             agent_fix_hint="Install torch via 'pip install torch'.",
         ) from exc
 
-    target_modules = params.get("target_modules", None)
+    target_modules = params.get("target_modules")
     model_dim = params.get("model_dim", 64)
 
     class _WhitelistDiT(torch.nn.Module):
@@ -205,8 +205,8 @@ def handle_lora_train(
 
         def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
             for block in self.blocks:
-                x = x + block["spatial_attn"]["to_v"](x)  # type: ignore[index]
-                x = x + block["ffn"]["linear"](x)  # type: ignore[index]
+                x = x + block["spatial_attn"]["to_v"](x)
+                x = x + block["ffn"]["linear"](x)
             return self.out(x)
 
     # Infer target_modules from category if not specified

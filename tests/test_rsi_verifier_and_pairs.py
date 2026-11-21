@@ -72,7 +72,7 @@ class TestCurriculumSampler:
 
     def test_curriculum_uses_all_11_canonical_factors(self) -> None:
         """CurriculumSampler covers all 11 RENDERING_CONDITION_FACTORS."""
-        from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
+        from synapse.render_core.conditions import RENDERING_CONDITION_FACTORS
 
         sampler = CurriculumSampler()
         weights = sampler.analyse_weaknesses({})

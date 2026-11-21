@@ -688,8 +688,10 @@ class TestRenderFarmJobBundleContract:
     def test_rfc0039_job_bundle_json_schema_required_fields(self) -> None:
         """Validate RFC 0039 JobBundle JSON schema has all required top-level keys."""
         required_keys = {"job_id", "closure_type"}
-        optional_keys = {"project_name", "engine", "scene_spec", "asset_manifest",
-                         "output_sink", "payload", "hardware_budget"}
+        allowed_optional_keys = {
+            "project_name", "engine", "scene_spec", "asset_manifest",
+            "output_sink", "payload", "hardware_budget",
+        }
         valid_bundle = {
             "job_id": "job-schema-test-001",
             "closure_type": ClosureType.NEURAL_VIDEO,
@@ -698,9 +700,10 @@ class TestRenderFarmJobBundleContract:
             "output_sink": {"result_video": "/tmp/out.mp4"},
             "payload": {"seed": 42},
         }
-        # Verify required keys are present
+        # Verify required keys are present and all keys are recognized
         for key in required_keys:
             assert key in valid_bundle
+        assert set(valid_bundle.keys()).issubset(required_keys | allowed_optional_keys)
         # Verify deserialization succeeds
         manifest = BundleManifest.from_rfc0039_job_bundle(valid_bundle)
         assert manifest.job_id == "job-schema-test-001"

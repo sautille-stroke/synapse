@@ -11,17 +11,6 @@ from synapse.bench.bundle_exporter import (
     export_inspection_bundle,
     validate_inspection_bundle,
 )
-from synapse.render_core.camera import (
-    CameraTrajectoryType,
-    generate_cameras,
-)
-from synapse.render_core.conditions import (
-    CROSS_CONDITIONS,
-    RENDERING_CONDITION_FACTORS,
-    SINGLE_FACTOR_CONDITIONS,
-    ConditionLevel,
-    Conditions,
-)
 from synapse.bench.domain_randomizer import (
     DomainRandomizationConfig,
     DomainRandomizer,
@@ -31,12 +20,6 @@ from synapse.bench.model_loader import (
     load_mesh,
     load_obj,
     load_procedural,
-)
-from synapse.render_core.procedural import (
-    ProceduralMesh,
-    ProceduralMeshType,
-    generate_humanoid_proxy,
-    generate_procedural_mesh,
 )
 from synapse.bench.registry import (
     AssetEntry,
@@ -54,6 +37,23 @@ from synapse.bench.scenario import (
     ScenarioTier,
     list_scenarios,
     load_scenario,
+)
+from synapse.render_core.camera import (
+    CameraTrajectoryType,
+    generate_cameras,
+)
+from synapse.render_core.conditions import (
+    CROSS_CONDITIONS,
+    RENDERING_CONDITION_FACTORS,
+    SINGLE_FACTOR_CONDITIONS,
+    ConditionLevel,
+    Conditions,
+)
+from synapse.render_core.procedural import (
+    ProceduralMesh,
+    ProceduralMeshType,
+    generate_humanoid_proxy,
+    generate_procedural_mesh,
 )
 from synapse.render_core.rasterizer import (
     SoftwareRasterizer,

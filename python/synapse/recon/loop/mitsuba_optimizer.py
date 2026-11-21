@@ -459,7 +459,6 @@ class MitsubaInverseOptimizer:
 
                 # Flatten UV indices for DrJit gather
                 flat_uv_idx = (ty * res + tx).ravel().astype(np.int32)
-                n_pixels = len(flat_uv_idx)
 
                 # Convert shading to DrJit
                 ndotl_dr = mi.Float(ndotl_np.ravel().astype(np.float32))
@@ -485,7 +484,6 @@ class MitsubaInverseOptimizer:
                 # D_GGX = alpha^2 / (pi * (NdotH^2 * (alpha^2 - 1) + 1)^2)
                 # For simplicity, add a small specular term proportional
                 # to NdotL^4 (approximates GGX at moderate roughness).
-                alpha_sq = mi.Float(0.25)  # roughness=0.5 → alpha=0.5
                 spec_weight = mi.Float(0.04)  # F0 for dielectric
                 specular_approx = spec_weight * ndotl_dr * ndotl_dr * ndotl_dr * ndotl_dr
                 rendered_r = rendered_r + specular_approx

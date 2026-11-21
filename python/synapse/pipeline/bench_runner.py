@@ -349,8 +349,8 @@ class BenchPipelineRunner:
             from typing import cast
 
             from synapse.metrics.profiles import (
-                METRIC_ALIASES,
                 _PROFILES,
+                METRIC_ALIASES,
                 GateProfileName,
                 _normalize_profile_name,
                 evaluate_gate,
@@ -638,8 +638,8 @@ def evaluate_bundle(
     from typing import cast
 
     from synapse.metrics.profiles import (
-        METRIC_ALIASES,
         _PROFILES,
+        METRIC_ALIASES,
         GateProfileName,
         _normalize_profile_name,
         evaluate_gate,

@@ -9,11 +9,11 @@ affects forward-generation and inverse-reconstruction quality.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ConditionLevel(str, Enum):
+class ConditionLevel(StrEnum):
     """Severity level for a rendering condition factor."""
 
     L1 = "L1"  # Baseline / easiest

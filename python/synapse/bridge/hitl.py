@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -152,14 +153,14 @@ class PersistentHitlLedger:
 
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         except ImportError:
-            # Windows: use msvcrt locking
-            try:
-                import msvcrt
+            if sys.platform == "win32":
+                try:
+                    import msvcrt
 
-                f.seek(0)
-                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-            except (ImportError, OSError):
-                pass
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                except (ImportError, OSError):
+                    pass
         except OSError:
             pass
 
@@ -193,13 +194,14 @@ class PersistentHitlLedger:
 
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
         except ImportError:
-            try:
-                import msvcrt
+            if sys.platform == "win32":
+                try:
+                    import msvcrt
 
-                lock_handle.seek(0)
-                msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
-            except (ImportError, OSError):
-                pass
+                    lock_handle.seek(0)
+                    msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                except (ImportError, OSError):
+                    pass
         except OSError:
             pass
         lock_handle.close()

@@ -176,8 +176,8 @@ def _cmd_lora_train(
 
         def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
             for block in self.blocks:
-                x = x + block["spatial_attn"]["to_v"](x)  # type: ignore[index]
-                x = x + block["ffn"]["linear"](x)  # type: ignore[index]
+                x = x + block["spatial_attn"]["to_v"](x)
+                x = x + block["ffn"]["linear"](x)
             return self.out(x)
 
     # Select target_modules from manifest if available, else infer from category
@@ -292,8 +292,8 @@ def _cmd_lora_merge(
             agent_fix_hint="Ensure the bundle directory contains trained LoRA weights.",
         )
 
-    from synapse.adapters.lora.manifest import LoRAManifest
     from synapse.adapters.lora.manager import MultiLoRAManager
+    from synapse.adapters.lora.manifest import LoRAManifest
 
     manifest_path = bundle_dir / "lora_manifest.json"
     if manifest_path.is_file():
@@ -324,7 +324,8 @@ def _cmd_lora_merge(
     # Set bundle_dir for relative path resolution
     manifest.bundle_dir = str(bundle_dir)  # type: ignore[attr-defined]
 
-    manager = MultiLoRAManager(
+    # Validate bundle manifest via MultiLoRAManager
+    _ = MultiLoRAManager(
         lora_bundles=[(manifest, 1.0)],
     )
 

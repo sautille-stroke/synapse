@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import numpy as np
-from synapse.bench.conditions import RENDERING_CONDITION_FACTORS
 from synapse.bench.domain_randomizer import (
     FACTOR_KEYS,
     DomainRandomizationConfig,
     DomainRandomizer,
 )
+from synapse.render_core.conditions import RENDERING_CONDITION_FACTORS
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LinearProjectionEncoder,

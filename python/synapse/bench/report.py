@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import html
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -234,7 +234,7 @@ def generate_html_report(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     n_total = len(reports)
     n_pass = sum(
         1 for r in reports if r.error is None and (r.gate_verdict is None or r.gate_verdict.passed)

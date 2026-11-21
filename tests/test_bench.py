@@ -18,11 +18,11 @@ from synapse.bench import (
     list_scenarios,
     load_scenario,
 )
-from synapse.bench.procedural import (
+from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence
+from synapse.render_core.procedural import (
     ProceduralMesh,
     generate_procedural_mesh,
 )
-from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence
 
 # =========================================================================
 # Scenario

@@ -11,7 +11,6 @@ import zlib
 from pathlib import Path
 
 import pytest
-from synapse.bench.procedural import ProceduralMeshType, generate_procedural_mesh
 from synapse.inspect.eval_report import (
     EvalReportData,
     ModelEvalResult,
@@ -20,6 +19,7 @@ from synapse.inspect.eval_report import (
     generate_eval_html_report,
 )
 from synapse.recon.geometry import check_manifold, check_watertight
+from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
 
 # -------------------------------------------------------------------
 # Helpers

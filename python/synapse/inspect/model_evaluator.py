@@ -11,7 +11,7 @@ import json
 import struct
 import zlib
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -566,7 +566,7 @@ def evaluate_3d_models_directory(
                     if log_fn:
                         log_fn(f"  Warning: failed to load reference mesh {ref_path.name}: {exc}")
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     results: list[ModelEvalResult] = []
 
     if log_fn:
