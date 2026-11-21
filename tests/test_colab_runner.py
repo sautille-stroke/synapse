@@ -30,6 +30,8 @@ from synapse.fgpp import (
     FGPPSequence,
 )
 
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = REPO_ROOT / "scripts" / "colab_runner.py"
 
@@ -82,6 +84,7 @@ def _make_dummy_sequence(num_frames: int = 17, scene_id: str = "test_scene") -> 
     )
 
 
+@pytest.mark.slow
 def test_detect_gpu_profile_schema() -> None:
     """Verify detect_gpu_profile returns all required contract fields."""
     profile = detect_gpu_profile()
@@ -257,6 +260,7 @@ def test_colab_runner_e3_frame_floor_contract(tmp_path: Path) -> None:
         assert exc_info.value.exit_code == 10
 
 
+@pytest.mark.slow
 def test_colab_runner_e4_real_gpu_hierarchical_module(tmp_path: Path) -> None:
     """Verify _verify_e4_real_gpu creates LoRA with hierarchical cross_attn module."""
     pytest.importorskip("torch")

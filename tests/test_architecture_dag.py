@@ -12,6 +12,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+pytestmark = pytest.mark.slow
+
 
 def _repo_root() -> Path:
     """Resolve the repository root (parent of ``tests/``)."""
@@ -74,6 +78,7 @@ def test_no_tier_violations() -> None:
         )
 
 
+@pytest.mark.slow
 def test_import_dag_guard_cli_check_exits_zero() -> None:
     """``python tools/import_dag_guard.py --check`` exits 0."""
     guard_path = _repo_root() / "tools" / "import_dag_guard.py"

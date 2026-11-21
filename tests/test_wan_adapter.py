@@ -551,6 +551,7 @@ class TestWanSlidingWindowAndGuards:
         np.testing.assert_array_equal(captured_warmup[1][1], captured_frames[0][62])
         np.testing.assert_array_equal(captured_warmup[1][2], captured_frames[0][63])
 
+    @pytest.mark.slow
     def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
         """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""
         from synapse.adapters.wan_diffusers import DiffusersWanBackend

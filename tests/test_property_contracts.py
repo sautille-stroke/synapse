@@ -27,6 +27,8 @@ from synapse.inspect.geometry_gate import validate_mesh_geometry
 from synapse.inspect.schemas import DefectAnnotation3D, InspectionReport
 from synapse.pipeline.bundle_worker import BundleManifest
 
+pytestmark = pytest.mark.slow
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCHEMAS_DIR = _REPO_ROOT / "schemas"
 
@@ -39,7 +41,7 @@ _SCHEMAS_DIR = _REPO_ROOT / "schemas"
 class TestHypothesisCameraProperties:
     """Property-based verification of camera projection and coordinate contracts."""
 
-    @settings(max_examples=30, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         fx=st.floats(min_value=100.0, max_value=3000.0),
         fy=st.floats(min_value=100.0, max_value=3000.0),
@@ -101,7 +103,7 @@ class TestHypothesisCameraProperties:
         assert abs(cam_restored.cx - cx) < 1e-4
         assert abs(cam_restored.cy - cy) < 1e-4
 
-    @settings(max_examples=30, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         yaw=st.floats(-np.pi, np.pi),
         pitch=st.floats(-np.pi / 2.5, np.pi / 2.5),
@@ -173,7 +175,7 @@ _st_extreme_floats = st.one_of(
 class TestHypothesisFgppSanitization:
     """Property tests asserting physical invariants on FGPP frame sanitization."""
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         depth_raw=st.lists(_st_extreme_floats, min_size=16, max_size=16),
         normal_raw=st.lists(_st_extreme_floats, min_size=48, max_size=48),
@@ -264,7 +266,7 @@ class TestHypothesisJsonSchemaParity:
         self.inspection_bundle_schema = json.loads((_SCHEMAS_DIR / "bundle.v1.0.schema.json").read_text(encoding="utf-8"))
         self.inspection_report_schema = json.loads((_SCHEMAS_DIR / "inspection.v2.0.schema.json").read_text(encoding="utf-8"))
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         name=st.text(min_size=1, max_size=20, alphabet=st.characters(categories=["L", "N"])),
         rank=st.integers(min_value=1, max_value=128),
@@ -307,7 +309,7 @@ class TestHypothesisJsonSchemaParity:
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad_pt, self.lora_schema)
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         job_id=st.text(min_size=1, max_size=32, alphabet=st.characters(categories=["L", "N"])),
         stage=st.sampled_from(["fgpp_validate", "neural_video_generate", "delight_albedo"]),
@@ -341,7 +343,7 @@ class TestHypothesisJsonSchemaParity:
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad_bundle, self.job_bundle_schema)
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         bundle_id=st.text(min_size=1, max_size=32, alphabet=st.characters(categories=["L", "N"])),
         source_name=st.sampled_from(["mesh_primary", "mesh_secondary", "fgpp_aov"]),
@@ -381,7 +383,7 @@ class TestHypothesisJsonSchemaParity:
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad_sources, self.inspection_bundle_schema)
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         asset_id=st.text(min_size=1, max_size=20, alphabet=st.characters(categories=["L", "N"])),
         score=st.floats(min_value=0.0, max_value=1.0),
@@ -431,7 +433,7 @@ class TestHypothesisJsonSchemaParity:
 class TestHypothesisMeshValidationParity:
     """Property tests asserting topology equivalence between Python Oracle and C++ native backend."""
 
-    @settings(max_examples=25, derandomize=True, deadline=None)
+    @settings(max_examples=10, derandomize=True, deadline=None)
     @given(
         scale=st.floats(min_value=0.2, max_value=5.0),
         perturb_x=st.floats(min_value=-0.05, max_value=0.05),

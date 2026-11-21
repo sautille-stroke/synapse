@@ -68,6 +68,7 @@ def _make_motion_vectors(t: int = 4, mag: float = 5.0) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_blend_with_motion_vectors_runs() -> None:
     """composite_surgical_sequence works with motion_vectors provided."""
     t_count = 4
@@ -114,6 +115,7 @@ def test_blend_motion_vectors_reduces_temporal_error() -> None:
     assert result_with_mv.dtype == np.uint8
 
 
+@pytest.mark.slow
 def test_blend_large_flow_reduces_ema_alpha() -> None:
     """Large flow magnitude (>15px) should cause adaptive alpha reduction."""
     t_count = 4
@@ -201,6 +203,7 @@ def test_stitcher_empty_refinements() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_stitcher_motion_vectors_affect_output() -> None:
     """Non-zero motion_vectors must produce measurably different output
     from zero motion_vectors."""
@@ -376,6 +379,7 @@ def test_stitcher_inverse_affine_with_explicit_matrix() -> None:
     )
 
 
+@pytest.mark.slow
 def test_stitcher_large_flow_decays_ema() -> None:
     """When mean flow > max_flow_magnitude, EMA alpha should be reduced."""
     frames = _make_acescg_frames(4)

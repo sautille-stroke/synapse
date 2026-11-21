@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-11-21
+
+### Horizon 11 (M41–M44) — Full-Repository Hardening, Scientific Correctness & 16-Gate Closure
+
+Release completing all 20 atomic PRs (`PR-173 ~ PR-192`, GH `#165 ~ #184`) across four milestones:
+
+#### M41 — Infrastructure, Static Analysis & Security (PR-173 ~ PR-177)
+- Hardened Colab workenv notebooks, Tailscale/VS Code TLS & secret handling (`PR-173`).
+- Repaired GitHub Actions 5/5 jobs, dual `aether_geo`+`aether_metrics` auto-installation in `build_native.py`, and strict dependency guards (`PR-174`).
+- Cleared all `mypy --strict`, `ruff`, and `DeprecationWarning` issues (`PR-175`).
+- Pinned-socket `safe_urlopen` preserving POST/TLS/SNI/IPv6 + viewer/bundle symlink & XSS hardening (`PR-176`).
+- Fail-closed atomic `PersistentHitlLedger` (`flock` + `fsync`) and deterministic CLI exit codes (`PR-177`).
+
+#### M42 — Cross-Repo Contracts, Dual-Track Math & Worker Runtime (PR-178 ~ PR-182)
+- 100% C++↔NumPy `camera_math` parity, CCW primitive winding, and `_generate_pan` pitch sign fix (`PR-178`).
+- `MeshData` topology preservation, `load_obj` bounds, `model_evaluator` gates, and FGPP `FULGUR_FINITE_REVERSED_Z`/Vulkan/`bfloat16` hardening (`PR-179`).
+- 1:1 Go `render-farm` RFC-0039 `JobBundle` alignment & tamper exit `20` (`PR-180`).
+- Full 15ch `SoftwareRasterizer` dataset fallback & fail-closed SHA-256 verification (`PR-181`).
+- Bidirectional `wire_guard.py`, sealed `import_dag_guard.py`, and synced `WIRE_CONTRACTS.md` (`PR-182`).
+
+#### M43 — Video Adapters, Color & LoRA Training (PR-183 ~ PR-187)
+- Pole-free $C^1$ quadratic soft-knee ACEScg bijection, calibrated `border_ring_lab_match`, and pyramid/mask fixes (`PR-183`).
+- `WanAdapter` forward tonemap, cut reanchoring, `fuse_overlapping_latents` mean separation, `MultiLoRAManager` & `cloud.py` fixes (`PR-184`).
+- `DiffusersWanBackend` strided `ControlNeXtPatchifyStem`, CFG broadcast, `AutoencoderKLWan` stats, and `colab_runner.py` Drive-only guard (`PR-185`).
+- Full `StatelessLoRATrainer` `save_state_dict`/`load_state_dict` parity, auto-instantiated `LatentGeometryProbe`, and `.float()` loss precision (`PR-186`).
+- Fail-closed streaming `FeatureStoreBuilder`, causal `[0:1],[1:5],...` binning, 4-block `_WhitelistDiT`, and real multi-bundle orthogonal `lora merge` (`PR-187`).
+
+#### M44 — Recon, Refine, 30-Scenario Bench, Data Inspector & v4.2.0 Release (PR-188 ~ PR-192)
+- Resolution-invariant de-rotated ray parallax + H/F GRIC 6-DoF, QEM Link Condition manifold guard, tight MC welding, aligned multiview delight, and strict Redline #3 (`PR-188`).
+- Authoritative `anatomical_quality_score` routing, telescoping cascade identity, sharpness-weighted K=2 uncertainty fusion, exact 2D DST-I Poisson solver, closed-loop bbox cropping, and Mitsuba CPU fallback (`PR-189`).
+- Activated all 30 Synapse-Bench scenario conditions (T1–T5), fail-closed NaN/missing/proxy-FVD gates, report-file `min_scenarios=30`, and `1e-2` consistency tolerance (`PR-190`).
+- Monotonic SHM resize generation counter, standalone Bazel config + `@aether/fs/file_utils.h`, 4-tab DOM (`#timeline-controls`, `#comparison-metrics`, `#btn-export-screenshot`, `R/M` AOV), per-entity visibility, and GLB bounds (`PR-191`).
+- 15x scalar-math `_qem_decimate` speedup, 13.5x single-pass `exr.channels()` batch OpenEXR reader, `FGPPSequence.save_metadata()` C++ `fulgur` parity, Test SLA closure, blind-spot unit tests, SSOT doc cleanup, and 16-gate `v4.2.0` release (`PR-192`).
+
 ## [4.1.0] — 2026-11-21
 
 ### Horizon 10 (M37–M40) — Post-Reconciliation True Closure & v4.1.0

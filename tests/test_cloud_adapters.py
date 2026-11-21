@@ -9,6 +9,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import numpy as np
@@ -28,6 +29,8 @@ from synapse.adapters.cloud import (
     degrade_fgpp_for_blackbox,
 )
 from synapse.fgpp.frame import CameraParams, FGPPFrame, FGPPSequence
+
+pytestmark = pytest.mark.slow
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -56,6 +59,7 @@ def _make_camera(
     )
 
 
+@functools.lru_cache(maxsize=8)
 def _make_fgpp_sequence(
     num_frames: int,
     h: int = 64,
@@ -95,6 +99,7 @@ def _random_normals(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestDegradeFGPP:
     """Tests for ``degrade_fgpp_for_blackbox``."""
 
@@ -295,6 +300,7 @@ class TestMockCloudTransport:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestCloudAdapters:
     """Tests for SeedanceAdapter, KlingAdapter, VeoAdapter."""
 

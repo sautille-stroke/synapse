@@ -188,6 +188,7 @@ def test_analytic_optimizer_default_light() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_mitsuba_import_guard() -> None:
     """MitsubaInverseOptimizer raises BackendUnavailableError without mitsuba.
 

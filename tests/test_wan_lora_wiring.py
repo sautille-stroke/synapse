@@ -243,6 +243,7 @@ class TestWanAdapterLoRAConstruction:
         assert adapter._lora_manager is None
 
 
+@pytest.mark.slow
 class TestWanAdapterLoRAGenerate:
     """LoRA integration in ``generate()``."""
 
@@ -388,6 +389,7 @@ class TestWanAdapterLoRAGenerate:
         spatial_tracker.assert_not_called()
         assert isinstance(result, VideoResult)
 
+    @pytest.mark.slow
     def test_wan_adapter_generate_real_model_spatial_modification_and_bg_preservation(self) -> None:
         """Deterministic real nn.Module test: verifies foreground modification and background preservation."""
         pytest.importorskip("torch")

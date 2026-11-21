@@ -24,6 +24,8 @@ from synapse.adapters.lora.manager import MultiLoRAManager
 from synapse.adapters.lora.manifest import LoRAManifest
 from synapse.errors import AssetNotFoundError, ContractValidationError, ExitCode
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

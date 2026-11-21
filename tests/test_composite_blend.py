@@ -77,6 +77,7 @@ def _mean_ciede2000(img1_srgb: np.ndarray, img2_srgb: np.ndarray, mask: np.ndarr
 class TestBorderRingLabMatch:
     """Tests for border_ring_lab_match."""
 
+    @pytest.mark.slow
     def test_brightness_offset_matching(self) -> None:
         """Border ring CIEDE2000 < 2.5 after matching +15% brightness
         offset."""
@@ -111,6 +112,7 @@ class TestBorderRingLabMatch:
             )
             assert de_after < 2.5, f"CIEDE2000 after match should be < 2.5, got {de_after:.2f}"
 
+    @pytest.mark.slow
     def test_warm_color_shift(self) -> None:
         """Border-ring match handles warm colour shift reasonably."""
         h, w = 128, 128

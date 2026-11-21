@@ -453,6 +453,7 @@ class TestLightDirectionFitting:
     """extract_style_fgpp_intrinsic should recover the main light direction
     within 5° for a known single directional light."""
 
+    @pytest.mark.slow
     def test_single_directional_light_recovery(self) -> None:
         """Known light direction recovered with < 5° error.
 

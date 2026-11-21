@@ -23,6 +23,8 @@ sub-second execution on ``ubuntu24`` or local CI.
 from __future__ import annotations
 
 import math
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -281,31 +283,71 @@ def clean_depths(hemisphere_cams: list[CameraExtrinsics]) -> np.ndarray:
     return _make_sphere_depth_maps(hemisphere_cams, h=32, w=32, sphere_radius=0.5)
 
 
+def _xdist_cache_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Return a session-shared cache directory across pytest-xdist workers."""
+    import os
+
+    base = tmp_path_factory.getbasetemp()
+    root = base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+    cache_dir = root / "roundtrip_recon_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _xdist_cached_npy(
+    tmp_path_factory: pytest.TempPathFactory,
+    key: str,
+    compute_fn: Any,
+) -> np.ndarray:
+    """Compute a deterministic NumPy array once per pytest session across xdist workers."""
+    import fcntl
+
+    cache_dir = _xdist_cache_dir(tmp_path_factory)
+    data_path = cache_dir / f"{key}.npy"
+    lock_path = cache_dir / f"{key}.lock"
+    with open(lock_path, "wb") as lock_f:
+        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+        try:
+            if data_path.is_file():
+                return np.asarray(np.load(data_path))
+            arr = np.asarray(compute_fn())
+            tmp_path = cache_dir / f"{key}.tmp.npy"
+            np.save(tmp_path, arr)
+            tmp_path.replace(data_path)
+            return arr
+        finally:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+
+
 @pytest.fixture(scope="module")
 def clean_recon(
+    tmp_path_factory: pytest.TempPathFactory,
     hemisphere_cams: list[CameraExtrinsics],
     clean_depths: np.ndarray,
 ) -> np.ndarray:
     """Real multi-view 3D reconstruction via ReconPipeline.run(initial_mesh=None)."""
     from synapse.recon.pipeline import ReconPipeline
 
-    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
-    pipe = ReconPipeline(
-        target_quad_faces=500,
-        geometry_backend="native",
-        voxel_size=0.05,
-        sdf_trunc=0.1,
-        volume_bounds=(1.2, 1.2, 1.2),
-    )
-    res = pipe.run(
-        frames,
-        initial_mesh=None,
-        depths=clean_depths,
-        cameras=hemisphere_cams,
-        has_gen3d_highpoly=True,
-    )
-    assert res.mesh is not None
-    return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=4096, seed=42)
+    def _compute() -> np.ndarray:
+        frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+        pipe = ReconPipeline(
+            target_quad_faces=500,
+            geometry_backend="native",
+            voxel_size=0.05,
+            sdf_trunc=0.1,
+            volume_bounds=(1.2, 1.2, 1.2),
+        )
+        res = pipe.run(
+            frames,
+            initial_mesh=None,
+            depths=clean_depths,
+            cameras=hemisphere_cams,
+            has_gen3d_highpoly=True,
+        )
+        assert res.mesh is not None
+        return sample_mesh_surface(res.mesh.vertices, res.mesh.faces, num_samples=4096, seed=42)
+
+    return _xdist_cached_npy(tmp_path_factory, "clean_recon", _compute)
 
 
 @pytest.fixture(scope="module")
@@ -315,42 +357,53 @@ def clean_cd(clean_recon: np.ndarray, gt_surface: np.ndarray) -> float:
 
 
 @pytest.fixture(scope="module")
-def corrupted_cd_a(gt_surface: np.ndarray) -> float:
+def corrupted_cd_a(
+    tmp_path_factory: pytest.TempPathFactory,
+    gt_surface: np.ndarray,
+) -> float:
     """CD for Defect A: degenerate narrow baseline via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    cams_a: list[CameraExtrinsics] = []
-    for i in range(12):
-        theta = math.radians(16.0) * (i / 11.0)
-        pos = np.array([2.0 * math.sin(theta), 0.0, 2.0 * math.cos(theta)], dtype=np.float64)
-        z_axis = -pos / np.linalg.norm(pos)
-        up = np.array([0.0, 1.0, 0.0])
-        x_axis = np.cross(up, z_axis)
-        x_axis /= np.linalg.norm(x_axis)
-        y_axis = np.cross(z_axis, x_axis)
-        R = np.stack([x_axis, y_axis, z_axis], axis=0)
-        T = np.eye(4, dtype=np.float64)
-        T[:3, :3] = R
-        T[:3, 3] = -R @ pos
-        cams_a.append(CameraExtrinsics(frame=i, transform=T, position=pos, rotation_matrix=R, yaw_rad=theta))
+    def _compute() -> np.ndarray:
+        cams_a: list[CameraExtrinsics] = []
+        for i in range(12):
+            theta = math.radians(16.0) * (i / 11.0)
+            pos = np.array([2.0 * math.sin(theta), 0.0, 2.0 * math.cos(theta)], dtype=np.float64)
+            z_axis = -pos / np.linalg.norm(pos)
+            up = np.array([0.0, 1.0, 0.0])
+            x_axis = np.cross(up, z_axis)
+            x_axis /= np.linalg.norm(x_axis)
+            y_axis = np.cross(z_axis, x_axis)
+            R = np.stack([x_axis, y_axis, z_axis], axis=0)
+            T = np.eye(4, dtype=np.float64)
+            T[:3, :3] = R
+            T[:3, 3] = -R @ pos
+            cams_a.append(
+                CameraExtrinsics(frame=i, transform=T, position=pos, rotation_matrix=R, yaw_rad=theta)
+            )
 
-    depths_a = _make_sphere_depth_maps(cams_a, h=32, w=32, sphere_radius=0.5)
-    frames = np.zeros((12, 32, 32, 3), dtype=np.float32)
-    pipe = ReconPipeline(
-        target_quad_faces=500,
-        geometry_backend="native",
-        voxel_size=0.05,
-        sdf_trunc=0.1,
-        volume_bounds=(1.2, 1.2, 1.2),
-    )
-    res_a = pipe.run(frames, initial_mesh=None, depths=depths_a, cameras=cams_a, has_gen3d_highpoly=True)
-    assert res_a.mesh is not None
-    pts = sample_mesh_surface(res_a.mesh.vertices, res_a.mesh.faces, len(gt_surface), 42)
-    return chamfer_mm(pts, gt_surface) / 1000.0
+        depths_a = _make_sphere_depth_maps(cams_a, h=32, w=32, sphere_radius=0.5)
+        frames = np.zeros((12, 32, 32, 3), dtype=np.float32)
+        pipe = ReconPipeline(
+            target_quad_faces=500,
+            geometry_backend="native",
+            voxel_size=0.05,
+            sdf_trunc=0.1,
+            volume_bounds=(1.2, 1.2, 1.2),
+        )
+        res_a = pipe.run(
+            frames, initial_mesh=None, depths=depths_a, cameras=cams_a, has_gen3d_highpoly=True
+        )
+        assert res_a.mesh is not None
+        pts = sample_mesh_surface(res_a.mesh.vertices, res_a.mesh.faces, len(gt_surface), 42)
+        return np.array([chamfer_mm(pts, gt_surface) / 1000.0], dtype=np.float64)
+
+    return float(_xdist_cached_npy(tmp_path_factory, "corrupted_cd_a", _compute)[0])
 
 
 @pytest.fixture(scope="module")
 def corrupted_cd_b(
+    tmp_path_factory: pytest.TempPathFactory,
     gt_surface: np.ndarray,
     hemisphere_cams: list[CameraExtrinsics],
     clean_depths: np.ndarray,
@@ -358,26 +411,36 @@ def corrupted_cd_b(
     """CD for Defect B: heavy depth noise via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    rng = np.random.RandomState(99)
-    noise = rng.normal(0, 0.35, clean_depths.shape).astype(np.float32)
-    depths_b = np.clip(clean_depths + np.where(clean_depths > 0, noise, 0), 0.05, None)
+    def _compute() -> np.ndarray:
+        rng = np.random.RandomState(99)
+        noise = rng.normal(0, 0.35, clean_depths.shape).astype(np.float32)
+        depths_b = np.clip(clean_depths + np.where(clean_depths > 0, noise, 0), 0.05, None)
 
-    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
-    pipe = ReconPipeline(
-        target_quad_faces=500,
-        geometry_backend="native",
-        voxel_size=0.05,
-        sdf_trunc=0.1,
-        volume_bounds=(1.2, 1.2, 1.2),
-    )
-    res_b = pipe.run(frames, initial_mesh=None, depths=depths_b, cameras=hemisphere_cams, has_gen3d_highpoly=True)
-    assert res_b.mesh is not None
-    pts = sample_mesh_surface(res_b.mesh.vertices, res_b.mesh.faces, len(gt_surface), 42)
-    return chamfer_mm(pts, gt_surface) / 1000.0
+        frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+        pipe = ReconPipeline(
+            target_quad_faces=500,
+            geometry_backend="native",
+            voxel_size=0.05,
+            sdf_trunc=0.1,
+            volume_bounds=(1.2, 1.2, 1.2),
+        )
+        res_b = pipe.run(
+            frames,
+            initial_mesh=None,
+            depths=depths_b,
+            cameras=hemisphere_cams,
+            has_gen3d_highpoly=True,
+        )
+        assert res_b.mesh is not None
+        pts = sample_mesh_surface(res_b.mesh.vertices, res_b.mesh.faces, len(gt_surface), 42)
+        return np.array([chamfer_mm(pts, gt_surface) / 1000.0], dtype=np.float64)
+
+    return float(_xdist_cached_npy(tmp_path_factory, "corrupted_cd_b", _compute)[0])
 
 
 @pytest.fixture(scope="module")
 def corrupted_cd_c(
+    tmp_path_factory: pytest.TempPathFactory,
     gt_surface: np.ndarray,
     hemisphere_cams: list[CameraExtrinsics],
     clean_depths: np.ndarray,
@@ -385,21 +448,30 @@ def corrupted_cd_c(
     """CD for Defect C: upper hemisphere truncation via ReconPipeline."""
     from synapse.recon.pipeline import ReconPipeline
 
-    depths_c = clean_depths.copy()
-    depths_c[:, :24, :] = 0.0  # zero out top 75% of depth observations
+    def _compute() -> np.ndarray:
+        depths_c = clean_depths.copy()
+        depths_c[:, :24, :] = 0.0  # zero out top 75% of depth observations
 
-    frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
-    pipe = ReconPipeline(
-        target_quad_faces=500,
-        geometry_backend="native",
-        voxel_size=0.05,
-        sdf_trunc=0.1,
-        volume_bounds=(1.2, 1.2, 1.2),
-    )
-    res_c = pipe.run(frames, initial_mesh=None, depths=depths_c, cameras=hemisphere_cams, has_gen3d_highpoly=True)
-    assert res_c.mesh is not None
-    pts = sample_mesh_surface(res_c.mesh.vertices, res_c.mesh.faces, len(gt_surface), 42)
-    return chamfer_mm(pts, gt_surface) / 1000.0
+        frames = np.zeros((len(hemisphere_cams), 32, 32, 3), dtype=np.float32)
+        pipe = ReconPipeline(
+            target_quad_faces=500,
+            geometry_backend="native",
+            voxel_size=0.05,
+            sdf_trunc=0.1,
+            volume_bounds=(1.2, 1.2, 1.2),
+        )
+        res_c = pipe.run(
+            frames,
+            initial_mesh=None,
+            depths=depths_c,
+            cameras=hemisphere_cams,
+            has_gen3d_highpoly=True,
+        )
+        assert res_c.mesh is not None
+        pts = sample_mesh_surface(res_c.mesh.vertices, res_c.mesh.faces, len(gt_surface), 42)
+        return np.array([chamfer_mm(pts, gt_surface) / 1000.0], dtype=np.float64)
+
+    return float(_xdist_cached_npy(tmp_path_factory, "corrupted_cd_c", _compute)[0])
 
 
 @pytest.fixture(scope="module")

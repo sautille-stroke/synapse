@@ -14,7 +14,7 @@
 | :--- | :--- | :--- |
 | **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp`, `@aether//style` 规划中) | Layer 0 C++20 已落地 `@aether//fgpp`（15 标量 EXR 通道与 `fgpp.v1.0` `metadata.json`）；`@aether//style` 尚在规划（当前 `StyleProfile` Schema 由 `synapse.style` 镜像维护，`wire_guard` 在未设严格前提时跳过该项），**严禁私自篡改已锁定线格式** |
 | **正向物理 FGPP 生产端** | `fulgur` (Track B) / `caelum-core` (Track A) | 导出多通道 OpenEXR 序列 + `metadata.json`；`synapse.fgpp` 负责无损读取、校验与张量转换 |
-| **自包含算法 Oracle 与 `@aether` 委托原生核** | `synapse` (`csrc/geometry/` + Python Oracle) | 已脱离外部 `vg-core`：原生 `csrc/geometry/` Bazel 构建依赖同级 `../aether`（`@aether//geo`、`@aether//math`），`scripts/build_native.py` 委托并封装编译，Python 模块 `synapse.recon.geometry` 作为正确性对比 Oracle 双轨互验 |
+| **自包含算法 Oracle 与 `@aether` 原生加速桥** | `synapse` (`synapse.bridge.aether_bridge` + Python Oracle) | 已全面收口至 Layer 0 同级 `../aether`（`@aether//geo`、`@aether//math`、`@aether//metrics`、`@aether//color`），`scripts/build_native.py` 委托并自动编译安装 `aether_geo` 与 `aether_metrics` 扩展；Python 模块 `synapse.recon.geometry` 作为正确性对比 Oracle 与 C++20 双轨互验 |
 | **上游分布式调度与编排** | `render-farm` (Go) / `narrative-rail` (Go) | 生产级 DAG 编排与 API 服务统一由 Go 承载；通过 RFC 0039 自洽 `JobBundle` 调度 `synapse` 在 `foundary` 容器内完成单步 GPU 计算后即刻退出 |
 | **上层创作工坊与总控** | `grand-studio` / `scene-forge` / `asset-forge` / `film-studio` | 负责白模布景、运镜编辑、2D 瑕疵框选、网格/材质 L2 限时人工精修与 `CommandIR` 采集；**桌面端严禁直接内嵌 `synapse` 重型 PyTorch 环境** |
 
@@ -33,7 +33,7 @@
 
 | 环境节点 | 连接方式 | 角色定位与使用规范 |
 | :--- | :--- | :--- |
-| **Ubuntu 云端主力机 (`ubuntu24`)** | `ssh ubuntu24` | **P0 首选全量测试与 CI 验证环境**。全套 `pytest`（1,397 用例：1,263 fast + 134 slow）、`mypy`、`ruff`、OpenEXR 读写压测及 `MockVideoAdapter` 端到端回归**默认全部在 `ubuntu24` 上执行**。<br>• **Bazel 共享缓存**：使用 `/var/cache/bazel`（`startup --output_user_root=/var/cache/bazel`），禁止各自在 `~/.cache` 重复构建；<br>• **磁盘配额守卫**：构建与压测前预检 `df -h /`，确保存储余量 $\ge 11\sim 12\text{ GB}$；<br>• **Worktree 与 aether 依赖**：原生 C++ 构建依赖同级 `../aether`，在隔离 worktree 操作时需保证同级符号链接就绪，严禁在仓内创建嵌套工作区。 |
+| **Ubuntu 云端主力机 (`ubuntu24`)** | `ssh ubuntu24` | **P0 首选全量测试与 CI 验证环境**。全套 `pytest`（`1,560+` 用例：fast + slow）、`mypy --strict`、`ruff`、OpenEXR 读写压测及 `MockVideoAdapter` 端到端回归**默认全部在 `ubuntu24` 上执行**。<br>• **Bazel 共享缓存**：使用 `/var/cache/bazel`（`startup --output_user_root=/var/cache/bazel`），禁止各自在 `~/.cache` 重复构建；<br>• **磁盘配额守卫**：构建与压测前预检 `df -h /`，确保存储余量 $\ge 11\sim 12\text{ GB}$；<br>• **Worktree 与 aether 依赖**：原生 C++ 构建依赖同级 `../aether`，在隔离 worktree 操作时需保证同级符号链接就绪，严禁在仓内创建嵌套工作区。 |
 | **Colab CPU 常驻跑测节点 (`synapse-colab-gpu`)** | `ssh root@synapse-colab-gpu` (Tailscale) | **低成本常驻跑测/卸载节点**。标准 CPU 算力几乎免费，用户可长期保持该实例在线并接入 Tailscale，专门承载全量 `pytest` 回归与编译检查，杜绝本地 Mac 算力与电池消耗 |
 | **Windows GPU 节点 (`win-dev`)** / **Colab GPU (T4/L4/A100)** | `ssh win-dev` / Colab | **GPU 专有验证环境**。仅在验证真实 `Wan 2.1` / `SAM2` CUDA 推理或跨平台引擎联调时按需拉起，用完立即销毁释放 |
 | **macOS 本地开发机** | 本机 (`/Volumes/work/dervgen/synapse`) | **主控代码与文档编辑环境**。仅限单文件极速轻量语法/单测冒烟，**严禁在本地 Mac 拉起数十 GB 视频大模型或跑全量重型基准套件** |
@@ -123,7 +123,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 
 | Skill 名称 | 路径 | 适用场景 |
 | :--- | :--- | :--- |
-| **`synapse-overview`** | [.agents/skills/synapse-overview/SKILL.md](.agents/skills/synapse-overview/SKILL.md) | 架构全景、全模块索引（含 3D 模型评估、csrc/geometry 与 synapse.recon 逆向反演）、跨仓协作边界、CLI 确定性退出码契约（含 50）与多机测试规范 |
+| **`synapse-overview`** | [.agents/skills/synapse-overview/SKILL.md](.agents/skills/synapse-overview/SKILL.md) | 架构全景、全模块索引（含 3D 模型评估、`aether_bridge` 双轨原生几何核与 `synapse.recon` 逆向反演）、跨仓协作边界、CLI 确定性退出码契约（含 50）与多机测试规范 |
 | **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
 | **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
 | **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |

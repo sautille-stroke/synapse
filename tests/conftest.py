@@ -5,6 +5,15 @@ from __future__ import annotations
 import os
 from typing import Any, Generator
 
+# Prevent OpenMP / OpenBLAS / PyTorch thread oversubscription under pytest-xdist
+# (e.g. 16 workers x 16 threads = 256 threads thrashing 16 cores).
+if os.environ.get("PYTEST_XDIST_WORKER"):
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
 import pytest
 
 # ---------------------------------------------------------------------------
