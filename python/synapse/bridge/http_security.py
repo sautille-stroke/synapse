@@ -1,10 +1,11 @@
 # Copyright 2026 Sautille-Stroke / DervGen. All rights reserved.
-"""HTTP security utilities: URL validation, SSRF prevention, and safe openers."""
+"""HTTP security utilities: URL validation, SSRF prevention, and pinned-socket openers."""
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
-import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,19 +13,26 @@ from typing import Any
 
 from synapse.errors import ContractValidationError
 
-# Link-local / metadata networks to block (SSRF protection)
-_BLOCKED_NETWORKS = (
+# Always-blocked link-local / cloud metadata / unspecified / multicast / NAT64 networks
+_ALWAYS_BLOCKED_NETWORKS = (
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("::/128"),
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("100.100.100.200/32"),
     ipaddress.ip_network("fe80::/10"),
     ipaddress.ip_network("fd00:ec2::254/128"),
     ipaddress.ip_network("::ffff:169.254.0.0/112"),
-    # Loopback ranges
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("224.0.0.0/4"),
+    ipaddress.ip_network("ff00::/8"),
     # NAT64 well-known prefix (RFC 6052)
     ipaddress.ip_network("64:ff9b::/96"),
 )
+
+_LOOPBACK_NETWORKS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+)
+
 _BLOCKED_HOSTNAMES = frozenset(
     {
         "169.254.169.254",
@@ -32,16 +40,12 @@ _BLOCKED_HOSTNAMES = frozenset(
         "instance-data",
         "100.100.100.200",
         "fd00:ec2::254",
+        "0.0.0.0",
+        "::",
     }
 )
 
-# Proxy environment variables to suppress during URL validation
-_PROXY_ENV_VARS = (
-    "http_proxy", "HTTP_PROXY",
-    "https_proxy", "HTTPS_PROXY",
-    "all_proxy", "ALL_PROXY",
-    "no_proxy", "NO_PROXY",
-)
+_LOOPBACK_HOSTNAMES = frozenset({"localhost"})
 
 
 def _unwrap_ip(
@@ -59,37 +63,50 @@ def _unwrap_ip(
     return ips
 
 
-def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+def _is_blocked_ip(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    *,
+    allow_loopback: bool = False,
+) -> bool:
     """Return True if ip or any unwrapped mapping matches blocked networks/hosts."""
     for unwrapped in _unwrap_ip(ip):
-        for net in _BLOCKED_NETWORKS:
+        if unwrapped.is_unspecified or unwrapped.is_multicast:
+            return True
+        for net in _ALWAYS_BLOCKED_NETWORKS:
             if unwrapped in net:
                 return True
+        if not allow_loopback:
+            if unwrapped.is_loopback:
+                return True
+            for net in _LOOPBACK_NETWORKS:
+                if unwrapped in net:
+                    return True
         if str(unwrapped) in _BLOCKED_HOSTNAMES:
             return True
     return False
 
 
-def validate_safe_url(url: str) -> tuple[str, list[str]]:
+def validate_safe_url(
+    url: str,
+    *,
+    allow_loopback: bool = False,
+) -> tuple[str, list[str]]:
     """Validate that a URL uses safe HTTP/HTTPS scheme and does not target
-    link-local, loopback, or cloud metadata endpoints (SSRF prevention).
+    link-local, unspecified, multicast, or cloud metadata endpoints (SSRF prevention).
 
-    Resolves hostnames and checks all unwrapped IPv4/IPv6 addresses against
-    cloud metadata endpoints (e.g. 169.254.169.254, fd00:ec2::254, 100.100.100.200),
-    loopback (127.x.x.x, ::1), and NAT64 prefixes (64:ff9b::/96).
+    Loopback addresses (``127.0.0.0/8``, ``::1``, ``localhost``) are blocked by
+    default and permitted only when ``allow_loopback=True`` for trusted intra-pod
+    sidecar services.
 
     DNS lookup failures are **fail-closed** (blocked).
 
     Returns:
-        Tuple of (validated_url, resolved_ips) where resolved_ips are the
-        IP address strings from DNS resolution (empty for IP literals).
+        Tuple of ``(validated_url, resolved_ips)`` containing approved IP strings.
 
     Raises:
         ContractValidationError: If scheme is not http/https, DNS fails,
             or target is blocked.
     """
-    import socket
-
     if not url or not isinstance(url, str):
         raise ContractValidationError(
             f"Invalid or empty URL: {url!r}",
@@ -119,8 +136,13 @@ def validate_safe_url(url: str) -> tuple[str, list[str]]:
 
     if hostname in _BLOCKED_HOSTNAMES:
         raise ContractValidationError(
-            f"Blocked link-local / cloud metadata / loopback host: {hostname}",
-            agent_fix_hint="Access to cloud metadata endpoints (169.254.x.x / fd00:ec2::254) and loopback is forbidden.",
+            f"Blocked link-local / cloud metadata / unspecified host: {hostname}",
+            agent_fix_hint="Access to cloud metadata endpoints (169.254.x.x / fd00:ec2::254) and unspecified hosts is forbidden.",
+        )
+    if not allow_loopback and hostname in _LOOPBACK_HOSTNAMES:
+        raise ContractValidationError(
+            f"Blocked loopback host: {hostname}",
+            agent_fix_hint="Loopback endpoints require explicit allow_loopback=True for trusted local sidecars.",
         )
 
     resolved_ips: list[str] = []
@@ -128,23 +150,17 @@ def validate_safe_url(url: str) -> tuple[str, list[str]]:
     # Check if hostname is an IP literal
     try:
         ip = ipaddress.ip_address(hostname)
-        if _is_blocked_ip(ip):
+        if _is_blocked_ip(ip, allow_loopback=allow_loopback):
             raise ContractValidationError(
                 f"Blocked link-local / cloud metadata / loopback IP: {ip}",
-                agent_fix_hint="Access to cloud metadata endpoints and loopback is forbidden.",
+                agent_fix_hint="Access to cloud metadata endpoints and disallowed IPs is forbidden.",
             )
         resolved_ips.append(str(ip))
     except ValueError:
-        # Hostname is a domain name. Resolve via getaddrinfo.
-        # Temporarily suppress proxy environment variables during resolution
-        # to prevent DNS-over-proxy attacks.
-        saved_env: dict[str, str | None] = {}
-        for var in _PROXY_ENV_VARS:
-            saved_env[var] = os.environ.pop(var, None)
+        # Hostname is a domain name. Resolve via getaddrinfo (fail-closed).
         try:
-            addr_info = socket.getaddrinfo(hostname, None)
+            addr_info = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
         except (socket.gaierror, socket.herror, TimeoutError, OSError) as exc:
-            # DNS resolution failure: Fail-Closed — block the request
             raise ContractValidationError(
                 f"DNS resolution failed for hostname '{hostname}': {exc}. "
                 "Fail-closed: blocking request.",
@@ -153,27 +169,131 @@ def validate_safe_url(url: str) -> tuple[str, list[str]]:
                     "non-blocked IP address."
                 ),
             ) from exc
-        finally:
-            # Restore proxy env vars
-            for var, val in saved_env.items():
-                if val is not None:
-                    os.environ[var] = val
 
         for _, _, _, _, sockaddr in addr_info:
             resolved_ip_str = str(sockaddr[0])
             resolved_ip = ipaddress.ip_address(resolved_ip_str)
-            if _is_blocked_ip(resolved_ip):
+            if _is_blocked_ip(resolved_ip, allow_loopback=allow_loopback):
                 raise ContractValidationError(
                     f"Blocked hostname '{hostname}' resolves to blocked IP: {resolved_ip}",
-                    agent_fix_hint="Access to cloud metadata endpoints, loopback, and NAT64 is forbidden.",
+                    agent_fix_hint="Access to cloud metadata endpoints, unspecified, and disallowed IPs is forbidden.",
                 ) from None
-            resolved_ips.append(resolved_ip_str)
+            if resolved_ip_str not in resolved_ips:
+                resolved_ips.append(resolved_ip_str)
+
+        if not resolved_ips:
+            raise ContractValidationError(
+                f"DNS resolution returned no usable IP addresses for '{hostname}'.",
+                agent_fix_hint="Verify DNS records for the target host.",
+            ) from None
 
     return url, resolved_ips
 
 
+def _connect_pinned_socket(
+    host: str,
+    port: int,
+    timeout: float | None,
+    source_address: tuple[str, int] | None,
+    *,
+    scheme: str,
+    allow_loopback: bool,
+) -> socket.socket:
+    """Resolve, validate against SSRF, and connect directly to the approved IP."""
+    probe_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    _, resolved_ips = validate_safe_url(
+        f"{scheme}://{probe_host}:{port}/",
+        allow_loopback=allow_loopback,
+    )
+    last_exc: OSError | None = None
+    for ip_str in resolved_ips:
+        try:
+            return socket.create_connection(
+                (ip_str, port),
+                timeout=timeout,
+                source_address=source_address,
+            )
+        except OSError as exc:
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
+    raise OSError(f"Unable to connect to validated host '{host}:{port}'")
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection that pins the TCP dial to an SSRF-validated IP without rewriting Host."""
+
+    allow_loopback: bool = False
+
+    def connect(self) -> None:
+        src_addr: tuple[str, int] | None = getattr(self, "source_address", None)
+        self.sock = _connect_pinned_socket(
+            self.host,
+            self.port,
+            self.timeout,
+            src_addr,
+            scheme="http",
+            allow_loopback=self.allow_loopback,
+        )
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that pins TCP dial to an SSRF-validated IP while preserving TLS SNI."""
+
+    allow_loopback: bool = False
+
+    def connect(self) -> None:
+        import ssl
+
+        src_addr: tuple[str, int] | None = getattr(self, "source_address", None)
+        sock = _connect_pinned_socket(
+            self.host,
+            self.port,
+            self.timeout,
+            src_addr,
+            scheme="https",
+            allow_loopback=self.allow_loopback,
+        )
+        ctx: ssl.SSLContext = getattr(self, "_context", None) or ssl.create_default_context()
+        # Preserve original hostname for TLS SNI and X.509 certificate verification
+        self.sock = ctx.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, *, allow_loopback: bool = False) -> None:
+        super().__init__()
+        self._allow_loopback = allow_loopback
+
+    def http_open(self, req: urllib.request.Request) -> Any:
+        allow_lb = self._allow_loopback
+
+        class _BoundHTTPConn(_PinnedHTTPConnection):
+            allow_loopback = allow_lb
+
+        return self.do_open(_BoundHTTPConn, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, *, allow_loopback: bool = False) -> None:
+        super().__init__()
+        self._allow_loopback = allow_loopback
+
+    def https_open(self, req: urllib.request.Request) -> Any:
+        allow_lb = self._allow_loopback
+        ctx = getattr(self, "_context", None)
+
+        class _BoundHTTPSConn(_PinnedHTTPSConnection):
+            allow_loopback = allow_lb
+
+        return self.do_open(_BoundHTTPSConn, req, context=ctx)
+
+
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """HTTP redirect handler that validates target URLs against SSRF."""
+
+    def __init__(self, *, allow_loopback: bool = False) -> None:
+        super().__init__()
+        self._allow_loopback = allow_loopback
 
     def redirect_request(
         self,
@@ -184,56 +304,39 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: Any,
         newurl: str,
     ) -> urllib.request.Request | None:
-        validate_safe_url(newurl)
+        validate_safe_url(newurl, allow_loopback=self._allow_loopback)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def build_safe_opener() -> urllib.request.OpenerDirector:
-    """Build a urllib opener with SafeRedirectHandler installed."""
-    return urllib.request.build_opener(SafeRedirectHandler())
+def build_safe_opener(*, allow_loopback: bool = False) -> urllib.request.OpenerDirector:
+    """Build a urllib opener with pinned-IP handlers, redirect guard, and proxies disabled."""
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _PinnedHTTPHandler(allow_loopback=allow_loopback),
+        _PinnedHTTPSHandler(allow_loopback=allow_loopback),
+        SafeRedirectHandler(allow_loopback=allow_loopback),
+    )
 
 
 def safe_urlopen(
     url_or_req: str | urllib.request.Request,
     timeout: float = 30.0,
+    *,
+    allow_loopback: bool = False,
 ) -> Any:
-    """Open a URL or Request using safe redirect handling and URL validation.
+    """Open a URL or Request using pinned-IP connections and SSRF redirect guards.
 
-    Connects using the already-validated IP address to prevent DNS rebinding
-    TOCTOU attacks: after ``validate_safe_url`` resolves and approves an IP,
-    the connection is made directly to that IP (with the original ``Host``
-    header) so a second DNS lookup cannot return a different address.
+    Preserves the full ``Request`` (including ``POST`` ``req.data``, ``Host``
+    header, IPv6 framing, and HTTPS TLS SNI / certificate hostname verification)
+    while binding TCP connections atomically to SSRF-validated IP addresses on
+    both initial requests and HTTP redirects.
     """
     if isinstance(url_or_req, str):
-        _, resolved_ips = validate_safe_url(url_or_req)
+        validate_safe_url(url_or_req, allow_loopback=allow_loopback)
         req = urllib.request.Request(url_or_req)
     else:
-        _, resolved_ips = validate_safe_url(url_or_req.full_url)
+        validate_safe_url(url_or_req.full_url, allow_loopback=allow_loopback)
         req = url_or_req
 
-    # Pin connection to the validated IP to prevent DNS rebinding TOCTOU
-    if resolved_ips:
-        parsed = urllib.parse.urlparse(req.full_url)
-        original_host = parsed.hostname or ""
-        port = parsed.port
-        validated_ip = resolved_ips[0]
-
-        # Rewrite URL to use the validated IP directly
-        if port:
-            netloc = f"{validated_ip}:{port}"
-        else:
-            netloc = validated_ip
-        pinned_url = urllib.parse.urlunparse(
-            (parsed.scheme, netloc, parsed.path,
-             parsed.params, parsed.query, parsed.fragment)
-        )
-        req = urllib.request.Request(
-            pinned_url,
-            headers=dict(req.headers),
-            method=req.get_method(),
-        )
-        # Set Host header to original hostname for virtual hosting
-        req.add_unredirected_header("Host", original_host)
-
-    opener = build_safe_opener()
+    opener = build_safe_opener(allow_loopback=allow_loopback)
     return opener.open(req, timeout=timeout)

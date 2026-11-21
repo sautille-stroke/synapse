@@ -451,12 +451,15 @@ class TestStageRegistration:
             def read(self) -> bytes:
                 return json.dumps(response_payload).encode("utf-8")
 
-        def mock_urlopen(req: urllib.request.Request, timeout: float = 30.0) -> MockResponse:
+        def mock_safe_urlopen(
+            req: urllib.request.Request, timeout: float = 30.0, *, allow_loopback: bool = False
+        ) -> MockResponse:
+            assert isinstance(req.data, bytes) and len(req.data) > 0
             return MockResponse()
 
-        monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+        monkeypatch.setattr("synapse.bridge.http_security.safe_urlopen", mock_safe_urlopen)
 
-        transport = HttpJevTransport("http://fake-vlm:8000/v1/chat/completions")
+        transport = HttpJevTransport("http://127.0.0.1:8000/v1/chat/completions")
         logprobs = transport.query_logprobs(["img.png"], "Is this crumple? Yes or No.")
         assert logprobs["Yes"] == pytest.approx(-0.1)
         assert logprobs["No"] == pytest.approx(-2.3)

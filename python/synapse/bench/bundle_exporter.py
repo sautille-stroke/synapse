@@ -219,9 +219,16 @@ def validate_inspection_bundle(
             agent_fix_hint=("Ensure bundle.json conforms to the inspection.v1.0 schema."),
         ) from exc
 
-    # Verify every referenced path exists on disk and matches SHA-256 (if present)
+    # Verify every referenced path exists on disk, is not a symlink escaping bundle_dir,
+    # and matches SHA-256 (if present)
+    bundle_root = bundle_dir.resolve()
     for logical_name, entry in manifest.sources.items():
         ref_path = bundle_dir / entry.path
+        if ref_path.is_symlink() or not ref_path.resolve().is_relative_to(bundle_root):
+            raise ContractValidationError(
+                f"Symlink or path escape detected for '{logical_name}': '{entry.path}'",
+                agent_fix_hint="Remove symlinks escaping the inspection bundle directory.",
+            )
         if not ref_path.exists():
             raise ContractValidationError(
                 f"Referenced file missing for '{logical_name}': '{entry.path}'",
@@ -479,23 +486,31 @@ def list_bundle_contents(bundle_dir: Path) -> dict[str, Any]:
 # -------------------------------------------------------------------
 
 
-def _safe_copy(src: Path, dst: Path) -> None:
+def _safe_copy(src: Path, dst: Path, allowed_root: Path | None = None) -> None:
     """Copy *src* to *dst* only if they are distinct files.
 
-    Also validates that *dst* resolves within its parent to prevent
+    Rejects symlinks at *dst* and validates that *dst* resolves within
+    *allowed_root* (or the unresolved destination parent) to prevent
     symlink-based path traversal.
     """
-    src = Path(src).resolve()
-    dst = Path(dst).resolve()
-    # Prevent symlink traversal: dst must be inside its intended parent
-    dst_parent = dst.parent
-    if not dst.is_relative_to(dst_parent):
+    raw_dst = Path(dst)
+    if raw_dst.is_symlink():
         raise ContractValidationError(
-            f"Path traversal detected: '{dst}' escapes '{dst_parent}'",
+            f"Symlink destination rejected: '{raw_dst}'",
             agent_fix_hint="Remove symlinks from the bundle output directory.",
         )
-    if src != dst:
-        shutil.copy2(src, dst)
+    expected_root = (
+        Path(allowed_root).resolve() if allowed_root is not None else raw_dst.parent.resolve()
+    )
+    resolved_src = Path(src).resolve()
+    resolved_dst = raw_dst.resolve()
+    if not resolved_dst.is_relative_to(expected_root):
+        raise ContractValidationError(
+            f"Path traversal detected: '{resolved_dst}' escapes '{expected_root}'",
+            agent_fix_hint="Remove symlinks from the bundle output directory.",
+        )
+    if resolved_src != resolved_dst:
+        shutil.copy2(resolved_src, resolved_dst)
 
 
 _MEDIA_TYPE_MAP: dict[str, str] = {

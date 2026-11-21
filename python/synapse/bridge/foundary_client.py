@@ -125,11 +125,16 @@ class HttpFoundaryTransport(FoundaryTransport):
         base_url: str = "",
         timeout_seconds: float = 300.0,
         max_retries: int = 3,
+        allow_loopback: bool = False,
     ) -> None:
+        self._allow_loopback = allow_loopback
         if base_url:
             from synapse.bridge.http_security import validate_safe_url
 
-            validate_safe_url(base_url)
+            if allow_loopback:
+                validate_safe_url(base_url, allow_loopback=True)
+            else:
+                validate_safe_url(base_url)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self._max_retries = max_retries
@@ -143,14 +148,22 @@ class HttpFoundaryTransport(FoundaryTransport):
         from synapse.bridge.http_security import safe_urlopen, validate_safe_url
 
         try:
-            validate_safe_url(self._base_url)
+            if self._allow_loopback:
+                validate_safe_url(self._base_url, allow_loopback=True)
+            else:
+                validate_safe_url(self._base_url)
         except Exception:
             return False
 
         health_url = f"{self._base_url}/healthz"
         for url in (health_url, self._base_url):
             try:
-                with safe_urlopen(url, timeout=3.0) as resp:
+                open_ctx = (
+                    safe_urlopen(url, timeout=3.0, allow_loopback=True)
+                    if self._allow_loopback
+                    else safe_urlopen(url, timeout=3.0)
+                )
+                with open_ctx as resp:
                     if resp.status in (200, 204):
                         return True
             except urllib.error.HTTPError as exc:
@@ -187,7 +200,10 @@ class HttpFoundaryTransport(FoundaryTransport):
                 ),
             )
 
-        validate_safe_url(self._base_url)
+        if self._allow_loopback:
+            validate_safe_url(self._base_url, allow_loopback=True)
+        else:
+            validate_safe_url(self._base_url)
         url = f"{self._base_url}/v1/{request.service}"
         payload = request.model_dump_json().encode("utf-8")
         idempotency_key = hashlib.sha256(payload).hexdigest()
@@ -208,7 +224,12 @@ class HttpFoundaryTransport(FoundaryTransport):
         last_error: Exception | None = None
         for attempt in range(self._max_retries):
             try:
-                with safe_urlopen(req, timeout=self._timeout) as resp:
+                open_ctx = (
+                    safe_urlopen(req, timeout=self._timeout, allow_loopback=True)
+                    if self._allow_loopback
+                    else safe_urlopen(req, timeout=self._timeout)
+                )
+                with open_ctx as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     resp_obj = FoundaryResponse.model_validate(data)
                     if resp_obj.status == "error":

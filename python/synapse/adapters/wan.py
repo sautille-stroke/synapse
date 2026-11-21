@@ -113,11 +113,13 @@ class FoundaryHttpTransport(WanBackendTransport):
         endpoint_url: str = "http://localhost:8090/v1/generate",
         timeout_s: float = 120.0,
         traceparent: str | None = None,
+        allow_loopback: bool = True,
     ) -> None:
+        self._allow_loopback = allow_loopback
         if endpoint_url:
             from synapse.bridge.http_security import validate_safe_url
 
-            validate_safe_url(endpoint_url)
+            validate_safe_url(endpoint_url, allow_loopback=allow_loopback)
         self.endpoint_url = endpoint_url
         self.timeout_s = timeout_s
         self._upstream_traceparent = traceparent
@@ -153,7 +155,7 @@ class FoundaryHttpTransport(WanBackendTransport):
 
         from synapse.bridge.http_security import safe_urlopen, validate_safe_url
 
-        validate_safe_url(self.endpoint_url)
+        validate_safe_url(self.endpoint_url, allow_loopback=self._allow_loopback)
 
         # Serialize control_tensor as compressed base64 numpy binary
         control_tensor_b64: str | None = None
@@ -204,7 +206,9 @@ class FoundaryHttpTransport(WanBackendTransport):
         )
 
         try:
-            with safe_urlopen(req, timeout=self.timeout_s) as resp:
+            with safe_urlopen(
+                req, timeout=self.timeout_s, allow_loopback=self._allow_loopback
+            ) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
                 if isinstance(resp_data, dict) and resp_data.get("status") == "error":
                     raise BackendUnavailableError(
@@ -240,7 +244,7 @@ class FoundaryHttpTransport(WanBackendTransport):
         from synapse.bridge.http_security import safe_urlopen, validate_safe_url
 
         try:
-            validate_safe_url(self.endpoint_url)
+            validate_safe_url(self.endpoint_url, allow_loopback=self._allow_loopback)
         except Exception:
             return False
 
