@@ -20,33 +20,59 @@ from synapse.pipeline.bundle_worker import (
 )
 
 
-def _make_parallax_video(num_frames: int = 4, h: int = 64, w: int = 64) -> np.ndarray:
-    """Generate multi-view video frames of a 3D object with genuine angular parallax."""
-    rng = np.random.default_rng(42)
-    N = 400
-    pts = rng.uniform(-0.35, 0.35, (N, 3))
-    colors = rng.integers(150, 255, (N, 3), dtype=np.uint8)
+def _make_parallax_video(num_frames: int = 8, h: int = 96, w: int = 96) -> np.ndarray:
+    """Generate multi-view video frames of an opaque textured 3D sphere with genuine parallax."""
     frames = np.zeros((num_frames, h, w, 3), dtype=np.uint8)
-    fx = fy = float(w)
+    fx = fy = float(w) * 0.8
     cx, cy = w / 2.0, h / 2.0
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    dx = (xx - cx) / fx
+    dy = (yy - cy) / fy
+    dz = np.ones_like(dx)
+    dn = np.sqrt(dx * dx + dy * dy + dz * dz)
+    rd_cam = np.stack([dx / dn, dy / dn, dz / dn], axis=-1)
+
     for i in range(num_frames):
-        theta = math.radians(-20.0 + i * (40.0 / (num_frames - 1)))
-        cam_pos = np.array([2.0 * math.sin(theta), 0.0, 2.0 * math.cos(theta)])
+        theta = math.radians(-25.0 + i * (50.0 / max(num_frames - 1, 1)))
+        cam_pos = np.array(
+            [2.2 * math.sin(theta), 0.25 * math.sin(2.0 * theta), 2.2 * math.cos(theta)]
+        )
         z_axis = -cam_pos / np.linalg.norm(cam_pos)
         up = np.array([0.0, 1.0, 0.0])
         x_axis = np.cross(up, z_axis)
         x_axis /= np.linalg.norm(x_axis)
         y_axis = np.cross(z_axis, x_axis)
         R = np.stack([x_axis, y_axis, z_axis], axis=0)
-        t = -R @ cam_pos
+
+        # Ray-sphere intersection for opaque textured sphere (radius = 0.85)
+        rd = np.einsum("ji,hwj->hwi", R, rd_cam)
+        ro = cam_pos
+        b = np.sum(rd * ro, axis=-1)
+        c = float(np.dot(ro, ro)) - 0.85**2
+        disc = b * b - c
+        hit = disc > 0.0
+        t_hit = np.where(hit, -b - np.sqrt(np.maximum(disc, 0.0)), 1e9)
+        p = ro + rd * t_hit[..., None]
+
+        tex_r = (
+            128.0
+            + 60.0 * np.sin(14.0 * p[..., 0]) * np.cos(14.0 * p[..., 1])
+            + 50.0 * np.sin(23.0 * p[..., 2] + 5.0 * p[..., 0])
+        )
+        tex_g = (
+            128.0
+            + 60.0 * np.cos(16.0 * p[..., 1]) * np.sin(15.0 * p[..., 2])
+            + 50.0 * np.cos(21.0 * p[..., 0] - 7.0 * p[..., 1])
+        )
+        tex_b = (
+            128.0
+            + 60.0 * np.sin(18.0 * p[..., 2]) * np.cos(13.0 * p[..., 0])
+            + 50.0 * np.sin(19.0 * p[..., 1] + 9.0 * p[..., 2])
+        )
         img = np.full((h, w, 3), 20, dtype=np.uint8)
-        pts_cam = (R @ pts.T).T + t
-        for p, c in zip(pts_cam, colors, strict=False):
-            if p[2] > 0.1:
-                u = int(cx + fx * p[0] / p[2])
-                v = int(cy + fy * p[1] / p[2])
-                if 1 <= u < w - 2 and 1 <= v < h - 2:
-                    img[v - 1 : v + 2, u - 1 : u + 2] = c
+        img[hit, 0] = np.clip(tex_r[hit], 30.0, 250.0).astype(np.uint8)
+        img[hit, 1] = np.clip(tex_g[hit], 30.0, 250.0).astype(np.uint8)
+        img[hit, 2] = np.clip(tex_b[hit], 30.0, 250.0).astype(np.uint8)
         frames[i] = img
     return frames
 
@@ -76,7 +102,7 @@ def test_recon_invert_video_cli_json() -> None:
 def test_recon_invert_video_cli_with_video() -> None:
     """synapse recon invert-video works with actual video .npy file with real parallax."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        video = _make_parallax_video(4, 64, 64)
+        video = _make_parallax_video()
         video_path = Path(tmpdir) / "test_video.npy"
         np.save(str(video_path), video)
 
@@ -117,7 +143,7 @@ def test_video_to_3d_invert_stage_registered() -> None:
 def test_video_to_3d_invert_stage_execution() -> None:
     """video_to_3d_invert stage executes with valid video_frames input with real parallax."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        video = _make_parallax_video(4, 64, 64)
+        video = _make_parallax_video()
         video_path = Path(tmpdir) / "frames.npy"
         np.save(str(video_path), video)
 

@@ -651,12 +651,12 @@ class TestReconPipelineEndToEnd:
         with pytest.raises(ContractValidationError):
             pipeline.run(frames, initial_mesh=cube_mesh, fps=30.0)
 
-        # --- Happy path: dense sphere (>=1500 verts) passes Redline #3 gate ---
+        # --- Happy path: verified Gen-3D dense sphere (>=1500 verts) passes Redline #3 gate ---
         sphere_v, sphere_f = self._make_dense_sphere(n_subdivisions=4)
         assert sphere_v.shape[0] >= 1500, f"Sphere has {sphere_v.shape[0]} verts, need >=1500"
         dense_mesh = MeshGeometry(vertices=sphere_v, faces=sphere_f)
 
-        res = pipeline.run(frames, initial_mesh=dense_mesh, fps=30.0)
+        res = pipeline.run(frames, initial_mesh=dense_mesh, fps=30.0, has_gen3d_highpoly=True)
         assert isinstance(res, ReconResult)
         assert res.mesh.vertex_count > 0
         assert res.mesh.face_count > 0
@@ -721,7 +721,7 @@ class TestReconPipelineEndToEnd:
                 fps=30.0,
             )
 
-        # --- Happy path: dense sphere (>=1500 verts) passes Redline #3 ---
+        # --- Happy path: verified Gen-3D dense sphere (>=1500 verts) passes Redline #3 ---
         sphere_v, sphere_f = self._make_dense_sphere(n_subdivisions=4)
         dense_mesh = MeshGeometry(vertices=sphere_v, faces=sphere_f)
 
@@ -730,6 +730,7 @@ class TestReconPipelineEndToEnd:
             initial_mesh=dense_mesh,
             skeleton_template=skeleton_template,
             fps=30.0,
+            has_gen3d_highpoly=True,
         )
 
         assert isinstance(res, ReconResult)
@@ -1009,3 +1010,80 @@ class TestKinematicsAnchorFixed:
                 f"Frame {t}: corrected foot Y={corrected_y:.4f} should be "
                 f"closer to ground than original {original_y}"
             )
+
+
+class TestPR188ReconHardening:
+    """PR-188: High-res translation recovery, QEM Link Condition, Redline #3 strict track."""
+
+    def test_1080p_translation_not_zeroed_by_pure_rotation_guard(self) -> None:
+        """Resolution-invariant parallax+GRIC recovers non-zero translation at 1920x1080."""
+        rng = np.random.default_rng(188)
+        n_pts = 40
+        # 3D scene points at varied depths [3.0, 8.0]
+        pts_3d = np.column_stack(
+            [
+                rng.uniform(-2.0, 2.0, n_pts),
+                rng.uniform(-1.2, 1.2, n_pts),
+                rng.uniform(3.0, 8.0, n_pts),
+            ]
+        )
+        fx = fy = 1920.0
+        cx, cy = 960.0, 540.0
+        tracks = np.zeros((3, n_pts, 2), dtype=np.float32)
+        for ti, tx in enumerate([0.0, 0.5, 1.0]):
+            p_cam = pts_3d - np.array([tx, 0.0, 0.0])
+            tracks[ti, :, 0] = fx * p_cam[:, 0] / p_cam[:, 2] + cx
+            tracks[ti, :, 1] = fy * p_cam[:, 1] / p_cam[:, 2] + cy
+
+        traj = solve_camera_trajectory(
+            tracks,
+            intrinsics={"fx": fx, "fy": fy, "cx": cx, "cy": cy},
+        )
+        disp = float(np.linalg.norm(traj.extrinsics[-1].position - traj.extrinsics[0].position))
+        assert disp > 0.5, f"1080p camera translation was falsely zeroed: disp={disp}"
+
+    def test_qem_decimate_preserves_2_manifold(self) -> None:
+        """_qem_decimate with Dey-Edelsbrunner Link Condition keeps decimated sphere manifold."""
+        from synapse.recon.geometry import _qem_decimate
+
+        verts, faces = TestReconPipelineEndToEnd._make_dense_sphere(n_subdivisions=2)
+        assert check_manifold(verts, faces)
+        dec_v, dec_f = _qem_decimate(verts, faces, target_faces=120)
+        assert len(dec_f) < len(faces)
+        assert check_manifold(dec_v, dec_f), "Decimated mesh must remain strictly 2-manifold"
+
+    def test_vg_bridge_rejects_unknown_track_enum(self) -> None:
+        """Unknown distillation track must raise ContractValidationError (no silent bypass)."""
+        from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
+        from synapse.errors import ContractValidationError
+
+        with pytest.raises(ContractValidationError, match="Unrecognized distillation track"):
+            enforce_distillation_geometry_gate(
+                track="arbitrary_bypass_track",
+                has_gen3d_highpoly=False,
+                vertex_count=8,
+                has_articulated_limbs=False,
+                is_character=True,
+            )
+
+    def test_closed_loop_runner_enforces_redline3_gate(self) -> None:
+        """ClosedLoopRunner enforces Redline #3 when track='track_b_whitebox'."""
+        from synapse.errors import ContractValidationError
+        from synapse.recon.loop.closed_loop_runner import ClosedLoopRunner
+
+        runner = ClosedLoopRunner()
+        frames = np.full((2, 16, 16, 3), 0.5, dtype=np.float32)
+        normals = np.zeros((2, 16, 16, 3), dtype=np.float32)
+        normals[..., 2] = 1.0
+        uvs = np.zeros((2, 16, 16, 2), dtype=np.float32)
+
+        with pytest.raises(ContractValidationError, match="Track-B whitebox"):
+            runner.run(
+                frames,
+                normals,
+                uvs,
+                track="track_b_whitebox",
+                has_gen3d_highpoly=False,
+                mesh_vertex_count=8,
+            )
+

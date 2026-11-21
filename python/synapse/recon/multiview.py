@@ -776,9 +776,11 @@ class MultiViewInitializer:
                     if faces.ndim == 2 and faces.shape[1] == 3:
                         faces = faces[:, [0, 2, 1]]
 
-                    # 2. Weld duplicate vertices (merge within epsilon)
+                    # 2. Weld duplicate vertices (merge within tight float32 tolerance;
+                    # coarse epsilon like 0.01*voxel collapses distinct nearby MC crossings
+                    # on noisy TSDFs into non-manifold pinch edges).
                     if len(verts) > 0:
-                        verts, faces = _weld_vertices(verts, faces, epsilon=effective_voxel * 0.01)
+                        verts, faces = _weld_vertices(verts, faces, epsilon=effective_voxel * 1e-4)
             else:
                 verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
         except AttributeError:
