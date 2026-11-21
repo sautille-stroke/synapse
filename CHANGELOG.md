@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] — 2026-11-21
+
+### Horizon 10 (M37–M40) — Post-Reconciliation True Closure & v4.1.0
+
+Release consolidating Horizon 10 quality hardening: all 20 PRs (PR-153 ~ PR-172)
+resolve the 56 defects identified in AUDIT-POST-HORIZON9-2026-11.md, pushing
+health score from 61/100 to ≥95/100 with 14 anti-cheat hard gates verified
+green on both `ubuntu24` and GitHub Actions.
+
+#### M37 — 止血合流断裂、真绿 CI、静态门禁与 SSOT 纠偏
+
+- **GitHub Actions CI 5/5 Jobs** — Corrected `sautille-stroke/aether` checkout,
+  dual `aether_geo`/`aether_metrics` auto-build, and `native/.bazelrc` cleanup.
+  (PR-153, GH #141)
+- **mypy --strict zero errors** — Fixed package-base crash, cleared 20 errors
+  across 216 files, truly enabled Ruff rules, sealed 4 `import_dag_guard`
+  bypasses. (PR-154, GH #144)
+- **Colab setup repair** — Fixed notebook watchdog `SyntaxError`, removed
+  `curl -k`, hardened `tailscale.sh` secret handling. (PR-155, GH #143)
+- **WIRE_CONTRACTS.md rewrite** — Removed phantom 16th channel, archived stale
+  architecture docs, cleared 16 broken `csrc/geometry` links. (PR-156, GH #142)
+
+#### M38 — 纯 Python 回退、@aether 加速激活、FGPP 相机与沙箱安全
+
+- **Pure Python fallback** — Restored `requires-python >=3.10`, fixed sphere/cone
+  watertight topology, activated full-resolution SIMD color and SSIM/CIEDE2000.
+  (PR-157, GH #146)
+- **FGPP camera fixes** — Corrected `cy=(1+p12)H/2`, Vulkan/Reversed-Z detection,
+  NaN rotation/depth blocking, 8/8 StyleProfile schema lock. (PR-158, GH #145)
+- **RFC 0039 sandbox hardening** — Pre-sandbox SHA256 validation, DNS IP binding
+  anti-TOCTOU, `PersistentHitlLedger` atomic lock. (PR-159, GH #147)
+- **Composite pipeline** — Linear EDT feathering, bounded `[0,1)` soft-knee,
+  streaming detector (`<70 MB`), mesh container dedup. (PR-160, GH #150)
+
+#### M39 — 真 Diffusers/PEFT、@aether//geo 焊接与逆向精修真值化
+
+- **Real DiffusersWanBackend** — True `Wan2.1-Diffusers` signatures, latent-space
+  fusion, 7ch ControlNeXt hooks, scene-cut reanchoring. (PR-161, GH #151)
+- **LoRA trainer fixes** — Fixed ternary/Pickle RCE, streaming FeatureStore,
+  whitelist-based `lora {train,merge}` CLI. (PR-162, GH #154/#155)
+- **MC vertex welding** — Fixed `(nz,ny,nx)` axis order, CCW winding, xatlas UV
+  rebuild with split-point, watertight quad remesh, 6-DoF scale. (PR-163, GH #149)
+- **Redline #3 seal** — `has_gen3d_highpoly` defaults strict `False`, real Mitsuba
+  AD connected graph with SH+GGX, world-space UV delighting. (PR-164, GH #153)
+- **Refinement fusion** — Separated detection confidence from anatomical quality,
+  non-degenerate Laplacian/Cascade/Poisson operators, anti-ghost stitcher.
+  (PR-165, GH #152)
+
+#### M40 — 真 30 场景基準、真 4-Tab Inspector、SLA 提速与 v4.1.0 封板
+
+- **Synapse-Bench activation** — T1–T5 full parameters, real `light_dir_error_deg`,
+  `applicable_keys` alias alignment, FVD `uint8` fix. (PR-166, GH #157)
+- **3D evaluator world scale** — Removed default `normalize()`, sealed RSI 0.0
+  wash-out, fixed viewer symlink and XSS. (PR-167, GH #156)
+- **Data Inspector 4-Tab** — Wired 15ch EXR AOV, multi-entity slots, 4-tab
+  rendering, fixed resize freeze and C++ UB. (PR-168, GH #159)
+- **Script fixes** — Fixed `prepare_datasets.py` 15ch raster, `run_cpu_verification`
+  E4 paths, `colab_runner` real E4 and SIGTERM protection. (PR-169, GH #158)
+- **Anti-tautology tests** — Removed `MagicMock` false verification, added
+  `WIRE_CONTRACTS` auto-check, real multi-view 3D roundtrip tests. (PR-170, GH #161)
+- **Test SLA** — Single-process fast ≤20s, parallel slow ≤40s, zero
+  `DeprecationWarning`. (PR-171, GH #160)
+- **Release v4.1.0** — 14 anti-cheat hard gates verified green on `ubuntu24` and
+  GitHub Actions, sealed Horizon 10. (PR-172)
+
 ## [4.0.0] — 2026-11-19
 
 ### Horizon 9 (M33–M36) — Holistic Remediation & Evolution
@@ -88,5 +153,6 @@ core FGPP pipeline, Wan 2.1 adapter with causal sliding window, ACEScg style
 lock, Cryptomatte spatial masking, Synapse-Bench framework, 3D model
 evaluation, and cross-repo contract verification.
 
+[4.1.0]: https://github.com/sautille-stroke/synapse/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/sautille-stroke/synapse/compare/v3.6.0...v4.0.0
 [3.6.0]: https://github.com/sautille-stroke/synapse/releases/tag/v3.6.0

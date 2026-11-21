@@ -3,7 +3,7 @@
 > - **计划版本**: `v1.0`（对应主总纲 [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) **`v3.8`**）
 > - **触发审计基线**: [AUDIT-POST-HORIZON9-2026-11.md](../audits/AUDIT-POST-HORIZON9-2026-11.md)（`main` @ `5c6e3e6`）
 > - **规划模型**: `[gemini4]`
-> - **当前状态**: 📋 **已规划待执行（Horizon 10 启动）**
+> - **当前状态**: ✅ **已完成 (Horizon 10 封板，`Release v4.1.0`)**
 > - **目标周期**: 4 个里程碑（`M37` – `M40`）、4 个并发 Execution Waves（`Wave 36` – `Wave 39`）、**20 个原子 PR**（`PR-153` – `PR-172`）
 
 > [!IMPORTANT]
