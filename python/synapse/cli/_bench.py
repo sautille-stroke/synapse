@@ -128,6 +128,23 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
                 verdict = "PASS" if r.gate_verdict.passed else "FAIL"
                 print(f"    Gate: {verdict}")
 
+    if not gate_profile:
+        errored = [r for r in reports if r.error]
+        if errored:
+            first_err = str(errored[0].error)
+            if "not found" in first_err.lower() or "no such file" in first_err.lower():
+                raise AssetNotFoundError(
+                    f"Benchmark scenario failed: {errored[0].scenario_name}: {first_err}",
+                    agent_fix_hint="Run 'synapse bench list' to inspect valid scenario names.",
+                )
+            from synapse.errors import ContractValidationError
+
+            raise ContractValidationError(
+                f"Benchmark scenario execution failed for {len(errored)} scenario(s): "
+                + "; ".join(f"{r.scenario_name}: {r.error}" for r in errored),
+                agent_fix_hint="Inspect scenario configuration and adapter inputs, then retry.",
+            )
+
     if gate_profile:
         failed_scenarios: list[str] = []
         for r in reports:

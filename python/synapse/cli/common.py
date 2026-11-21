@@ -94,12 +94,19 @@ def _run_with_json_mode(
         Process exit code (``0`` on success, error's ``exit_code``
         on ``SynapseError``, ``10`` on unexpected exceptions).
     """
+    import warnings
+
     # Ensure args.json is always in sync with the caller's json_mode,
     # so that handler functions checking ``args.json`` see the correct value.
     args.json = json_mode
 
     try:
-        result = func(args)
+        if json_mode:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = func(args)
+        else:
+            result = func(args)
         if result is None:
             result = {}
         if json_mode:

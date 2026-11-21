@@ -149,9 +149,21 @@ class PersistentHitlLedger:
         lock_file = self.ledger_path.with_suffix(".lock")
         f = open(lock_file, "a+", encoding="utf-8")  # noqa: SIM115
         try:
+            import errno
             import fcntl
 
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            while True:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    break
+                except OSError as exc:
+                    if exc.errno == errno.EINTR:
+                        continue
+                    f.close()
+                    raise ContractValidationError(
+                        f"Failed to acquire HITL ledger file lock '{lock_file}': {exc}",
+                        agent_fix_hint="Place HITL ledger on a filesystem supporting flock (e.g. local NVMe, not Drive FUSE).",
+                    ) from exc
         except ImportError:
             if sys.platform == "win32":
                 try:
@@ -159,32 +171,46 @@ class PersistentHitlLedger:
 
                     f.seek(0)
                     msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-                except (ImportError, OSError):
-                    pass
-        except OSError:
-            pass
+                except OSError as exc:
+                    f.close()
+                    raise ContractValidationError(
+                        f"Failed to acquire Windows HITL ledger lock '{lock_file}': {exc}",
+                        agent_fix_hint="Retry once concurrent HITL worker releases the ledger lock.",
+                    ) from exc
 
         data: dict[str, Any] = {}
         if self.ledger_path.is_file():
             raw_text = self.ledger_path.read_text(encoding="utf-8")
-            if raw_text.strip():
-                try:
-                    data = json.loads(raw_text)
-                except (json.JSONDecodeError, ValueError) as exc:
-                    # Fail-Closed: corrupted ledger must NOT silently reset
-                    # to zero — that would bypass the circuit breaker.
-                    try:
-                        self._unlock(f)
-                    except Exception:
-                        pass
-                    raise ContractValidationError(
-                        f"Corrupted HITL ledger file at '{self.ledger_path}': {exc}. "
-                        "Refusing to reset timer to 0 (fail-closed).",
-                        agent_fix_hint=(
-                            f"Inspect and repair or delete the corrupted ledger file "
-                            f"at '{self.ledger_path}', then retry."
-                        ),
-                    ) from exc
+            if not raw_text.strip():
+                self._unlock(f)
+                raise ContractValidationError(
+                    f"Empty/truncated HITL ledger file at '{self.ledger_path}'. "
+                    "Refusing to reset timer to 0 (fail-closed).",
+                    agent_fix_hint=(
+                        f"Inspect and repair or remove the truncated ledger file "
+                        f"at '{self.ledger_path}', then retry."
+                    ),
+                )
+            try:
+                parsed = json.loads(raw_text)
+            except (json.JSONDecodeError, ValueError) as exc:
+                self._unlock(f)
+                raise ContractValidationError(
+                    f"Corrupted HITL ledger file at '{self.ledger_path}': {exc}. "
+                    "Refusing to reset timer to 0 (fail-closed).",
+                    agent_fix_hint=(
+                        f"Inspect and repair or delete the corrupted ledger file "
+                        f"at '{self.ledger_path}', then retry."
+                    ),
+                ) from exc
+            if not isinstance(parsed, dict):
+                self._unlock(f)
+                raise ContractValidationError(
+                    f"Invalid HITL ledger root type ({type(parsed).__name__}) at '{self.ledger_path}'. "
+                    "Expected JSON object (fail-closed).",
+                    agent_fix_hint=f"Repair or remove '{self.ledger_path}' so it holds a JSON object.",
+                )
+            data = parsed
         return data, f
 
     def _unlock(self, lock_handle: Any) -> None:
@@ -219,6 +245,8 @@ class PersistentHitlLedger:
             try:
                 with os.fdopen(tmp_fd, "w", encoding="utf-8") as tf:
                     json.dump(data, tf, indent=2)
+                    tf.flush()
+                    os.fsync(tf.fileno())
                 os.replace(str(tmp_path), str(self.ledger_path))
             except Exception:
                 if tmp_path.is_file():
@@ -248,13 +276,27 @@ class PersistentHitlLedger:
         try:
             group_id = record.intent_group_id
             entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
-            entry["elapsed_seconds"] += elapsed
-            entry["records"].append(
+            if not isinstance(entry, dict):
+                raise ContractValidationError(
+                    f"Corrupted HITL ledger entry for '{group_id}'.",
+                    agent_fix_hint=f"Repair ledger entry '{group_id}' in '{self.ledger_path}'.",
+                )
+            prev_elapsed = float(entry.get("elapsed_seconds", 0.0))
+            if not math.isfinite(prev_elapsed) or prev_elapsed < 0.0:
+                raise ContractValidationError(
+                    f"Tampered negative/non-finite elapsed_seconds ({prev_elapsed}) for '{group_id}'.",
+                    agent_fix_hint=f"Inspect and repair '{self.ledger_path}' for group '{group_id}'.",
+                )
+            entry["elapsed_seconds"] = prev_elapsed + elapsed
+            records = entry.setdefault("records", [])
+            records.append(
                 {
                     "intent": record.intent,
                     "elapsed_seconds": record.elapsed_seconds,
                     "feedback": record.feedback,
                     "actions": record.actions,
+                    "state_before_uri": record.state_before_uri,
+                    "state_after_uri": record.state_after_uri,
                 }
             )
             total_elapsed = float(entry["elapsed_seconds"])
@@ -270,6 +312,18 @@ class PersistentHitlLedger:
         """Return total elapsed time for a given group/asset."""
         data, handle = self._lock_and_read()
         try:
-            return float(data.get(group_id, {}).get("elapsed_seconds", 0.0))
+            entry = data.get(group_id, {})
+            if not isinstance(entry, dict):
+                raise ContractValidationError(
+                    f"Corrupted HITL ledger entry for '{group_id}'.",
+                    agent_fix_hint=f"Repair ledger entry '{group_id}' in '{self.ledger_path}'.",
+                )
+            val = float(entry.get("elapsed_seconds", 0.0))
+            if not math.isfinite(val) or val < 0.0:
+                raise ContractValidationError(
+                    f"Tampered negative/non-finite elapsed_seconds ({val}) for '{group_id}'.",
+                    agent_fix_hint=f"Inspect and repair '{self.ledger_path}' for group '{group_id}'.",
+                )
+            return val
         finally:
             self._unlock(handle)

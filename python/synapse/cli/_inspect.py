@@ -48,7 +48,9 @@ def _cmd_inspect_mesh(args: argparse.Namespace) -> dict[str, Any]:
             vertices = np.asarray(loaded.vertices, dtype=np.float64)
             faces = np.asarray(loaded.faces, dtype=np.int64)
         else:
-            raise ContractValidationError(
+            from synapse.errors import BackendUnavailableError
+
+            raise BackendUnavailableError(
                 f"trimesh is required for loading {mesh_path.suffix!r} "
                 "files. Install with: pip install 'synapse[mesh]'",
                 agent_fix_hint="pip install trimesh>=4.0.0",

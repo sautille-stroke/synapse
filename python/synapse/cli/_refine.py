@@ -174,6 +174,23 @@ def _cmd_refine_anatomical(
                                 )
                             )
 
+    # Pre-check HITL 15-minute circuit breaker BEFORE running heavy refinement
+    from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
+    from synapse.errors import evaluate_hitl_circuit_breaker
+
+    ledger = PersistentHitlLedger()
+    group_id = str(
+        getattr(args, "shot_id", None)
+        or getattr(args, "asset_id", None)
+        or output_dir.name
+        or "default_refine"
+    )
+    evaluate_hitl_circuit_breaker(
+        ledger.get_accumulated_elapsed(group_id),
+        max_seconds=900.0,
+        domain="video_shot",
+    )
+
     pipeline = LocalRefinementPipeline()
     result = pipeline.run(
         frames_acescg=frames,
@@ -182,10 +199,6 @@ def _cmd_refine_anatomical(
     )
 
     # Record action to PersistentHitlLedger to track cumulative budget
-    from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
-
-    ledger = PersistentHitlLedger()
-    group_id = str(getattr(args, "shot_id", getattr(args, "asset_id", "default_refine")))
     elapsed = float(result.elapsed_seconds)
     record = CommandIRRecord(
         intent_group_id=group_id,

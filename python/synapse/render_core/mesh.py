@@ -134,7 +134,10 @@ def load_obj(path: str | Path) -> MeshData:
     """Parse a Wavefront OBJ file into a :class:`MeshData` (pure Python)."""
     p = Path(path)
     if not p.exists() or not p.is_file():
-        raise AssetNotFoundError(f"OBJ file not found: {path}")
+        raise AssetNotFoundError(
+            f"OBJ file not found: {path}",
+            agent_fix_hint=f"Verify that '{path}' exists and is a readable Wavefront .obj file.",
+        )
 
     raw_vertices: list[list[float]] = []
     raw_normals: list[list[float]] = []

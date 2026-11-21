@@ -46,15 +46,17 @@ def handle_anatomical_refine(
     from synapse.bridge.hitl import PersistentHitlLedger
     from synapse.errors import evaluate_hitl_circuit_breaker
 
-    # --- PR-165: --shot-id HITL pre-validation ---
-    # Validate shot-id is provided to prevent orphan HITL budget tracking
-    shot_id = params.get("shot_id")
-    if not shot_id:
+    # Resolve HITL tracking identifier: prefer explicit shot_id / intent_group_id,
+    # falling back deterministically to manifest.job_id.
+    group_id = str(
+        params.get("shot_id") or params.get("intent_group_id") or manifest.job_id or ""
+    ).strip()
+    if not group_id:
         from synapse.errors import ContractValidationError
 
         raise ContractValidationError(
-            "Missing required 'shot_id' parameter for anatomical refinement stage. "
-            "HITL budget tracking requires a shot identifier.",
+            "Missing required 'shot_id' or 'job_id' identifier for anatomical refinement stage. "
+            "HITL budget tracking requires a non-empty identifier.",
             agent_fix_hint=(
                 "Add params.shot_id to the bundle manifest, e.g. "
                 "'\"shot_id\": \"shot_001\"'."
@@ -65,11 +67,10 @@ def handle_anatomical_refine(
     elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
     ledger_path = params.get("hitl_ledger_path")
     ledger = PersistentHitlLedger(ledger_path)
-    group_id = str(params.get("shot_id") or params.get("intent_group_id") or manifest.job_id or "default")
     accumulated = ledger.get_accumulated_elapsed(group_id)
     total_elapsed = accumulated + elapsed_seconds
 
-    # Unconditionally evaluate circuit breaker
+    # Unconditionally evaluate circuit breaker BEFORE heavy compute
     evaluate_hitl_circuit_breaker(
         total_elapsed,
         domain="video_shot",
