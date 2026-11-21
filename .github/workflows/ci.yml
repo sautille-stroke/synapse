@@ -1,5 +1,6 @@
-# Synapse CI — Horizon 8 Quality Baseline
-# Covers H8-P0-01: Automated gate for lint, types, tests, DAG, wire guard.
+# Synapse CI — Horizon 11 Quality Baseline
+# Automated gate for lint, strict types, wire/DAG guards, pytest fast/slow,
+# native Bazel extensions, Electron Data Inspector SHM, and doc links.
 name: CI
 
 on:
@@ -25,24 +26,33 @@ jobs:
         with:
           path: synapse
 
-      - name: Checkout aether (sibling)
+      - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: sautille-stroke/aether
+          repository: dervgen/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
 
-      - name: Fallback aether checkout hint
-        if: steps.checkout-aether.outcome == 'failure'
+      - name: Fallback aether checkout notice
+        if: steps.checkout-aether.outcome != 'success'
         run: |
-          echo "::warning::sautille-stroke/aether checkout failed. If you are running from a fork, set the DERVGEN_PAT secret or remove aether-dependent tests."
+          echo "::warning::dervgen/aether checkout skipped (private repo requires DERVGEN_PAT secret). Running in pure-Python Oracle mode."
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Bazel (when aether is available)
+        if: steps.checkout-aether.outcome == 'success'
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-pyfast
+          repository-cache: ${{ github.workflow }}-pyfast
 
       - name: Install system dependencies
         run: |
@@ -53,11 +63,11 @@ jobs:
         working-directory: synapse
         run: |
           python -m pip install --upgrade pip
-          pip install pybind11>=2.12.0
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
 
-      - name: Build native extensions
+      - name: Build native extensions (aether_geo + aether_metrics)
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse
         run: python scripts/build_native.py --backend=auto
 
@@ -80,9 +90,15 @@ jobs:
           fi
           test $RC -eq 0
 
-      - name: Wire guard
+      - name: Wire guard (with aether header parity)
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse
         run: python tools/wire_guard.py --check --require-aether
+
+      - name: Wire guard (internal + JSON schemas)
+        if: steps.checkout-aether.outcome != 'success'
+        working-directory: synapse
+        run: python tools/wire_guard.py --check
 
       - name: Import DAG guard
         working-directory: synapse
@@ -108,11 +124,11 @@ jobs:
         with:
           path: synapse
 
-      - name: Checkout aether (sibling)
+      - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: sautille-stroke/aether
+          repository: dervgen/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
@@ -121,6 +137,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Bazel (when aether is available)
+        if: steps.checkout-aether.outcome == 'success'
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-pyslow
+          repository-cache: ${{ github.workflow }}-pyslow
 
       - name: Install system dependencies
         run: |
@@ -131,11 +156,11 @@ jobs:
         working-directory: synapse
         run: |
           python -m pip install --upgrade pip
-          pip install pybind11>=2.12.0
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
 
-      - name: Build native extensions
+      - name: Build native extensions (aether_geo + aether_metrics)
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse
         run: python scripts/build_native.py --backend=auto
 
@@ -154,16 +179,22 @@ jobs:
         with:
           path: synapse
 
-      - name: Checkout aether (sibling)
+      - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: sautille-stroke/aether
+          repository: dervgen/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
 
+      - name: Skip notice when private dervgen/aether is unavailable
+        if: steps.checkout-aether.outcome != 'success'
+        run: |
+          echo "::warning::dervgen/aether unavailable (configure DERVGEN_PAT secret). Skipping C++ Bazel targets in public runner."
+
       - name: Install Bazel
+        if: steps.checkout-aether.outcome == 'success'
         uses: bazel-contrib/setup-bazel@0.14.0
         with:
           bazelisk-cache: true
@@ -171,11 +202,12 @@ jobs:
           repository-cache: ${{ github.workflow }}
 
       - name: Test aether geo and python bindings
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: aether
         run: bazel test //geo:all //python:all --config=opt
-        if: steps.checkout-aether.outcome == 'success'
 
       - name: Test data-inspector native
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse/tools/data-inspector/native
         run: bazel test //... --config=opt
 
@@ -190,16 +222,17 @@ jobs:
         with:
           path: synapse
 
-      - name: Checkout aether (sibling)
+      - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: sautille-stroke/aether
+          repository: dervgen/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
 
       - name: Install Bazel
+        if: steps.checkout-aether.outcome == 'success'
         uses: bazel-contrib/setup-bazel@0.14.0
         with:
           bazelisk-cache: true
@@ -207,6 +240,7 @@ jobs:
           repository-cache: ${{ github.workflow }}
 
       - name: Build data-inspector native
+        if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse/tools/data-inspector/native
         run: bazel build //:data-inspector-native --config=opt
 
@@ -221,6 +255,8 @@ jobs:
 
       - name: Bundle loading test
         working-directory: synapse
+        env:
+          SYNAPSE_ALLOW_MISSING_NATIVE_BIN: ${{ steps.checkout-aether.outcome == 'success' && '0' || '1' }}
         run: |
           node tools/data-inspector/test/test-bundle-loading.js
           # Ensure no files were dirtied
@@ -241,6 +277,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Markdown broken-link scan
         working-directory: synapse

@@ -26,6 +26,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio",
     "pytest-xdist",
+    "pytest-timeout>=2.2.0",
     "ruff",
     "mypy",
     "pybind11>=2.12.0",
@@ -86,6 +87,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "external_data: marks tests requiring external sibling repos or pre-exported datasets",
+    "platform_specific: marks tests restricted to specific operating systems",
 ]
 
 [tool.mypy]
@@ -141,9 +144,8 @@ line-length = 100
 exclude = ["._*"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "E501", "F", "I", "UP", "B", "SIM", "RUF", "W", "PT", "S108", "S202", "S301", "S310", "S602", "S603"]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF", "W", "PT", "S108", "S202", "S301", "S310", "S602", "S603"]
 ignore = [
-    "E501",
     "E712",
     "B007", "B009", "B010",
     "SIM102", "SIM105", "SIM108", "SIM117", "SIM118", "SIM300",

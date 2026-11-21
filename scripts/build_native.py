@@ -64,25 +64,41 @@ def _find_aether_root(repo_root: Path) -> Path | None:
     return None
 
 
-def _locate_built_aether_geo(aether_root: Path) -> Path | None:
-    """Locate built aether_geo shared library inside aether's bazel-bin."""
+def _locate_built_extension(aether_root: Path, stem: str) -> Path | None:
+    """Locate a built Python extension shared library inside aether's bazel-bin."""
     bazel_bin_python = aether_root / "bazel-bin" / "python"
-    for name in ("aether_geo.so", "aether_geo.pyd", "aether_geo.dylib"):
+    for name in (f"{stem}.so", f"{stem}.pyd", f"{stem}.dylib"):
         cand = bazel_bin_python / name
         if cand.is_file():
             return cand
     if bazel_bin_python.is_dir():
-        for cand in sorted(bazel_bin_python.glob("aether_geo*")):
+        for cand in sorted(bazel_bin_python.glob(f"{stem}*")):
             if cand.is_file() and cand.suffix in {".so", ".pyd", ".dylib"}:
                 return cand
     return None
 
 
+def _locate_built_aether_geo(aether_root: Path) -> Path | None:
+    """Locate built aether_geo shared library inside aether's bazel-bin."""
+    return _locate_built_extension(aether_root, "aether_geo")
+
+
+def _locate_built_aether_metrics(aether_root: Path) -> Path | None:
+    """Locate built aether_metrics shared library inside aether's bazel-bin."""
+    return _locate_built_extension(aether_root, "aether_metrics")
+
+
 def _build_with_bazel(
     aether_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 300.0
 ) -> Path | None:
-    """Build @aether//python:aether_geo using Bazel."""
-    cmd = [bazel_bin, "build", "//python:aether_geo", "//python:aether_metrics"]
+    """Build @aether//python:aether_geo and //python:aether_metrics using Bazel."""
+    startup_flags: list[str] = []
+    if sys.platform.startswith("linux"):
+        shared_bazel_cache = Path("/var/cache/bazel")
+        if shared_bazel_cache.is_dir() and os.access(str(shared_bazel_cache), os.W_OK):
+            startup_flags.append(f"--output_user_root={shared_bazel_cache}")
+
+    cmd = [bazel_bin, *startup_flags, "build", "//python:aether_geo", "//python:aether_metrics"]
     if not quiet:
         print(f"[build_native] Running Bazel in {aether_root}: {' '.join(cmd)}")
 
@@ -126,21 +142,23 @@ def _emit_error(exit_code: int, message: str, agent_fix_hint: str, as_json: bool
         print(json.dumps(error), file=sys.stderr)
 
 
-def _install_extension(built_artifact: Path, target_dir: Path) -> list[Path]:
-    """Copy built aether_geo shared library to target_dir with ABI and plain names."""
+def _install_extension(
+    built_artifact: Path, target_dir: Path, stem: str = "aether_geo"
+) -> list[Path]:
+    """Copy a built extension shared library to target_dir with ABI and plain names."""
     target_dir.mkdir(parents=True, exist_ok=True)
     ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (
         ".pyd" if sys.platform == "win32" else ".so"
     )
     installed: list[Path] = []
 
-    abi_target = target_dir / f"aether_geo{ext_suffix}"
+    abi_target = target_dir / f"{stem}{ext_suffix}"
     if built_artifact.resolve() != abi_target.resolve():
         shutil.copy2(built_artifact, abi_target)
     installed.append(abi_target)
 
     plain_ext = ".pyd" if sys.platform == "win32" else ".so"
-    plain_target = target_dir / f"aether_geo{plain_ext}"
+    plain_target = target_dir / f"{stem}{plain_ext}"
     if plain_target != abi_target and built_artifact.resolve() != plain_target.resolve():
         shutil.copy2(built_artifact, plain_target)
         installed.append(plain_target)
@@ -350,9 +368,13 @@ def main() -> int:
         )
         return 30
 
-    installed: list[Path] = [built_artifact]
+    installed: list[Path] = []
     target_dir = args.output_dir if args.output_dir is not None else repo_root / "python"
-    installed = _install_extension(built_artifact, target_dir)
+    installed.extend(_install_extension(built_artifact, target_dir, stem="aether_geo"))
+
+    built_metrics = _locate_built_aether_metrics(aether_root)
+    if built_metrics is not None:
+        installed.extend(_install_extension(built_metrics, target_dir, stem="aether_metrics"))
 
     if _smoke_test(target_dir=target_dir, repo_root=repo_root, quiet=quiet):
         if args.json:
@@ -362,12 +384,14 @@ def main() -> int:
                         "status": "ok",
                         "backend": "bazel",
                         "installed": [str(p) for p in installed],
+                        "metrics_installed": built_metrics is not None,
                         "verified": True,
                     }
                 )
             )
         else:
-            print("aether_geo native kernel successfully built and verified.")
+            suffix = " (with aether_metrics)" if built_metrics is not None else ""
+            print(f"aether_geo native kernel{suffix} successfully built and verified.")
         return 0
 
     _emit_error(

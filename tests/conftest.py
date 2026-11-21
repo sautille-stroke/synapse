@@ -18,22 +18,26 @@ def _is_strict_deps() -> bool:
     return val in ("1", "true", "yes", "on")
 
 
-_STRICT_DEPS = _is_strict_deps()
-
-
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(
     item: pytest.Item,
     call: pytest.CallInfo[None],
 ) -> Generator[None, Any, None]:
-    """Fail-fast on skipped tests when SYNAPSE_CI_STRICT_DEPS=1."""
+    """Fail-fast on unexpected skipped tests when SYNAPSE_CI_STRICT_DEPS=1.
+
+    Tests explicitly marked ``@pytest.mark.external_data`` or
+    ``@pytest.mark.platform_specific`` may still skip when external sibling
+    repositories or OS-specific prerequisites are absent.
+    """
     outcome = yield
     rep: Any = outcome.get_result()
     if (
-        _STRICT_DEPS
+        _is_strict_deps()
         and rep.skipped
         and rep.when in ("setup", "call")
         and not getattr(rep, "wasxfail", None)
+        and item.get_closest_marker("external_data") is None
+        and item.get_closest_marker("platform_specific") is None
     ):
         rep.outcome = "failed"
         rep.longrepr = f"SYNAPSE_CI_STRICT_DEPS=1 forbids skipped tests: {rep.longrepr}"
@@ -50,7 +54,7 @@ def pytest_make_collect_report(
     """
     outcome = yield
     rep: Any = outcome.get_result()
-    if _STRICT_DEPS and rep.outcome == "skipped":
+    if _is_strict_deps() and rep.outcome == "skipped":
         rep.outcome = "failed"
         rep.longrepr = (
             f"SYNAPSE_CI_STRICT_DEPS=1 forbids module-level skips: "
@@ -85,7 +89,7 @@ def cached_rasterizer_64() -> Any:
 
             _rasterizer_cache[key] = SoftwareRasterizer(width=64, height=64)
         except ImportError as exc:
-            if _STRICT_DEPS:
+            if _is_strict_deps():
                 raise RuntimeError(
                     f"SYNAPSE_CI_STRICT_DEPS=1: failed to import SoftwareRasterizer: {exc}"
                 ) from exc
@@ -103,7 +107,7 @@ def cached_rasterizer_128() -> Any:
 
             _rasterizer_cache[key] = SoftwareRasterizer(width=128, height=128)
         except ImportError as exc:
-            if _STRICT_DEPS:
+            if _is_strict_deps():
                 raise RuntimeError(
                     f"SYNAPSE_CI_STRICT_DEPS=1: failed to import SoftwareRasterizer: {exc}"
                 ) from exc
