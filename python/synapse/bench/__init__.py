@@ -11,11 +11,11 @@ from synapse.bench.bundle_exporter import (
     export_inspection_bundle,
     validate_inspection_bundle,
 )
-from synapse.bench.camera import (
+from synapse.render_core.camera import (
     CameraTrajectoryType,
     generate_cameras,
 )
-from synapse.bench.conditions import (
+from synapse.render_core.conditions import (
     CROSS_CONDITIONS,
     RENDERING_CONDITION_FACTORS,
     SINGLE_FACTOR_CONDITIONS,
@@ -32,7 +32,7 @@ from synapse.bench.model_loader import (
     load_obj,
     load_procedural,
 )
-from synapse.bench.procedural import (
+from synapse.render_core.procedural import (
     ProceduralMesh,
     ProceduralMeshType,
     generate_humanoid_proxy,
