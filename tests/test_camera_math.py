@@ -190,3 +190,114 @@ class TestQuatToMatrix:
         q = [0.1, 0.2, 0.3, 0.9]
         rot = quat_to_matrix(q)
         np.testing.assert_allclose(np.linalg.det(rot), 1.0, atol=1e-6)
+
+
+class TestNativeNumpyParity:
+    """Verify exact elementwise parity between aether_geo C++ and pure NumPy fallback."""
+
+    def test_non_symmetric_pose_view_parity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-symmetric rotation (9-float col-major, 3x3, and quat) must match native C++."""
+        import math
+
+        from synapse.bridge import aether_bridge
+        from synapse.render_core import camera_math
+
+        angle = math.radians(37.0)
+        q = np.array([0.2, -0.35, 0.5, 0.77], dtype=np.float64)
+        pos = np.array([1.5, -2.25, 4.1], dtype=np.float64)
+
+        # Native (if available) vs forced NumPy
+        has_native = aether_bridge.has_aether_geo()
+        if has_native:
+            native_q_mat = quat_to_matrix(q)
+            native_view_q = view_matrix_from_pose(pos, q)
+            native_rot_col = native_q_mat.flatten(order="F")
+            native_view_9 = view_matrix_from_pose(pos, native_rot_col)
+            native_view_33 = view_matrix_from_pose(pos, native_q_mat)
+            native_pos_out, native_rot_out = pose_from_view_matrix(native_view_q)
+            native_look_zenith = look_at(np.array([0.0, 0.0, 0.0]), np.array([0.0, 2.0, 0.0]))
+            native_look_nadir = look_at(np.array([0.0, 5.0, 0.0]), np.array([0.0, 0.0, 0.0]))
+            native_look_rot_coinc = look_at_rotation(np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 3.0]))
+            native_proj = perspective_projection(53.0, 1280, 720, 0.2, 500.0)
+
+        monkeypatch.setattr(camera_math, "get_aether_geo", lambda: None)
+
+        np_q_mat = quat_to_matrix(q)
+        np_view_q = view_matrix_from_pose(pos, q)
+        np_rot_col = np_q_mat.flatten(order="F")
+        np_view_9 = view_matrix_from_pose(pos, np_rot_col)
+        np_view_33 = view_matrix_from_pose(pos, np_q_mat)
+        np_pos_out, np_rot_out = pose_from_view_matrix(np_view_q)
+        np_look_zenith = look_at(np.array([0.0, 0.0, 0.0]), np.array([0.0, 2.0, 0.0]))
+        np_look_nadir = look_at(np.array([0.0, 5.0, 0.0]), np.array([0.0, 0.0, 0.0]))
+        np_look_rot_coinc = look_at_rotation(np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 3.0]))
+        np_proj = perspective_projection(53.0, 1280, 720, 0.2, 500.0)
+
+        # Roundtrip self-consistency for non-symmetric rotation
+        np.testing.assert_allclose(np_pos_out, pos, atol=1e-10)
+        np.testing.assert_allclose(np_rot_out, np_rot_col, atol=1e-10)
+        np.testing.assert_allclose(np_view_q, np_view_9, atol=1e-12)
+        np.testing.assert_allclose(np_view_q, np_view_33, atol=1e-12)
+        np.testing.assert_allclose(np_look_rot_coinc, np.eye(3), atol=1e-12)
+
+        # Verify non-zero skew-symmetric part (r != r.T)
+        r_yaw = np.array(
+            [[math.cos(angle), 0.0, math.sin(angle)], [0.0, 1.0, 0.0], [-math.sin(angle), 0.0, math.cos(angle)]],
+            dtype=np.float64,
+        )
+        v_yaw = view_matrix_from_pose(pos, r_yaw.flatten(order="F"))
+        np.testing.assert_allclose(v_yaw[:3, :3], r_yaw, atol=1e-12)
+
+        if has_native:
+            np.testing.assert_allclose(np_q_mat, native_q_mat, atol=1e-12)
+            np.testing.assert_allclose(np_view_q, native_view_q, atol=1e-12)
+            np.testing.assert_allclose(np_view_9, native_view_9, atol=1e-12)
+            np.testing.assert_allclose(np_view_33, native_view_33, atol=1e-12)
+            np.testing.assert_allclose(np_pos_out, native_pos_out, atol=1e-12)
+            np.testing.assert_allclose(np_rot_out, native_rot_out, atol=1e-12)
+            np.testing.assert_allclose(np_look_zenith, native_look_zenith, atol=1e-12)
+            np.testing.assert_allclose(np_look_nadir, native_look_nadir, atol=1e-12)
+            np.testing.assert_allclose(np_look_rot_coinc, native_look_rot_coinc, atol=1e-12)
+            np.testing.assert_allclose(np_proj, native_proj, atol=1e-12)
+
+    def test_numpy_primitives_outward_winding_and_uvs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """NumPy fallback closed primitives must have positive signed volume (outward CCW) and UVs."""
+        from synapse.render_core import procedural
+
+        monkeypatch.setattr(procedural, "_create_primitive_mesh", lambda *a, **kw: None)
+        for prim in ("cube", "sphere", "cylinder", "torus", "cone"):
+            mesh = procedural.generate_procedural_mesh(prim)
+            v = mesh.vertices
+            f = mesh.faces
+            v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+            signed_vol = float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+            assert signed_vol > 0.0, f"{prim} NumPy fallback has inverted CW winding (vol={signed_vol})"
+            assert mesh.uvs is not None and mesh.uvs.shape == (mesh.num_vertices, 2)
+            assert mesh.vertices.dtype == np.float64
+
+        # Humanoid sphere head must also have positive signed volume
+        head_v, head_f = procedural._generate_segment_mesh("sphere", (0.12,), segments=16)
+        hv0, hv1, hv2 = head_v[head_f[:, 0]], head_v[head_f[:, 1]], head_v[head_f[:, 2]]
+        head_vol = float(np.sum(np.einsum("ij,ij->i", hv0, np.cross(hv1, hv2))) / 6.0)
+        assert head_vol > 0.0, f"Humanoid head sphere has inverted winding (vol={head_vol})"
+
+    def test_pan_camera_positive_elevation_looks_down_toward_target(self) -> None:
+        """Positive elevation_deg places pan camera above target and pitches downward to look at it."""
+        from synapse.render_core.camera import generate_cameras
+
+        cams = generate_cameras(
+            "pan",
+            num_frames=3,
+            distance=4.0,
+            elevation_deg=15.0,
+            azimuth_start_deg=-30.0,
+            azimuth_end_deg=30.0,
+        )
+        mid_cam = cams[1]  # pan_deg == 0.0 -> looking directly through origin
+        # Camera forward in world space is -view[2, :3]
+        forward = -mid_cam.view_matrix[2, :3]
+        assert forward[1] < -0.2, f"Expected downward pitch for +15 deg elevation, got forward={forward}"
+        # Ray from camera position along forward should pass close to origin (0, 0, 0)
+        eye = -(mid_cam.view_matrix[:3, :3].T @ mid_cam.view_matrix[:3, 3])
+        closest = eye + float(np.dot(-eye, forward)) * forward
+        np.testing.assert_allclose(closest, [0.0, 0.0, 0.0], atol=1e-6)

@@ -199,29 +199,34 @@ def _np_generate_sphere(
     segments: int = 32,
     rings: int = 16,
 ) -> dict[str, Any]:
-    """Pure NumPy UV sphere generation with pole welding."""
+    """Pure NumPy UV sphere generation with pole welding and outward CCW winding."""
     vertices: list[list[float]] = []
+    uvs_list: list[list[float]] = []
     # Top pole
     vertices.append([0.0, radius, 0.0])
+    uvs_list.append([0.5, 0.0])
     # Ring vertices
     for i in range(1, rings):
         phi = math.pi * i / rings
+        v_coord = i / rings
         for j in range(segments):
             theta = 2.0 * math.pi * j / segments
             x = radius * math.sin(phi) * math.cos(theta)
             y = radius * math.cos(phi)
             z = radius * math.sin(phi) * math.sin(theta)
             vertices.append([x, y, z])
+            uvs_list.append([j / segments, v_coord])
     # Bottom pole
     bot_idx = len(vertices)
     vertices.append([0.0, -radius, 0.0])
+    uvs_list.append([0.5, 1.0])
 
     faces_list: list[list[int]] = []
-    # Top cap
+    # Top cap (outward CCW: +Y normal)
     for j in range(segments):
         j_next = (j + 1) % segments
-        faces_list.append([0, 1 + j, 1 + j_next])
-    # Middle quads
+        faces_list.append([0, 1 + j_next, 1 + j])
+    # Middle quads (outward CCW)
     for i in range(rings - 2):
         base = 1 + i * segments
         for j in range(segments):
@@ -230,16 +235,17 @@ def _np_generate_sphere(
             b = base + j_next
             c = base + segments + j
             d = base + segments + j_next
-            faces_list.append([a, c, b])
-            faces_list.append([b, c, d])
-    # Bottom cap
+            faces_list.append([a, b, c])
+            faces_list.append([b, d, c])
+    # Bottom cap (outward CCW: -Y normal)
     last_ring_base = 1 + (rings - 2) * segments
     for j in range(segments):
         j_next = (j + 1) % segments
-        faces_list.append([last_ring_base + j, bot_idx, last_ring_base + j_next])
+        faces_list.append([last_ring_base + j, last_ring_base + j_next, bot_idx])
 
-    verts_arr = np.array(vertices, dtype=np.float32)
+    verts_arr = np.array(vertices, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
+    uvs_arr = np.array(uvs_list, dtype=np.float64)
 
     # Compute normals (unit vectors from origin for a sphere)
     norms = verts_arr.copy()
@@ -247,11 +253,11 @@ def _np_generate_sphere(
     lengths = np.where(lengths < 1e-12, 1.0, lengths)
     norms = norms / lengths
 
-    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": uvs_arr}
 
 
 def _np_generate_cube(size: float = 1.0) -> dict[str, Any]:
-    """Pure NumPy cube generation."""
+    """Pure NumPy cube generation with outward CCW winding and per-face UVs."""
     s = size / 2.0
     # 24 vertices (4 per face for distinct normals)
     verts = np.array([
@@ -267,11 +273,15 @@ def _np_generate_cube(size: float = 1.0) -> dict[str, Any]:
         [s, -s, s], [s, -s, -s], [s, s, -s], [s, s, s],
         # Left (-X)
         [-s, -s, -s], [-s, -s, s], [-s, s, s], [-s, s, -s],
-    ], dtype=np.float32)
+    ], dtype=np.float64)
     normals = np.array([
         [0, 0, 1]] * 4 + [[0, 0, -1]] * 4 + [[0, 1, 0]] * 4 +
         [[0, -1, 0]] * 4 + [[1, 0, 0]] * 4 + [[-1, 0, 0]] * 4,
-        dtype=np.float32,
+        dtype=np.float64,
+    )
+    uvs = np.tile(
+        np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], dtype=np.float64),
+        (6, 1),
     )
     faces = np.array([
         [0, 1, 2], [0, 2, 3],
@@ -281,7 +291,7 @@ def _np_generate_cube(size: float = 1.0) -> dict[str, Any]:
         [16, 17, 18], [16, 18, 19],
         [20, 21, 22], [20, 22, 23],
     ], dtype=np.int32)
-    return {"vertices": verts, "faces": faces, "normals": normals, "uvs": None}
+    return {"vertices": verts, "faces": faces, "normals": normals, "uvs": uvs}
 
 
 def _np_generate_cylinder(
@@ -289,23 +299,28 @@ def _np_generate_cylinder(
     height: float = 2.0,
     segments: int = 32,
 ) -> dict[str, Any]:
-    """Pure NumPy cylinder generation."""
+    """Pure NumPy cylinder generation with outward CCW winding."""
     half_h = height / 2.0
     vertices: list[list[float]] = []
+    uvs_list: list[list[float]] = []
     faces_list: list[list[int]] = []
 
     top_c = 0
     vertices.append([0.0, half_h, 0.0])
+    uvs_list.append([0.5, 0.5])
     top_ring_start = len(vertices)
     for j in range(segments):
         theta = 2.0 * math.pi * j / segments
         vertices.append([radius * math.cos(theta), half_h, radius * math.sin(theta)])
+        uvs_list.append([j / segments, 1.0])
     bot_ring_start = len(vertices)
     for j in range(segments):
         theta = 2.0 * math.pi * j / segments
         vertices.append([radius * math.cos(theta), -half_h, radius * math.sin(theta)])
+        uvs_list.append([j / segments, 0.0])
     bot_c = len(vertices)
     vertices.append([0.0, -half_h, 0.0])
+    uvs_list.append([0.5, 0.5])
 
     for j in range(segments):
         j_next = (j + 1) % segments
@@ -320,8 +335,9 @@ def _np_generate_cylinder(
         j_next = (j + 1) % segments
         faces_list.append([bot_c, bot_ring_start + j, bot_ring_start + j_next])
 
-    verts_arr = np.array(vertices, dtype=np.float32)
+    verts_arr = np.array(vertices, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
+    uvs_arr = np.array(uvs_list, dtype=np.float64)
     # Approximate normals
     norms = np.zeros_like(verts_arr)
     for f in faces_arr:
@@ -334,7 +350,7 @@ def _np_generate_cylinder(
     lengths = np.where(lengths < 1e-12, 1.0, lengths)
     norms = norms / lengths
 
-    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": uvs_arr}
 
 
 def _np_generate_torus(
@@ -343,16 +359,19 @@ def _np_generate_torus(
     major_segments: int = 32,
     minor_segments: int = 16,
 ) -> dict[str, Any]:
-    """Pure NumPy torus generation."""
+    """Pure NumPy torus generation with outward CCW winding."""
     vertices: list[list[float]] = []
+    uvs_list: list[list[float]] = []
     for i in range(major_segments):
         theta = 2.0 * math.pi * i / major_segments
+        u_coord = i / major_segments
         for j in range(minor_segments):
             phi = 2.0 * math.pi * j / minor_segments
             x = (major_radius + minor_radius * math.cos(phi)) * math.cos(theta)
             y = minor_radius * math.sin(phi)
             z = (major_radius + minor_radius * math.cos(phi)) * math.sin(theta)
             vertices.append([x, y, z])
+            uvs_list.append([u_coord, j / minor_segments])
 
     faces_list: list[list[int]] = []
     for i in range(major_segments):
@@ -363,11 +382,12 @@ def _np_generate_torus(
             b = i * minor_segments + j_next
             c = i_next * minor_segments + j
             d = i_next * minor_segments + j_next
-            faces_list.append([a, c, b])
-            faces_list.append([b, c, d])
+            faces_list.append([a, b, c])
+            faces_list.append([b, d, c])
 
-    verts_arr = np.array(vertices, dtype=np.float32)
+    verts_arr = np.array(vertices, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
+    uvs_arr = np.array(uvs_list, dtype=np.float64)
     # Normals: vector from torus center circle to vertex
     norms = np.zeros_like(verts_arr)
     for i in range(major_segments):
@@ -376,11 +396,11 @@ def _np_generate_torus(
         cz = major_radius * math.sin(theta)
         for j in range(minor_segments):
             idx = i * minor_segments + j
-            n = verts_arr[idx] - np.array([cx, 0.0, cz], dtype=np.float32)
+            n = verts_arr[idx] - np.array([cx, 0.0, cz], dtype=np.float64)
             length = float(np.linalg.norm(n))
-            norms[idx] = n / length if length > 1e-12 else np.array([0, 1, 0], dtype=np.float32)
+            norms[idx] = n / length if length > 1e-12 else np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
-    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": uvs_arr}
 
 
 def _np_generate_plane(
@@ -389,13 +409,15 @@ def _np_generate_plane(
     subdiv_x: int = 1,
     subdiv_z: int = 1,
 ) -> dict[str, Any]:
-    """Pure NumPy plane generation (XZ plane, Y=0)."""
+    """Pure NumPy plane generation (XZ plane, Y=0) with +Y CCW winding."""
     verts: list[list[float]] = []
+    uvs_list: list[list[float]] = []
     for iz in range(subdiv_z + 1):
         for ix in range(subdiv_x + 1):
             x = -width / 2.0 + width * ix / subdiv_x
             z = -depth / 2.0 + depth * iz / subdiv_z
             verts.append([x, 0.0, z])
+            uvs_list.append([ix / subdiv_x, iz / subdiv_z])
 
     faces_list: list[list[int]] = []
     cols = subdiv_x + 1
@@ -408,10 +430,11 @@ def _np_generate_plane(
             faces_list.append([a, c, b])
             faces_list.append([b, c, d])
 
-    verts_arr = np.array(verts, dtype=np.float32)
+    verts_arr = np.array(verts, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
-    norms = np.tile(np.array([0, 1, 0], dtype=np.float32), (len(verts), 1))
-    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+    uvs_arr = np.array(uvs_list, dtype=np.float64)
+    norms = np.tile(np.array([0.0, 1.0, 0.0], dtype=np.float64), (len(verts), 1))
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": uvs_arr}
 
 
 def _np_generate_cone(
@@ -419,22 +442,26 @@ def _np_generate_cone(
     height: float = 1.0,
     segments: int = 32,
 ) -> dict[str, Any]:
-    """Pure NumPy cone generation with watertight topology."""
+    """Pure NumPy cone generation with watertight topology and outward CCW winding."""
     half_h = height / 2.0
     vertices: list[list[float]] = []
+    uvs_list: list[list[float]] = []
     faces_list: list[list[int]] = []
 
     # Apex at top
     apex_idx = 0
     vertices.append([0.0, half_h, 0.0])
+    uvs_list.append([0.5, 1.0])
     # Base ring
     ring_start = len(vertices)
     for j in range(segments):
         theta = 2.0 * math.pi * j / segments
         vertices.append([radius * math.cos(theta), -half_h, radius * math.sin(theta)])
+        uvs_list.append([j / segments, 0.0])
     # Base center
     base_center = len(vertices)
     vertices.append([0.0, -half_h, 0.0])
+    uvs_list.append([0.5, 0.5])
 
     # Side faces (apex to base ring)
     for j in range(segments):
@@ -445,8 +472,9 @@ def _np_generate_cone(
         j_next = (j + 1) % segments
         faces_list.append([base_center, ring_start + j, ring_start + j_next])
 
-    verts_arr = np.array(vertices, dtype=np.float32)
+    verts_arr = np.array(vertices, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
+    uvs_arr = np.array(uvs_list, dtype=np.float64)
     norms = np.zeros_like(verts_arr)
     for f in faces_arr:
         v0, v1, v2 = verts_arr[f[0]], verts_arr[f[1]], verts_arr[f[2]]
@@ -458,7 +486,7 @@ def _np_generate_cone(
     lengths = np.where(lengths < 1e-12, 1.0, lengths)
     norms = norms / lengths
 
-    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": uvs_arr}
 
 
 _NP_GENERATORS: dict[str, Callable[..., dict[str, Any]]] = {
@@ -781,12 +809,12 @@ def _generate_segment_mesh(
         bot_idx = len(vertices)
         vertices.append([0.0, -radius, 0.0])
 
-        # Top cap triangles
+        # Top cap triangles (outward CCW)
         for j in range(segments):
             j_next = (j + 1) % segments
-            faces_list.append([0, 1 + j, 1 + j_next])
+            faces_list.append([0, 1 + j_next, 1 + j])
 
-        # Middle quads
+        # Middle quads (outward CCW)
         for i in range(rings - 2):
             base = 1 + i * segments
             for j in range(segments):
@@ -795,18 +823,18 @@ def _generate_segment_mesh(
                 b = base + j_next
                 c = base + segments + j
                 d = base + segments + j_next
-                faces_list.append([a, c, b])
-                faces_list.append([b, c, d])
+                faces_list.append([a, b, c])
+                faces_list.append([b, d, c])
 
-        # Bottom cap triangles
+        # Bottom cap triangles (outward CCW)
         last_ring_base = 1 + (rings - 2) * segments
         for j in range(segments):
             j_next = (j + 1) % segments
             faces_list.append(
                 [
                     last_ring_base + j,
-                    bot_idx,
                     last_ring_base + j_next,
+                    bot_idx,
                 ]
             )
 
