@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from synapse.adapters.lora.manager import MultiLoRAManager
 from synapse.adapters.lora.manifest import LoRAManifest
+from synapse.errors import ContractValidationError
 
 # ---------------------------------------------------------------------------
 # LoRAPatchHook
@@ -133,19 +134,15 @@ class LoRAPatchHook:
                             ).reshape(1, l_dim, 1)
                         elif t_m * h_m * w_m == l_dim:
                             m = m.reshape(1, l_dim, 1)
-                        elif l_dim > expected_l:
-                            # Register tokens present in front of visual tokens
-                            n_reg = l_dim - expected_l
-                            m_5d = m.unsqueeze(0).unsqueeze(0)
-                            m_p = torch.nn.functional.adaptive_avg_pool3d(
-                                m_5d, (tau, h16, w16)
-                            ).reshape(1, expected_l, 1)
-                            reg = torch.ones(
-                                (1, n_reg, 1),
-                                dtype=m.dtype,
-                                device=m.device,
+                        else:
+                            # Fail-closed: refuse to guess register token layout —
+                            # apply full LoRA (mask of ones) rather than silently
+                            # miscorrelating spatial positions
+                            m = torch.ones(
+                                (1, 1, 1),
+                                dtype=lora_contrib.dtype,
+                                device=lora_contrib.device,
                             )
-                            m = torch.cat([reg, m_p], dim=1)
 
                     if m.dim() == 1 and m.shape[0] == l_dim:
                         m = m.unsqueeze(0).unsqueeze(-1)
@@ -157,10 +154,26 @@ class LoRAPatchHook:
                         m = m.reshape(1, l_dim, 1)
                     elif m.dim() == 3 and m.shape[1] == l_dim and m.shape[2] == 1:
                         pass
+                    elif m.dim() == 3 and m.shape == (1, 1, 1):
+                        # Scalar broadcast (e.g. from spatial mismatch fallback):
+                        # applies full LoRA uniformly — valid fail-safe
+                        pass
                     else:
-                        # Fallback: if m cannot be reshaped to match visual token count l_dim,
-                        # bypass spatial masking safely to prevent dimension mismatch crashes.
-                        m = torch.ones((1, 1, 1), dtype=lora_contrib.dtype, device=lora_contrib.device)
+                        # Fail-closed: dimension mismatch — raise instead of
+                        # silently broadcasting ones
+                        raise ContractValidationError(
+                            f"LoRA spatial mask shape {tuple(m.shape)} cannot be "
+                            f"broadcast to lora_contrib shape ({b_dim}, {l_dim}, ...)",
+                            agent_fix_hint=(
+                                "Verify Cryptomatte mask resolution matches the "
+                                "DiT's spatial token grid."
+                            ),
+                        )
+
+                    # CFG broadcast: if b_dim is a multiple of m's batch dim,
+                    # expand mask to cover duplicated unconditional+conditional
+                    if m.shape[0] == 1 and b_dim > 1:
+                        m = m.expand(b_dim, -1, -1)
                 else:
                     while m.dim() < lora_contrib.dim():
                         m = m.unsqueeze(-1)

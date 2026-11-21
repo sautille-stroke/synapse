@@ -244,6 +244,11 @@ class FeatureStoreBuilder:
         latent_encoder: Encoder for video frames -> latent tensor.
         text_encoder: Encoder for caption text -> embedding.
         max_shard_bytes: Maximum bytes per shard (default 2 GiB).
+        streaming: If ``True``, write samples directly to disk shards
+            instead of buffering in memory.
+        output_dir: **Required when ``streaming=True``**.  Directory for
+            streaming shard files.  Enables true O(1)-memory ingestion
+            without calling ``build_shards`` first.
     """
 
     def __init__(
@@ -252,6 +257,7 @@ class FeatureStoreBuilder:
         text_encoder: TextEncoderProtocol,
         max_shard_bytes: int = 2 * 1024**3,
         streaming: bool = False,
+        output_dir: Path | str | None = None,
     ) -> None:
         self._lat_enc = latent_encoder
         self._txt_enc = text_encoder
@@ -265,6 +271,10 @@ class FeatureStoreBuilder:
         self._stream_shard_size: int = 0
         self._stream_shard_paths: list[Path] = []
         self._stream_output_dir: Path | None = None
+
+        if output_dir is not None:
+            self._stream_output_dir = Path(output_dir)
+            self._stream_output_dir.mkdir(parents=True, exist_ok=True)
 
     def add_sample(
         self,
@@ -451,6 +461,10 @@ class FeatureStoreBuilder:
 
         # ── Wan 7ch control tensor validation (depth span & normal unit-length) ──
         if is_wan and fgpp is not None:
+            # Gate-2w zero tensor rejection: reject all-zero Wan control tensors
+            if np.all(fgpp == 0):
+                return False, "Gate 2w (Wan zero tensor): entire 7ch control tensor is zero"
+
             # Wan control: [7, T, H, W] — ch0=depth (may be log-encoded [0,1])
             wan_depth = fgpp[0]  # [T, H, W]
             valid_d = wan_depth[wan_depth > 0]
