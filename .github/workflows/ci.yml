@@ -18,15 +18,18 @@ jobs:
   python-fast:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      AETHER_ROOT: ${{ github.workspace }}/aether
     steps:
       - uses: actions/checkout@v4
         with:
           path: synapse
 
       - name: Checkout aether (sibling)
+        id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: dervgen/aether
+          repository: sautille-stroke/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
@@ -34,7 +37,7 @@ jobs:
       - name: Fallback aether checkout hint
         if: steps.checkout-aether.outcome == 'failure'
         run: |
-          echo "::warning::dervgen/aether checkout failed. If you are running from a fork, set the DERVGEN_PAT secret or remove aether-dependent tests."
+          echo "::warning::sautille-stroke/aether checkout failed. If you are running from a fork, set the DERVGEN_PAT secret or remove aether-dependent tests."
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -99,15 +102,17 @@ jobs:
     timeout-minutes: 20
     env:
       SYNAPSE_CI_STRICT_DEPS: "1"
+      AETHER_ROOT: ${{ github.workspace }}/aether
     steps:
       - uses: actions/checkout@v4
         with:
           path: synapse
 
       - name: Checkout aether (sibling)
+        id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: dervgen/aether
+          repository: sautille-stroke/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
@@ -150,9 +155,10 @@ jobs:
           path: synapse
 
       - name: Checkout aether (sibling)
+        id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: dervgen/aether
+          repository: sautille-stroke/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
@@ -164,9 +170,10 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: ${{ github.workflow }}
 
-      - name: Test csrc/geometry
-        working-directory: synapse/csrc/geometry
-        run: bazel test //... --config=opt
+      - name: Test aether geo and python bindings
+        working-directory: aether
+        run: bazel test //geo:all //python:all --config=opt
+        if: steps.checkout-aether.outcome == 'success'
 
       - name: Test data-inspector native
         working-directory: synapse/tools/data-inspector/native
@@ -184,9 +191,10 @@ jobs:
           path: synapse
 
       - name: Checkout aether (sibling)
+        id: checkout-aether
         uses: actions/checkout@v4
         with:
-          repository: dervgen/aether
+          repository: sautille-stroke/aether
           path: aether
           token: ${{ secrets.DERVGEN_PAT || github.token }}
         continue-on-error: true
@@ -236,37 +244,11 @@ jobs:
 
       - name: Markdown broken-link scan
         working-directory: synapse
-        run: |
-          python -c "
-          import pathlib, re, sys
-          root = pathlib.Path('.')
-          md_files = list(root.rglob('*.md'))
-          broken = []
-          link_re = re.compile(r'\[([^\]]*)\]\(([^)]+)\)')
-          for md in md_files:
-              text = md.read_text(encoding='utf-8', errors='replace')
-              for m in link_re.finditer(text):
-                  target = m.group(2)
-                  if target.startswith(('http://', 'https://', '#', 'mailto:')):
-                      continue
-                  # Strip anchor
-                  target_path = target.split('#')[0]
-                  if not target_path:
-                      continue
-                  resolved = (md.parent / target_path).resolve()
-                  if not resolved.exists():
-                      broken.append(f'{md}:{m.start()}: {target}')
-          if broken:
-              print(f'Found {len(broken)} broken local link(s):')
-              for b in broken:
-                  print(f'  {b}')
-              sys.exit(1)
-          print(f'Scanned {len(md_files)} markdown files, all local links OK.')
-          "
+        run: python scripts/check_doc_links.py
 
       - name: Benchmark timing gate
         working-directory: synapse
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          timeout 120 pytest tests/test_bench.py -k "test_scenario_create" -v --timeout=60 || true
+          timeout 120 pytest tests/test_bench.py -k "test_scenario_create" -v --timeout=60
