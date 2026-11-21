@@ -22,6 +22,7 @@ import logging
 import math
 import os
 import shutil
+import signal
 import subprocess
 import tarfile
 from pathlib import Path
@@ -160,12 +161,22 @@ def _export_software_rasterizer_fallback(
         mv = np.zeros((height, width, 2), dtype=np.float16)
         mv[mask_hero, 0] = np.float16(0.02 * width * 0.5)
 
+        # Roughness / Metallic (populate all 15 FGPP scalar channels for strict=True)
+        rough = np.full((height, width), 0.6, dtype=np.float32)
+        rough[mask_hero] = 0.35
+        rough[mask_ground] = 0.85
+        metal = np.zeros((height, width), dtype=np.float32)
+        metal[mask_hero] = 0.15
+        rough_metal = np.stack([rough, metal], axis=-1).astype(np.float16)
+
         frame = FGPPFrame(
             frame_index=i,
             direct_radiance=radiance.astype(np.float16),
             depth=depth,
             world_normal=normals.astype(np.float16),
             motion_vector=mv,
+            base_color=albedo.astype(np.float16),
+            roughness_metallic=rough_metal,
             cryptomatte_id=crypto_id,
             camera=cam,
         )
@@ -175,14 +186,75 @@ def _export_software_rasterizer_fallback(
         fps=24,
         scene_id="synthetic_fallback",
     )
-    export_fgpp(seq, out_dir)
-    # Mark provenance honestly
+    export_fgpp(seq, out_dir, strict=True)
+    # Mark provenance honestly and record per-frame SHA-256 checksums
     meta_path = out_dir / "metadata.json"
     if meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         meta["provenance"] = "software_rasterizer_fallback"
         meta["generator"] = "synapse.render_core.SoftwareRasterizer"
+        _inject_frame_sha256s(out_dir, meta)
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def _inject_frame_sha256s(seq_dir: Path, meta: dict[str, Any]) -> None:
+    """Populate per-frame ``file`` and ``sha256`` fields in *meta*."""
+    for f_dict in meta.get("frames", []):
+        f_idx = int(f_dict.get("frame_index", 0))
+        fname = f_dict.get("file") or f"frame_{f_idx:06d}.exr"
+        f_dict["file"] = fname
+        fpath = seq_dir / fname
+        if fpath.is_file():
+            f_dict["sha256"] = _sha256_file(fpath)
+
+
+def _run_subprocess_with_pgkill(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess in its own process group and kill the whole group on timeout."""
+    popen_kwargs: dict[str, Any] = {
+        "cwd": str(cwd),
+        "env": env,
+        "text": True,
+    }
+    if capture_output:
+        popen_kwargs["stdout"] = subprocess.PIPE
+        popen_kwargs["stderr"] = subprocess.PIPE
+    if os.name == "posix":
+        popen_kwargs["start_new_session"] = True
+
+    proc = subprocess.Popen(cmd, **popen_kwargs)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=proc.returncode,
+            stdout=stdout or "",
+            stderr=stderr or "",
+        )
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait(timeout=5.0)
+        else:
+            proc.kill()
+            proc.wait(timeout=5.0)
+        raise
 
 
 def _sha256_file(path: Path) -> str:
@@ -199,6 +271,8 @@ def _export_fulgur_course102(
     num_frames: int = 17,
     width: int = 832,
     height: int = 480,
+    *,
+    build_fulgur: bool = False,
 ) -> None:
     """Run fulgur //course:102-pbr-direct headless to export 15-ch FGPP + Cryptomatte."""
     if out_dir.exists():
@@ -215,6 +289,14 @@ def _export_fulgur_course102(
 
     bin_path = fulgur_repo / "bazel-bin" / "course" / "102-pbr-direct"
     if not bin_path.is_file():
+        if not build_fulgur:
+            logger.warning(
+                "Prebuilt fulgur binary not found at %s (pass --build-fulgur to build); "
+                "falling back to SoftwareRasterizer.",
+                bin_path,
+            )
+            _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
+            return
         try:
             bazel_env = dict(os.environ)
             bazel_env.setdefault(
@@ -230,13 +312,14 @@ def _export_fulgur_course102(
                     "build may be slower without shared cache.",
                     bazel_cache,
                 )
-            subprocess.run(
+            build_res = _run_subprocess_with_pgkill(
                 ["bazel", "build", "//course:102-pbr-direct"],
-                cwd=str(fulgur_repo),
+                cwd=fulgur_repo,
                 env=bazel_env,
-                check=True,
                 timeout=600,
             )
+            if build_res.returncode != 0:
+                raise subprocess.CalledProcessError(build_res.returncode, build_res.args)
         except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as exc:
             logger.warning(
                 "bazel build //course:102-pbr-direct failed (%s); "
@@ -273,12 +356,11 @@ def _export_fulgur_course102(
                 logger.info("Using Lavapipe software Vulkan ICD: %s", icd_path)
                 break
     try:
-        result = subprocess.run(
+        result = _run_subprocess_with_pgkill(
             cmd,
-            cwd=str(fulgur_repo),
+            cwd=fulgur_repo,
             env=env,
             capture_output=True,
-            text=True,
             timeout=300,
         )
         if result.returncode != 0:
@@ -311,6 +393,7 @@ def _export_fulgur_course102(
         for f in meta.get("frames", []):
             if "frame_index" in f:
                 f["timestamp_sec"] = f["frame_index"] / 24.0
+        _inject_frame_sha256s(out_dir, meta)
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
@@ -379,6 +462,7 @@ def _build_long_horizon_97f_from_base(
     meta_97["num_frames"] = 97
     meta_97["fps"] = 24.0
     meta_97["frames"] = frames_meta
+    _inject_frame_sha256s(out_97f_dir, meta_97)
     (out_97f_dir / "metadata.json").write_text(json.dumps(meta_97, indent=2), encoding="utf-8")
 
 
@@ -577,6 +661,7 @@ def _export_caelum_track_a_17f(
         for f_dict in meta.get("frames", []):
             f_idx = f_dict.get("frame_index", 0)
             f_dict["beauty_gt_file"] = f"beauty_{f_idx:06d}.exr"
+        _inject_frame_sha256s(out_dir, meta)
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
@@ -668,6 +753,12 @@ def main() -> int:
         default=None,
         help="Path to portable Colab tar.gz archive (defaults to {output_root}/synapse_colab_bundle_v1.tar.gz).",
     )
+    parser.add_argument(
+        "--build-fulgur",
+        action="store_true",
+        default=os.environ.get("SYNAPSE_BUILD_FULGUR", "").strip().lower() in ("1", "true", "yes"),
+        help="Build fulgur //course:102-pbr-direct via Bazel if binary is not already present.",
+    )
     args = parser.parse_args()
 
     out_root: Path = args.output_root
@@ -681,7 +772,12 @@ def main() -> int:
     dir_caelum_17f = out_root / "track_a_caelum" / "cornell_spheres_17f"
 
     print(f"[1/4] Exporting Track-B fulgur course_102_pbr_17f -> {dir_102_17f} ...")
-    _export_fulgur_course102(args.fulgur_repo, dir_102_17f, num_frames=17)
+    _export_fulgur_course102(
+        args.fulgur_repo,
+        dir_102_17f,
+        num_frames=17,
+        build_fulgur=bool(args.build_fulgur),
+    )
 
     print(f"[2/4] Building Track-B long-horizon course_102_pbr_97f -> {dir_102_97f} ...")
     _build_long_horizon_97f_from_base(dir_102_17f, dir_102_97f)
