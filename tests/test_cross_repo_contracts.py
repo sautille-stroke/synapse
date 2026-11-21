@@ -74,8 +74,11 @@ def _resolve_aether_root() -> Path | None:
         Path("H:/dervgen/aether"),
     ]
     for c in candidates:
-        if c.is_dir() and (c / "fgpp").is_dir():
-            return c
+        try:
+            if c.is_dir() and (c / "fgpp").is_dir():
+                return c
+        except OSError:
+            continue
     return None
 
 
@@ -88,8 +91,11 @@ def _resolve_render_farm_root() -> Path | None:
         Path("H:/dervgen/render-farm"),
     ]
     for c in candidates:
-        if c.is_dir() and (c / "internal" / "domain" / "models.go").is_file():
-            return c
+        try:
+            if c.is_dir() and (c / "internal" / "domain" / "models.go").is_file():
+                return c
+        except OSError:
+            continue
     return None
 
 
@@ -101,8 +107,11 @@ def _resolve_inspector_native_binary() -> Path | None:
         Path("/root/work/dervgen/synapse/tools/data-inspector/native/bazel-bin/data-inspector-native"),
     ]
     for c in candidates:
-        if c.is_file() and os.access(str(c), os.X_OK):
-            return c
+        try:
+            if c.is_file() and os.access(str(c), os.X_OK):
+                return c
+        except OSError:
+            continue
     return None
 
 

@@ -446,6 +446,11 @@ class TestHypothesisMeshValidationParity:
         perturb_y: float,
     ) -> None:
         """Perturbed healthy tetrahedron must yield identical results across Python and Native backends."""
+        from synapse.bridge.aether_bridge import has_aether_geo
+
+        if not has_aether_geo():
+            pytest.skip("aether_geo C++20 extension not available on pure-Python runner")
+
         verts = np.array(
             [
                 [scale + perturb_x, scale + perturb_y, scale],

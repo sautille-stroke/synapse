@@ -210,23 +210,24 @@ def _cmd_lora_train(
                 adapted = True
 
             for block in self.blocks:
+                blk: Any = block
                 sp = (
-                    block["spatial_attn"]["to_q"](h)
-                    + block["spatial_attn"]["to_k"](h)
-                    + block["spatial_attn"]["to_v"](h)
+                    blk["spatial_attn"]["to_q"](h)
+                    + blk["spatial_attn"]["to_k"](h)
+                    + blk["spatial_attn"]["to_v"](h)
                 ) / 3.0
                 h = h + sp
                 cr = (
-                    block["cross_attn"]["to_k"](h) + block["cross_attn"]["to_v"](h)
+                    blk["cross_attn"]["to_k"](h) + blk["cross_attn"]["to_v"](h)
                 ) / 2.0
                 h = h + cr
                 tm = (
-                    block["temporal_attn"]["to_q"](h)
-                    + block["temporal_attn"]["to_k"](h)
-                    + block["temporal_attn"]["to_v"](h)
+                    blk["temporal_attn"]["to_q"](h)
+                    + blk["temporal_attn"]["to_k"](h)
+                    + blk["temporal_attn"]["to_v"](h)
                 ) / 3.0
                 h = h + tm
-                h = h + block["ffn"]["linear"](h)
+                h = h + blk["ffn"]["linear"](h)
             out = self.out(h)
             if adapted:
                 n_orig = int(np.prod(orig_shape[1:]))

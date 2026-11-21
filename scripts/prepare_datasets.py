@@ -690,13 +690,21 @@ def _summarize_sequence(seq_dir: Path) -> dict[str, Any]:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _safe_exists(path_str: str) -> bool:
+    try:
+        return Path(path_str).exists()
+    except OSError:
+        return False
+
+
 DEFAULT_OUTPUT_ROOT = Path(
     os.environ.get(
         "SYNAPSE_DATASET_ROOT",
         os.environ.get(
             "DERVGEN_DATASETS",
             "/root/work/datasets/synapse"
-            if Path("/root/work/datasets/synapse").exists()
+            if _safe_exists("/root/work/datasets/synapse")
             else str(REPO_ROOT / "data" / "golden_datasets"),
         ),
     )
@@ -705,7 +713,7 @@ DEFAULT_FULGUR_REPO = Path(
     os.environ.get(
         "FULGUR_REPO",
         "/root/work/dervgen/fulgur"
-        if Path("/root/work/dervgen/fulgur").exists()
+        if _safe_exists("/root/work/dervgen/fulgur")
         else str(REPO_ROOT.parent / "fulgur"),
     )
 )
@@ -713,7 +721,7 @@ DEFAULT_CAELUM_REPO = Path(
     os.environ.get(
         "CAELUM_REPO",
         "/root/work/dervgen/caelum-core"
-        if Path("/root/work/dervgen/caelum-core").exists()
+        if _safe_exists("/root/work/dervgen/caelum-core")
         else str(REPO_ROOT.parent / "caelum-core"),
     )
 )
