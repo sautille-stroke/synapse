@@ -64,6 +64,7 @@ def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
             gate["is_watertight"] = (1.0, "eq")
             gate["num_degenerate_faces"] = (0.0, "eq")
             gate["self_intersecting_pairs"] = (0.0, "eq")
+            gate["floating_island_faces"] = (0.0, "eq")
         # Full 16-item profiles.py SSOT gate alignment
         for metric_name, thresh in p_dict.items():
             dir_str = _METRIC_DIRECTIONS.get(metric_name, _LOWER)
@@ -360,19 +361,22 @@ def evaluate_single_model(
     verts = mesh.vertices
     faces_arr = mesh.faces
     norms = mesh.normals
+    topo_verts, topo_faces = (
+        mesh.get_topology_mesh() if hasattr(mesh, "get_topology_mesh") else (verts, faces_arr)
+    )
 
     if log_fn:
         log_fn("  Running Tier-0 geometry gate...")
     require_wt = canonical_profile != "TRACK_B_VIDEO"
     geo_res = validate_mesh_geometry(
-        verts,
-        faces_arr,
+        topo_verts,
+        topo_faces,
         require_watertight=require_wt,
         backend=geometry_backend,
     )
     n_degenerate = len(geo_res.degenerate_face_indices)
     n_self_intersections = len(geo_res.self_intersecting_pairs)
-    n_boundary = count_boundary_edges(faces_arr)
+    n_boundary = count_boundary_edges(topo_faces)
 
     topology = TopologyResult(
         is_manifold=geo_res.is_manifold,
@@ -386,10 +390,7 @@ def evaluate_single_model(
 
     floating_island_faces = 0
     if geo_res.num_connected_components > 1:
-        if (
-            hasattr(geo_res, "floating_island_face_indices")
-            and geo_res.floating_island_face_indices
-        ):
+        if hasattr(geo_res, "floating_island_face_indices"):
             floating_island_faces = len(geo_res.floating_island_face_indices)
         else:
             floating_island_faces = max(
@@ -431,11 +432,22 @@ def evaluate_single_model(
     if reference_mesh is not None:
         if log_fn:
             log_fn("  Computing reference Chamfer / F-score / multi-view metrics...")
+        # Preserve physical metric world scale by default; if caller explicitly passed
+        # a normalized reference mesh (e.g. load_mesh(..., normalize=True)), align
+        # the evaluated mesh to the same normalized unit-sphere coordinate frame.
+        eval_verts = verts
+        if (
+            getattr(reference_mesh, "is_normalized", False)
+            and not getattr(mesh, "is_normalized", False)
+            and hasattr(mesh, "normalize")
+        ):
+            eval_verts = mesh.normalize().vertices
+
         # Area-weighted triangle surface sampling for vertex-density independence
         if hasattr(mesh, "faces") and len(mesh.faces) > 0:
-            src_pts = sample_mesh_surface(verts, faces_arr, num_samples=10000, seed=42)
+            src_pts = sample_mesh_surface(eval_verts, faces_arr, num_samples=10000, seed=42)
         else:
-            src_pts = subsample_point_cloud(verts, max_points=10000, seed=42)
+            src_pts = subsample_point_cloud(eval_verts, max_points=10000, seed=42)
 
         if hasattr(reference_mesh, "faces") and len(reference_mesh.faces) > 0:
             tgt_pts = sample_mesh_surface(

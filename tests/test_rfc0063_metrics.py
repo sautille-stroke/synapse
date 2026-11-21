@@ -203,6 +203,14 @@ class TestRoundtripMetrics3D:
         with pytest.raises(ValueError, match="Unsupported reduction"):
             chamfer_mm(pts, pts, reduction="max")  # type: ignore[arg-type]
 
+    def test_chamfer_mm_empty_returns_nan(self) -> None:
+        import math
+
+        empty = np.zeros((0, 3), dtype=np.float64)
+        pts = np.array([[0.0, 0.0, 0.0]], dtype=np.float64)
+        assert math.isnan(chamfer_mm(empty, pts))
+        assert math.isnan(chamfer_mm(pts, empty))
+
     def test_f_score_5mm_calibration(self) -> None:
         # Ground truth point cloud and reconstructed point cloud
         # Point 1 distance = 2 mm (<= 5mm -> inlier for both 1mm and 5mm? No, 2mm > 1mm, but <= 5mm)

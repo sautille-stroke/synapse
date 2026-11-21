@@ -428,3 +428,80 @@ class TestTorchBridge:
         np.testing.assert_array_equal(out.depth, frame.depth)
         assert out.world_normal is not None and frame.world_normal is not None
         np.testing.assert_array_equal(out.world_normal, frame.world_normal)
+
+    def test_tensors_to_frame_int64_cryptomatte_and_bfloat16(self) -> None:
+        torch = pytest.importorskip("torch")
+        from synapse.fgpp.torch_bridge import tensors_to_frame
+
+        frame = _make_frame(h=8, w=12)
+        tensors = {
+            "depth": torch.ones((8, 12), dtype=torch.bfloat16) * 2.5,
+            "cryptomatte_id": torch.arange(8 * 12, dtype=torch.int64).reshape(8, 12),
+        }
+        out = tensors_to_frame(tensors, frame.camera, frame_index=0)
+        assert out.depth.shape == (8, 12)
+        assert out.cryptomatte_id is not None
+        assert out.cryptomatte_id.shape == (8, 12)
+        assert out.cryptomatte_id.dtype == np.uint32
+        assert int(out.cryptomatte_id[0, 5]) == 5
+
+    def test_finite_reversed_z_and_vulkan_y_flip(self, tmp_path: Path) -> None:
+        import json
+
+        from synapse.fgpp.frame import CameraConvention, FGPPSequence
+
+        z_near, z_far = 0.2, 250.0
+        # Finite reversed-Z with Vulkan Y-flip (p11 < 0) and off-center cy=140 on height=200
+        h, w = 200, 320
+        fy, fx = 180.0, 180.0
+        cx, cy = 150.0, 140.0
+        proj = np.zeros((4, 4), dtype=np.float64)
+        proj[0, 0] = 2.0 * fx / w
+        proj[0, 2] = (w - 2.0 * cx) / w
+        proj[1, 1] = -2.0 * fy / h  # Vulkan Y-flip
+        proj[1, 2] = -(2.0 * cy - h) / h
+        proj[2, 2] = z_near / (z_far - z_near)
+        proj[2, 3] = (z_far * z_near) / (z_far - z_near)
+        proj[3, 2] = -1.0
+
+        conv = CameraConvention.detect(proj)
+        assert conv == CameraConvention.FULGUR_FINITE_REVERSED_Z
+        gl_proj = CameraConvention.to_opengl(proj, conv)
+        assert CameraConvention.detect(gl_proj) == CameraConvention.OPENGL
+
+        meta = {
+            "schema_version": "fgpp.v1.0",
+            "fps": 24.0,
+            "resolution": [w, h],
+            "frames": [
+                {
+                    "frame_index": 0,
+                    "view_matrix_col_major": np.eye(4, dtype=np.float64).T.reshape(-1).tolist(),
+                    "proj_matrix_col_major": proj.T.reshape(-1).tolist(),
+                }
+            ],
+        }
+        (tmp_path / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+        seq = FGPPSequence.load_metadata(tmp_path)
+        cam = seq.frames[0].camera
+        assert cam.z_near == pytest.approx(z_near, rel=1e-5)
+        assert cam.z_far == pytest.approx(z_far, rel=1e-5)
+        assert cam.cy == pytest.approx(cy, abs=1e-5)
+        assert cam.cx == pytest.approx(cx, abs=1e-5)
+
+    def test_strict_export_rejects_half_overflow_and_read_is_writable(self, tmp_path: Path) -> None:
+        from synapse.errors import ContractValidationError
+        from synapse.fgpp.io import export_fgpp, import_fgpp
+
+        frame = _make_frame(h=8, w=8)
+        seq = FGPPSequence(frames=[frame], fps=24.0, scene_id="writable_test")
+        out_dir = export_fgpp(seq, tmp_path / "ok", strict=True)
+        loaded = import_fgpp(out_dir, lazy=False)
+        assert isinstance(loaded, FGPPSequence)
+        assert loaded.frames[0].depth.flags.writeable
+        loaded.frames[0].depth[0, 0] = 9.9
+
+        bad = _make_frame(h=8, w=8)
+        bad.direct_radiance = np.full((8, 8, 3), 70000.0, dtype=np.float32)
+        with pytest.raises(ContractValidationError, match="float16 max"):
+            export_fgpp(FGPPSequence(frames=[bad]), tmp_path / "bad", strict=True)

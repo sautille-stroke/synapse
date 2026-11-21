@@ -137,13 +137,26 @@ def export_fgpp(
                     f"Strict export: frame {frame.frame_index} missing channels: {sorted(missing)}.",
                     agent_fix_hint="Provide all 15 FGPP channels or set strict=False.",
                 )
-            # Boundary value sanitization
-            if frame.depth is not None:
-                if not np.all(np.isfinite(frame.depth)):
-                    raise ContractValidationError(
-                        f"Strict export: frame {frame.frame_index} depth contains NaN/Inf.",
-                        agent_fix_hint="Sanitize depth with sanitize_fgpp_frame() before export.",
-                    )
+            # Boundary value sanitization across all float/half channels
+            _HALF_MAX = 65504.0
+            for group, ch_names in _COMPONENT_ORDER.items():
+                field_name = _GROUP_TO_FIELD[group]
+                arr = getattr(frame, field_name, None)
+                if arr is None:
+                    continue
+                _, _, pt = _CHANNEL_MAP[ch_names[0]]
+                if pt in (PixelType.FLOAT, PixelType.HALF):
+                    arr_f = np.asarray(arr, dtype=np.float64)
+                    if not bool(np.all(np.isfinite(arr_f))):
+                        raise ContractValidationError(
+                            f"Strict export: frame {frame.frame_index} {field_name} contains NaN/Inf.",
+                            agent_fix_hint="Sanitize channels with sanitize_fgpp_frame() before export.",
+                        )
+                    if pt == PixelType.HALF and arr_f.size > 0 and float(np.max(np.abs(arr_f))) > _HALF_MAX:
+                        raise ContractValidationError(
+                            f"Strict export: frame {frame.frame_index} {field_name} exceeds IEEE float16 max ({_HALF_MAX}).",
+                            agent_fix_hint="Clamp or tonemap HALF channel values within [-65504, 65504] before export.",
+                        )
 
     # Resolve compression — Imath.Compression is a special type, not plain int
     _comp_attr = compression.upper() + "_COMPRESSION"
@@ -337,16 +350,16 @@ def _read_exr_frame(
                             stacklevel=2,
                         )
                         arr = (
-                            np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32)
+                            np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).view(np.uint32).copy()
                         )
                     else:
-                        arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w)
+                        arr = np.frombuffer(raw_bytes, dtype=np.uint32).reshape(h, w).copy()
                     components.append(arr)
                 elif pt == PixelType.FLOAT:
-                    arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w)
+                    arr = np.frombuffer(raw_bytes, dtype=np.float32).reshape(h, w).copy()
                     components.append(arr)
                 elif pt == PixelType.HALF:
-                    arr = np.frombuffer(raw_bytes, dtype=np.float16).reshape(h, w)
+                    arr = np.frombuffer(raw_bytes, dtype=np.float16).reshape(h, w).copy()
                     components.append(arr)
 
             field_name = _GROUP_TO_FIELD[group]

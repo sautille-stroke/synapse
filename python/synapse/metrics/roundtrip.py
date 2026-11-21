@@ -96,10 +96,15 @@ def chamfer_mm(
     Returns:
         Symmetric Chamfer distance in **millimetres** (scalar float).
     """
+    if reduction not in ("mean", "sum"):
+        raise ValueError(
+            f"Unsupported reduction: {reduction!r}. Choose 'mean' or 'sum'."
+        )
+
     a = np.asarray(points_a, dtype=np.float64)
     b = np.asarray(points_b, dtype=np.float64)
     if len(a) == 0 or len(b) == 0:
-        return 0.0
+        return float("nan")
 
     from synapse.bridge.aether_bridge import get_aether_geo
 
@@ -107,6 +112,8 @@ def chamfer_mm(
     if geo is not None:
         try:
             return float(geo.compute_chamfer_distance(a, b, reduction=reduction))
+        except ValueError:
+            raise
         except Exception:
             pass
 
