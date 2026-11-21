@@ -58,6 +58,17 @@ def _cmd_refine_anatomical(
     import uuid
 
     session_id = str(uuid.uuid4())
+
+    # --- PR-165: --shot-id HITL pre-validation ---
+    shot_id = getattr(args, "shot_id", None)
+    if shot_id:
+        # Validate shot-id format early to avoid orphan HITL tracking
+        if not isinstance(shot_id, str) or not shot_id.strip():
+            raise ContractValidationError(
+                f"Invalid --shot-id value: {shot_id!r}. Must be a non-empty string.",
+                agent_fix_hint="Provide a valid shot identifier, e.g. '--shot-id shot_001'.",
+            )
+
     payload = build_refine_session_payload(
         session_id=session_id,
         regions=region_names,
@@ -252,6 +263,14 @@ def register_refine_subparser(
             "POISSON_GRADIENT",
         ],
         help="Fusion strategy (default: LAPLACIAN_FREQUENCY)",
+    )
+    refine_anatomical.add_argument(
+        "--shot-id",
+        default=None,
+        help=(
+            "Shot identifier for HITL budget tracking.  Required for "
+            "production use; omit only for quick local tests."
+        ),
     )
     return cast(argparse.ArgumentParser, refine_parser)
 

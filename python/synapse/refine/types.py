@@ -43,6 +43,13 @@ class RefinementROI:
         crop_acescg: Cropped image in linear ACEScg float32, shape ``(H, W, 3)``.
         region: Anatomical region type.
         confidence: Detection confidence score in ``[0, 1]``.
+        anatomical_quality_score: Anatomical quality assessment score in
+            ``[0, 1]``.  Unlike ``confidence`` (which measures how certain
+            the detector is that this *is* an anatomical region),
+            ``anatomical_quality_score`` measures how *good* the anatomy
+            already looks (e.g. correct finger count, symmetric face).
+            Defaults to ``0.0`` so that ROIs are **not** bypassed unless
+            an explicit quality assessment has been performed.
         frame_index: Source frame index.
     """
 
@@ -50,6 +57,7 @@ class RefinementROI:
     crop_acescg: np.ndarray  # shape (H, W, 3) float32 linear ACEScg
     region: AnatomicalRegion
     confidence: float = 0.0
+    anatomical_quality_score: float = 0.0
     frame_index: int = 0
 
     def to_display_srgb_u8(self) -> np.ndarray:

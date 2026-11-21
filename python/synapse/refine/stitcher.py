@@ -193,11 +193,24 @@ class ScalpelStitcher:
                     ring_width_px=ring,
                 )
                 matched_acescg = _srgb_to_acescg_f32(matched_srgb)
-                # Preserve linear ACEScg HDR values (> 1.0) while preserving color hue
-                # Replace whole pixel (all 3 channels) for any HDR pixel to prevent per-channel hue distortion
+                # Preserve linear ACEScg HDR values (> 1.0) with smooth
+                # luminance-ratio scaling to avoid hard jumps at exposure
+                # band boundaries.
                 hdr_pixel_mask = np.any(composite_full > 1.0, axis=-1)
                 if np.any(hdr_pixel_mask):
-                    matched_acescg[hdr_pixel_mask] = composite_full[hdr_pixel_mask]
+                    # Compute smooth blending weight based on max channel
+                    # luminance so that the transition from SDR→HDR is
+                    # gradual, not a binary hard-step.
+                    max_channel = np.max(composite_full, axis=-1)  # (H, W)
+                    # Soft ramp from 1.0 → 2.0: weight goes 0 → 1
+                    hdr_weight = np.clip(max_channel - 1.0, 0.0, 1.0)
+                    hdr_weight_3 = hdr_weight[..., np.newaxis]  # (H, W, 1)
+                    # Smooth blend between matched (SDR-corrected) and
+                    # original composite (preserving HDR radiance)
+                    matched_acescg = (
+                        (1.0 - hdr_weight_3) * matched_acescg
+                        + hdr_weight_3 * composite_full
+                    ).astype(np.float32)
 
                 # -------------------------------------------------------
                 # 4. Laplacian pyramid blend in linear ACEScg.
@@ -670,15 +683,21 @@ def _temporal_ema_blend(
     # Warp previous composite by flow field.
     warped_prev = _backward_warp_bilinear(prev_composite, flow)
 
-    # Compute effective alpha — decay when flow is large.
+    # Compute effective alpha — INCREASE current-frame weight when flow is large
+    # to prevent ghosting.  Previously this REDUCED w_curr to 0.30, which is
+    # backwards: fast motion means the previous frame is unreliable, so the
+    # current frame should be trusted MORE (w_curr → 1.0), not less.
     flow_mag = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
     mean_mag = float(np.mean(flow_mag))
     effective_alpha = ema_alpha
     if mean_mag > max_flow_magnitude:
-        effective_alpha = max(
-            0.30,
-            ema_alpha * (max_flow_magnitude / max(mean_mag, 1e-6)),
+        # Scale alpha UP towards 1.0 — trust current frame fully under
+        # fast motion.  Ratio > 1 means large flow ⇒ alpha → 1.0.
+        effective_alpha = min(
+            1.0,
+            ema_alpha + (1.0 - ema_alpha) * (mean_mag / max(max_flow_magnitude, 1e-6) - 1.0),
         )
+        effective_alpha = max(effective_alpha, ema_alpha)  # never go below base
 
     # EMA blend.
     blended = effective_alpha * current.astype(np.float64) + (

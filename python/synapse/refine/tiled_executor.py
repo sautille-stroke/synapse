@@ -19,8 +19,16 @@ class TiledBypassExecutor:
     """Extracts tiles from frames, skips healthy ones, batches defective ones.
 
     A tile is considered *healthy* when its quality score (supplied by
-    ``quality_fn`` or falling back to ``RefinementROI.confidence``) exceeds
+    ``quality_fn`` or falling back to
+    ``RefinementROI.anatomical_quality_score``) exceeds
     ``health_threshold``, meaning no refinement is needed.
+
+    .. important::
+       ``RefinementROI.confidence`` is the *detection* confidence (how
+       certain the detector is that the region *is* a hand/face), while
+       ``anatomical_quality_score`` measures how *good* the anatomy
+       looks.  Using detection confidence for bypass decisions would
+       skip refinement on every high-confidence detection.
 
     Args:
         tile_size: Side length of each square tile in pixels.
@@ -60,8 +68,10 @@ class TiledBypassExecutor:
 
         For each ROI the quality score is determined by calling
         ``quality_fn(roi.crop_acescg)`` when a quality function is provided,
-        otherwise ``roi.confidence`` is used as a proxy.  ROIs with a score
-        *strictly above* the health threshold are bypassed.
+        otherwise ``roi.anatomical_quality_score`` is used (NOT
+        ``roi.confidence`` — detection confidence must not be used for
+        bypass decisions).  ROIs with a score *strictly above* the
+        health threshold are bypassed.
 
         Args:
             frames: Video tensor of shape ``(T, H, W, 3)`` in linear ACEScg.
@@ -98,7 +108,11 @@ class TiledBypassExecutor:
                 else:
                     score = quality_fn(crop)
             else:
-                score = roi.confidence
+                # Use anatomical_quality_score, NOT detection confidence.
+                # confidence measures detector certainty (e.g. 0.9 default);
+                # anatomical_quality_score measures actual anatomy quality
+                # (default 0.0 — always refine unless explicitly assessed).
+                score = roi.anatomical_quality_score
 
             if score > self._health_threshold:
                 bypass_count += 1

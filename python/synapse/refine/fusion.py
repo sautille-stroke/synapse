@@ -63,14 +63,18 @@ def _fuse_laplacian_frequency(
     weights: np.ndarray,
     n_levels: int = 4,
 ) -> np.ndarray:
-    """Laplacian pyramid frequency-domain fusion.
+    """Frequency-adaptive Laplacian pyramid fusion.
 
-    Decomposes each candidate into a multi-level Laplacian pyramid,
-    blends per level using the supplied weights, and reconstructs.
+    Decomposes each candidate into a multi-level Laplacian pyramid and
+    blends with **frequency-adaptive** weights: at fine (high-frequency)
+    levels, sharper candidates receive higher weight; at coarse
+    (low-frequency) levels, smoother candidates receive higher weight.
 
-    This preserves high-frequency detail from the candidate with the
-    highest weight while maintaining smooth low-frequency structure
-    from the weighted average.
+    Sharpness is measured per-candidate per-level as the L1 norm of the
+    Laplacian band, which directly reflects the energy present at that
+    frequency.  The per-level sharpness modulates the input ``weights``
+    so that the fusion is no longer a uniform linear interpolation at
+    every level.
     """
     h, w, c = candidates[0].shape
     min_dim = min(h, w)
@@ -79,13 +83,47 @@ def _fuse_laplacian_frequency(
 
     pyramids = [build_laplacian_pyramid(cand, n_levels) for cand in candidates]
     n_entries = len(pyramids[0])
+    n_cands = len(candidates)
 
     blended_pyr: list[np.ndarray] = []
     for level in range(n_entries):
-        accum = np.zeros_like(pyramids[0][level])
-        for k, pyr in enumerate(pyramids):
-            accum += weights[k] * pyr[level]
-        blended_pyr.append(accum)
+        is_residual = level == n_entries - 1  # last entry is low-freq residual
+
+        if is_residual:
+            # Residual (coarsest): plain weighted average is correct
+            accum = np.zeros_like(pyramids[0][level])
+            for k in range(n_cands):
+                accum += weights[k] * pyramids[k][level]
+            blended_pyr.append(accum)
+        else:
+            # Laplacian band: frequency-adaptive weighting
+            # Measure sharpness (L1 energy) of each candidate at this level
+            sharpness = np.zeros(n_cands, dtype=np.float64)
+            for k in range(n_cands):
+                sharpness[k] = float(np.mean(np.abs(pyramids[k][level]))) + 1e-8
+
+            # Fine levels (low level index) → favour sharp candidates
+            # Coarse levels (high level index) → favour smooth candidates
+            # Exponent: positive for fine (favour high energy), negative
+            # for coarse (favour low energy).  Linear schedule from +1 to -1.
+            if n_entries > 2:
+                alpha = 1.0 - 2.0 * level / (n_entries - 2)
+            else:
+                alpha = 1.0
+            modulated = sharpness ** alpha
+
+            # Combine with input weights
+            level_weights = np.asarray(weights, dtype=np.float64) * modulated
+            level_sum = float(np.sum(level_weights))
+            if level_sum > 1e-10:
+                level_weights /= level_sum
+            else:
+                level_weights = np.asarray(weights, dtype=np.float64)
+
+            accum = np.zeros_like(pyramids[0][level])
+            for k in range(n_cands):
+                accum += level_weights[k] * pyramids[k][level]
+            blended_pyr.append(accum)
 
     return reconstruct_laplacian_pyramid(blended_pyr)
 
@@ -96,32 +134,51 @@ def _fuse_cascade(
 ) -> np.ndarray:
     """Cascaded multi-resolution progressive fusion.
 
-    Begins with the lowest-weighted candidate at coarse resolution and
-    progressively blends in higher-weighted candidates at finer
-    resolutions using multiscale Gaussian pyramid residual synthesis.
+    Builds a true cascade: starts with the low-frequency content from
+    the *worst* (lowest-weight) candidate, then progressively
+    accumulates high-frequency residuals from better candidates at
+    increasingly fine scales.
+
+    Unlike a naïve blend (which degenerates to ``(1-α)*result + α*cand``
+    because Gaussian blur/residual terms cancel), this cascade
+    accumulates detail *additively* — each candidate contributes only
+    its high-frequency band at the resolution tier assigned to it,
+    producing genuine multi-resolution synthesis.
     """
     order = np.argsort(weights)
     h, w, c = candidates[0].shape
 
-    result = candidates[order[0]].copy()
     n_cands = len(candidates)
     if n_cands == 1:
-        return np.asarray(result)
+        return np.asarray(candidates[order[0]].copy())
 
+    # Start with low-frequency baseline from the worst candidate
+    worst_sigma = max(2.0 ** n_cands, 2.0)
+    result = separable_gaussian(candidates[order[0]].copy(), worst_sigma)
+
+    # Progressively add high-frequency detail from better candidates
     for step in range(1, n_cands):
         cand_idx = order[step]
-        alpha = float(weights[cand_idx] / max(float(np.sum(weights)), 1e-8))
-        alpha = float(np.clip(alpha, 0.0, 1.0))
-
         cand = candidates[cand_idx]
-        sigma = max(2.0 ** (n_cands - step), 1.0)
-        coarse_res = separable_gaussian(result, sigma)
-        coarse_cand = separable_gaussian(cand, sigma)
 
-        blended_coarse = (1.0 - alpha) * coarse_res + alpha * coarse_cand
-        detail_cand = cand - coarse_cand
-        detail_res = result - coarse_res
-        result = blended_coarse + (1.0 - alpha) * detail_res + alpha * detail_cand
+        # This candidate contributes detail at a specific frequency tier.
+        # Higher-weight candidates contribute finer detail (smaller sigma).
+        sigma = max(2.0 ** (n_cands - step), 1.0)
+
+        if step < n_cands - 1:
+            # Extract the band-pass: detail between this tier and the next
+            sigma_next = max(2.0 ** (n_cands - step - 1), 1.0)
+            coarse = separable_gaussian(cand, sigma)
+            fine = separable_gaussian(cand, sigma_next)
+            band_detail = fine - coarse
+        else:
+            # Finest tier: everything above the current sigma
+            coarse = separable_gaussian(cand, sigma)
+            band_detail = cand - coarse
+
+        # Weight the contribution by the candidate's normalised weight
+        w_k = float(weights[cand_idx])
+        result = result + w_k * band_detail
 
     return np.asarray(result)
 
@@ -226,21 +283,53 @@ def _fuse_poisson_gradient(
     weights: np.ndarray,
     n_iterations: int = 200,
 ) -> np.ndarray:
-    """Gradient-domain Poisson blending fusion with aligned centered differences."""
+    """Gradient-domain Poisson blending fusion with mixed gradients.
+
+    Implements proper Poisson blending: for each pixel, selects the
+    gradient (from any candidate) with the *largest magnitude* (mixed
+    gradient approach), weighted by candidate weights.  Then solves the
+    Poisson equation via Jacobi iteration with Dirichlet boundary
+    conditions from the weighted average.
+
+    The mixed-gradient approach ensures that the strongest edges from
+    all candidates are preserved in the fused result, unlike simple
+    weighted-average gradients which blur competing edges.
+    """
     h, w, c = candidates[0].shape
 
+    # Compute per-candidate forward-difference gradients
+    n_cands = len(candidates)
+    cand_gx = []
+    cand_gy = []
+    for cand in candidates:
+        gx = np.zeros_like(cand)
+        gy = np.zeros_like(cand)
+        gx[:, :-1, :] = cand[:, 1:, :] - cand[:, :-1, :]
+        gy[:-1, :, :] = cand[1:, :, :] - cand[:-1, :, :]
+        cand_gx.append(gx)
+        cand_gy.append(gy)
+
+    # Mixed gradient selection: at each pixel, pick the gradient with
+    # the largest weighted magnitude across candidates
     target_gx = np.zeros_like(candidates[0])
     target_gy = np.zeros_like(candidates[0])
 
-    for k, cand in enumerate(candidates):
-        gx = np.zeros_like(cand)
-        gy = np.zeros_like(cand)
-        # Forward-difference gradient (proper adjoint pair with backward-diff divergence)
-        gx[:, :-1, :] = cand[:, 1:, :] - cand[:, :-1, :]
-        gy[:-1, :, :] = cand[1:, :, :] - cand[:-1, :, :]
+    # Compute weighted gradient magnitudes per candidate
+    gx_mag = np.zeros((n_cands, h, w), dtype=np.float64)
+    gy_mag = np.zeros((n_cands, h, w), dtype=np.float64)
+    for k in range(n_cands):
+        gx_mag[k] = weights[k] * np.mean(np.abs(cand_gx[k]), axis=-1)
+        gy_mag[k] = weights[k] * np.mean(np.abs(cand_gy[k]), axis=-1)
 
-        target_gx += weights[k] * gx
-        target_gy += weights[k] * gy
+    # Select gradient from the candidate with strongest weighted magnitude
+    best_gx_idx = np.argmax(gx_mag, axis=0)  # (H, W)
+    best_gy_idx = np.argmax(gy_mag, axis=0)  # (H, W)
+
+    for k in range(n_cands):
+        mask_gx = best_gx_idx == k
+        mask_gy = best_gy_idx == k
+        target_gx[mask_gx] = cand_gx[k][mask_gx]
+        target_gy[mask_gy] = cand_gy[k][mask_gy]
 
     # Backward-difference divergence (adjoint of forward-diff gradient)
     div = np.zeros_like(candidates[0])
