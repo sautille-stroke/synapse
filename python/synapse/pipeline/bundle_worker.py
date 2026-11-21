@@ -250,72 +250,15 @@ class BundleManifest(BaseModel):
                 ),
             )
 
-        # Validate asset_manifest SHA-256 checksums
-        # Accept both ``path`` and ``logical_path`` keys; also allow
-        # ``size_bytes`` and ``payload: null`` without error.
+        # Defer asset_manifest SHA-256 validation until after workspace
+        # sandbox is established (see below) to prevent reads of
+        # arbitrary host files outside the sandbox.
         asset_manifest = raw.get("asset_manifest", [])
-        for entry in asset_manifest:
-            if not isinstance(entry, dict):
-                continue
-            expected_sha = entry.get("sha256", "")
-            asset_path = entry.get("path", "") or entry.get("logical_path", "")
-            if expected_sha and asset_path:
-                p = Path(asset_path)
-                if p.is_file():
-                    actual = _compute_sha256(p)
-                    if actual != expected_sha:
-                        raise AssetNotFoundError(
-                            f"SHA-256 mismatch for asset '{asset_path}': "
-                            f"expected {expected_sha[:16]}..., "
-                            f"got {actual[:16]}...",
-                            agent_fix_hint=(
-                                f"Re-download or re-export '{asset_path}' "
-                                "with the correct contents."
-                            ),
-                        )
-                elif not p.exists():
-                    raise AssetNotFoundError(
-                        f"Asset file not found: {asset_path!r}",
-                        agent_fix_hint=(
-                            f"Ensure '{asset_path}' exists on disk before submitting the JobBundle."
-                        ),
-                    )
 
-        # Also check input_sha256s if present — search in scene_spec,
-        # inputs, and payload (not just payload).
-        input_sha256s: dict[str, str] = raw.get("input_sha256s", {})
         scene_spec_raw = raw.get("scene_spec", {}) or {}
         payload_raw = raw.get("payload", {}) or {}
         inputs_raw = raw.get("inputs", {}) or {}
-
-        for key, expected_sha in input_sha256s.items():
-            # Try to resolve the actual file path from scene_spec, inputs, then payload
-            asset_path = (
-                scene_spec_raw.get(key, "")
-                or inputs_raw.get(key, "")
-                or payload_raw.get(key, "")
-            )
-            if expected_sha and asset_path:
-                p = Path(str(asset_path))
-                if p.is_file():
-                    actual = _compute_sha256(p)
-                    if actual != expected_sha:
-                        raise AssetNotFoundError(
-                            f"SHA-256 mismatch for input '{key}' "
-                            f"({asset_path}): expected {expected_sha[:16]}..., "
-                            f"got {actual[:16]}...",
-                            agent_fix_hint=(
-                                f"Re-download or re-export '{asset_path}' "
-                                "with the correct contents."
-                            ),
-                        )
-                elif not p.exists():
-                    raise AssetNotFoundError(
-                        f"Input file not found for '{key}': {asset_path!r}",
-                        agent_fix_hint=(
-                            f"Ensure '{asset_path}' exists on disk before submitting the JobBundle."
-                        ),
-                    )
+        input_sha256s: dict[str, str] = raw.get("input_sha256s", {})
 
         # Build normalised inputs/outputs/params from scene_spec + payload
         output_sink_raw = raw.get("output_sink", {}) or {}
@@ -352,16 +295,23 @@ class BundleManifest(BaseModel):
         if isinstance(payload_raw, dict):
             params.update(payload_raw)
 
-        # Parse OutputSink and map to outputs
+        # Parse OutputSink and map actual file paths to outputs
         if isinstance(output_sink_raw, dict):
             try:
                 output_sink = OutputSink.model_validate(output_sink_raw)
             except Exception:
                 output_sink = None
 
+            # Only extract values that look like file paths, not format
+            # strings like "mp4" or channel lists
+            _OUTPUTSINK_META_KEYS = frozenset({
+                "format", "channels", "write_capability",
+            })
             for k, v in output_sink_raw.items():
-                if isinstance(v, str):
-                    outputs[k] = v
+                if isinstance(v, str) and k not in _OUTPUTSINK_META_KEYS:
+                    # Only treat as a path if it contains a separator or extension
+                    if os.sep in v or "/" in v or "." in v:
+                        outputs[k] = v
 
             # Store parsed output_sink metadata in params for downstream access
             if output_sink is not None:
@@ -403,6 +353,11 @@ class BundleManifest(BaseModel):
         # Validate traceparent format if present
         if traceparent and not _TRACEPARENT_RE.match(traceparent):
             traceparent = None  # Silently drop invalid traceparent from upstream
+
+        # Propagate asset_manifest into params so downstream stages can
+        # perform deferred SHA-256 validation inside the workspace sandbox.
+        if asset_manifest:
+            params.setdefault("_asset_manifest", asset_manifest)
 
         return cls(
             schema_version="synapse.job_bundle.v1.0",
@@ -1189,6 +1144,75 @@ class JobBundleWorker:
                             agent_fix_hint=(
                                 f"Ensure all params paths are within "
                                 f"the workspace root '{self.workspace_root}'."
+                            ),
+                        )
+
+        # ---- Deferred SHA-256 validation (after sandbox is enforced) ----
+        # The asset_manifest was deferred from from_rfc0039_job_bundle()
+        # so it only reads files inside the established workspace sandbox.
+        deferred_manifest = manifest.params.get("_asset_manifest", [])
+        if deferred_manifest:
+            from synapse.errors import AssetNotFoundError
+
+            for entry in deferred_manifest:
+                if not isinstance(entry, dict):
+                    continue
+                expected_sha = entry.get("sha256", "")
+                asset_path = entry.get("path", "") or entry.get("logical_path", "")
+                if expected_sha and asset_path:
+                    p = Path(asset_path).resolve()
+                    # Enforce sandbox for asset paths too
+                    if self.workspace_root is not None:
+                        if not p.is_relative_to(self.workspace_root):
+                            return ResultManifest(
+                                job_id=manifest.job_id,
+                                stage=manifest.stage,
+                                status="error",
+                                exit_code=10,
+                                error_type="ContractValidationError",
+                                message=(
+                                    f"Asset path escapes workspace sandbox: "
+                                    f"'{asset_path}' resolves to '{p}' which is "
+                                    f"outside workspace root '{self.workspace_root}'."
+                                ),
+                                timings={"total_seconds": time.monotonic() - t_start},
+                                agent_fix_hint=(
+                                    f"Ensure all asset paths are within "
+                                    f"the workspace root '{self.workspace_root}'."
+                                ),
+                            )
+                    if p.is_file():
+                        actual = _compute_sha256(p)
+                        if actual != expected_sha:
+                            return ResultManifest(
+                                job_id=manifest.job_id,
+                                stage=manifest.stage,
+                                status="error",
+                                exit_code=20,
+                                error_type="AssetNotFoundError",
+                                message=(
+                                    f"SHA-256 mismatch for asset '{asset_path}': "
+                                    f"expected {expected_sha[:16]}..., "
+                                    f"got {actual[:16]}..."
+                                ),
+                                timings={"total_seconds": time.monotonic() - t_start},
+                                agent_fix_hint=(
+                                    f"Re-download or re-export '{asset_path}' "
+                                    "with the correct contents."
+                                ),
+                            )
+                    elif not p.exists():
+                        return ResultManifest(
+                            job_id=manifest.job_id,
+                            stage=manifest.stage,
+                            status="error",
+                            exit_code=20,
+                            error_type="AssetNotFoundError",
+                            message=f"Asset file not found: {asset_path!r}",
+                            timings={"total_seconds": time.monotonic() - t_start},
+                            agent_fix_hint=(
+                                f"Ensure '{asset_path}' exists on disk "
+                                "before submitting the JobBundle."
                             ),
                         )
 

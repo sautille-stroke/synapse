@@ -135,7 +135,15 @@ class PersistentHitlLedger:
         self.ledger_path = Path(ledger_path)
 
     def _lock_and_read(self) -> tuple[dict[str, Any], Any]:
-        """Read state with exclusive or shared lock."""
+        """Read state with exclusive file lock.
+
+        Uses ``fcntl`` on POSIX and ``msvcrt`` on Windows for
+        cross-platform file locking.
+
+        Raises:
+            ContractValidationError: If the existing ledger file contains
+                corrupted / unparseable JSON (fail-closed).
+        """
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
         lock_file = self.ledger_path.with_suffix(".lock")
         f = open(lock_file, "a+", encoding="utf-8")  # noqa: SIM115
@@ -143,15 +151,39 @@ class PersistentHitlLedger:
             import fcntl
 
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        except (ImportError, OSError):
+        except ImportError:
+            # Windows: use msvcrt locking
+            try:
+                import msvcrt
+
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            except (ImportError, OSError):
+                pass
+        except OSError:
             pass
 
         data: dict[str, Any] = {}
         if self.ledger_path.is_file():
-            try:
-                data = json.loads(self.ledger_path.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
+            raw_text = self.ledger_path.read_text(encoding="utf-8")
+            if raw_text.strip():
+                try:
+                    data = json.loads(raw_text)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    # Fail-Closed: corrupted ledger must NOT silently reset
+                    # to zero — that would bypass the circuit breaker.
+                    try:
+                        self._unlock(f)
+                    except Exception:
+                        pass
+                    raise ContractValidationError(
+                        f"Corrupted HITL ledger file at '{self.ledger_path}': {exc}. "
+                        "Refusing to reset timer to 0 (fail-closed).",
+                        agent_fix_hint=(
+                            f"Inspect and repair or delete the corrupted ledger file "
+                            f"at '{self.ledger_path}', then retry."
+                        ),
+                    ) from exc
         return data, f
 
     def _unlock(self, lock_handle: Any) -> None:
@@ -160,7 +192,15 @@ class PersistentHitlLedger:
             import fcntl
 
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-        except (ImportError, OSError):
+        except ImportError:
+            try:
+                import msvcrt
+
+                lock_handle.seek(0)
+                msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
+            except (ImportError, OSError):
+                pass
+        except OSError:
             pass
         lock_handle.close()
 
@@ -203,18 +243,22 @@ class PersistentHitlLedger:
             )
 
         data, handle = self._lock_and_read()
-        group_id = record.intent_group_id
-        entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
-        entry["elapsed_seconds"] += elapsed
-        entry["records"].append(
-            {
-                "intent": record.intent,
-                "elapsed_seconds": record.elapsed_seconds,
-                "feedback": record.feedback,
-                "actions": record.actions,
-            }
-        )
-        total_elapsed = float(entry["elapsed_seconds"])
+        try:
+            group_id = record.intent_group_id
+            entry = data.setdefault(group_id, {"elapsed_seconds": 0.0, "records": []})
+            entry["elapsed_seconds"] += elapsed
+            entry["records"].append(
+                {
+                    "intent": record.intent,
+                    "elapsed_seconds": record.elapsed_seconds,
+                    "feedback": record.feedback,
+                    "actions": record.actions,
+                }
+            )
+            total_elapsed = float(entry["elapsed_seconds"])
+        except Exception:
+            self._unlock(handle)
+            raise
         self._unlock_and_write(data, handle)
 
         evaluate_hitl_circuit_breaker(total_elapsed, max_seconds=max_seconds, domain=domain)
