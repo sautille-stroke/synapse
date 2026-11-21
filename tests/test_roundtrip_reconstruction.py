@@ -35,7 +35,7 @@ from synapse.metrics.roundtrip import (
 from synapse.recon.delight import delight_multiview_albedo
 from synapse.recon.types import CameraExtrinsics, MeshGeometry
 
-pytestmark = [pytest.mark.slow, pytest.mark.xdist_group(name="roundtrip")]
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group(name="roundtrip_recon")]
 
 # ---------------------------------------------------------------------------
 # Synthetic data generators

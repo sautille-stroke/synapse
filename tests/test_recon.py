@@ -613,6 +613,7 @@ class TestReconPipelineEndToEnd:
 
         return verts.astype(np.float32), faces
 
+    @pytest.mark.slow
     def test_pipeline_execution(self) -> None:
         """Runs full 5-stage reconstruction flow on synthetic sequence."""
         from synapse.recon.types import MeshGeometry
@@ -666,6 +667,7 @@ class TestReconPipelineEndToEnd:
         assert res.telemetry["kinematics"]["kinematics_status"] == "skipped_no_skeleton"
         assert res.delight is not None
 
+    @pytest.mark.slow
     def test_pipeline_with_skeleton_template(self) -> None:
         """Pipeline with a real skeleton template produces valid kinematics."""
         from synapse.recon.types import MeshGeometry
