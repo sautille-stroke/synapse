@@ -48,7 +48,9 @@ struct InspectorShmHeader {
   std::atomic<float> fps;             ///< Measured FPS (offset 32).
   std::atomic<float> deltaTime;       ///< Last frame delta in seconds (offset 36).
   std::atomic<uint8_t> debugView;     ///< Active debug view mode (offset 40).
-  uint8_t reserved[23];              ///< Pad to 64 bytes (offset 41..63).
+  uint8_t _pad0[3];                   ///< Alignment padding (offset 41..43).
+  std::atomic<uint32_t> generation;   ///< Resize generation counter (offset 44). Bumped on resizeViewport.
+  uint8_t reserved[16];              ///< Pad to 64 bytes (offset 48..63).
 };
 
 static_assert(sizeof(InspectorShmHeader) == 64,
@@ -73,8 +75,10 @@ static_assert(offsetof(InspectorShmHeader, deltaTime) == 36,
               "deltaTime offset must be 36");
 static_assert(offsetof(InspectorShmHeader, debugView) == 40,
               "debugView offset must be 40");
-static_assert(offsetof(InspectorShmHeader, reserved) == 41,
-              "reserved offset must be 41");
+static_assert(offsetof(InspectorShmHeader, generation) == 44,
+              "generation offset must be 44");
+static_assert(offsetof(InspectorShmHeader, reserved) == 48,
+              "reserved offset must be 48");
 
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "std::atomic<uint32_t> must be lock-free for cross-process SHM");
@@ -136,6 +140,12 @@ class InspectorShmServer {
 
   /// @brief Get current raw Seqlock sequence number (even = stable, odd = writing).
   [[nodiscard]] uint64_t sequenceNumber() const noexcept;
+
+  /// @brief Bump the resize generation counter. Called by resizeViewport()
+  /// to signal the reader that the SHM region has been recreated at a new
+  /// resolution. The reader resets _lastFrameReady on generation change
+  /// to unfreeze the viewport.
+  void bumpGeneration() noexcept;
 
   /// @brief Total SHM size in bytes for the current resolution.
   [[nodiscard]] size_t totalSize() const noexcept { return m_shm.size(); }

@@ -261,4 +261,10 @@ uint64_t InspectorShmServer::sequenceNumber() const noexcept {
   return hdr->frameReady.load(std::memory_order_acquire);
 }
 
+void InspectorShmServer::bumpGeneration() noexcept {
+  if (!m_shm.isValid()) return;
+  auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  hdr->generation.fetch_add(1u, std::memory_order_release);
+}
+
 }  // namespace synapse::inspector
