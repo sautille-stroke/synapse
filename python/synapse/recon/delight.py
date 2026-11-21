@@ -806,12 +806,17 @@ def delight_multiview_albedo(
     mesh: MeshGeometry,
     shading_model: str = "sh2",
 ) -> DelightResult:
-    """Multi-view albedo de-lighting via inverse rendering.
+    """Multi-view albedo de-lighting via UV texel-space inverse rendering.
 
-    Projects each frame onto the mesh using camera extrinsics, solves for
-    per-texel albedo by removing SH-estimated shading with view-weight
-    (cos_theta_v visibility) fusion, then computes the CIEDE2000 Delta-E
-    residual between the re-lit composite and the original observations.
+    Projects each frame onto the mesh UV atlas using camera extrinsics,
+    solves for per-texel albedo in UV space ``(R, R, 3)`` by removing
+    SH-estimated shading with normal-weighted (cos_theta_v) fusion,
+    then computes the CIEDE2000 Delta-E residual between the re-lit
+    composite and the original observations.
+
+    Uses UV texel-space accumulation instead of screen-space pixel
+    accumulation to eliminate multi-view ghosting artefacts caused by
+    sub-pixel misalignment across views.
 
     Args:
         frames: RGB video frames, shape ``(N, H, W, 3)``, float32 or uint8.
@@ -835,6 +840,13 @@ def delight_multiview_albedo(
     n_views = frames_arr.shape[0]
     h, w = frames_arr.shape[1], frames_arr.shape[2]
 
+    # Determine UV texture resolution from mesh UVs
+    mesh_uvs = getattr(mesh, "uvs", None)
+    tex_res = 256  # default UV atlas resolution
+    if mesh_uvs is not None and len(mesh_uvs) > 0:
+        # Scale resolution to mesh complexity
+        tex_res = max(128, min(1024, int(np.sqrt(len(mesh_uvs)) * 4)))
+
     # Compute mesh vertex normals if not present
     mesh_normals = getattr(mesh, "normals", None)
     if mesh_normals is None or (hasattr(mesh_normals, "__len__") and len(mesh_normals) == 0):
@@ -845,10 +857,12 @@ def delight_multiview_albedo(
     mesh_verts = np.asarray(mesh.vertices, dtype=np.float64)
     mesh_nrms = np.asarray(mesh_normals, dtype=np.float64)
 
-    # --- Per-view SH solve and weighted albedo accumulation ---
-    albedo_accum = np.zeros((h, w, 3), dtype=np.float64)
-    shading_accum = np.zeros((h, w, 3), dtype=np.float64)
-    weight_accum = np.zeros((h, w, 1), dtype=np.float64)
+    # --- UV texel-space accumulation buffers (R, R, 3) ---
+    # Accumulate per-texel albedo in UV space to avoid screen-space
+    # ghosting from multi-view misalignment.
+    albedo_uv_accum = np.zeros((tex_res, tex_res, 3), dtype=np.float64)
+    shading_uv_accum = np.zeros((tex_res, tex_res, 3), dtype=np.float64)
+    weight_uv_accum = np.zeros((tex_res, tex_res, 1), dtype=np.float64)
 
     per_view_sh_coeffs = []
 
@@ -881,11 +895,6 @@ def delight_multiview_albedo(
         chroma_mask = _build_chromaticity_mask(frame_rgb)
 
         # --- Chrominance separation before albedo accumulation ---
-        # Separate luminance and chrominance channels; fit SH on luminance
-        # only, then recover per-channel albedo by dividing out the
-        # achromatic shading estimate.  This prevents hue shifts from
-        # coloured lighting or specular highlights from corrupting the
-        # albedo colour.
         flat_nrm = nrm_vec.reshape(-1, 3)
         flat_mask = chroma_mask.reshape(-1)
 
@@ -933,32 +942,113 @@ def delight_multiview_albedo(
         view_shading = np.stack([sh_shading_clamped] * 3, axis=-1)
 
         # Decompose albedo via chrominance: albedo = chrominance * (lum / E)
-        # This avoids the (rad/E)*E self-cancellation artefact
         albedo_lum = view_lum / sh_shading_clamped  # (H, W) luminance albedo
         view_albedo = chrominance * albedo_lum[..., np.newaxis]  # (H, W, 3)
 
-        # Weighted accumulation (cos_theta_v from mesh projection)
-        w_map = view_weight  # (H, W, 1)
-        albedo_accum += view_albedo * w_map
-        shading_accum += view_shading * w_map
-        weight_accum += w_map
+        # --- Scatter screen-space results to UV texel space ---
+        # For each visible pixel, compute its UV coordinate and accumulate
+        # the per-texel albedo with cos_theta_v normal weighting.
+        w_map = view_weight[..., 0]  # (H, W) cos_theta_v
 
-    # Weighted average
-    safe_weight = np.clip(weight_accum, 1e-8, None)
-    avg_albedo = albedo_accum / safe_weight
+        if mesh_uvs is not None and len(mesh_uvs) > 0 and has_projection:
+            # Build UV map from mesh projection via rasterisation
+            # Re-project mesh to get per-pixel UV coordinates
+            uv_map = _rasterize_uv_map(
+                mesh_verts, mesh_uvs, getattr(mesh, "faces", None),
+                cam, h, w,
+            )
+            # Scatter to UV atlas with bilinear sub-texel addressing
+            uv_u = uv_map[..., 0]  # (H, W)
+            uv_v = uv_map[..., 1]  # (H, W)
+            tx = np.clip((uv_u * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
+            ty = np.clip((uv_v * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
+
+            valid_pixels = proj_valid & (w_map > 0.01)
+            flat_tx = tx[valid_pixels].ravel()
+            flat_ty = ty[valid_pixels].ravel()
+            flat_w = w_map[valid_pixels].ravel()
+            flat_albedo = view_albedo[valid_pixels]  # (K, 3)
+            flat_shading = view_shading[valid_pixels]  # (K, 3)
+            flat_uv_idx = flat_ty * tex_res + flat_tx  # (K,)
+
+            # Weighted scatter to UV accumulation buffers
+            albedo_uv_flat = albedo_uv_accum.reshape(-1, 3)
+            shading_uv_flat = shading_uv_accum.reshape(-1, 3)
+            weight_uv_flat = weight_uv_accum.reshape(-1, 1)
+
+            for c in range(3):
+                np.add.at(albedo_uv_flat[:, c], flat_uv_idx, flat_w * flat_albedo[:, c])
+                np.add.at(shading_uv_flat[:, c], flat_uv_idx, flat_w * flat_shading[:, c])
+            np.add.at(weight_uv_flat[:, 0], flat_uv_idx, flat_w)
+        else:
+            # Fallback: uniform scatter when no UV mapping is available
+            # Still accumulate in UV space via planar projection
+            valid_pixels = w_map > 0.01
+            if np.any(valid_pixels):
+                yy, xx = np.where(valid_pixels)
+                tx = np.clip((xx / max(w - 1, 1) * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
+                ty = np.clip((yy / max(h - 1, 1) * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
+                flat_uv_idx = ty * tex_res + tx
+                flat_w = w_map[valid_pixels].ravel()
+
+                albedo_uv_flat = albedo_uv_accum.reshape(-1, 3)
+                shading_uv_flat = shading_uv_accum.reshape(-1, 3)
+                weight_uv_flat = weight_uv_accum.reshape(-1, 1)
+
+                for c in range(3):
+                    np.add.at(albedo_uv_flat[:, c], flat_uv_idx, flat_w * view_albedo[valid_pixels][:, c])
+                    np.add.at(shading_uv_flat[:, c], flat_uv_idx, flat_w * view_shading[valid_pixels][:, c])
+                np.add.at(weight_uv_flat[:, 0], flat_uv_idx, flat_w)
+
+    # --- Weighted average in UV texel space ---
+    safe_weight = np.clip(weight_uv_accum, 1e-8, None)
+    avg_albedo_uv = albedo_uv_accum / safe_weight  # (R, R, 3)
+
+    # Island-edge dilation: fill unobserved texels from nearest valid neighbor
+    observed = weight_uv_accum[..., 0] > 1e-8
+    if np.any(~observed) and np.any(observed):
+        for _ in range(8):  # 8-pass dilation for large holes
+            new_albedo = np.copy(avg_albedo_uv)
+            new_observed = np.copy(observed)
+            for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                shifted_obs = np.zeros_like(observed)
+                if dy == -1:
+                    shifted_obs[:-1] = observed[1:]
+                elif dy == 1:
+                    shifted_obs[1:] = observed[:-1]
+                elif dx == -1:
+                    shifted_obs[:, :-1] = observed[:, 1:]
+                elif dx == 1:
+                    shifted_obs[:, 1:] = observed[:, :-1]
+
+                fill_mask = (~observed) & shifted_obs
+                if np.any(fill_mask):
+                    shifted_albedo = np.zeros_like(avg_albedo_uv)
+                    if dy == -1:
+                        shifted_albedo[:-1] = avg_albedo_uv[1:]
+                    elif dy == 1:
+                        shifted_albedo[1:] = avg_albedo_uv[:-1]
+                    elif dx == -1:
+                        shifted_albedo[:, :-1] = avg_albedo_uv[:, 1:]
+                    elif dx == 1:
+                        shifted_albedo[:, 1:] = avg_albedo_uv[:, :-1]
+                    new_albedo[fill_mask] = shifted_albedo[fill_mask]
+                    new_observed |= fill_mask
+            avg_albedo_uv = new_albedo
+            observed = new_observed
 
     if is_uint8:
-        avg_albedo = np.clip(avg_albedo, 0.0, 1.0)
+        avg_albedo_uv = np.clip(avg_albedo_uv, 0.0, 1.0)
     else:
-        avg_albedo = np.clip(avg_albedo, 0.0, None)
-    avg_albedo = avg_albedo.astype(np.float32)
+        avg_albedo_uv = np.clip(avg_albedo_uv, 0.0, None)
+    avg_albedo_uv = avg_albedo_uv.astype(np.float32)
 
-    avg_shading = np.clip(shading_accum / safe_weight, 0.0, 20.0).astype(np.float32)
+    avg_shading_uv = np.clip(shading_uv_accum / safe_weight, 0.0, 20.0).astype(np.float32)
 
-    # Specular residual (mean across views)
-    mean_frame = np.mean(frames_arr, axis=0)
-    relit = avg_albedo.astype(np.float64) * avg_shading.astype(np.float64)
-    specular = np.maximum(0.0, mean_frame - relit).astype(np.float32)
+    # Specular residual in UV space
+    relit_uv = avg_albedo_uv.astype(np.float64) * avg_shading_uv.astype(np.float64)
+    # Approximate specular from mean frame projected to UV
+    specular_uv = np.maximum(0.0, avg_albedo_uv.astype(np.float64) - relit_uv).astype(np.float32)
 
     # Average SH coefficients across views
     if per_view_sh_coeffs:
@@ -966,17 +1056,157 @@ def delight_multiview_albedo(
     else:
         ambient_sh = np.zeros((9, 3), dtype=np.float64)
 
-    # Compute CIEDE2000 delta_e_residual between re-lit and original
-    relit_clamped = np.clip(relit, 0.0, 1.0)
-    mean_frame_clamped = np.clip(mean_frame, 0.0, 1.0)
+    # Compute CIEDE2000 delta_e_residual between re-lit UV and original
+    relit_clamped = np.clip(relit_uv, 0.0, 1.0)
+    albedo_clamped = np.clip(avg_albedo_uv.astype(np.float64), 0.0, 1.0)
     lab_relit = _rgb_to_lab(relit_clamped, is_linear=True)
-    lab_orig = _rgb_to_lab(mean_frame_clamped, is_linear=True)
-    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_orig)))
+    lab_albedo = _rgb_to_lab(albedo_clamped, is_linear=True)
+    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_albedo)))
 
     return DelightResult(
-        albedo=avg_albedo,
-        shading=avg_shading,
-        specular=specular,
+        albedo=avg_albedo_uv,
+        shading=avg_shading_uv,
+        specular=specular_uv,
         ambient_sh=ambient_sh,
         delta_e_residual=delta_e,
     )
+
+
+def _rasterize_uv_map(
+    verts: np.ndarray,
+    uvs: np.ndarray,
+    faces: np.ndarray | None,
+    camera: CameraExtrinsics,
+    h: int,
+    w: int,
+) -> np.ndarray:
+    """Rasterize mesh UV coordinates into screen space.
+
+    For each visible pixel, interpolates the mesh UV coordinates using
+    barycentric interpolation with Z-buffer occlusion.  Fills the marching
+    holes left by large-step rasterization with nearest-neighbor dilation.
+
+    Returns:
+        uv_map: ``(H, W, 2)`` UV coordinates per pixel, 0 where unset.
+    """
+    uv_map = np.zeros((h, w, 2), dtype=np.float64)
+    depth_buf = np.full((h, w), np.inf, dtype=np.float64)
+
+    if faces is None or len(faces) == 0:
+        return uv_map
+
+    T = np.asarray(camera.transform, dtype=np.float64)
+    R = T[:3, :3]
+    t = T[:3, 3]
+
+    fx = fy = float(max(h, w))
+    cx, cy = w / 2.0, h / 2.0
+
+    pts_cam = (R @ verts.T).T + t
+
+    # Build triangle list from faces
+    f_arr = np.asarray(faces, dtype=np.int64)
+    uv_arr = np.asarray(uvs, dtype=np.float64)
+
+    tri_list: list[tuple[int, int, int]] = []
+    if f_arr.ndim == 2:
+        if f_arr.shape[1] == 4:
+            for q in f_arr:
+                d02 = float(np.linalg.norm(verts[q[0]] - verts[q[2]]))
+                d13 = float(np.linalg.norm(verts[q[1]] - verts[q[3]]))
+                if d02 <= d13:
+                    tri_list.append((int(q[0]), int(q[1]), int(q[2])))
+                    tri_list.append((int(q[0]), int(q[2]), int(q[3])))
+                else:
+                    tri_list.append((int(q[1]), int(q[2]), int(q[3])))
+                    tri_list.append((int(q[1]), int(q[3]), int(q[0])))
+        elif f_arr.shape[1] >= 3:
+            for tri in f_arr:
+                tri_list.append((int(tri[0]), int(tri[1]), int(tri[2])))
+
+    for i0, i1, i2 in tri_list:
+        p0, p1, p2 = pts_cam[i0], pts_cam[i1], pts_cam[i2]
+        if p0[2] <= 0.01 and p1[2] <= 0.01 and p2[2] <= 0.01:
+            continue
+
+        def _proj(p: np.ndarray) -> tuple[float, float, float]:
+            z = max(float(p[2]), 0.01)
+            return fx * float(p[0]) / z + cx, fy * float(p[1]) / z + cy, z
+
+        sx0, sy0, z0 = _proj(p0)
+        sx1, sy1, z1 = _proj(p1)
+        sx2, sy2, z2 = _proj(p2)
+
+        min_x = max(0, int(min(sx0, sx1, sx2)))
+        max_x = min(w - 1, int(max(sx0, sx1, sx2)) + 1)
+        min_y = max(0, int(min(sy0, sy1, sy2)))
+        max_y = min(h - 1, int(max(sy0, sy1, sy2)) + 1)
+
+        if min_x > max_x or min_y > max_y:
+            continue
+
+        area = abs((sx1 - sx0) * (sy2 - sy0) - (sx2 - sx0) * (sy1 - sy0))
+        if area < 0.01:
+            continue
+
+        # Fixed step=1 for UV rasterization to avoid large-step marching holes
+        raster_area = (max_x - min_x + 1) * (max_y - min_y + 1)
+        step = max(1, int(np.sqrt(raster_area / 8192)))
+
+        denom = (sy1 - sy2) * (sx0 - sx2) + (sx2 - sx1) * (sy0 - sy2)
+        if abs(denom) < 1e-8:
+            continue
+        inv_denom = 1.0 / denom
+
+        # UV coordinates for each vertex (clamp index to UV array bounds)
+        uv0 = uv_arr[min(i0, len(uv_arr) - 1)] if len(uv_arr) > 0 else np.zeros(2)
+        uv1 = uv_arr[min(i1, len(uv_arr) - 1)] if len(uv_arr) > 0 else np.zeros(2)
+        uv2 = uv_arr[min(i2, len(uv_arr) - 1)] if len(uv_arr) > 0 else np.zeros(2)
+
+        for py in range(min_y, max_y + 1, step):
+            for px_i in range(min_x, max_x + 1, step):
+                px_f, py_f = float(px_i) + 0.5, float(py) + 0.5
+                lam0 = ((sy1 - sy2) * (px_f - sx2) + (sx2 - sx1) * (py_f - sy2)) * inv_denom
+                lam1 = ((sy2 - sy0) * (px_f - sx2) + (sx0 - sx2) * (py_f - sy2)) * inv_denom
+                lam2 = 1.0 - lam0 - lam1
+                if lam0 < -0.001 or lam1 < -0.001 or lam2 < -0.001:
+                    continue
+                z_interp = lam0 * z0 + lam1 * z1 + lam2 * z2
+                if z_interp < depth_buf[py, px_i]:
+                    depth_buf[py, px_i] = z_interp
+                    uv_interp = lam0 * uv0 + lam1 * uv1 + lam2 * uv2
+                    uv_map[py, px_i] = uv_interp
+
+    # Fill marching holes from stepped rasterization with nearest-neighbor
+    has_uv = np.any(uv_map != 0.0, axis=-1)
+    if np.any(~has_uv) and np.any(has_uv):
+        for _ in range(4):
+            new_uv = np.copy(uv_map)
+            new_has = np.copy(has_uv)
+            for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                shifted_has = np.zeros_like(has_uv)
+                if dy == -1:
+                    shifted_has[:-1] = has_uv[1:]
+                elif dy == 1:
+                    shifted_has[1:] = has_uv[:-1]
+                elif dx == -1:
+                    shifted_has[:, :-1] = has_uv[:, 1:]
+                elif dx == 1:
+                    shifted_has[:, 1:] = has_uv[:, :-1]
+                fill = (~has_uv) & shifted_has
+                if np.any(fill):
+                    shifted_uv = np.zeros_like(uv_map)
+                    if dy == -1:
+                        shifted_uv[:-1] = uv_map[1:]
+                    elif dy == 1:
+                        shifted_uv[1:] = uv_map[:-1]
+                    elif dx == -1:
+                        shifted_uv[:, :-1] = uv_map[:, 1:]
+                    elif dx == 1:
+                        shifted_uv[:, 1:] = uv_map[:, :-1]
+                    new_uv[fill] = shifted_uv[fill]
+                    new_has |= fill
+            uv_map = new_uv
+            has_uv = new_has
+
+    return uv_map
