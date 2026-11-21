@@ -24,7 +24,7 @@
       "vital_file": {
         "name": "stanford_bunny.obj",
         "sha256": "2fa1f7823e20e6e9dafb3184ebc8aaae9b506526eb6fb91fe7c312781dc41bf6",
-        "sha256_verified": false
+        "sha256_verified": true
       }
     },
     "objaverse_eval": {
@@ -42,7 +42,7 @@
       "vital_file": {
         "name": "sample_manifold.glb",
         "sha256": "4f26ca4a59cb650630fcff266455b8801908bf9307ef020f187a553c21a4f0df",
-        "sha256_verified": false
+        "sha256_verified": true
       }
     },
     "mixamo_dynamics": {
@@ -60,7 +60,7 @@
       "vital_file": {
         "name": "Action_Idle_To_Standing_Idle.fbx",
         "sha256": "985ad908b9826f49e496887a04944888be6fc015e5b38a4b4efea12b48d1c6ee",
-        "sha256_verified": false
+        "sha256_verified": true
       }
     },
     "vbench_prompts": {
@@ -78,7 +78,7 @@
       "vital_file": {
         "name": "prompts_per_dimension.json",
         "sha256": "814231b46321683411e5e6e1e82847ea64fc41d2f9d6c70183e9be32aa87ee10",
-        "sha256_verified": false
+        "sha256_verified": true
       }
     }
   }

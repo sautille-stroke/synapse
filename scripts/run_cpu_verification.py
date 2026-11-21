@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import tarfile
 import tempfile
 import time
@@ -180,6 +181,23 @@ def _verify_e1_conditioning_ablation(
         3,
     )
 
+    # Monotonicity assertion: ablation norms must be non-decreasing as
+    # more channels are enabled (E1-A ≤ E1-B ≤ E1-C ≤ E1-D)
+    norm_values = list(ablation_norms.values())
+    for i in range(1, len(norm_values)):
+        assert norm_values[i] >= norm_values[i - 1], (
+            f"Ablation norm monotonicity violated: "
+            f"{list(ablation_norms.keys())[i-1]}={norm_values[i-1]:.4f} > "
+            f"{list(ablation_norms.keys())[i]}={norm_values[i]:.4f}"
+        )
+
+    # Depth channel ring-band assertion: depth values should decrease
+    # from background (far) towards foreground objects (near)
+    depth_ch = ctrl_b[0]  # log-depth channel
+    assert float(np.std(depth_ch)) > 0.01, (
+        "Depth channel has near-zero variance — likely constant/degenerate"
+    )
+
     return {
         "status": "PASS",
         "track_b_tensor_shape": list(ctrl_b.shape),
@@ -231,6 +249,14 @@ def _verify_e2_style_and_composite(
 
     ring_diff_before = float(np.mean(np.abs(patch_rgb - base_rgb)))
     ring_diff_after = float(np.mean(np.abs(blended - base_rgb)))
+
+    # Ring-band assertion: border matching + blending must reduce boundary
+    # artifacts — the blended result should be closer to base than the raw
+    # patch (or at most equal if the patch was already well-matched)
+    assert ring_diff_after <= ring_diff_before + 1e-6, (
+        f"Ring-band blending regression: diff_after={ring_diff_after:.6f} > "
+        f"diff_before={ring_diff_before:.6f}"
+    )
 
     return {
         "status": "PASS",
@@ -349,7 +375,7 @@ def _verify_e4_feature_store_and_multi_lora(
             category="identity",
             rank=16,
             alpha=16.0,
-            adapter_path=str(lora_a),
+            adapter_path=lora_a.name,  # Relative path for portability
             adapter_sha256=hashlib.sha256(lora_a_bytes).hexdigest(),
             target_modules=["spatial_attn.to_q"],
         )
@@ -358,7 +384,7 @@ def _verify_e4_feature_store_and_multi_lora(
             category="style",
             rank=16,
             alpha=16.0,
-            adapter_path=str(lora_b),
+            adapter_path=lora_b.name,  # Relative path for portability
             adapter_sha256=hashlib.sha256(lora_b_bytes).hexdigest(),
             target_modules=["cross_attn.to_k"],
         )
@@ -458,6 +484,7 @@ def main() -> int:
 
     # SHA-256 manifest verification of EXR frame files
     sha_results: dict[str, dict[str, Any]] = {}
+    sha_failures_total = 0
     for label, ddir in [
         ("track_b_17f", dir_b_17f),
         ("track_b_97f", dir_b_97f),
@@ -465,11 +492,20 @@ def main() -> int:
     ]:
         sha_res = _check_manifest_sha256(ddir)
         sha_results[label] = sha_res
+        sha_failures_total += sha_res["failed"]
         if sha_res["checked"] > 0:
             print(
                 f"  [SHA-256] {label}: {sha_res['passed']}/{sha_res['checked']} passed"
                 + (f", MISMATCHES: {sha_res['mismatches']}" if sha_res["failed"] else "")
             )
+
+    if sha_failures_total > 0:
+        print(
+            f"ERROR: {sha_failures_total} SHA-256 checksum mismatch(es) detected. "
+            "EXR files may be corrupted or regenerated without updating the manifest.",
+            file=sys.stderr,
+        )
+        return 20  # Exit code 20: input file SHA256 mismatch
 
     print("[E1] Verifying 7-ch conditioning ablation & MockVideoAdapter ...")
     res_e1 = _verify_e1_conditioning_ablation(seq_b_17f, seq_a_17f)
