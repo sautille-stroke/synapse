@@ -24,8 +24,10 @@ from typing import Literal
 import numpy as np
 
 from synapse.bridge.aether_bridge import (
+    native_compute_ciede2000,
     native_compute_masked_psnr,
     native_compute_psnr,
+    native_compute_ssim,
 )
 
 
@@ -177,6 +179,12 @@ def ssim(
     if p.size == 0:
         return 1.0
 
+    # Fast path: try native SIMD SSIM for single-frame 2D/3D inputs without mask
+    if mask is None and p.ndim in (2, 3) and (p.ndim == 2 or p.shape[2] in (1, 3, 4)):
+        native_val = native_compute_ssim(p, g, dynamic_range=eff_range)
+        if native_val is not None:
+            return float(native_val)
+
     # Normalise shape to [N, H, W, C]
     orig_ndim = p.ndim
     if orig_ndim == 2:
@@ -275,6 +283,14 @@ def ciede2000(
         raise ValueError(f"ciede2000 expects shape [H, W, 3] or [T, H, W, 3], got {p.shape}.")
     if p.size == 0:
         return 0.0
+
+    # Fast path: try native SIMD CIEDE2000 for single-frame sRGB without mask
+    if mask is None and input_space == "srgb" and p.ndim == 3:
+        p_clamped_f32 = np.clip(p, 0.0, 1.0).astype(np.float32)
+        g_clamped_f32 = np.clip(g, 0.0, 1.0).astype(np.float32)
+        native_val = native_compute_ciede2000(p_clamped_f32, g_clamped_f32)
+        if native_val is not None:
+            return float(native_val)
 
     p_clamped = np.clip(p, 0.0, 1.0)
     g_clamped = np.clip(g, 0.0, 1.0)

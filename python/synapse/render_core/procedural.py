@@ -80,16 +80,423 @@ class ProceduralMesh:
 
 
 def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]:
-    """Delegate primitive mesh generation to @aether//geo via aether_geo."""
-    from synapse.bridge.aether_bridge import require_aether_geo
+    """Delegate primitive mesh generation to @aether//geo via aether_geo if available.
 
-    result: dict[str, Any] = require_aether_geo().create_primitive_mesh(primitive_type, **kwargs)
-    return result
+    Falls back to pure NumPy generation when aether_geo is not installed.
+    """
+    from synapse.bridge.aether_bridge import get_aether_geo
+
+    geo = get_aether_geo()
+    if geo is not None:
+        result: dict[str, Any] = geo.create_primitive_mesh(primitive_type, **kwargs)
+        return result
+    return None  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Post-processing: sphere polar degenerate face removal + cone watertight weld
+# ---------------------------------------------------------------------------
+
+
+def _remove_degenerate_sphere_faces(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Remove degenerate triangles at sphere poles (area < 1e-12) and weld pole vertices.
+
+    At the poles of a UV sphere, multiple triangles converge to a single point
+    producing zero-area faces. This function:
+    1. Identifies pole vertices (topmost and bottommost Y)
+    2. Welds all vertices within tolerance of each pole to a single vertex
+    3. Removes resulting degenerate faces (area < 1e-12 or duplicate indices)
+    """
+    verts = vertices.copy()
+    faces_arr = faces.copy()
+
+    y_coords = verts[:, 1]
+    y_max = float(np.max(y_coords))
+    y_min = float(np.min(y_coords))
+    pole_tol = (y_max - y_min) * 1e-6
+
+    # Weld top pole vertices
+    top_mask = np.abs(y_coords - y_max) < pole_tol
+    top_indices = np.where(top_mask)[0]
+    if len(top_indices) > 1:
+        canonical = top_indices[0]
+        for idx in top_indices[1:]:
+            faces_arr[faces_arr == idx] = canonical
+
+    # Weld bottom pole vertices
+    bot_mask = np.abs(y_coords - y_min) < pole_tol
+    bot_indices = np.where(bot_mask)[0]
+    if len(bot_indices) > 1:
+        canonical = bot_indices[0]
+        for idx in bot_indices[1:]:
+            faces_arr[faces_arr == idx] = canonical
+
+    # Remove degenerate faces (any face with two or more identical indices)
+    valid_mask = (
+        (faces_arr[:, 0] != faces_arr[:, 1])
+        & (faces_arr[:, 1] != faces_arr[:, 2])
+        & (faces_arr[:, 0] != faces_arr[:, 2])
+    )
+
+    # Also remove faces with near-zero area
+    if np.any(valid_mask):
+        v0 = verts[faces_arr[valid_mask, 0]]
+        v1 = verts[faces_arr[valid_mask, 1]]
+        v2 = verts[faces_arr[valid_mask, 2]]
+        cross = np.cross(v1 - v0, v2 - v0)
+        areas = 0.5 * np.linalg.norm(cross, axis=1)
+        area_valid = areas >= 1e-12
+        # Update valid_mask: keep only faces that pass both checks
+        valid_indices = np.where(valid_mask)[0]
+        final_mask = np.zeros(len(faces_arr), dtype=bool)
+        final_mask[valid_indices[area_valid]] = True
+    else:
+        final_mask = valid_mask
+
+    return verts, faces_arr[final_mask]
+
+
+def _weld_cone_caps(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weld cone apex and base-center vertices to ensure watertight topology.
+
+    For a cone, the apex (top Y) and base center (bottom Y) may have duplicate
+    vertices from triangle fan generation. Welding ensures the mesh is manifold.
+    """
+    verts = vertices.copy()
+    faces_arr = faces.copy()
+
+    y_coords = verts[:, 1]
+    y_max = float(np.max(y_coords))
+    y_min = float(np.min(y_coords))
+    height_range = y_max - y_min
+    if height_range < 1e-12:
+        return verts, faces_arr
+
+    pole_tol = height_range * 1e-6
+
+    # Weld apex vertices (top)
+    apex_mask = np.abs(y_coords - y_max) < pole_tol
+    # For apex, also check that x and z are near zero (true apex point)
+    xz_dist = np.sqrt(verts[:, 0] ** 2 + verts[:, 2] ** 2)
+    apex_center_mask = apex_mask & (xz_dist < pole_tol + 1e-10)
+    apex_indices = np.where(apex_center_mask)[0]
+    if len(apex_indices) > 1:
+        canonical = apex_indices[0]
+        for idx in apex_indices[1:]:
+            faces_arr[faces_arr == idx] = canonical
+
+    # Weld base center vertices (bottom)
+    base_mask = np.abs(y_coords - y_min) < pole_tol
+    base_center_mask = base_mask & (xz_dist < pole_tol + 1e-10)
+    base_indices = np.where(base_center_mask)[0]
+    if len(base_indices) > 1:
+        canonical = base_indices[0]
+        for idx in base_indices[1:]:
+            faces_arr[faces_arr == idx] = canonical
+
+    # Remove degenerate faces after welding
+    valid_mask = (
+        (faces_arr[:, 0] != faces_arr[:, 1])
+        & (faces_arr[:, 1] != faces_arr[:, 2])
+        & (faces_arr[:, 0] != faces_arr[:, 2])
+    )
+
+    return verts, faces_arr[valid_mask]
+
+
+# ---------------------------------------------------------------------------
+# Pure NumPy fallback generators
+# ---------------------------------------------------------------------------
+
+
+def _np_generate_sphere(
+    radius: float = 1.0,
+    segments: int = 32,
+    rings: int = 16,
+) -> dict[str, Any]:
+    """Pure NumPy UV sphere generation with pole welding."""
+    vertices: list[list[float]] = []
+    # Top pole
+    vertices.append([0.0, radius, 0.0])
+    # Ring vertices
+    for i in range(1, rings):
+        phi = math.pi * i / rings
+        for j in range(segments):
+            theta = 2.0 * math.pi * j / segments
+            x = radius * math.sin(phi) * math.cos(theta)
+            y = radius * math.cos(phi)
+            z = radius * math.sin(phi) * math.sin(theta)
+            vertices.append([x, y, z])
+    # Bottom pole
+    bot_idx = len(vertices)
+    vertices.append([0.0, -radius, 0.0])
+
+    faces_list: list[list[int]] = []
+    # Top cap
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([0, 1 + j, 1 + j_next])
+    # Middle quads
+    for i in range(rings - 2):
+        base = 1 + i * segments
+        for j in range(segments):
+            j_next = (j + 1) % segments
+            a = base + j
+            b = base + j_next
+            c = base + segments + j
+            d = base + segments + j_next
+            faces_list.append([a, c, b])
+            faces_list.append([b, c, d])
+    # Bottom cap
+    last_ring_base = 1 + (rings - 2) * segments
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([last_ring_base + j, bot_idx, last_ring_base + j_next])
+
+    verts_arr = np.array(vertices, dtype=np.float32)
+    faces_arr = np.array(faces_list, dtype=np.int32)
+
+    # Compute normals (unit vectors from origin for a sphere)
+    norms = verts_arr.copy()
+    lengths = np.linalg.norm(norms, axis=1, keepdims=True)
+    lengths = np.where(lengths < 1e-12, 1.0, lengths)
+    norms = norms / lengths
+
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+
+
+def _np_generate_cube(size: float = 1.0) -> dict[str, Any]:
+    """Pure NumPy cube generation."""
+    s = size / 2.0
+    # 24 vertices (4 per face for distinct normals)
+    verts = np.array([
+        # Front (+Z)
+        [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
+        # Back (-Z)
+        [s, -s, -s], [-s, -s, -s], [-s, s, -s], [s, s, -s],
+        # Top (+Y)
+        [-s, s, s], [s, s, s], [s, s, -s], [-s, s, -s],
+        # Bottom (-Y)
+        [-s, -s, -s], [s, -s, -s], [s, -s, s], [-s, -s, s],
+        # Right (+X)
+        [s, -s, s], [s, -s, -s], [s, s, -s], [s, s, s],
+        # Left (-X)
+        [-s, -s, -s], [-s, -s, s], [-s, s, s], [-s, s, -s],
+    ], dtype=np.float32)
+    normals = np.array([
+        [0, 0, 1]] * 4 + [[0, 0, -1]] * 4 + [[0, 1, 0]] * 4 +
+        [[0, -1, 0]] * 4 + [[1, 0, 0]] * 4 + [[-1, 0, 0]] * 4,
+        dtype=np.float32,
+    )
+    faces = np.array([
+        [0, 1, 2], [0, 2, 3],
+        [4, 5, 6], [4, 6, 7],
+        [8, 9, 10], [8, 10, 11],
+        [12, 13, 14], [12, 14, 15],
+        [16, 17, 18], [16, 18, 19],
+        [20, 21, 22], [20, 22, 23],
+    ], dtype=np.int32)
+    return {"vertices": verts, "faces": faces, "normals": normals, "uvs": None}
+
+
+def _np_generate_cylinder(
+    radius: float = 0.5,
+    height: float = 2.0,
+    segments: int = 32,
+) -> dict[str, Any]:
+    """Pure NumPy cylinder generation."""
+    half_h = height / 2.0
+    vertices: list[list[float]] = []
+    faces_list: list[list[int]] = []
+
+    top_c = 0
+    vertices.append([0.0, half_h, 0.0])
+    top_ring_start = len(vertices)
+    for j in range(segments):
+        theta = 2.0 * math.pi * j / segments
+        vertices.append([radius * math.cos(theta), half_h, radius * math.sin(theta)])
+    bot_ring_start = len(vertices)
+    for j in range(segments):
+        theta = 2.0 * math.pi * j / segments
+        vertices.append([radius * math.cos(theta), -half_h, radius * math.sin(theta)])
+    bot_c = len(vertices)
+    vertices.append([0.0, -half_h, 0.0])
+
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([top_c, top_ring_start + j_next, top_ring_start + j])
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        a, b = top_ring_start + j, top_ring_start + j_next
+        c, d = bot_ring_start + j, bot_ring_start + j_next
+        faces_list.append([a, b, d])
+        faces_list.append([a, d, c])
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([bot_c, bot_ring_start + j, bot_ring_start + j_next])
+
+    verts_arr = np.array(vertices, dtype=np.float32)
+    faces_arr = np.array(faces_list, dtype=np.int32)
+    # Approximate normals
+    norms = np.zeros_like(verts_arr)
+    for f in faces_arr:
+        v0, v1, v2 = verts_arr[f[0]], verts_arr[f[1]], verts_arr[f[2]]
+        n = np.cross(v1 - v0, v2 - v0)
+        norms[f[0]] += n
+        norms[f[1]] += n
+        norms[f[2]] += n
+    lengths = np.linalg.norm(norms, axis=1, keepdims=True)
+    lengths = np.where(lengths < 1e-12, 1.0, lengths)
+    norms = norms / lengths
+
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+
+
+def _np_generate_torus(
+    major_radius: float = 1.0,
+    minor_radius: float = 0.3,
+    major_segments: int = 32,
+    minor_segments: int = 16,
+) -> dict[str, Any]:
+    """Pure NumPy torus generation."""
+    vertices: list[list[float]] = []
+    for i in range(major_segments):
+        theta = 2.0 * math.pi * i / major_segments
+        for j in range(minor_segments):
+            phi = 2.0 * math.pi * j / minor_segments
+            x = (major_radius + minor_radius * math.cos(phi)) * math.cos(theta)
+            y = minor_radius * math.sin(phi)
+            z = (major_radius + minor_radius * math.cos(phi)) * math.sin(theta)
+            vertices.append([x, y, z])
+
+    faces_list: list[list[int]] = []
+    for i in range(major_segments):
+        i_next = (i + 1) % major_segments
+        for j in range(minor_segments):
+            j_next = (j + 1) % minor_segments
+            a = i * minor_segments + j
+            b = i * minor_segments + j_next
+            c = i_next * minor_segments + j
+            d = i_next * minor_segments + j_next
+            faces_list.append([a, c, b])
+            faces_list.append([b, c, d])
+
+    verts_arr = np.array(vertices, dtype=np.float32)
+    faces_arr = np.array(faces_list, dtype=np.int32)
+    # Normals: vector from torus center circle to vertex
+    norms = np.zeros_like(verts_arr)
+    for i in range(major_segments):
+        theta = 2.0 * math.pi * i / major_segments
+        cx = major_radius * math.cos(theta)
+        cz = major_radius * math.sin(theta)
+        for j in range(minor_segments):
+            idx = i * minor_segments + j
+            n = verts_arr[idx] - np.array([cx, 0.0, cz], dtype=np.float32)
+            length = float(np.linalg.norm(n))
+            norms[idx] = n / length if length > 1e-12 else np.array([0, 1, 0], dtype=np.float32)
+
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+
+
+def _np_generate_plane(
+    width: float = 2.0,
+    depth: float = 2.0,
+    subdiv_x: int = 1,
+    subdiv_z: int = 1,
+) -> dict[str, Any]:
+    """Pure NumPy plane generation (XZ plane, Y=0)."""
+    verts: list[list[float]] = []
+    for iz in range(subdiv_z + 1):
+        for ix in range(subdiv_x + 1):
+            x = -width / 2.0 + width * ix / subdiv_x
+            z = -depth / 2.0 + depth * iz / subdiv_z
+            verts.append([x, 0.0, z])
+
+    faces_list: list[list[int]] = []
+    cols = subdiv_x + 1
+    for iz in range(subdiv_z):
+        for ix in range(subdiv_x):
+            a = iz * cols + ix
+            b = a + 1
+            c = a + cols
+            d = c + 1
+            faces_list.append([a, c, b])
+            faces_list.append([b, c, d])
+
+    verts_arr = np.array(verts, dtype=np.float32)
+    faces_arr = np.array(faces_list, dtype=np.int32)
+    norms = np.tile(np.array([0, 1, 0], dtype=np.float32), (len(verts), 1))
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+
+
+def _np_generate_cone(
+    radius: float = 0.5,
+    height: float = 1.0,
+    segments: int = 32,
+) -> dict[str, Any]:
+    """Pure NumPy cone generation with watertight topology."""
+    half_h = height / 2.0
+    vertices: list[list[float]] = []
+    faces_list: list[list[int]] = []
+
+    # Apex at top
+    apex_idx = 0
+    vertices.append([0.0, half_h, 0.0])
+    # Base ring
+    ring_start = len(vertices)
+    for j in range(segments):
+        theta = 2.0 * math.pi * j / segments
+        vertices.append([radius * math.cos(theta), -half_h, radius * math.sin(theta)])
+    # Base center
+    base_center = len(vertices)
+    vertices.append([0.0, -half_h, 0.0])
+
+    # Side faces (apex to base ring)
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([apex_idx, ring_start + j_next, ring_start + j])
+    # Base cap
+    for j in range(segments):
+        j_next = (j + 1) % segments
+        faces_list.append([base_center, ring_start + j, ring_start + j_next])
+
+    verts_arr = np.array(vertices, dtype=np.float32)
+    faces_arr = np.array(faces_list, dtype=np.int32)
+    norms = np.zeros_like(verts_arr)
+    for f in faces_arr:
+        v0, v1, v2 = verts_arr[f[0]], verts_arr[f[1]], verts_arr[f[2]]
+        n = np.cross(v1 - v0, v2 - v0)
+        norms[f[0]] += n
+        norms[f[1]] += n
+        norms[f[2]] += n
+    lengths = np.linalg.norm(norms, axis=1, keepdims=True)
+    lengths = np.where(lengths < 1e-12, 1.0, lengths)
+    norms = norms / lengths
+
+    return {"vertices": verts_arr, "faces": faces_arr, "normals": norms, "uvs": None}
+
+
+_NP_GENERATORS: dict[str, Callable[..., dict[str, Any]]] = {
+    "cube": _np_generate_cube,
+    "sphere": _np_generate_sphere,
+    "cylinder": _np_generate_cylinder,
+    "torus": _np_generate_torus,
+    "plane": _np_generate_plane,
+    "cone": _np_generate_cone,
+}
 
 
 def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     """Unit cube centered at origin."""
     d = _create_primitive_mesh("cube", size=size, **kwargs)
+    if d is None:
+        d = _np_generate_cube(size=size)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -106,11 +513,24 @@ def _generate_sphere(
     rings: int = 16,
     **kwargs: Any,
 ) -> ProceduralMesh:
-    """UV sphere centered at origin."""
+    """UV sphere centered at origin with pole degenerate face removal."""
     d = _create_primitive_mesh("sphere", radius=radius, segments=segments, rings=rings, **kwargs)
+    if d is not None:
+        # Post-process native output: remove degenerate faces at poles and weld pole vertices
+        verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
+        return ProceduralMesh(
+            vertices=verts,
+            faces=faces,
+            normals=d["normals"],
+            uvs=d["uvs"],
+            mesh_type="sphere",
+        )
+    # NumPy fallback
+    d = _np_generate_sphere(radius=radius, segments=segments, rings=rings)
+    verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
     return ProceduralMesh(
-        vertices=d["vertices"],
-        faces=d["faces"],
+        vertices=verts,
+        faces=faces,
         normals=d["normals"],
         uvs=d["uvs"],
         mesh_type="sphere",
@@ -126,6 +546,8 @@ def _generate_cylinder(
 ) -> ProceduralMesh:
     """Cylinder centered at origin, axis along Y."""
     d = _create_primitive_mesh("cylinder", radius=radius, height=height, segments=segments, **kwargs)
+    if d is None:
+        d = _np_generate_cylinder(radius=radius, height=height, segments=segments)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -152,6 +574,13 @@ def _generate_torus(
         minor_segments=minor_segments,
         **kwargs,
     )
+    if d is None:
+        d = _np_generate_torus(
+            major_radius=major_radius,
+            minor_radius=minor_radius,
+            major_segments=major_segments,
+            minor_segments=minor_segments,
+        )
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -174,6 +603,13 @@ def _generate_plane(
     plane_kwargs.setdefault("subdiv_x", subdivisions)
     plane_kwargs.setdefault("subdiv_z", subdivisions)
     d = _create_primitive_mesh("plane", **plane_kwargs)
+    if d is None:
+        d = _np_generate_plane(
+            width=plane_kwargs["width"],
+            depth=plane_kwargs["depth"],
+            subdiv_x=plane_kwargs["subdiv_x"],
+            subdiv_z=plane_kwargs["subdiv_z"],
+        )
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
@@ -197,6 +633,18 @@ def _generate_cone(
         segments=segments,
         **kwargs,
     )
+    if d is not None:
+        # Post-process: weld apex/base caps for watertightness
+        verts, faces = _weld_cone_caps(d["vertices"], d["faces"])
+        return ProceduralMesh(
+            vertices=verts,
+            faces=faces,
+            normals=d["normals"],
+            uvs=d["uvs"],
+            mesh_type="cone",
+        )
+    # NumPy fallback (already watertight by construction)
+    d = _np_generate_cone(radius=radius, height=height, segments=segments)
     return ProceduralMesh(
         vertices=d["vertices"],
         faces=d["faces"],
