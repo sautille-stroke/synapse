@@ -124,56 +124,51 @@ def _fallback_acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
 # --- Soft-knee inverse and forward tonemapping ---------------------
 
 _SOFT_KNEE_THRESHOLD: float = 0.8
+_SOFT_KNEE_QUAD_A: float = 1.0
 
 
 def _fallback_soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
-    """Strictly monotonically increasing inverse tonemap with C1 continuity.
+    """Strictly monotonically increasing C1 bijective inverse tonemap (no poles).
 
-    Below ``t_knee`` (0.8): identity ``f(x) = x``.
-    Above ``t_knee``: rational ramp paired with bounded forward tonemap::
+    Below ``t_knee`` (0.8): identity ``f(x) = x`` (preserves wide-gamut negatives).
+    Above ``t_knee``: smooth C1 quadratic highlight expansion paired with exact
+    analytic forward inverse::
 
-        inverse: y = t + u / (1 - u * k)    u = x - t, k = 1/(1-t)
-        forward: x = t + v / (1 + v * k)    v = y - t
+        inverse: y = t + u + a * u^2                 (u = x - t >= 0, a = 1.0)
+        forward: x = t + 2*v / (1 + sqrt(1 + 4*a*v)) (v = y - t >= 0)
 
     Properties:
-    - f(t) = t, f'(t) = 1 at the knee (C1 continuous with identity)
-    - Inverse maps [t, 1) → [t, ∞)
-    - Strictly monotonically increasing throughout
+    - f(t) = t, f'(t^-) = f'(t^+) = 1 (C1 continuous at knee)
+    - No singularity / pole at x = 1.0 (maps 1.0 -> 1.04 instead of 200,000.8)
+    - Exact algebraic bijection with ``soft_knee_forward_tonemap`` over all R
+    - Strictly monotonically increasing and super-linear above knee
     """
     x = np.asarray(ldr_linear, dtype=np.float64)
     x = np.where(np.isfinite(x), x, 0.0)
-    k = 1.0 / (1.0 - _SOFT_KNEE_THRESHOLD)  # = 5.0 for t=0.8
-    u = x - _SOFT_KNEE_THRESHOLD
-    # Inverse tonemap: y = t + u / (1 - u * k), valid for u in [0, 1/k)
-    # Clamp denominator to avoid division by zero for LDR inputs at u ≈ 1/k
-    denom = np.maximum(1.0 - u * k, 1e-6)
-    high = _SOFT_KNEE_THRESHOLD + u / denom
-    result = np.where(x <= _SOFT_KNEE_THRESHOLD, x, high)
-    return result
+    u = np.maximum(x - _SOFT_KNEE_THRESHOLD, 0.0)
+    high = _SOFT_KNEE_THRESHOLD + u + _SOFT_KNEE_QUAD_A * (u * u)
+    return np.asarray(np.where(x <= _SOFT_KNEE_THRESHOLD, x, high))
 
 
 def _fallback_soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
-    """Bounded forward soft-knee tonemap mapping HDR linear values to [0, 1).
+    """Strictly monotonic C1 bijective forward soft-knee tonemap.
 
     Exact algebraic inverse of ``_fallback_soft_knee_inverse_tonemap``.
-    Below ``t_knee`` (0.8): identity ``f(y) = y``.
-    Above ``t_knee``: bounded rational soft-knee:
+    Below ``t_knee`` (0.8): identity ``f(y) = y`` (preserves negative gamut values).
+    Above ``t_knee``: rationalized quadratic root::
 
-        x = t + v / (1 + v · k)        v = y - t, k = 1/(1-t)
+        x = t + 2 * v / (1 + sqrt(1 + 4 * a * v))    (v = y - t >= 0, a = 1.0)
 
     Properties:
-    - Maps [t, ∞) → [t, 1)   — **bounded**, no sqrt divergence
-    - f(t) = t, f'(t) = 1 at the knee (C1 continuous with identity)
-    - Exact analytic inverse: y = t + u / (1 - u · k), u = x - t
-    - Strictly monotonically increasing
+    - Exact bijection with ``soft_knee_inverse_tonemap`` over all R (error < 1e-12)
+    - f(t) = t, f'(t) = 1 at knee (C1 continuous with identity)
+    - Strictly monotonically increasing, smooth highlight compression
     """
     y = np.asarray(hdr_linear, dtype=np.float64)
     y = np.where(np.isfinite(y), y, 0.0)
-    y_clipped = np.clip(y, 0.0, None)
-    k = 1.0 / (1.0 - _SOFT_KNEE_THRESHOLD)  # = 5.0 for t=0.8
-    v = np.clip(y_clipped - _SOFT_KNEE_THRESHOLD, 0.0, None)
-    high = _SOFT_KNEE_THRESHOLD + v / (1.0 + v * k)
-    return np.where(y_clipped <= _SOFT_KNEE_THRESHOLD, y_clipped, high)
+    v = np.maximum(y - _SOFT_KNEE_THRESHOLD, 0.0)
+    high = _SOFT_KNEE_THRESHOLD + (2.0 * v) / (1.0 + np.sqrt(1.0 + 4.0 * _SOFT_KNEE_QUAD_A * v))
+    return np.asarray(np.where(y <= _SOFT_KNEE_THRESHOLD, y, high))
 
 
 # --- CIE Lab and CIEDE2000 -----------------------------------------

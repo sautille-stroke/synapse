@@ -103,27 +103,28 @@ def generate_surgical_mask(
     Returns:
         ``[H, W]`` float32 alpha mask in ``[0.0, 1.0]``.
     """
-    # 1. Union of masks.
-    combined = mask_3d_new.astype(bool).copy()
+    # 1. Union of masks (preserve raw foreground union for undiluted motion estimation).
+    raw_combined = mask_3d_new.astype(bool).copy()
     if mask_sam2_old is not None:
-        combined |= mask_sam2_old.astype(bool)
+        raw_combined |= mask_sam2_old.astype(bool)
+    combined = raw_combined.copy()
 
     # 2. Isotropic dilation with circular structuring element.
     if r_base > 0:
         se_circle = _circular_structuring_element(r_base)
         combined = _binary_dilation(combined, se_circle)
 
-    # 3. Directional (motion-adaptive) dilation.
-    if motion_vectors is not None and np.any(combined):
+    # 3. Directional (motion-adaptive) dilation using undiluted foreground motion.
+    if motion_vectors is not None and np.any(raw_combined):
         mv = motion_vectors.astype(np.float32)
         # Replace NaN with 0 for safe mean computation.
         mv_safe = np.where(np.isfinite(mv), mv, 0.0)
 
-        # Mean motion within the combined mask region.
-        count = float(combined.sum())
+        # Mean motion within the original pre-dilation foreground mask region.
+        count = float(raw_combined.sum())
         if count > 0:
-            mean_dx = float((mv_safe[..., 0] * combined).sum() / count)
-            mean_dy = float((mv_safe[..., 1] * combined).sum() / count)
+            mean_dx = float((mv_safe[..., 0] * raw_combined).sum() / count)
+            mean_dy = float((mv_safe[..., 1] * raw_combined).sum() / count)
             mag = math.sqrt(mean_dx * mean_dx + mean_dy * mean_dy)
 
             kernel_len = int(

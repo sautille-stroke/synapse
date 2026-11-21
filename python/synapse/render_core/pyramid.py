@@ -175,7 +175,8 @@ def upsample2x(
         out = (1.0 - rf_3d) * top + rf_3d * bottom
 
     if np.issubdtype(orig_dtype, np.integer):
-        return np.asarray(np.clip(np.round(out), 0, 255).astype(orig_dtype))
+        info = np.iinfo(orig_dtype)
+        return np.asarray(np.clip(np.round(out), info.min, info.max).astype(orig_dtype))
     return np.asarray(out.astype(orig_dtype))
 
 
