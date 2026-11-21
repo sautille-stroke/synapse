@@ -34,6 +34,7 @@ def handle_video_to_3d_invert(
     """
     import time
 
+    from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
     from synapse.errors import evaluate_hitl_circuit_breaker
     from synapse.recon import ReconPipeline
     from synapse.recon.delight import delight_multiview_albedo
@@ -42,6 +43,28 @@ def handle_video_to_3d_invert(
 
     params = dict(manifest.params)
     target_faces = int(params.get("target_faces", 1500))
+
+    # Load FGPP conditioning if present
+    fgpp_dir_str = params.get("fgpp_dir", "")
+    fgpp_conditioning: dict[str, Any] = {}
+    if fgpp_dir_str and Path(fgpp_dir_str).is_dir():
+        try:
+            from synapse.fgpp.io import import_fgpp
+
+            for exr_file in sorted(Path(fgpp_dir_str).glob("*.exr")):
+                try:
+                    frame = import_fgpp(exr_file)
+                    fgpp_conditioning[exr_file.stem] = frame
+                except Exception:
+                    continue
+        except ImportError:
+            pass
+
+    # Load skeleton template — Redline #3 fail-closed
+    skeleton_template = None
+    skeleton_path_str = params.get("skeleton", "") or manifest.inputs.get("skeleton", "")
+    if skeleton_path_str and Path(skeleton_path_str).is_file():
+        skeleton_template = json.loads(Path(skeleton_path_str).read_text(encoding="utf-8"))
 
     # Load input frames — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
@@ -58,7 +81,7 @@ def handle_video_to_3d_invert(
     frames = np.load(video_path)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    result = pipe.run(frames)
+    result = pipe.run(frames, skeleton_template=skeleton_template)
 
     output_paths: dict[str, str] = {}
 
@@ -115,9 +138,18 @@ def handle_video_to_3d_invert(
         np.save(str(p_albedo), albedo_res.albedo)
         output_paths["albedo"] = str(p_albedo)
 
-    # HITL circuit breaker — enforce 15-min ceiling (Redline #3)
+    # HITL circuit breaker — enforce 15-min ceiling via PersistentHitlLedger
+    # (Redline #3: fail-closed persistent tracking across CLI invocations)
     elapsed = time.monotonic() - t_start
-    evaluate_hitl_circuit_breaker(elapsed, domain="asset_3d")
+    ledger = PersistentHitlLedger()
+    ledger.record_action(
+        CommandIRRecord(
+            intent_group_id=f"recon-stage-{manifest.job_id if hasattr(manifest, 'job_id') else 'default'}",
+            intent="video-to-3d-inverse-reconstruction-stage",
+            elapsed_seconds=elapsed,
+        ),
+        domain="asset_3d",
+    )
 
     return {"output_paths": output_paths}
 

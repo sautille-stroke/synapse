@@ -68,7 +68,7 @@ class ReconPipeline:
         skeleton_template: dict[str, Any] | None = None,
         fps: float = 30.0,
         track: str = "track_b_whitebox",
-        has_gen3d_highpoly: bool | None = None,
+        has_gen3d_highpoly: bool = False,
         depths: np.ndarray | None = None,
         masks: np.ndarray | None = None,
         cameras: list[CameraExtrinsics] | None = None,
@@ -83,9 +83,9 @@ class ReconPipeline:
             track: Distillation track identifier for the geometry gate
                 (default ``"track_b_whitebox"``).
             has_gen3d_highpoly: Whether the mesh has passed through gen3d
-                high-poly reconstruction.  When *None* (default), auto-
-                computed as ``initial_mesh.vertex_count >= 1500`` to
-                enforce Redline #3.
+                high-poly reconstruction.  Defaults to ``False`` — the
+                caller **must** explicitly opt in after verified Gen-3D
+                reconstruction (Redline #3 fail-closed).
             depths: Optional metric depth maps for multi-view TSDF reconstruction
                 when ``initial_mesh is None``.
             masks: Optional silhouette masks for visual hull reconstruction
@@ -141,16 +141,14 @@ class ReconPipeline:
             # before texture back-projection is permitted.
             from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
 
-            # Auto-compute has_gen3d_highpoly from vertex count when not
-            # explicitly set by caller (Redline #3 safety).
-            _highpoly = (
-                has_gen3d_highpoly
-                if has_gen3d_highpoly is not None
-                else initial_mesh.vertex_count >= 1500
-            )
+            # Redline #3 fail-closed: has_gen3d_highpoly must be
+            # explicitly set True by the caller after verified Gen-3D
+            # reconstruction.  Auto-inference from vertex_count is
+            # forbidden — it would let every ≥1500-vertex whitebox
+            # proxy silently bypass the Track-B gate.
             enforce_distillation_geometry_gate(
                 track=track,
-                has_gen3d_highpoly=_highpoly,
+                has_gen3d_highpoly=has_gen3d_highpoly,
                 vertex_count=initial_mesh.vertex_count,
                 has_articulated_limbs=(skeleton_template is not None),
                 is_character=(skeleton_template is not None),
@@ -166,6 +164,18 @@ class ReconPipeline:
         is_manifold = validate_recon_mesh_manifold(
             remeshed_v, remeshed_f, backend=self.geometry_backend
         )
+        if not is_manifold:
+            from synapse.errors import ContractValidationError
+
+            raise ContractValidationError(
+                "Manifold validation failed: reconstructed mesh is non-manifold. "
+                "Fail-closed per Redline #3 — texture back-projection on "
+                "non-manifold geometry produces UV seam artefacts.",
+                agent_fix_hint=(
+                    "Increase target_quad_faces or improve input geometry "
+                    "quality. Run quad_remesh with stricter watertight constraints."
+                ),
+            )
 
         final_mesh = MeshGeometry(
             vertices=remeshed_v,

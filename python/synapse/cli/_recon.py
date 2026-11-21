@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import cast
 
 import numpy as np
@@ -24,7 +25,10 @@ def _cmd_recon_invert_video(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     """Run video-to-3D inverse reconstruction (RFC 0060)."""
+    from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
     from synapse.recon import ReconPipeline
+
+    t_start = time.monotonic()
 
     output_dir = Path(getattr(args, "output", "./output/recon"))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,8 +53,25 @@ def _cmd_recon_invert_video(
     if fgpp_dir and Path(fgpp_dir).is_dir():
         fgpp_conditioning = _load_fgpp_exr_dir(Path(fgpp_dir))
 
+    # Load skeleton template for Redline #3 fail-closed skeleton gate
+    skeleton_template = None
+    skeleton_path_raw = getattr(args, "skeleton", None)
+    if skeleton_path_raw:
+        if not Path(skeleton_path_raw).is_file():
+            raise AssetNotFoundError(
+                f"Skeleton template file not found: {skeleton_path_raw!r}",
+                agent_fix_hint=(
+                    "Provide '--skeleton <path>' pointing to a valid "
+                    "skeleton JSON file."
+                ),
+            )
+        import json as _json_skel
+
+        with open(skeleton_path_raw, encoding="utf-8") as _f_skel:
+            skeleton_template = _json_skel.load(_f_skel)
+
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    result = pipe.run(frames)
+    result = pipe.run(frames, skeleton_template=skeleton_template)
 
     output_info: dict[str, Any] = {
         "output_dir": str(output_dir),
@@ -97,6 +118,18 @@ def _cmd_recon_invert_video(
     if fgpp_conditioning:
         output_info["fgpp_dir"] = fgpp_dir
         output_info["fgpp_channels_loaded"] = list(fgpp_conditioning.keys())
+
+    # Record HITL timing via PersistentHitlLedger (Redline #3 circuit breaker)
+    elapsed = time.monotonic() - t_start
+    ledger = PersistentHitlLedger()
+    ledger.record_action(
+        CommandIRRecord(
+            intent_group_id=f"recon-invert-{output_dir.name}",
+            intent="video-to-3d-inverse-reconstruction",
+            elapsed_seconds=elapsed,
+        ),
+        domain="asset_3d",
+    )
 
     if not getattr(args, "json", False):
         print("[Recon] Video-to-3D inverse reconstruction complete")
@@ -327,6 +360,11 @@ def register_recon_subparser(
         type=int,
         default=1500,
         help="Target face count for quad mesh (default: 1500)",
+    )
+    recon_invert.add_argument(
+        "--skeleton",
+        default=None,
+        help="Path to skeleton template JSON (Redline #3: fail-closed on missing)",
     )
 
     recon_closed_loop = recon_sub.add_parser(
