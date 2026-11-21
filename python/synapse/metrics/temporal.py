@@ -523,7 +523,31 @@ def _statistical_proxy_extractor(
     Returns:
         ``[N, D]`` feature vectors.
     """
+    # Handle list inputs (possibly unequal lengths) separately
+    if isinstance(vids, list):
+        feats = []
+        for v in vids:
+            v = np.asarray(v, dtype=np.float32)
+            if v.dtype == np.uint8 or v.max() > 1.5:
+                v = v / 255.0
+            if v.ndim == 4:
+                # Single video [T, H, W, C]
+                m = v.mean(axis=(0, 1, 2))  # [C]
+                s = v.std(axis=(0, 1, 2))  # [C]
+                tdiff = np.abs(v[1:] - v[:-1]).mean(axis=(0, 1, 2)) if v.shape[0] > 1 else m
+                feats.append(np.concatenate([m, s, tdiff]))
+            elif v.ndim == 3:
+                # Single frame [H, W, C]
+                m = v.mean(axis=(0, 1))
+                s = v.std(axis=(0, 1))
+                feats.append(np.concatenate([m, s, m]))  # no temporal diff for single frame
+            else:
+                raise ValueError(f"Unexpected video ndim={v.ndim} in list input")
+        return np.array(feats, dtype=np.float64)
+
     arr = np.asarray(vids, dtype=np.float32)
+    if arr.max() > 1.5:
+        arr = arr / 255.0
     if arr.ndim == 4:
         arr = arr[np.newaxis, ...]
     n_samples = arr.shape[0]

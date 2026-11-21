@@ -67,6 +67,7 @@ _METRIC_DIRECTIONS: dict[str, str] = {
 METRIC_ALIASES: dict[str, str] = {
     "style_color_de": "border_ring_ciede2000",
     "style_light_error_deg": "light_dir_error_deg",
+    "psnr": "psnr_db",
 }
 
 # ── Profile threshold tables ────────────────────────────────────────
