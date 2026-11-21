@@ -153,12 +153,20 @@ def native_srgb_to_linear(srgb: np.ndarray) -> np.ndarray | None:
         has_neg = bool(np.any(arr < 0.0))
         if has_neg:
             sign = np.sign(arr)
-            abs_flat = np.abs(arr).reshape(-1, 1).astype(np.float32)
-            buf = _aether_color_mod.srgb_to_linear_image(abs_flat)
-            res = (sign * np.asarray(buf).reshape(orig_shape))
+            work = np.abs(arr).astype(np.float32)
+            # Pass original (H, W, C) or (N, C) shape to native — avoid flattening
+            # to (N, 1) which exceeds kMaxDim=65536 for large images
+            if work.ndim >= 2:
+                buf = _aether_color_mod.srgb_to_linear_image(work)
+            else:
+                buf = _aether_color_mod.srgb_to_linear_image(work.reshape(-1, 1))
+            res = sign * np.asarray(buf).reshape(orig_shape)
         else:
-            flat_2d = arr.reshape(-1, 1).astype(np.float32)
-            buf = _aether_color_mod.srgb_to_linear_image(flat_2d)
+            work = arr.astype(np.float32)
+            if work.ndim >= 2:
+                buf = _aether_color_mod.srgb_to_linear_image(work)
+            else:
+                buf = _aether_color_mod.srgb_to_linear_image(work.reshape(-1, 1))
             res = np.asarray(buf).reshape(orig_shape)
         return res.astype(orig_dtype if orig_dtype in (np.float32, np.float64) else np.float32)
     except Exception:
@@ -179,12 +187,18 @@ def native_linear_to_srgb(linear: np.ndarray) -> np.ndarray | None:
         has_neg = bool(np.any(arr < 0.0))
         if has_neg:
             sign = np.sign(arr)
-            abs_flat = np.abs(arr).reshape(-1, 1).astype(np.float32)
-            buf = _aether_color_mod.linear_to_srgb_image(abs_flat)
-            res = (sign * np.asarray(buf).reshape(orig_shape))
+            work = np.abs(arr).astype(np.float32)
+            if work.ndim >= 2:
+                buf = _aether_color_mod.linear_to_srgb_image(work)
+            else:
+                buf = _aether_color_mod.linear_to_srgb_image(work.reshape(-1, 1))
+            res = sign * np.asarray(buf).reshape(orig_shape)
         else:
-            flat_2d = arr.reshape(-1, 1).astype(np.float32)
-            buf = _aether_color_mod.linear_to_srgb_image(flat_2d)
+            work = arr.astype(np.float32)
+            if work.ndim >= 2:
+                buf = _aether_color_mod.linear_to_srgb_image(work)
+            else:
+                buf = _aether_color_mod.linear_to_srgb_image(work.reshape(-1, 1))
             res = np.asarray(buf).reshape(orig_shape)
         return res.astype(orig_dtype if orig_dtype in (np.float32, np.float64) else np.float32)
     except Exception:

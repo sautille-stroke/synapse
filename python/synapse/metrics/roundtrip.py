@@ -33,17 +33,42 @@ def _nearest_neighbor_distances(
 ) -> np.ndarray:
     """Compute exact Euclidean nearest-neighbour distance from each *src* point to *tgt*.
 
-    Uses ``aether_geo.bvh_closest_points`` for exact KD-Tree/BVH nearest-neighbour queries.
-
-    .. note:: C++ extension is **mandatory** (v3.0).  No Python fallback.
+    Uses ``aether_geo.bvh_closest_points`` when the native extension is available,
+    falling back to a pure NumPy brute-force / scipy KDTree implementation otherwise.
     """
     if len(src) == 0 or len(tgt) == 0:
         return np.zeros(len(src), dtype=np.float64)
 
-    from synapse.bridge.aether_bridge import require_aether_geo
+    from synapse.bridge.aether_bridge import get_aether_geo
 
-    _, dists = require_aether_geo().bvh_closest_points(tgt, src)
-    return np.asarray(dists, dtype=np.float64)
+    geo = get_aether_geo()
+    if geo is not None:
+        try:
+            _, dists = geo.bvh_closest_points(tgt, src)
+            return np.asarray(dists, dtype=np.float64)
+        except Exception:
+            pass
+
+    # Pure Python fallback: try scipy KDTree, else brute-force
+    try:
+        from scipy.spatial import cKDTree  # type: ignore[import-untyped]
+
+        tree = cKDTree(tgt)
+        dists, _ = tree.query(src, k=1)
+        return np.asarray(dists, dtype=np.float64)
+    except ImportError:
+        pass
+
+    # Brute-force for small point clouds (chunked to limit memory)
+    s = np.asarray(src, dtype=np.float64)
+    t = np.asarray(tgt, dtype=np.float64)
+    chunk = 2048
+    result = np.empty(len(s), dtype=np.float64)
+    for i in range(0, len(s), chunk):
+        end = min(i + chunk, len(s))
+        diff = s[i:end, np.newaxis, :] - t[np.newaxis, :, :]  # [chunk, M, 3]
+        result[i:end] = np.sqrt(np.sum(diff ** 2, axis=-1).min(axis=1))
+    return result
 
 
 def chamfer_mm(
@@ -76,9 +101,25 @@ def chamfer_mm(
     if len(a) == 0 or len(b) == 0:
         return 0.0
 
-    from synapse.bridge.aether_bridge import require_aether_geo
+    from synapse.bridge.aether_bridge import get_aether_geo
 
-    return float(require_aether_geo().compute_chamfer_distance(a, b, reduction=reduction))
+    geo = get_aether_geo()
+    if geo is not None:
+        try:
+            return float(geo.compute_chamfer_distance(a, b, reduction=reduction))
+        except Exception:
+            pass
+
+    # Pure NumPy fallback via _nearest_neighbor_distances
+    d_a2b = _nearest_neighbor_distances(a, b) * 1000.0  # m -> mm
+    d_b2a = _nearest_neighbor_distances(b, a) * 1000.0
+
+    mean_a2b = float(np.mean(d_a2b))
+    mean_b2a = float(np.mean(d_b2a))
+
+    if reduction == "sum":
+        return mean_a2b + mean_b2a
+    return (mean_a2b + mean_b2a) / 2.0
 
 
 
@@ -356,15 +397,20 @@ def _is_mesh_watertight(faces_or_vertices: Any, faces: Any = None) -> bool:
 
     # Fast path: checkWatertight via native extension if uniform faces and vertices are provided
     if verts is not None and isinstance(raw_faces, np.ndarray) and raw_faces.ndim == 2:
-        from synapse.bridge.aether_bridge import require_aether_geo
+        from synapse.bridge.aether_bridge import get_aether_geo
 
-        return bool(
-            require_aether_geo().check_watertight(
-                verts,
-                raw_faces.astype(np.int64, copy=False),
-                int(raw_faces.shape[1]),
-            )
-        )
+        geo = get_aether_geo()
+        if geo is not None:
+            try:
+                return bool(
+                    geo.check_watertight(
+                        verts,
+                        raw_faces.astype(np.int64, copy=False),
+                        int(raw_faces.shape[1]),
+                    )
+                )
+            except Exception:
+                pass  # fall through to pure Python
 
     # Can be a list of polygons or a numpy array
     f: list[Any] | np.ndarray
