@@ -4,6 +4,10 @@
 
 try-import %workspace%/../../../../all-overview/devenv-skills/templates/bazel/cpp-common.bazelrc
 
+# Clear any workspace-relative downloader_config inherited from parent monorepo .bazelrc
+# so standalone builds inside tools/data-inspector/native resolve BCR cleanly.
+common --experimental_downloader_config=
+
 # 1. Bzlmod Registries (三级分发架构，详见 all-overview/architecture/bcr-and-tooling-distribution-matrix.md)
 # Tier 3 (开源兜底): 官方中央仓库
 common --registry=https://bcr.bazel.build

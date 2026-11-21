@@ -3,6 +3,7 @@
 
 #include "inspector_app.h"
 
+#include <aether/fs/file_utils.h>
 #include <aether/fs/filesystem.h>
 #include <aether/json.h>
 #include <aether/pal/console.h>
@@ -387,8 +388,10 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
 
       if (rawPosCount <= 0 || rawPosCompType < 0 || rawPosViewIdx < 0 || rawPosAccOffset < 0) continue;
 
-      // Overflow-safe upper bound check: reject before narrowing cast.
-      if (static_cast<uint64_t>(rawPosCount) > kMaxMeshVertices) {
+      // Overflow-safe upper bound check (per-primitive AND cumulative across meshes).
+      const size_t currentVerts = loadedVerts.size() / 3u;
+      if (static_cast<uint64_t>(rawPosCount) > kMaxMeshVertices ||
+          static_cast<uint64_t>(rawPosCount) > (kMaxMeshVertices - currentVerts)) {
         std::cerr << "[inspector] GLB vertex count exceeds 16M limit: " << rawPosCount << "\n";
         continue;
       }
@@ -406,23 +409,30 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
 
       const int64_t rawPosViewOffset = posView["byteOffset"].getIntOr(0);
       const int64_t rawPosViewByteLength = posView["byteLength"].getIntOr(0);
-      if (rawPosViewOffset < 0 || rawPosViewByteLength < 0) continue;
+      if (rawPosViewOffset < 0 || rawPosViewByteLength <= 0) continue;
 
       const size_t posViewOffset = static_cast<size_t>(rawPosViewOffset);
+      const size_t posViewByteLength = static_cast<size_t>(rawPosViewByteLength);
 
-      // Overflow-safe addition: posViewOffset + posAccOffset
-      if (posViewOffset > binChunk.size() || posAccOffset > binChunk.size() - posViewOffset) continue;
+      // Enforce bufferView bounds against binChunk AND accessor bounds against bufferView.byteLength
+      if (posViewOffset > binChunk.size() || posViewByteLength > binChunk.size() - posViewOffset) {
+        continue;
+      }
+      if (posAccOffset > posViewByteLength) continue;
       const size_t posByteOffset = posViewOffset + posAccOffset;
-
-      // Compute byte length with size_t to prevent 32-bit overflow
-      const size_t posByteLength = static_cast<size_t>(posCount) * 3u * sizeof(float);
-      if (posByteOffset > binChunk.size() || posByteLength > binChunk.size() - posByteOffset) continue;
 
       // Parse byteStride for interleaved vertex buffers (0 means tightly packed).
       const int64_t rawByteStride = posView["byteStride"].getIntOr(0);
       if (rawByteStride < 0) continue;  // Reject negative byteStride
       const size_t byteStride = (rawByteStride > 0) ? static_cast<size_t>(rawByteStride) : (3u * sizeof(float));
       if (byteStride < 3u * sizeof(float)) continue;  // stride too small for VEC3
+
+      // Enforce full strided extent stays within bufferView.byteLength
+      const size_t lastStrideBytes = (posCount > 1u) ? (static_cast<size_t>(posCount - 1u) * byteStride) : 0u;
+      if (lastStrideBytes > posViewByteLength - posAccOffset ||
+          (3u * sizeof(float)) > (posViewByteLength - posAccOffset - lastStrideBytes)) {
+        continue;
+      }
 
       const uint32_t baseVertex = static_cast<uint32_t>(loadedVerts.size() / 3);
 
@@ -479,8 +489,9 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
 
           if (rawIdxCount <= 0 || rawIdxCompType < 0 || rawIdxViewIdx < 0 || rawIdxAccOffset < 0) continue;
 
-          // Overflow-safe upper bound check for index count.
-          if (static_cast<uint64_t>(rawIdxCount) > kMaxMeshIndices) {
+          // Overflow-safe upper bound check (per-primitive AND cumulative).
+          if (static_cast<uint64_t>(rawIdxCount) > kMaxMeshIndices ||
+              static_cast<uint64_t>(rawIdxCount) > (kMaxMeshIndices - loadedFaces.size())) {
             std::cerr << "[inspector] GLB index count exceeds 48M limit: " << rawIdxCount << "\n";
             continue;
           }
@@ -493,19 +504,25 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
           if (idxViewIdx < bufferViews.size()) {
             const auto idxView = bufferViews[idxViewIdx];
             const int64_t rawIdxViewOffset = idxView["byteOffset"].getIntOr(0);
-            if (rawIdxViewOffset < 0) continue;
+            const int64_t rawIdxViewByteLength = idxView["byteLength"].getIntOr(0);
+            if (rawIdxViewOffset < 0 || rawIdxViewByteLength <= 0) continue;
             const size_t idxViewOffset = static_cast<size_t>(rawIdxViewOffset);
+            const size_t idxViewByteLength = static_cast<size_t>(rawIdxViewByteLength);
 
-            // Overflow-safe addition: idxViewOffset + idxAccOffset
-            if (idxViewOffset > binChunk.size() || idxAccOffset > binChunk.size() - idxViewOffset) continue;
+            // Enforce bufferView bounds against binChunk and accessor offset within bufferView
+            if (idxViewOffset > binChunk.size() || idxViewByteLength > binChunk.size() - idxViewOffset) {
+              continue;
+            }
+            if (idxAccOffset > idxViewByteLength) continue;
             const size_t idxByteOffset = idxViewOffset + idxAccOffset;
+            const size_t idxViewRemaining = idxViewByteLength - idxAccOffset;
 
             // Compute total index byte size with size_t to prevent uint32_t wraparound.
             // Cast idxCount to size_t BEFORE multiplying by element size.
             if (idxCompType == 5121u) {
               // UNSIGNED_BYTE — 1 byte per index, no overflow concern
               const size_t totalIdxBytes = static_cast<size_t>(idxCount);
-              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
+              if (totalIdxBytes > idxViewRemaining) continue;
               const uint8_t* idxData = binChunk.data() + idxByteOffset;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
@@ -517,7 +534,7 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
             } else if (idxCompType == 5123u) {
               // UNSIGNED_SHORT — cast to size_t BEFORE multiply to prevent uint32_t overflow
               const size_t totalIdxBytes = static_cast<size_t>(idxCount) * sizeof(uint16_t);
-              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
+              if (totalIdxBytes > idxViewRemaining) continue;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 uint16_t idx0, idx1, idx2;
                 std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 2, sizeof(uint16_t));
@@ -532,7 +549,7 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
             } else if (idxCompType == 5125u) {
               // UNSIGNED_INT — cast to size_t BEFORE multiply to prevent uint32_t overflow
               const size_t totalIdxBytes = static_cast<size_t>(idxCount) * sizeof(uint32_t);
-              if (idxByteOffset > binChunk.size() || totalIdxBytes > binChunk.size() - idxByteOffset) continue;
+              if (totalIdxBytes > idxViewRemaining) continue;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
                 uint32_t idx0, idx1, idx2;
                 std::memcpy(&idx0, binChunk.data() + idxByteOffset + i * 4, sizeof(uint32_t));
@@ -1193,6 +1210,14 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
               }
               break;
             }
+            case DebugViewMode::kRoughnessMetallic: {
+              if (srcIdx * 2 + 1 < m_fgppAov.roughnessMetallic.size()) {
+                cr = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
+                cg = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
+                cb = 0;
+              }
+              break;
+            }
             case DebugViewMode::kCryptomatte: {
               if (srcIdx < m_fgppAov.cryptomatte.size()) {
                 const uint32_t id = m_fgppAov.cryptomatte[srcIdx];
@@ -1541,6 +1566,26 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
         }
         break;
       }
+      case DebugViewMode::kRoughnessMetallic: {
+        if (m_fgppAov.hasData && !m_fgppAov.roughnessMetallic.empty() &&
+            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
+          const float centX = (sx0 + sx1 + sx2) / 3.0f;
+          const float centY = (sy0 + sy1 + sy2) / 3.0f;
+          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
+          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
+          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+          if (aovIdx * 2 + 1 < m_fgppAov.roughnessMetallic.size()) {
+            cr = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
+            cg = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
+            cb = 0u;
+          }
+        } else {
+          cr = 128u;
+          cg = 32u;
+          cb = 0u;
+        }
+        break;
+      }
       case DebugViewMode::kWireframe:
       default:
         break;
@@ -1697,6 +1742,8 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       m_debugView = DebugViewMode::kAlbedo;
     } else if (mode == "motion") {
       m_debugView = DebugViewMode::kMotion;
+    } else if (mode == "roughness_metallic") {
+      m_debugView = DebugViewMode::kRoughnessMetallic;
     } else {
       ok = false;
     }
@@ -1709,14 +1756,32 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
     const std::string name = std::string(jsonStringOr(j, "name", ""));
     const bool visible = jsonBoolOr(j, "visible", true);
     ok = setEntityVisible(name, visible);
-    // Also update legacy global flag for backward compat.
-    m_entityVisible = visible;
+    if (m_entities.empty()) {
+      m_entityVisible = visible;
+    } else {
+      bool anyVisible = false;
+      for (const auto& ent : m_entities) {
+        if (ent.visible) {
+          anyVisible = true;
+          break;
+        }
+      }
+      m_entityVisible = anyVisible;
+    }
     std::cerr << "[inspector] Entity '" << name
               << "' visible=" << (visible ? "true" : "false") << "\n";
   } else if (type == "select_tab") {
     const std::string tab = std::string(jsonStringOr(j, "tab", ""));
     setActiveTab(tab);
     std::cerr << "[inspector] Active tab: " << m_activeTab << "\n";
+  } else if (type == "seek_frame") {
+    const int64_t frame = j["frame"].getIntOr(-1);
+    if (frame >= 0 && frame <= 1000000) {
+      m_currentFrame = static_cast<uint32_t>(frame);
+      ok = true;
+    } else {
+      ok = false;
+    }
   } else if (type == "resize") {
     const int64_t rw = j["width"].getIntOr(0);
     const int64_t rh = j["height"].getIntOr(0);
@@ -1749,6 +1814,8 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
   } else if (type == "set_entity_visible") {
     ackResp.write("name", std::string(jsonStringOr(j, "name", "")));
     ackResp.write("visible", jsonBoolOr(j, "visible", true));
+  } else if (type == "seek_frame") {
+    ackResp.write("frame", static_cast<int64_t>(m_currentFrame));
   }
   ackResp.endObject();
   std::cout << ackResp.toString(false) << "\n";

@@ -259,8 +259,11 @@
       <button data-mode="depth" title="Linear Depth">Depth</button>
       <button data-mode="albedo" title="Albedo">Alb</button>
       <button data-mode="motion" title="Motion Vectors">Mot</button>
+      <button data-mode="roughness_metallic" title="Roughness / Metallic">R/M</button>
       <button data-mode="cryptomatte" title="Cryptomatte ID">Crypto</button>
     </div>
+
+    <button id="btn-export-screenshot" title="Export Viewport Screenshot">Screenshot</button>
 
     <span class="status" id="status-text">No bundle loaded</span>
   </div>
@@ -287,10 +290,12 @@
       </div>
       <canvas id="viewport-canvas" style="display: none;"></canvas>
       <div class="viewport-overlay" id="viewport-overlay"></div>
+      <div id="timeline-controls" style="position: absolute; bottom: 8px; left: 12px; right: 12px; display: none; align-items: center; gap: 8px; background: rgba(22, 27, 34, 0.9); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-light);"></div>
     </div>
 
     <!-- Right panel: mesh/material stats -->
     <div class="properties-panel">
+      <div class="prop-section" id="comparison-metrics" style="display: none;"></div>
       <div class="prop-section">
         <div class="prop-section-title">Bundle Info</div>
         <div id="bundle-info">

@@ -27,8 +27,9 @@ enum class DebugViewMode : uint8_t {
   kUv = 3,          ///< UV coordinate visualisation.
   kDepth = 4,       ///< Camera linear depth visualisation.
   kCryptomatte = 5, ///< Entity ID segmentation mask visualisation.
-  kAlbedo = 6,      ///< Base color / diffuse reflectance visualisation.
-  kMotion = 7,      ///< Screen-space velocity / motion flow visualisation.
+  kAlbedo = 6,            ///< Base color / diffuse reflectance visualisation.
+  kMotion = 7,            ///< Screen-space velocity / motion flow visualisation.
+  kRoughnessMetallic = 8, ///< Roughness (R) / Metallic (G) PBR AOV visualisation.
 };
 
 /// @brief Configuration for the inspector native process.
@@ -125,9 +126,10 @@ class InspectorApp {
   bool setEntityVisible(std::string_view name, bool visible) noexcept;
   [[nodiscard]] bool isEntityVisible(std::string_view name) const noexcept;
 
-  /// @brief Active navigation tab.
+  /// @brief Active navigation tab & current timeline frame index.
   [[nodiscard]] const std::string& activeTab() const noexcept { return m_activeTab; }
   void setActiveTab(std::string_view tab) noexcept;
+  [[nodiscard]] uint32_t currentFrame() const noexcept { return m_currentFrame; }
 
   /// @brief Dynamically resize viewport and recreate SHM framebuffer.
   [[nodiscard]] bool resizeViewport(uint32_t width, uint32_t height);
@@ -142,6 +144,7 @@ class InspectorApp {
   DebugViewMode m_debugView = DebugViewMode::kLit;
   bool m_entityVisible = true;
   std::string m_activeTab = "source";
+  uint32_t m_currentFrame = 0;
 
   // Multi-entity mesh slots (source, animation, reconstructed).
   std::vector<MeshEntity> m_entities;

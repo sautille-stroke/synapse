@@ -147,6 +147,9 @@ class InspectorShmServer {
   /// to unfreeze the viewport.
   void bumpGeneration() noexcept;
 
+  /// @brief Current monotonically increasing resize generation counter.
+  [[nodiscard]] uint32_t generation() const noexcept { return m_generation; }
+
   /// @brief Total SHM size in bytes for the current resolution.
   [[nodiscard]] size_t totalSize() const noexcept { return m_shm.size(); }
 
@@ -155,6 +158,7 @@ class InspectorShmServer {
   uint32_t m_width = 0;
   uint32_t m_height = 0;
   uint32_t m_stagingIdx = 0;
+  uint32_t m_generation = 0;
   bool m_unlinkOnClose = true;
   std::string m_shmFilePath;  ///< File path for file-backed SHM cleanup.
 };
