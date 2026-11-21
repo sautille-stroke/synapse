@@ -44,7 +44,7 @@
 1. **包边界重构与 CLI 模块化基本成型**：原先 2,211 行的单体 `cli/__init__.py` 已拆分为 11 个职责清晰的领域子模块；`synapse.render_core`（2,381 LOC）成功从 `bench/` 剥离了软光栅器、相机与基础几何生成器。
 2. **顶层零重型依赖纪律稳固**：全量 `python/synapse/` 源文件均保持 `torch`、`openexr`、`cv2`、`mitsuba`、`safetensors` 函数内按需懒加载，基础导入无显存/权重隐式分配。
 3. **Agent-Native 错误编码体系完备**：[errors.py](../../../python/synapse/errors.py) 与 [telemetry.py](../../../python/synapse/telemetry.py) 统一实现了确定性退出码 `ExitCode (0/10/20/30/40/50)`、`agent_fix_hint` 与 W3C `TraceContext`。
-4. **C++20 原生几何核减重完成**：[csrc/geometry](../../../csrc/geometry/) 已将底层几何检查去重委托给 `@aether//geo`，补齐了 N-gon 扇形剖分与 pybind11 `gil_scoped_release`。
+4. **C++20 原生几何核减重完成**：`csrc/geometry/` 已将底层几何检查去重委托给 `@aether//geo`，补齐了 N-gon 扇形剖分与 pybind11 `gil_scoped_release`。
 
 ### 1.4 多维健康度评分卡（Post-Horizon-5 真值校准）
 
