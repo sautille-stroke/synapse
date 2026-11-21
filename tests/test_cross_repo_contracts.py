@@ -59,6 +59,12 @@ def _is_strict_deps() -> bool:
     return val in ("1", "true", "yes", "on")
 
 
+def _require_siblings() -> bool:
+    """Return True if sibling ecosystem checkouts (aether, render-farm, native bin) are required."""
+    val = os.environ.get("SYNAPSE_CI_REQUIRE_SIBLINGS", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def _resolve_aether_root() -> Path | None:
     """Find the sibling @aether repository."""
     candidates = [
@@ -108,12 +114,13 @@ def _resolve_inspector_native_binary() -> Path | None:
 class TestAetherFgppContract:
     """Cross-language parity between @aether//fgpp and synapse.fgpp."""
 
+    @pytest.mark.external_data
     def test_fgpp_types_header_parity(self) -> None:
         """Parse aether/fgpp/include/aether/fgpp/fgpp_types.h and verify 15ch spec."""
         aether_root = _resolve_aether_root()
         if aether_root is None or not (aether_root / "fgpp").exists():
-            if _is_strict_deps():
-                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: sibling @aether repo not found.")
+            if _require_siblings():
+                pytest.fail("SYNAPSE_CI_REQUIRE_SIBLINGS=1: sibling @aether repo not found.")
             pytest.skip("Sibling @aether repo not found; skipping C++ header parity.")
 
         header_path = aether_root / "fgpp" / "include" / "aether" / "fgpp" / "fgpp_types.h"
@@ -571,12 +578,13 @@ class TestRenderFarmJobBundleContract:
         for ctype, stage in CLOSURE_TYPE_MAP.items():
             assert isinstance(stage, str) and len(stage) > 0
 
+    @pytest.mark.external_data
     def test_render_farm_models_go_closure_constants_parity(self) -> None:
         """Verify parity between render-farm internal/domain/models.go and ClosureType."""
         rf_root = _resolve_render_farm_root()
         if rf_root is None:
-            if _is_strict_deps():
-                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: sibling render-farm repo not found.")
+            if _require_siblings():
+                pytest.fail("SYNAPSE_CI_REQUIRE_SIBLINGS=1: sibling render-farm repo not found.")
             pytest.skip("Sibling render-farm repo not found; skipping models.go parity.")
 
         models_go = rf_root / "internal" / "domain" / "models.go"
@@ -832,12 +840,13 @@ class TestDataInspectorShmContract:
 
                 mm.close()
 
+    @pytest.mark.external_data
     def test_native_data_inspector_headless_shm_execution(self) -> None:
         """Execute built data-inspector-native binary with --headless --keep-shm --shm-file."""
         native_bin = _resolve_inspector_native_binary()
         if native_bin is None:
-            if _is_strict_deps():
-                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: data-inspector-native binary not found.")
+            if _require_siblings():
+                pytest.fail("SYNAPSE_CI_REQUIRE_SIBLINGS=1: data-inspector-native binary not found.")
             pytest.skip("data-inspector-native binary not built; skipping live binary test.")
 
         with tempfile.TemporaryDirectory() as tmp_dir:

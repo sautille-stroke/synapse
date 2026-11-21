@@ -306,6 +306,7 @@ class TestFgppFulgurWireParity:
 
 
 @pytest.mark.slow
+@pytest.mark.external_data
 class TestFgppFulgurRealGpuExport:
     """End-to-end verification against real fulgur GPU-rendered EXR sequences."""
 

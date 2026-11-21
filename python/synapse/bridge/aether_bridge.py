@@ -20,9 +20,21 @@ import numpy as np
 # Upstream aether extension probe & lazy loader
 # ---------------------------------------------------------------------------
 
+_aether_geo_mod: Any = None
+_GEO_PROBED = False
 _aether_metrics_mod: Any = None
 _aether_color_mod: Any = None
 _PROBED = False
+
+
+def reset_aether_cache() -> None:
+    """Reset cached native module probes (for test isolation)."""
+    global _GEO_PROBED, _aether_geo_mod, _PROBED, _aether_metrics_mod, _aether_color_mod
+    _GEO_PROBED = False
+    _aether_geo_mod = None
+    _PROBED = False
+    _aether_metrics_mod = None
+    _aether_color_mod = None
 
 _AETHER_PY_SUBMODULES: dict[str, str] = {
     "aether_geo": "geo",
@@ -96,8 +108,15 @@ def _find_and_import_aether_metrics() -> Any:
 
 
 def get_aether_geo() -> Any:
-    """Return the loaded aether_geo extension module or None."""
-    return _import_aether_extension("aether_geo")
+    """Return the loaded aether_geo extension module or None (cached)."""
+    global _GEO_PROBED, _aether_geo_mod
+    if "aether_geo" in sys.modules:
+        return sys.modules["aether_geo"]
+    if _GEO_PROBED:
+        return _aether_geo_mod
+    _GEO_PROBED = True
+    _aether_geo_mod = _import_aether_extension("aether_geo")
+    return _aether_geo_mod
 
 
 def has_aether_geo() -> bool:

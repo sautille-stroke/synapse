@@ -581,6 +581,8 @@ class TestBuildNativeScript:
 
 
 @pytest.mark.slow
+@pytest.mark.external_data
+@pytest.mark.platform_specific
 @pytest.mark.skipif(
     sys.platform == "win32" or sys.platform == "darwin",
     reason="Real native Bazel verify requires Linux (ubuntu24)",
@@ -623,6 +625,10 @@ class TestBuildNativeRealCompile:
         so_files = list(tmp_path.glob("aether_geo*"))
         assert len(so_files) >= 1, (
             f"No aether_geo .so found in {tmp_path}: {list(tmp_path.iterdir())}"
+        )
+        metrics_so_files = list(tmp_path.glob("aether_metrics*"))
+        assert len(metrics_so_files) >= 1, (
+            f"No aether_metrics .so found in {tmp_path}: {list(tmp_path.iterdir())}"
         )
 
         spec = importlib.util.spec_from_file_location("aether_geo", str(so_files[0]))
