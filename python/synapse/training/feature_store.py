@@ -138,14 +138,16 @@ class LinearProjectionEncoder:
         frames = np.asarray(frames, dtype=np.float32) / 255.0
         t, h, w, c = frames.shape
 
-        # Temporal compression: 4x
+        # Temporal compression: Wan 3D causal 4x binning — frame 0 is isolated,
+        # subsequent frames are grouped as [1:5], [5:9], ...
         tau = (t - 1) // 4 + 1
         temporal = np.zeros(
             (tau, h, w, c),
             dtype=np.float32,
         )
-        for i in range(tau):
-            src_start = i * 4
+        temporal[0] = frames[0]
+        for i in range(1, tau):
+            src_start = 1 + (i - 1) * 4
             src_end = min(src_start + 4, t)
             temporal[i] = frames[src_start:src_end].mean(axis=0)
 
@@ -259,6 +261,12 @@ class FeatureStoreBuilder:
         streaming: bool = False,
         output_dir: Path | str | None = None,
     ) -> None:
+        if streaming and output_dir is None:
+            raise ContractValidationError(
+                "FeatureStoreBuilder(streaming=True) requires an explicit output_dir.",
+                agent_fix_hint="Pass output_dir=<path> when enabling streaming=True.",
+            )
+
         self._lat_enc = latent_encoder
         self._txt_enc = text_encoder
         self._max_shard = max_shard_bytes
@@ -275,6 +283,18 @@ class FeatureStoreBuilder:
         if output_dir is not None:
             self._stream_output_dir = Path(output_dir)
             self._stream_output_dir.mkdir(parents=True, exist_ok=True)
+
+    def close(self) -> None:
+        """Close any open streaming shard file handle."""
+        if self._stream_tar is not None:
+            self._stream_tar.close()
+            self._stream_tar = None
+
+    def __enter__(self) -> FeatureStoreBuilder:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
 
     def add_sample(
         self,
@@ -435,10 +455,11 @@ class FeatureStoreBuilder:
         if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 1:
             depth = fgpp[..., 0]
             valid = depth[depth > 0]
-            if valid.size > 0:
-                span = float(valid.max() - valid.min())
-                if span < 0.1:
-                    return False, (f"Gate 2 (depth span): {span:.4f} m < 0.1 m")
+            if valid.size == 0:
+                return False, "Gate 2 (depth missing): all depth pixels <= 0"
+            span = float(valid.max() - valid.min())
+            if span < 0.1:
+                return False, (f"Gate 2 (depth span): {span:.4f} m < 0.1 m")
 
         # Gate 3 — DirectRadiance 95th percentile (indices 1-3).
         if is_raw_fgpp and fgpp is not None and fgpp.shape[-1] >= 4:
@@ -453,11 +474,12 @@ class FeatureStoreBuilder:
             norms = np.linalg.norm(normals, axis=-1)
             # Only check pixels that have a non-zero normal.
             active = norms > 0.01
-            if active.sum() > 0:
-                unit_ok = np.abs(norms[active] - 1.0) < 0.01
-                ratio = float(unit_ok.mean())
-                if ratio < 0.95:
-                    return False, (f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95")
+            if active.sum() == 0:
+                return False, "Gate 4 (normals missing): all world normals are zero"
+            unit_ok = np.abs(norms[active] - 1.0) < 0.01
+            ratio = float(unit_ok.mean())
+            if ratio < 0.95:
+                return False, (f"Gate 4 (normal unit-length): {ratio:.3f} < 0.95")
 
         # ── Wan 7ch control tensor validation (depth span & normal unit-length) ──
         if is_wan and fgpp is not None:
@@ -468,31 +490,33 @@ class FeatureStoreBuilder:
             # Wan control: [7, T, H, W] — ch0=depth (may be log-encoded [0,1])
             wan_depth = fgpp[0]  # [T, H, W]
             valid_d = wan_depth[wan_depth > 0]
-            if valid_d.size > 0:
-                d_min, d_max = float(valid_d.min()), float(valid_d.max())
-                # Log-encoded depth in [0,1]: check log-domain span, not metric span.
-                # A span of 0.005 in log-depth corresponds to negligible depth variation.
-                if d_max <= 1.0 and d_min >= 0.0:
-                    log_span = d_max - d_min
-                    if log_span < 0.005:
-                        return False, (
-                            f"Gate 2w (Wan log-depth span): {log_span:.4f} < 0.005"
-                        )
-                else:
-                    # Metric-space depth: apply standard 0.1m span check
-                    span = d_max - d_min
-                    if span < 0.1:
-                        return False, (
-                            f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m"
-                        )
+            if valid_d.size == 0:
+                return False, "Gate 2w (Wan depth missing): all depth pixels <= 0"
+            d_min, d_max = float(valid_d.min()), float(valid_d.max())
+            # Log-encoded depth in [0,1]: check log-domain span, not metric span.
+            # A span of 0.005 in log-depth corresponds to negligible depth variation.
+            if d_max <= 1.0 and d_min >= 0.0:
+                log_span = d_max - d_min
+                if log_span < 0.005:
+                    return False, (
+                        f"Gate 2w (Wan log-depth span): {log_span:.4f} < 0.005"
+                    )
+            else:
+                # Metric-space depth: apply standard 0.1m span check
+                span = d_max - d_min
+                if span < 0.1:
+                    return False, (
+                        f"Gate 2w (Wan depth span): {span:.4f} m < 0.1 m"
+                    )
             wan_normals = fgpp[1:4]  # [3, T, H, W]
             wan_norms = np.linalg.norm(wan_normals, axis=0)  # [T, H, W]
             active_w = wan_norms > 0.01
-            if active_w.sum() > 0:
-                unit_ok_w = np.abs(wan_norms[active_w] - 1.0) < 0.01
-                ratio_w = float(unit_ok_w.mean())
-                if ratio_w < 0.95:
-                    return False, (f"Gate 4w (Wan normal unit-length): {ratio_w:.3f} < 0.95")
+            if active_w.sum() == 0:
+                return False, "Gate 4w (Wan normals missing): all normals are zero"
+            unit_ok_w = np.abs(wan_norms[active_w] - 1.0) < 0.01
+            ratio_w = float(unit_ok_w.mean())
+            if ratio_w < 0.95:
+                return False, (f"Gate 4w (Wan normal unit-length): {ratio_w:.3f} < 0.95")
 
         # ── Gate 5 — Rotation determinant and orthogonality ──────────
         if cam_mats is not None:
@@ -718,11 +742,11 @@ def iter_feature_shards(
                 agent_fix_hint=f"Ensure shard file exists at '{shard_path}' before iterating.",
             )
 
-        # Streaming O(1) memory: read entries one by one and yield when
-        # a sample boundary is reached (all entries of one sample_id are
-        # adjacent in a well-formed shard).
-        current_sid: str | None = None
-        current_parts: dict[str, bytes] = {}
+        # Aggregate members by sample_id so both ordered and interleaved/out-of-order
+        # WebDataset tars assemble without losing parts. Complete samples (all parts
+        # present according to meta.json) flush immediately to keep memory O(1) on
+        # ordered shards.
+        pending: dict[str, dict[str, bytes]] = {}
 
         with tarfile.open(shard_path, "r|") as tf:  # streaming mode
             for member in tf:
@@ -753,19 +777,27 @@ def iter_feature_shards(
                 if not _SID_RE.match(matched_sid):
                     continue
 
-                # Flush previous sample if we hit a new sample_id boundary
-                if current_sid is not None and matched_sid != current_sid:
-                    sample = _assemble_sample(current_sid, current_parts)
-                    if sample is not None:
-                        yield sample
-                    current_parts = {}
+                parts = pending.setdefault(matched_sid, {})
+                parts[matched_suffix] = data
 
-                current_sid = matched_sid
-                current_parts[matched_suffix] = data
+                # Immediate O(1) flush once latent + prompt + meta (and optional fgpp_cond)
+                # are all present for this sample_id.
+                if "latent.npy" in parts and "prompt.npy" in parts and "meta.json" in parts:
+                    try:
+                        meta_obj = json.loads(parts["meta.json"].decode("utf-8"))
+                        needs_fgpp = "fgpp_cond_shape" in meta_obj
+                    except Exception:
+                        needs_fgpp = False
+                    if not needs_fgpp or "fgpp_cond.npy" in parts:
+                        completed_parts = pending.pop(matched_sid)
+                        sample = _assemble_sample(matched_sid, completed_parts)
+                        if sample is not None:
+                            yield sample
 
-        # Flush the last sample in the shard
-        if current_sid is not None and current_parts:
-            sample = _assemble_sample(current_sid, current_parts)
+        # Flush any remaining pending samples in insertion order (e.g. tars without meta.json
+        # or out-of-order trailing members).
+        for sid, parts in pending.items():
+            sample = _assemble_sample(sid, parts)
             if sample is not None:
                 yield sample
 

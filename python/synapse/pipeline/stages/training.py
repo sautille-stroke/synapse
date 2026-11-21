@@ -173,13 +173,28 @@ def handle_lora_train(
         ) from exc
 
     target_modules = params.get("target_modules")
-    model_dim = params.get("model_dim", 64)
+    model_dim = int(params.get("model_dim", 64))
+    base_model_path = params.get("base_model")
+    use_mock_backbone = bool(params.get("mock_backbone", False))
+
+    if not base_model_path and not use_mock_backbone:
+        from synapse.errors import ExitCode, SynapseError
+
+        raise SynapseError(
+            "lora_train requires a real base_model path (or explicit mock_backbone=True for testing).",
+            ExitCode.NOT_IMPLEMENTED,
+            agent_fix_hint=(
+                "Provide manifest.params['base_model'] pointing to a pretrained DiT checkpoint, "
+                "or set manifest.params['mock_backbone']=True for synthetic verification."
+            ),
+        )
 
     class _WhitelistDiT(torch.nn.Module):
-        """Minimal DiT with named layers matching LoRA category whitelists."""
+        """Mock Wan DiT backbone with all 4 attention/FFN blocks wired in forward()."""
 
         def __init__(self, dim: int) -> None:
             super().__init__()
+            self._dim = dim
             self.blocks = torch.nn.ModuleList([
                 torch.nn.ModuleDict({
                     "spatial_attn": torch.nn.ModuleDict({
@@ -204,21 +219,53 @@ def handle_lora_train(
             self.out = torch.nn.Linear(dim, dim)
 
         def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
-            for block in self.blocks:
-                x = x + block["spatial_attn"]["to_v"](x)
-                x = x + block["ffn"]["linear"](x)
-            return self.out(x)
+            orig_shape = x.shape
+            if x.shape[-1] == self._dim:
+                h = x
+                adapted = False
+            else:
+                flat = x.reshape(orig_shape[0], -1)
+                n_feat = flat.shape[1]
+                pad = (self._dim - (n_feat % self._dim)) % self._dim
+                if pad > 0:
+                    flat = torch.nn.functional.pad(flat, (0, pad))
+                h = flat.reshape(orig_shape[0], -1, self._dim)
+                adapted = True
 
-    # Infer target_modules from category if not specified
+            for block in self.blocks:
+                sp = (
+                    block["spatial_attn"]["to_q"](h)
+                    + block["spatial_attn"]["to_k"](h)
+                    + block["spatial_attn"]["to_v"](h)
+                ) / 3.0
+                h = h + sp
+                cr = (
+                    block["cross_attn"]["to_k"](h) + block["cross_attn"]["to_v"](h)
+                ) / 2.0
+                h = h + cr
+                tm = (
+                    block["temporal_attn"]["to_q"](h)
+                    + block["temporal_attn"]["to_k"](h)
+                    + block["temporal_attn"]["to_v"](h)
+                ) / 3.0
+                h = h + tm
+                h = h + block["ffn"]["linear"](h)
+            out = self.out(h)
+            if adapted:
+                n_orig = int(np.prod(orig_shape[1:]))
+                return out.reshape(orig_shape[0], -1)[:, :n_orig].reshape(orig_shape)
+            return out
+
+    # Infer target_modules aligned with LoRAManifest regex whitelist + fnmatch
     if not target_modules:
         _CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
-            "style": ["cross_attn.to_k", "cross_attn.to_v", "ffn"],
-            "identity": ["spatial_attn", "cross_attn.to_k", "cross_attn.to_v"],
-            "control": ["spatial_attn", "ffn"],
-            "whitebox": ["spatial_attn", "ffn"],
-            "motion": ["temporal_attn"],
+            "style": ["blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v", "blocks.*.ffn.*"],
+            "identity": ["blocks.*.spatial_attn.*", "blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v"],
+            "control": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
+            "whitebox": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
+            "motion": ["blocks.*.temporal_attn.*"],
         }
-        target_modules = _CATEGORY_DEFAULT_TARGETS.get(config.category, ["ffn"])
+        target_modules = _CATEGORY_DEFAULT_TARGETS.get(config.category, ["blocks.*.ffn.*"])
 
     model = _WhitelistDiT(model_dim)
     trainer = StatelessLoRATrainer(config)
@@ -229,15 +276,23 @@ def handle_lora_train(
     output_dir = Path(manifest.outputs.get("weights_dir", "output/weights"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Training loop over shard data
+    # Training loop over shard data — cycle shards until config.max_steps is reached
     step = 0
     final_loss = 0.0
-    for sample in iter_feature_shards(shard_paths):
-        if step >= config.max_steps:
-            break
+    cached_samples = list(iter_feature_shards(shard_paths))
+    if not cached_samples:
+        from synapse.errors import AssetNotFoundError
+
+        raise AssetNotFoundError(
+            f"No valid samples found in shards under {shards_dir}",
+            agent_fix_hint="Re-run lora_preencode to populate valid training shards.",
+        )
+
+    while step < config.max_steps:
+        sample = cached_samples[step % len(cached_samples)]
         latent = torch.as_tensor(sample["latent"], dtype=torch.float32)
         noise = torch.randn_like(latent)
-        batch = {"latent": latent.unsqueeze(0), "noise": noise.unsqueeze(0)}
+        batch: dict[str, Any] = {"latent": latent.unsqueeze(0), "noise": noise.unsqueeze(0)}
         if sample.get("fgpp_cond") is not None:
             batch["fgpp_cond"] = torch.as_tensor(
                 sample["fgpp_cond"], dtype=torch.float32,

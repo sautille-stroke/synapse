@@ -561,13 +561,14 @@ class TestLoRACLI:
         assert parsed["exit_code"] == 40
         assert "agent_fix_hint" in parsed
 
-    def test_lora_train_json(self) -> None:
-        """synapse lora train --json with valid config fails honestly with exit code 50."""
+    def test_lora_train_json(self, tmp_path: Path) -> None:
+        """PR-187: default lora train fails closed (exit 50); --mock-backbone runs & trains."""
         import io
         import sys
 
         from synapse.cli import main_synapse
 
+        # 1. Production fail-closed: without --base-model or --mock-backbone -> exit 50
         old = sys.stdout
         sys.stdout = buf = io.StringIO()
         try:
@@ -583,10 +584,42 @@ class TestLoRACLI:
         finally:
             sys.stdout = old
 
-        assert code == 0  # Train now wired with small model
-        output = buf.getvalue()
-        parsed = json.loads(output)
+        assert code == 50
+        parsed_err = json.loads(buf.getvalue())
+        assert parsed_err["exit_code"] == 50
+
+        # 2. Explicit --mock-backbone succeeds with real non-zero updates (including motion!)
+        out_dir = tmp_path / "motion_weights"
+        old = sys.stdout
+        sys.stdout = buf2 = io.StringIO()
+        try:
+            code2 = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--mock-backbone",
+                    "--output",
+                    str(out_dir),
+                    "--config",
+                    '{"category": "motion", "max_steps": 3, "rank": 4}',
+                ]
+            )
+        finally:
+            sys.stdout = old
+
+        assert code2 == 0
+        parsed = json.loads(buf2.getvalue())
         assert parsed["status"] == "ok"
+        assert parsed["steps_completed"] == 3
+        from safetensors.numpy import load_file
+
+        weights = load_file(str(out_dir / "adapter_model.safetensors"))
+        lora_b_keys = [k for k in weights if "lora_B" in k]
+        assert lora_b_keys
+        assert any(float(np.abs(weights[k]).max()) > 0.0 for k in lora_b_keys), (
+            "motion LoRA temporal_attn must receive real non-zero gradients"
+        )
 
     def test_lora_train_invalid_json_exits_10(self) -> None:
         """synapse lora train --json with malformed JSON exits with code 10."""
@@ -841,3 +874,74 @@ class TestPR117GateKeyEnforcement:
             skip_bench=True,
         )
         assert result["passed"] is True
+
+    def test_pr187_lora_merge_two_bundles_orthogonal(self, tmp_path: Path) -> None:
+        """PR-187: synapse lora merge executes real MultiLoRAManager orthogonal merge."""
+        import io
+        import sys
+
+        pytest.importorskip("safetensors")
+        from safetensors.numpy import load_file, save_file
+        from synapse.cli import main_synapse
+
+        rng = np.random.default_rng(187)
+        b1_dir = tmp_path / "b1"
+        b2_dir = tmp_path / "b2"
+        out_dir = tmp_path / "merged"
+
+        w1_path = tmp_path / "w1.safetensors"
+        w2_path = tmp_path / "w2.safetensors"
+        a1 = rng.standard_normal((4, 16)).astype(np.float32) * 0.2
+        b1 = rng.standard_normal((16, 4)).astype(np.float32) * 0.2
+        # Make bundle 2 partially aligned with bundle 1 to trigger orthogonalization
+        a2 = a1 * 0.9 + rng.standard_normal((4, 16)).astype(np.float32) * 0.05
+        b2 = b1 * 0.9 + rng.standard_normal((16, 4)).astype(np.float32) * 0.05
+
+        save_file({"blocks.0.cross_attn.to_k.lora_A.weight": a1, "blocks.0.cross_attn.to_k.lora_B.weight": b1}, str(w1_path))
+        save_file({"blocks.0.cross_attn.to_k.lora_A.weight": a2, "blocks.0.cross_attn.to_k.lora_B.weight": b2}, str(w2_path))
+
+        package_and_gate_lora_bundle(
+            weights_path=w1_path,
+            output_dir=b1_dir,
+            category="style",
+            rank=4,
+            alpha=4.0,
+            target_modules=["blocks.0.cross_attn.to_k"],
+            skip_bench=True,
+        )
+        package_and_gate_lora_bundle(
+            weights_path=w2_path,
+            output_dir=b2_dir,
+            category="style",
+            rank=4,
+            alpha=4.0,
+            target_modules=["blocks.0.cross_attn.to_k"],
+            skip_bench=True,
+        )
+
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            code = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "merge",
+                    "--bundle",
+                    str(b1_dir),
+                    str(b2_dir),
+                    "--output",
+                    str(out_dir),
+                ]
+            )
+        finally:
+            sys.stdout = old
+
+        assert code == 0
+        parsed = json.loads(buf.getvalue())
+        assert parsed["bundles_merged"] == 2
+        assert parsed["orthogonalized_pairs"] == 1
+        merged = load_file(str(out_dir / "adapter_model.safetensors"))
+        assert "blocks.0.cross_attn.to_k.lora_A.weight" in merged
+        assert float(np.abs(merged["blocks.0.cross_attn.to_k.lora_B.weight"]).max()) > 0.0
+

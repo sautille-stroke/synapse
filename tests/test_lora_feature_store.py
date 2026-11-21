@@ -770,3 +770,92 @@ class TestPR117FeatureStoreEnhancements:
         assert len(samples) == 3
         ids = {s["sample_id"] for s in samples}
         assert ids == {"alpha", "beta", "gamma"}
+
+    def test_pr187_streaming_requires_output_dir_and_context_manager(
+        self, tmp_path: Path
+    ) -> None:
+        """PR-187: streaming=True without output_dir raises; context manager closes tar."""
+        with pytest.raises(ContractValidationError, match="output_dir"):
+            FeatureStoreBuilder(
+                LinearProjectionEncoder(),
+                LinearProjectionTextEncoder(),
+                streaming=True,
+                output_dir=None,
+            )
+
+        out_dir = tmp_path / "stream_out"
+        with FeatureStoreBuilder(
+            LinearProjectionEncoder(),
+            LinearProjectionTextEncoder(),
+            streaming=True,
+            output_dir=out_dir,
+        ) as builder:
+            frames = np.full((5, 16, 16, 3), 120, dtype=np.uint8)
+            builder.add_sample("s0", frames, "streaming caption")
+            assert builder._stream_tar is not None
+        # Context manager __exit__ closed the open tar handle cleanly
+        assert builder._stream_tar is None
+
+    def test_pr187_causal_first_frame_isolation_in_encoder(self) -> None:
+        """PR-187: LinearProjectionEncoder isolates frame 0 into bin 0 without mixing frame 1..3."""
+        enc = LinearProjectionEncoder()
+        frames_a = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+        frames_a[0] = 200
+        frames_b = frames_a.copy()
+        frames_b[1:5] = 100  # Modifying frames 1..4 must NOT alter causal bin 0!
+
+        lat_a = enc.encode(frames_a)
+        lat_b = enc.encode(frames_b)
+        np.testing.assert_allclose(lat_a[:, 0], lat_b[:, 0], atol=1e-6)
+        assert not np.allclose(lat_a[:, 1], lat_b[:, 1])
+
+    def test_pr187_zero_depth_and_zero_normal_rejected(self) -> None:
+        """PR-187: All-zero depth or all-zero normals must be rejected by ingestion gates."""
+        builder = FeatureStoreBuilder(
+            LinearProjectionEncoder(), LinearProjectionTextEncoder()
+        )
+        frames = np.zeros((5, 16, 16, 3), dtype=np.uint8)
+
+        # Raw FGPP with all-zero depth
+        fgpp_zero_d = TestFeatureStoreQualityGates._make_valid_fgpp(5, 16, 16)
+        fgpp_zero_d[..., 0] = 0.0
+        builder.add_sample("zero_d", frames, "cap", fgpp_cond=fgpp_zero_d)
+        assert builder.rejected_count == 1
+
+        # Raw FGPP with all-zero normals
+        fgpp_zero_n = TestFeatureStoreQualityGates._make_valid_fgpp(5, 16, 16)
+        fgpp_zero_n[..., 4:7] = 0.0
+        builder.add_sample("zero_n", frames, "cap", fgpp_cond=fgpp_zero_n)
+        assert builder.rejected_count == 2
+
+        # Wan 7ch with all-zero normals (non-zero depth so tensor isn't all-zero)
+        wan_zero_n = self._make_valid_wan_7ch(5, 16, 16)
+        wan_zero_n[1:4] = 0.0
+        builder.add_sample("wan_zero_n", frames, "cap", fgpp_cond=wan_zero_n)
+        assert builder.rejected_count == 3
+
+    def test_pr187_out_of_order_tar_members_aggregated(self, tmp_path: Path) -> None:
+        """PR-187: Interleaved/out-of-order WebDataset tar members assemble without data loss."""
+        import io
+        import tarfile
+
+        shard_path = tmp_path / "interleaved.tar"
+        entries = [
+            ("s1.latent.npy", np.ones((16, 2, 2, 2), dtype=np.float32)),
+            ("s2.latent.npy", np.full((16, 2, 2, 2), 2.0, dtype=np.float32)),
+            ("s1.prompt.npy", np.ones((16,), dtype=np.float32)),
+            ("s2.prompt.npy", np.full((16,), 2.0, dtype=np.float32)),
+        ]
+        with tarfile.open(shard_path, "w") as tf:
+            for name, arr in entries:
+                buf = io.BytesIO()
+                np.save(buf, arr)
+                raw = buf.getvalue()
+                info = tarfile.TarInfo(name=name)
+                info.size = len(raw)
+                tf.addfile(info, io.BytesIO(raw))
+
+        samples = list(iter_feature_shards([shard_path]))
+        assert len(samples) == 2
+        assert {s["sample_id"] for s in samples} == {"s1", "s2"}
+
