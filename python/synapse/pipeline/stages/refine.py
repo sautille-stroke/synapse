@@ -46,11 +46,26 @@ def handle_anatomical_refine(
     from synapse.bridge.hitl import PersistentHitlLedger
     from synapse.errors import evaluate_hitl_circuit_breaker
 
+    # --- PR-165: --shot-id HITL pre-validation ---
+    # Validate shot-id is provided to prevent orphan HITL budget tracking
+    shot_id = params.get("shot_id")
+    if not shot_id:
+        from synapse.errors import ContractValidationError
+
+        raise ContractValidationError(
+            "Missing required 'shot_id' parameter for anatomical refinement stage. "
+            "HITL budget tracking requires a shot identifier.",
+            agent_fix_hint=(
+                "Add params.shot_id to the bundle manifest, e.g. "
+                "'\"shot_id\": \"shot_001\"'."
+            ),
+        )
+
     max_elapsed_seconds = float(params.get("max_elapsed_seconds", 900.0))
     elapsed_seconds = float(params.get("elapsed_seconds", 0.0))
     ledger_path = params.get("hitl_ledger_path")
     ledger = PersistentHitlLedger(ledger_path)
-    group_id = str(params.get("intent_group_id") or manifest.job_id or "default")
+    group_id = str(params.get("shot_id") or params.get("intent_group_id") or manifest.job_id or "default")
     accumulated = ledger.get_accumulated_elapsed(group_id)
     total_elapsed = accumulated + elapsed_seconds
 
@@ -111,7 +126,46 @@ def handle_anatomical_refine(
 
     from synapse.refine.roi_tracker import parse_rois_json
 
-    meta_content = json.loads(p_rois.read_text(encoding="utf-8"))
+    if p_rois.suffix.lower() == ".npy":
+        # .npy files contain bbox arrays, not JSON — load with np.load
+        # (previously this went through json.loads which crashes on binary data)
+        arr = np.load(str(p_rois))
+        # Build a synthetic JSON-compatible structure for parse_rois_json
+        rois_list: list[list[dict[str, object]]] = []
+        if arr.ndim == 2 and arr.shape[1] == 4:
+            for t_idx in range(min(frames.shape[0], arr.shape[0])):
+                rois_list.append([{
+                    "bbox_xyxy": arr[t_idx].tolist(),
+                    "region": "HAND",
+                    "confidence": 0.9,
+                }])
+            # Pad remaining frames
+            for _ in range(len(rois_list), frames.shape[0]):
+                rois_list.append([])
+        elif arr.ndim == 3 and arr.shape[2] == 4:
+            for t_idx in range(min(frames.shape[0], arr.shape[0])):
+                frame_rois = []
+                for k in range(arr.shape[1]):
+                    frame_rois.append({
+                        "bbox_xyxy": arr[t_idx, k].tolist(),
+                        "region": "HAND",
+                        "confidence": 0.9,
+                    })
+                rois_list.append(frame_rois)
+            for _ in range(len(rois_list), frames.shape[0]):
+                rois_list.append([])
+        else:
+            from synapse.errors import ContractValidationError
+
+            raise ContractValidationError(
+                f"Unsupported .npy ROI array shape: {arr.shape}. "
+                "Expected (T, 4) or (T, K, 4).",
+                agent_fix_hint="Provide a .npy file with shape (T, 4) or (T, K, 4) for bboxes.",
+            )
+        meta_content = rois_list
+    else:
+        meta_content = json.loads(p_rois.read_text(encoding="utf-8"))
+
     _height, _width = frames.shape[1], frames.shape[2]
     rois_per_frame = parse_rois_json(
         meta_content,

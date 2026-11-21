@@ -166,6 +166,32 @@ _METHOD_MAP: dict[str, FusionMethod] = {
 }
 
 
+def _pad_to_canonical(patch: np.ndarray, target_size: int) -> np.ndarray:
+    """Pad/crop a patch to a canonical square size for consistent LPIPS.
+
+    Kalman-smoothed bounding boxes can differ by 1–2 px between frames,
+    causing shape mismatches in LPIPS computation.  This helper pads
+    (or centre-crops) to a canonical ``(target_size, target_size, C)``
+    to ensure consistent comparison.
+    """
+    h, w = patch.shape[:2]
+    c = patch.shape[2] if patch.ndim == 3 else 1
+    out = np.zeros((target_size, target_size, c), dtype=patch.dtype)
+
+    # Centre-crop or centre-pad
+    src_y0 = max(0, (h - target_size) // 2)
+    src_x0 = max(0, (w - target_size) // 2)
+    dst_y0 = max(0, (target_size - h) // 2)
+    dst_x0 = max(0, (target_size - w) // 2)
+
+    copy_h = min(h, target_size)
+    copy_w = min(w, target_size)
+    out[dst_y0:dst_y0 + copy_h, dst_x0:dst_x0 + copy_w] = (
+        patch[src_y0:src_y0 + copy_h, src_x0:src_x0 + copy_w]
+    )
+    return out
+
+
 class LocalRefinementPipeline:
     """End-to-end local anatomical refinement pipeline.
 
@@ -195,6 +221,8 @@ class LocalRefinementPipeline:
         # a single shared tracker that cross-contaminates state.
         self._bbox_trackers: dict[str, KalmanBBoxTracker] = {}
         self.tiled_executor = TiledBypassExecutor()
+        # Canonical LPIPS patch size for consistent comparison
+        self._lpips_patch_size: int = 64
 
     def run(
         self,
@@ -413,13 +441,18 @@ class LocalRefinementPipeline:
             else time.monotonic() - t_start
         )
 
-        # Extract real original and refined patches for gate evaluation
+        # Extract real original and refined patches for gate evaluation.
+        # Pad/resize to consistent canonical size to prevent LPIPS failures
+        # from 1px Kalman box-size jitter.
         first_orig_patch: np.ndarray | None = None
         first_ref_patch: np.ndarray | None = None
         for t in range(t_count):
             if refinements[t] and rois_per_frame[t]:
-                first_orig_patch = rois_per_frame[t][0].crop_acescg
-                first_ref_patch = refinements[t][0].refined_acescg
+                orig = rois_per_frame[t][0].crop_acescg
+                ref = refinements[t][0].refined_acescg
+                # Pad both patches to the same canonical size
+                first_orig_patch = _pad_to_canonical(orig, self._lpips_patch_size)
+                first_ref_patch = _pad_to_canonical(ref, self._lpips_patch_size)
                 break
 
         # Compute real temporal warp error across frames
@@ -473,6 +506,9 @@ class LocalRefinementPipeline:
         except CircuitBreakerError:
             raise
         except Exception:
+            # PR-165: When strict=True, errors must NOT be swallowed
+            if self.strict:
+                raise
             verdict = GateVerdict(passed=False, failure_reasons=["gate_evaluation_error"])
 
         # PR-45 fix #3: Act on the verdict
