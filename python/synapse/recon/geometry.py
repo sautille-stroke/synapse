@@ -568,10 +568,41 @@ def _qem_decimate(
             x = vertex_alias[x]
         return x
 
-    def _edge_cost(a: int, b: int) -> float:
-        mx = 0.5 * (vx[a] + vx[b])
-        my = 0.5 * (vy[a] + vy[b])
-        mz = 0.5 * (vz[a] + vz[b])
+    def _eval_quadric(
+        q00: float,
+        q01: float,
+        q02: float,
+        q03: float,
+        q11: float,
+        q12: float,
+        q13: float,
+        q22: float,
+        q23: float,
+        q33: float,
+        px: float,
+        py: float,
+        pz: float,
+    ) -> float:
+        return (
+            q00 * px * px
+            + 2.0 * q01 * px * py
+            + 2.0 * q02 * px * pz
+            + 2.0 * q03 * px
+            + q11 * py * py
+            + 2.0 * q12 * py * pz
+            + 2.0 * q13 * py
+            + q22 * pz * pz
+            + 2.0 * q23 * pz
+            + q33
+        )
+
+    def _optimal_collapse(a: int, b: int) -> tuple[float, float, float, float]:
+        """Solve Garland-Heckbert 3x3 optimal collapse position (cost, x, y, z).
+
+        Falls back to minimum-error endpoint/midpoint when the 3x3 quadric
+        upper block is ill-conditioned or the unconstrained solution strays
+        beyond 1.5x the edge length from the midpoint.
+        """
         qa = q_list[a]
         qb = q_list[b]
         q00 = qa[0] + qb[0]
@@ -584,18 +615,45 @@ def _qem_decimate(
         q22 = qa[7] + qb[7]
         q23 = qa[8] + qb[8]
         q33 = qa[9] + qb[9]
-        return (
-            q00 * mx * mx
-            + 2.0 * q01 * mx * my
-            + 2.0 * q02 * mx * mz
-            + 2.0 * q03 * mx
-            + q11 * my * my
-            + 2.0 * q12 * my * mz
-            + 2.0 * q13 * my
-            + q22 * mz * mz
-            + 2.0 * q23 * mz
-            + q33
-        )
+
+        ax, ay, az = vx[a], vy[a], vz[a]
+        bx, by, bz = vx[b], vy[b], vz[b]
+        mx = 0.5 * (ax + bx)
+        my = 0.5 * (ay + by)
+        mz = 0.5 * (az + bz)
+
+        # 3x3 symmetric cofactors for A * v* = -[q03, q13, q23]^T
+        c00 = q11 * q22 - q12 * q12
+        c01 = q12 * q02 - q01 * q22
+        c02 = q01 * q12 - q11 * q02
+        det = q00 * c00 + q01 * c01 + q02 * c02
+        trace = q00 + q11 + q22
+        if abs(det) > 1e-10 * (trace * trace * trace + 1e-18):
+            c11 = q00 * q22 - q02 * q02
+            c12 = q01 * q02 - q00 * q12
+            c22 = q00 * q11 - q01 * q01
+            inv_det = -1.0 / det
+            ox = (c00 * q03 + c01 * q13 + c02 * q23) * inv_det
+            oy = (c01 * q03 + c11 * q13 + c12 * q23) * inv_det
+            oz = (c02 * q03 + c12 * q13 + c22 * q23) * inv_det
+            ex, ey, ez = bx - ax, by - ay, bz - az
+            edge_len_sq = ex * ex + ey * ey + ez * ez
+            dx, dy, dz = ox - mx, oy - my, oz - mz
+            if dx * dx + dy * dy + dz * dz <= 2.25 * edge_len_sq + 1e-12:
+                ocost = _eval_quadric(q00, q01, q02, q03, q11, q12, q13, q22, q23, q33, ox, oy, oz)
+                return max(0.0, ocost), ox, oy, oz
+
+        cost_m = _eval_quadric(q00, q01, q02, q03, q11, q12, q13, q22, q23, q33, mx, my, mz)
+        cost_a = _eval_quadric(q00, q01, q02, q03, q11, q12, q13, q22, q23, q33, ax, ay, az)
+        cost_b = _eval_quadric(q00, q01, q02, q03, q11, q12, q13, q22, q23, q33, bx, by, bz)
+        if cost_a <= cost_m and cost_a <= cost_b:
+            return max(0.0, cost_a), ax, ay, az
+        if cost_b <= cost_m:
+            return max(0.0, cost_b), bx, by, bz
+        return max(0.0, cost_m), mx, my, mz
+
+    def _edge_cost(a: int, b: int) -> float:
+        return _optimal_collapse(a, b)[0]
 
     def _is_boundary_vertex(vr: int) -> bool:
         edge_counts: dict[tuple[int, int], int] = {}
@@ -733,9 +791,7 @@ def _qem_decimate(
         if va == vb:
             continue
 
-        nx_pos = 0.5 * (vx[va] + vx[vb])
-        ny_pos = 0.5 * (vy[va] + vy[vb])
-        nz_pos = 0.5 * (vz[va] + vz[vb])
+        _, nx_pos, ny_pos, nz_pos = _optimal_collapse(va, vb)
         if not _link_and_normal_safe(va, vb, nx_pos, ny_pos, nz_pos):
             continue
 

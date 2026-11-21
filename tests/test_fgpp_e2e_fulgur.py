@@ -47,8 +47,11 @@ def _discover_fulgur_export_dir() -> Path | None:
         ]
     )
     for cand in candidates:
-        if (cand / "metadata.json").is_file() and (cand / "frame_000000.exr").is_file():
-            return cand
+        try:
+            if (cand / "metadata.json").is_file() and (cand / "frame_000000.exr").is_file():
+                return cand
+        except OSError:
+            continue
     return None
 
 

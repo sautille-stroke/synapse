@@ -32,13 +32,22 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _safe_exists(path_str: str) -> bool:
+    try:
+        return Path(path_str).exists()
+    except OSError:
+        return False
+
+
 DEFAULT_DATASET_ROOT = Path(
     os.environ.get(
         "SYNAPSE_DATASET_ROOT",
         os.environ.get(
             "DERVGEN_DATASETS",
             "/root/work/datasets/synapse"
-            if Path("/root/work/datasets/synapse").exists()
+            if _safe_exists("/root/work/datasets/synapse")
             else str(REPO_ROOT / "data" / "golden_datasets"),
         ),
     )

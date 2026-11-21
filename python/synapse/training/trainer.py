@@ -658,7 +658,8 @@ class StatelessLoRATrainer:
         # GradScaler for fp16 to prevent gradient underflow (device-aware)
         use_scaler = autocast_enabled and self._config.mixed_precision == "fp16"
         if use_scaler and not hasattr(self, "_grad_scaler"):
-            self._grad_scaler = torch.amp.GradScaler(device=device_type)  # type: ignore[attr-defined]
+            grad_scaler_cls = getattr(torch.amp, "GradScaler")
+            self._grad_scaler = grad_scaler_cls(device=device_type)
 
         # Move batch tensors to same device as module
         for k, v in work_batch.items():
