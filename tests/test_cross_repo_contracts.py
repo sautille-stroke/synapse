@@ -423,12 +423,13 @@ class TestAetherFgppContract:
 class TestAetherColorContract:
     """Color space math alignment between @aether//color and synapse.style."""
 
+    @pytest.mark.external_data
     def test_srgb_to_acescg_matrix_parity_with_aether(self) -> None:
         """Matrix kSrgbToAcesCg from aether/color/src/color_space.cc matches _M_SRGB_TO_ACESCG."""
         aether_root = _resolve_aether_root()
         if aether_root is None or not (aether_root / "color").exists():
-            if _is_strict_deps():
-                pytest.fail("SYNAPSE_CI_STRICT_DEPS=1: sibling @aether repo not found.")
+            if _require_siblings():
+                pytest.fail("SYNAPSE_CI_REQUIRE_SIBLINGS=1: sibling @aether repo not found.")
             pytest.skip("Sibling @aether repo not found; skipping color_space.cc check.")
 
         color_space_cc = aether_root / "color" / "src" / "color_space.cc"
