@@ -1,26 +1,28 @@
-"""3D Model asset representation and utilities for Synapse."""
+"""3D Model asset representation and utilities for Synapse.
+
+Extends :class:`synapse.render_core.mesh.MeshData` with PBR textures
+and material factors.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from synapse.render_core.mesh import MeshData
+from synapse.render_core.mesh import MeshData
 
 
 @dataclass
-class ModelAsset:
-    """A high-fidelity 3D mesh asset with geometry, normals, UVs and textures."""
+class ModelAsset(MeshData):
+    """A high-fidelity 3D mesh asset with geometry, normals, UVs and textures.
 
-    name: str
-    vertices: np.ndarray  # [N, 3] float32
-    faces: np.ndarray  # [M, 3] int32
-    normals: np.ndarray  # [N, 3] float32
-    uvs: np.ndarray | None = None  # [N, 2] float32
+    Inherits geometry fields (name, vertices, faces, normals, uvs, base_color)
+    from :class:`MeshData` and adds PBR texture/material extensions.
+    """
+
     vertex_colors: np.ndarray | None = None  # [N, 3] or [N, 4] float32
 
     # PBR Textures (optional uint8 RGB/RGBA arrays)
@@ -36,33 +38,6 @@ class ModelAsset:
     )
     metallic_factor: float = 0.0
     roughness_factor: float = 0.5
-
-    @property
-    def num_vertices(self) -> int:
-        return int(self.vertices.shape[0])
-
-    @property
-    def num_faces(self) -> int:
-        return int(self.faces.shape[0])
-
-    def bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
-        """Compute axis-aligned bounding box (min_corner, max_corner)."""
-        if self.num_vertices == 0:
-            return np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32)
-        return self.vertices.min(axis=0), self.vertices.max(axis=0)
-
-    def centroid(self) -> np.ndarray:
-        """Compute center of axis-aligned bounding box."""
-        min_c, max_c = self.bounding_box()
-        return np.asarray((min_c + max_c) * 0.5, dtype=np.float32)
-
-    def bounding_sphere(self) -> tuple[np.ndarray, float]:
-        """Compute center and radius of bounding sphere."""
-        center = self.centroid()
-        if self.num_vertices == 0:
-            return center, 0.0
-        dists = np.linalg.norm(self.vertices - center, axis=1)
-        return center, float(np.max(dists))
 
     def normalize(self, target_radius: float = 1.0) -> ModelAsset:
         """Center the mesh at origin and scale so its bounding sphere radius equals target_radius."""
@@ -81,6 +56,7 @@ class ModelAsset:
             faces=self.faces.copy(),
             normals=self.normals.copy(),
             uvs=self.uvs.copy() if self.uvs is not None else None,
+            base_color=self.base_color.copy() if self.base_color is not None else None,
             vertex_colors=self.vertex_colors.copy() if self.vertex_colors is not None else None,
             base_color_texture=self.base_color_texture,
             normal_texture=self.normal_texture,
@@ -94,40 +70,20 @@ class ModelAsset:
 
     def compute_normals(self) -> ModelAsset:
         """Compute vertex normals via area-weighted face normals."""
-        v = self.vertices
-        f = self.faces
-        v0 = v[f[:, 0]]
-        v1 = v[f[:, 1]]
-        v2 = v[f[:, 2]]
-
-        face_normals = np.cross(v1 - v0, v2 - v0)
-        vert_normals = np.zeros_like(v, dtype=np.float32)
-
-        for i in range(3):
-            np.add.at(vert_normals, f[:, i], face_normals)
-
-        norms = np.linalg.norm(vert_normals, axis=1, keepdims=True)
-        norms = np.where(norms < 1e-12, 1.0, norms)
-        self.normals = (vert_normals / norms).astype(np.float32)
+        # Delegate to parent MeshData.compute_normals() which mutates self.normals
+        super().compute_normals()
         return self
 
     def to_mesh_data(self) -> MeshData:
         """Convert to canonical :class:`synapse.render_core.mesh.MeshData`."""
-        from synapse.render_core.mesh import MeshData
-
         return MeshData(
             name=self.name,
             vertices=self.vertices,
             faces=self.faces,
             normals=self.normals,
             uvs=self.uvs,
-            base_color=self.vertex_colors[:, :3] if self.vertex_colors is not None else None,
+            base_color=self.vertex_colors[:, :3] if self.vertex_colors is not None else self.base_color,
         )
-
-    def export_obj(self, path: str | Path) -> Path:
-        """Export geometry to Wavefront OBJ format via unified MeshData."""
-        res = self.to_mesh_data().export_obj(path)
-        return Path(res)
 
     def get_summary(self) -> dict[str, Any]:
         """Return metadata summary for logging and manifest serialization."""

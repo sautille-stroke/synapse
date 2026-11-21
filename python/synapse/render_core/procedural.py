@@ -16,7 +16,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from synapse.render_core.mesh import MeshData
+    pass
+
+from synapse.render_core.mesh import MeshData
 
 
 class ProceduralMeshType(str, Enum):
@@ -31,52 +33,30 @@ class ProceduralMeshType(str, Enum):
 
 
 @dataclass
-class ProceduralMesh:
-    """A programmatically generated triangle mesh."""
+class ProceduralMesh(MeshData):
+    """A programmatically generated triangle mesh.
 
-    vertices: np.ndarray
-    faces: np.ndarray
-    normals: np.ndarray
-    uvs: np.ndarray | None = None
+    Inherits geometry fields (name, vertices, faces, normals, uvs, base_color)
+    from :class:`MeshData` and adds ``mesh_type`` metadata.
+    """
+
     mesh_type: str = "unknown"
 
-    @property
-    def num_vertices(self) -> int:
-        return int(self.vertices.shape[0])
-
-    @property
-    def num_faces(self) -> int:
-        return int(self.faces.shape[0])
-
-    def bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return (min_corner, max_corner) of the axis-aligned bbox."""
-        return self.vertices.min(axis=0), self.vertices.max(axis=0)
-
-    def centroid(self) -> np.ndarray:
-        """Compute center of axis-aligned bounding box."""
-        min_c, max_c = self.bounding_box()
-        return np.asarray((min_c + max_c) * 0.5, dtype=np.float32)
+    def __post_init__(self) -> None:
+        """Set name from mesh_type if not explicitly provided."""
+        if not self.name:
+            self.name = self.mesh_type
 
     def to_mesh_data(self) -> MeshData:
         """Convert to canonical :class:`synapse.render_core.mesh.MeshData`."""
-        from synapse.render_core.mesh import MeshData
-
         return MeshData(
-            name=self.mesh_type,
+            name=self.mesh_type if self.mesh_type != "unknown" else self.name,
             vertices=self.vertices,
             faces=self.faces,
             normals=self.normals,
             uvs=self.uvs,
+            base_color=self.base_color,
         )
-
-    def save_obj(self, path: str | Path) -> Path:
-        """Export to Wavefront OBJ format via unified MeshData."""
-        res = self.to_mesh_data().export_obj(path)
-        return Path(res)
-
-    def export_obj(self, path: str | Path) -> Path:
-        """Alias for save_obj."""
-        return self.save_obj(path)
 
 
 def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]:
@@ -498,6 +478,7 @@ def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     if d is None:
         d = _np_generate_cube(size=size)
     return ProceduralMesh(
+        name="cube",
         vertices=d["vertices"],
         faces=d["faces"],
         normals=d["normals"],
@@ -519,6 +500,7 @@ def _generate_sphere(
         # Post-process native output: remove degenerate faces at poles and weld pole vertices
         verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
         return ProceduralMesh(
+            name="sphere",
             vertices=verts,
             faces=faces,
             normals=d["normals"],
@@ -529,6 +511,7 @@ def _generate_sphere(
     d = _np_generate_sphere(radius=radius, segments=segments, rings=rings)
     verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
     return ProceduralMesh(
+        name="sphere",
         vertices=verts,
         faces=faces,
         normals=d["normals"],
@@ -549,6 +532,7 @@ def _generate_cylinder(
     if d is None:
         d = _np_generate_cylinder(radius=radius, height=height, segments=segments)
     return ProceduralMesh(
+        name="cylinder",
         vertices=d["vertices"],
         faces=d["faces"],
         normals=d["normals"],
@@ -582,6 +566,7 @@ def _generate_torus(
             minor_segments=minor_segments,
         )
     return ProceduralMesh(
+        name="torus",
         vertices=d["vertices"],
         faces=d["faces"],
         normals=d["normals"],
@@ -611,6 +596,7 @@ def _generate_plane(
             subdiv_z=plane_kwargs["subdiv_z"],
         )
     return ProceduralMesh(
+        name="plane",
         vertices=d["vertices"],
         faces=d["faces"],
         normals=d["normals"],
@@ -637,6 +623,7 @@ def _generate_cone(
         # Post-process: weld apex/base caps for watertightness
         verts, faces = _weld_cone_caps(d["vertices"], d["faces"])
         return ProceduralMesh(
+            name="cone",
             vertices=verts,
             faces=faces,
             normals=d["normals"],
@@ -646,6 +633,7 @@ def _generate_cone(
     # NumPy fallback (already watertight by construction)
     d = _np_generate_cone(radius=radius, height=height, segments=segments)
     return ProceduralMesh(
+        name="cone",
         vertices=d["vertices"],
         faces=d["faces"],
         normals=d["normals"],

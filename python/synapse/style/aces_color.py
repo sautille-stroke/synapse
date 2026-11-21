@@ -124,44 +124,55 @@ def _fallback_acescg_to_linear_srgb(acescg: np.ndarray) -> np.ndarray:
 # --- Soft-knee inverse and forward tonemapping ---------------------
 
 _SOFT_KNEE_THRESHOLD: float = 0.8
-_SOFT_KNEE_ACCEL: float = 1.0
 
 
 def _fallback_soft_knee_inverse_tonemap(ldr_linear: np.ndarray) -> np.ndarray:
     """Strictly monotonically increasing inverse tonemap with C1 continuity.
 
     Below ``t_knee`` (0.8): identity ``f(x) = x``.
-    Above ``t_knee``: super-linear recovery via quadratic ramp
-    ``f(x) = t + (x - t) + accel * (x - t)^2`` which is:
-    - C1-continuous at the knee: ``f(t) = t``, ``f'(t) = 1`` (matches identity)
-    - Strictly monotonically increasing (derivative ``1 + 2*accel*(x-t) > 0``)
-    - Super-linear: ``f''(t) = 2*accel > 0`` gives accelerating recovery
+    Above ``t_knee``: rational ramp paired with bounded forward tonemap::
+
+        inverse: y = t + u / (1 - u * k)    u = x - t, k = 1/(1-t)
+        forward: x = t + v / (1 + v * k)    v = y - t
+
+    Properties:
+    - f(t) = t, f'(t) = 1 at the knee (C1 continuous with identity)
+    - Inverse maps [t, 1) → [t, ∞)
+    - Strictly monotonically increasing throughout
     """
     x = np.asarray(ldr_linear, dtype=np.float64)
     x = np.where(np.isfinite(x), x, 0.0)
-    excess = x - _SOFT_KNEE_THRESHOLD
-    # C1-continuous quadratic: derivative at knee = 1.0, matching identity
-    high = _SOFT_KNEE_THRESHOLD + excess + _SOFT_KNEE_ACCEL * excess * excess
+    k = 1.0 / (1.0 - _SOFT_KNEE_THRESHOLD)  # = 5.0 for t=0.8
+    u = x - _SOFT_KNEE_THRESHOLD
+    # Inverse tonemap: y = t + u / (1 - u * k), valid for u in [0, 1/k)
+    # Clamp denominator to avoid division by zero for LDR inputs at u ≈ 1/k
+    denom = np.maximum(1.0 - u * k, 1e-6)
+    high = _SOFT_KNEE_THRESHOLD + u / denom
     result = np.where(x <= _SOFT_KNEE_THRESHOLD, x, high)
     return result
 
 
 def _fallback_soft_knee_forward_tonemap(hdr_linear: np.ndarray) -> np.ndarray:
-    """Forward soft-knee tonemap mapping HDR linear values back to [0, 1].
+    """Bounded forward soft-knee tonemap mapping HDR linear values to [0, 1).
 
     Exact algebraic inverse of ``_fallback_soft_knee_inverse_tonemap``.
     Below ``t_knee`` (0.8): identity ``f(y) = y``.
-    Above ``t_knee``: solves quadratic equation ``a * u^2 + u - (y - t) = 0``
-    where ``u = x - t``:
-    ``x = t + (sqrt(1 + 4*a*(y - t)) - 1) / (2*a)``.
+    Above ``t_knee``: bounded rational soft-knee:
+
+        x = t + v / (1 + v · k)        v = y - t, k = 1/(1-t)
+
+    Properties:
+    - Maps [t, ∞) → [t, 1)   — **bounded**, no sqrt divergence
+    - f(t) = t, f'(t) = 1 at the knee (C1 continuous with identity)
+    - Exact analytic inverse: y = t + u / (1 - u · k), u = x - t
+    - Strictly monotonically increasing
     """
     y = np.asarray(hdr_linear, dtype=np.float64)
     y = np.where(np.isfinite(y), y, 0.0)
     y_clipped = np.clip(y, 0.0, None)
-    excess = np.clip(y_clipped - _SOFT_KNEE_THRESHOLD, 0.0, None)
-    disc = np.clip(1.0 + 4.0 * _SOFT_KNEE_ACCEL * excess, 0.0, None)
-    u = (np.sqrt(disc) - 1.0) / (2.0 * _SOFT_KNEE_ACCEL)
-    high = _SOFT_KNEE_THRESHOLD + u
+    k = 1.0 / (1.0 - _SOFT_KNEE_THRESHOLD)  # = 5.0 for t=0.8
+    v = np.clip(y_clipped - _SOFT_KNEE_THRESHOLD, 0.0, None)
+    high = _SOFT_KNEE_THRESHOLD + v / (1.0 + v * k)
     return np.where(y_clipped <= _SOFT_KNEE_THRESHOLD, y_clipped, high)
 
 

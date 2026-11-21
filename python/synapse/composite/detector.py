@@ -477,18 +477,133 @@ def detect_video_artifacts(
 
     th = {**_DEFAULT_THRESHOLDS, **(thresholds or {})}
 
-    # Pre-compute grayscale for the entire video.
+    # Pre-compute grayscale on-the-fly using a 2-frame sliding window
+    # instead of buffering the entire video.  At 4K (3840×2160) this
+    # reduces memory from ~3.22 GB (T×H×W float32) to < 70 MB (2×H×W).
     t_count = video_srgb.shape[0]
-    video_gray = np.empty(
-        (t_count, video_srgb.shape[1], video_srgb.shape[2]),
-        dtype=np.float32,
-    )
+    h, w = video_srgb.shape[1], video_srgb.shape[2]
+
+    # Sliding window: keep only prev and current grayscale frames.
+    gray_prev: np.ndarray | None = None
+    gray_curr: np.ndarray | None = None
+
+    # --- Temporal flicker (needs consecutive frame pairs) ---
+    flicker_defects: list[VideoDefectRegion] = []
     for t in range(t_count):
-        video_gray[t] = _to_grayscale(video_srgb[t])
+        gray_curr = _to_grayscale(video_srgb[t])
+        if t > 0 and gray_prev is not None:
+            # Detect flicker between gray_prev (t-1) and gray_curr (t)
+            frame_a = gray_prev
+            frame_b = gray_curr
+            mv_next = fgpp_frames[t].motion_vector if t < len(fgpp_frames) else None
+            if mv_next is not None:
+                warped = _simple_warp(frame_a, mv_next)
+            else:
+                warped = frame_a
+            diff = np.abs(frame_b - warped)
+            bmean = _block_mean(diff, _BLOCK_SIZE)
+            if bmean.size > 0:
+                hot_mask = bmean > th["flicker"]
+                if np.any(hot_mask):
+                    max_mean = float(np.max(bmean))
+                    hot_ratio = float(hot_mask.sum()) / max(bmean.size, 1)
+                    severity = float(np.clip(hot_ratio * max_mean / th["flicker"], 0.0, 1.0))
+                    ys, xs = np.nonzero(hot_mask)
+                    x1 = min(int(np.min(xs)) * _BLOCK_SIZE, w)
+                    y1 = min(int(np.min(ys)) * _BLOCK_SIZE, h)
+                    x2 = min((int(np.max(xs)) + 1) * _BLOCK_SIZE, w)
+                    y2 = min((int(np.max(ys)) + 1) * _BLOCK_SIZE, h)
+                    flicker_defects.append(
+                        VideoDefectRegion(
+                            defect_type="temporal_flicker",
+                            frame_range=(t - 1, t),
+                            bbox_xyxy=(x1, y1, x2, y2),
+                            entity_id=0,
+                            severity_score=severity,
+                            details={"max_block_mean": max_mean, "hot_ratio": hot_ratio},
+                        )
+                    )
+        gray_prev = gray_curr
+
+    # --- Silhouette drift (needs per-frame grayscale) ---
+    silhouette_defects: list[VideoDefectRegion] = []
+    for t in range(t_count):
+        if t >= len(fgpp_frames):
+            break
+        fgpp = fgpp_frames[t]
+        if fgpp.cryptomatte_id is None:
+            continue
+
+        gray_t = _to_grayscale(video_srgb[t])
+        video_edge_mag = _sobel_edges(gray_t)
+
+        cid = fgpp.cryptomatte_id
+        boundary = np.zeros((h, w), dtype=bool)
+        boundary[:, :-1] |= cid[:, :-1] != cid[:, 1:]
+        boundary[:, 1:] |= cid[:, :-1] != cid[:, 1:]
+        boundary[:-1, :] |= cid[:-1, :] != cid[1:, :]
+        boundary[1:, :] |= cid[:-1, :] != cid[1:, :]
+
+        if not np.any(boundary):
+            continue
+
+        dist_from_boundary = exact_euclidean_distance_transform(boundary)
+        corridor = dist_from_boundary <= th["silhouette"] * 2.0
+        video_edge_mask = (video_edge_mag > 0.05) & corridor
+
+        if not np.any(video_edge_mask):
+            boundary_pixels = int(np.sum(boundary))
+            if boundary_pixels > 50:
+                ys_b, xs_b = np.nonzero(boundary)
+                silhouette_defects.append(
+                    VideoDefectRegion(
+                        defect_type="silhouette_drift",
+                        frame_range=(t, t),
+                        bbox_xyxy=(
+                            int(np.min(xs_b)),
+                            int(np.min(ys_b)),
+                            int(np.max(xs_b)) + 1,
+                            int(np.max(ys_b)) + 1,
+                        ),
+                        entity_id=0,
+                        severity_score=0.8,
+                        details={
+                            "chamfer_distance": float(th["silhouette"] * 2.0),
+                            "vanished_object": True,
+                        },
+                    )
+                )
+            continue
+
+        dist_boundary_to_edge = exact_euclidean_distance_transform(video_edge_mask)
+        chamfer_b2e = float(np.mean(dist_boundary_to_edge[boundary]))
+        chamfer_e2b = float(np.mean(dist_from_boundary[video_edge_mask]))
+        chamfer_dist = (chamfer_b2e + chamfer_e2b) / 2.0
+
+        if chamfer_dist <= th["silhouette"]:
+            continue
+
+        severity = float(np.clip(chamfer_dist / (th["silhouette"] * 5.0), 0.0, 1.0))
+        ys, xs = np.nonzero(boundary)
+        silhouette_defects.append(
+            VideoDefectRegion(
+                defect_type="silhouette_drift",
+                frame_range=(t, t),
+                bbox_xyxy=(
+                    int(np.min(xs)),
+                    int(np.min(ys)),
+                    int(np.max(xs)) + 1,
+                    int(np.max(ys)) + 1,
+                ),
+                entity_id=0,
+                severity_score=severity,
+                details={"chamfer_distance": chamfer_dist},
+            )
+        )
 
     all_defects: list[VideoDefectRegion] = []
-    all_defects.extend(_detect_temporal_flicker(video_gray, fgpp_frames, th["flicker"]))
-    all_defects.extend(_detect_silhouette_drift(video_gray, fgpp_frames, th["silhouette"]))
+    all_defects.extend(flicker_defects)
+    all_defects.extend(silhouette_defects)
     all_defects.extend(_detect_ground_violation(fgpp_frames, th["ground_y"]))
 
     # Sort by severity descending.
