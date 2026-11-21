@@ -26,6 +26,7 @@ const OFF_FRAME_RDY   = 24;  // u64 (atomic monotonic frame counter / Seqlock)
 const OFF_FPS         = 32;  // f32
 const OFF_DELTA       = 36;  // f32
 const OFF_DEBUG_VIEW  = 40;  // u8
+const OFF_GENERATION  = 44;  // u32 (resize generation counter — bumped on resizeViewport)
 
 // Inspector SHM magic: "INSP" = 0x494E5350
 const INSPECTOR_SHM_MAGIC = 0x494E5350;
@@ -128,6 +129,9 @@ function parseShmHeader(buf) {
   const fps = buf.readFloatLE(OFF_FPS);
   const deltaTime = buf.readFloatLE(OFF_DELTA);
   const debugView = buf.readUInt8(OFF_DEBUG_VIEW);
+  const generation = (buf.length >= OFF_GENERATION + 4)
+    ? buf.readUInt32LE(OFF_GENERATION)
+    : 0;
 
   if (width === 0 || height === 0 || width > 8192 || height > 8192) {
     return null;
@@ -144,6 +148,7 @@ function parseShmHeader(buf) {
     fps,
     deltaTime,
     debugView,
+    generation,
   };
 }
 
@@ -158,6 +163,7 @@ class ShmFrameReader extends EventEmitter {
     this._lastFrameReady = 0;
     this._headerBuf = Buffer.alloc(HEADER_SIZE);
     this._headerBuf2 = Buffer.alloc(HEADER_SIZE);
+    this._lastGeneration = 0;  // Track SHM resize generation to detect resize events
     // 3-slot buffer rotation pool: ensures that a pendingFrame.pixels held by
     // main.js 33ms throttle is never overwritten by the next pollOnce() call.
     // Slot 0 is returned by pollOnce(), slot 1 and 2 are available for reuse.
@@ -195,8 +201,10 @@ class ShmFrameReader extends EventEmitter {
    * Uses strict Seqlock protocol:
    * 1. Reads header inside the retry loop.
    * 2. Checks if frameReady is odd (write in progress) -> spins/retries.
-   * 3. Reads pixel buffer.
-   * 4. Re-reads header and verifies (seq2 & 1) === 0 and seq1 === seq2 (no torn frame).
+   * 3. Detects generation change (resize) -> resets _lastFrameReady and re-opens fd.
+   * 4. Reads pixel buffer.
+   * 5. Re-reads header and verifies (seq2 & 1) === 0 and seq1 === seq2 (no torn frame).
+   * 6. Buffer rotation is deferred until after Seqlock verification passes.
    * @returns {{ header: object, pixels: Buffer }|null}
    */
   pollOnce() {
@@ -218,6 +226,29 @@ class ShmFrameReader extends EventEmitter {
           continue;
         }
 
+        // Generation change detection: resize bumps generation counter.
+        // When generation advances, reset _lastFrameReady to accept the first
+        // frame rendered at the new dimensions, and re-open the fd to pick up
+        // the resized SHM backing file (prevents frozen framebuffer).
+        if (header1.generation !== undefined && header1.generation !== this._lastGeneration) {
+          this._lastGeneration = header1.generation;
+          this._lastFrameReady = 0;
+          // Re-open fd to pick up resized SHM file
+          const prevPath = this._filePath;
+          this.close();
+          if (prevPath) {
+            try {
+              this._fd = fs.openSync(prevPath, 'r');
+              this._filePath = prevPath;
+            } catch (_) {
+              return null;
+            }
+          } else if (!this.open()) {
+            return null;
+          }
+          continue;  // Re-read header with fresh fd
+        }
+
         // Deduplication: frame counter must advance beyond last processed frame
         if (seq1 === 0 || seq1 <= this._lastFrameReady) {
           return null;
@@ -227,9 +258,9 @@ class ShmFrameReader extends EventEmitter {
         const slot = header1.writeIdx % header1.bufferCount;
         const pixelOffset = HEADER_SIZE + slot * frameBytes;
 
-        // 3-slot buffer rotation: pick the next slot so that a previously
-        // returned pixels Buffer (still held by main.js throttle) is never
-        // overwritten by this read.
+        // Allocate/resize buffer pool BEFORE read but DEFER rotation index
+        // advancement until after Seqlock verification passes. This ensures
+        // that a torn frame does not consume a buffer pool slot.
         if (this._pixelBufSize !== frameBytes) {
           this._bufferPool = [
             Buffer.allocUnsafe(frameBytes),
@@ -239,8 +270,9 @@ class ShmFrameReader extends EventEmitter {
           this._bufferPoolIdx = 0;
           this._pixelBufSize = frameBytes;
         }
-        const pixels = this._bufferPool[this._bufferPoolIdx];
-        this._bufferPoolIdx = (this._bufferPoolIdx + 1) % 3;
+        // Read into the CURRENT slot without advancing the index yet.
+        const candidateIdx = this._bufferPoolIdx;
+        const pixels = this._bufferPool[candidateIdx];
         const pixRead = fs.readSync(this._fd, pixels, 0, frameBytes, pixelOffset);
         if (pixRead < frameBytes) {
           return null;
@@ -257,6 +289,8 @@ class ShmFrameReader extends EventEmitter {
         // Strict Seqlock verification: both even and identical
         if ((seq2 & 1) === 0 && seq1 === seq2) {
           this._lastFrameReady = seq1;
+          // Only NOW advance the buffer rotation index (post-Seqlock verification).
+          this._bufferPoolIdx = (candidateIdx + 1) % 3;
           const frame = { header: header2, pixels };
           this.emit('frame', frame);
           return frame;
@@ -327,4 +361,5 @@ module.exports = {
   OFF_FPS,
   OFF_DELTA,
   OFF_DEBUG_VIEW,
+  OFF_GENERATION,
 };

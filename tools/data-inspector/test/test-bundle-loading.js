@@ -32,7 +32,7 @@ const {
   INSPECTOR_SHM_VERSION,
   HEADER_SIZE,
   SHM_BUFFER_COUNT,
-  MACOS_PSHMNAMLEN,
+  OFF_GENERATION,
 } = require('../electron/shm-reader');
 
 // ─── Test fixtures (read-only, committed to git) ─────────────────
@@ -474,6 +474,8 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot with Seqlo
   buf.writeFloatLE(60.0, 32);
   buf.writeFloatLE(0.016, 36);
   buf.writeUInt8(1, 40); // wireframe
+  // PR-168: Write generation field for resize tracking
+  buf.writeUInt32LE(1, 44); // generation = 1
 
   // Fill slot 2 with distinctive pixel values [42, 84, 126, 255].
   const slot2Offset = HEADER_SIZE + 2 * frameBytes;
@@ -500,6 +502,7 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot with Seqlo
     assert.strictEqual(polled.header.writeIdx, 2);
     assert.strictEqual(polled.header.frameReady, 6);
     assert.strictEqual(polled.header.debugView, 1);
+    assert.strictEqual(polled.header.generation, 1);
     assert.strictEqual(polled.pixels[0], 42);
     assert.strictEqual(polled.pixels[1], 84);
     assert.strictEqual(polled.pixels[2], 126);
@@ -519,6 +522,59 @@ test('ShmFrameReader parses triple-buffered SHM header and pixel slot with Seqlo
     const polled2 = reader.pollOnce();
     assert.ok(polled2, 'Next even frameReady should be read successfully');
     assert.strictEqual(polled2.header.frameReady, 8);
+
+    reader.close();
+  } finally {
+    fs.rmSync(tmpShmFile, { force: true });
+  }
+});
+
+// PR-168: Test generation counter resets _lastFrameReady on resize
+test('ShmFrameReader resets _lastFrameReady when generation counter advances', () => {
+  const w = 4;
+  const h = 4;
+  const frameBytes = w * h * 4;
+  const totalBytes = HEADER_SIZE + frameBytes * SHM_BUFFER_COUNT;
+  const buf = Buffer.alloc(totalBytes);
+
+  buf.writeUInt32LE(INSPECTOR_SHM_MAGIC, 0);
+  buf.writeUInt32LE(INSPECTOR_SHM_VERSION, 4);
+  buf.writeUInt32LE(w, 8);
+  buf.writeUInt32LE(h, 12);
+  buf.writeUInt32LE(0, 16);
+  buf.writeUInt32LE(SHM_BUFFER_COUNT, 20);
+  buf.writeBigUInt64LE(2n, 24);
+  buf.writeFloatLE(60.0, 32);
+  buf.writeFloatLE(0.016, 36);
+  buf.writeUInt8(0, 40);
+  buf.writeUInt32LE(1, 44); // generation = 1
+
+  for (let i = 0; i < frameBytes; i += 4) {
+    buf[HEADER_SIZE + i + 0] = 10;
+    buf[HEADER_SIZE + i + 1] = 20;
+    buf[HEADER_SIZE + i + 2] = 30;
+    buf[HEADER_SIZE + i + 3] = 255;
+  }
+
+  const tmpShmFile = path.join(os.tmpdir(), `test-inspector-gen-${process.pid}.bin`);
+  fs.writeFileSync(tmpShmFile, buf);
+
+  try {
+    const reader = new ShmFrameReader(tmpShmFile);
+    const polled1 = reader.pollOnce();
+    assert.ok(polled1, 'First poll should succeed');
+    assert.strictEqual(polled1.header.frameReady, 2);
+
+    // Simulate resize: bump generation, reset frame_ready to 2 (same value)
+    buf.writeUInt32LE(2, 44); // generation = 2
+    buf.writeBigUInt64LE(2n, 24); // same frame_ready
+    fs.writeFileSync(tmpShmFile, buf);
+
+    // Without generation tracking, this would return null (dedup: seq <= last).
+    // With generation tracking, _lastFrameReady is reset, so it succeeds.
+    const polled2 = reader.pollOnce();
+    assert.ok(polled2, 'After generation bump, same frameReady should be accepted');
+    assert.strictEqual(polled2.header.generation, 2);
 
     reader.close();
   } finally {
@@ -574,7 +630,17 @@ test('end-to-end native C++ binary renders into @aether//pal SHM and handles std
       'bazel build //tools/data-inspector/native:inspector_app'
     );
   }
+  // PR-168: Use --shm-file for macOS/Windows compatibility.
+  // On macOS, POSIX shm_open names are limited to 31 bytes and may require
+  // root privileges. File-backed SHM (/tmp or os.tmpdir) works everywhere.
+  const useShmFile = process.platform === 'darwin' || process.platform === 'win32';
   const shmName = `/inspector-e2e-${process.pid}`;
+  const shmFilePath = path.join(os.tmpdir(), `inspector-e2e-${process.pid}.shm`);
+
+  const shmArgs = useShmFile
+    ? [`--shm-file=${shmFilePath}`]
+    : [`--shm-name=${shmName}`];
+
   const commands = [
     JSON.stringify({ type: 'load_bundle', path: MINIMAL_BUNDLE }),
     JSON.stringify({ type: 'camera', action: 'orbit', dx: 25.0, dy: 10.0 }),
@@ -589,7 +655,7 @@ test('end-to-end native C++ binary renders into @aether//pal SHM and handles std
       '--width=32',
       '--height=32',
       '--frames=4',
-      `--shm-name=${shmName}`,
+      ...shmArgs,
       '--keep-shm',
       `--bundle=${MINIMAL_BUNDLE}`,
     ],
@@ -613,7 +679,7 @@ test('end-to-end native C++ binary renders into @aether//pal SHM and handles std
   assert.ok(acks.some((a) => a.command === 'set_debug_view' && a.ok === true));
   assert.ok(outMessages.some((m) => m.type === 'frame_ready'));
 
-  const reader = new ShmFrameReader(shmName);
+  const reader = new ShmFrameReader(useShmFile ? shmFilePath : shmName);
   try {
     const frame = reader.pollOnce();
     assert.ok(frame, 'ShmFrameReader must read rendered frame from native SHM');
@@ -632,8 +698,13 @@ test('end-to-end native C++ binary renders into @aether//pal SHM and handles std
   } finally {
     reader.close();
     try {
-      const targetPath = resolveShmFilePath(shmName);
-      if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+      // Clean up SHM file on both POSIX and file-backed paths
+      if (useShmFile) {
+        if (fs.existsSync(shmFilePath)) fs.unlinkSync(shmFilePath);
+      } else {
+        const targetPath = resolveShmFilePath(shmName);
+        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+      }
     } catch (_) { /* ignore */ }
   }
 });

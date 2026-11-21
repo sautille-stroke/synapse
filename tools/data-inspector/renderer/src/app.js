@@ -13,6 +13,12 @@ let currentDebugMode = 'lit';
 let bundleLoaded = false;
 let nativeRunning = false;
 
+// Timeline / animation playback state.
+let timelineFrame = 0;
+let timelineTotalFrames = 0;
+let timelinePlaying = false;
+let timelineTimerId = null;
+
 // Canvas and rendering.
 const canvas = document.getElementById('viewport-canvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
@@ -120,6 +126,17 @@ async function loadBundle(bundlePath) {
 
   // Build scene tree from manifest sources.
   buildSceneTree(manifest);
+
+  // Initialize timeline controls for animation playback.
+  timelineTotalFrames = manifest.frame_count || 0;
+  timelineFrame = 0;
+  timelinePlaying = false;
+  initTimelineControls();
+
+  // Initialize comparison metrics if available.
+  if (manifest.sources && manifest.sources.metrics) {
+    updateComparisonMetrics(manifest.metrics || null);
+  }
 
   updateStatus(`Bundle loaded: ${inv.fileCount} files`);
 
@@ -434,4 +451,154 @@ function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
+// ─── Timeline controls (play/pause/frame jump) ──────────────────
+
+/**
+ * Create and wire up timeline controls for animation playback (Tab 1).
+ * The timeline slider, play/pause button, and frame counter are created
+ * dynamically and inserted into the #timeline-controls container.
+ */
+function initTimelineControls() {
+  const container = document.getElementById('timeline-controls');
+  if (!container) return;
+
+  container.replaceChildren();
+
+  // Play/Pause button
+  const playBtn = document.createElement('button');
+  playBtn.id = 'btn-timeline-play';
+  playBtn.textContent = '\u25B6';
+  playBtn.title = 'Play / Pause';
+  playBtn.addEventListener('click', () => {
+    timelinePlaying = !timelinePlaying;
+    playBtn.textContent = timelinePlaying ? '\u275A\u275A' : '\u25B6';
+    if (timelinePlaying) {
+      startTimelinePlayback();
+    } else {
+      stopTimelinePlayback();
+    }
+  });
+  container.appendChild(playBtn);
+
+  // Frame slider
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.id = 'timeline-slider';
+  slider.min = '0';
+  slider.max = String(Math.max(0, timelineTotalFrames - 1));
+  slider.value = '0';
+  slider.addEventListener('input', () => {
+    timelineFrame = parseInt(slider.value, 10);
+    updateFrameCounter();
+    seekToFrame(timelineFrame);
+  });
+  container.appendChild(slider);
+
+  // Frame counter label
+  const frameLabel = document.createElement('span');
+  frameLabel.id = 'timeline-frame-label';
+  frameLabel.className = 'prop-value';
+  frameLabel.textContent = `0 / ${timelineTotalFrames}`;
+  container.appendChild(frameLabel);
+}
+
+function updateFrameCounter() {
+  const label = document.getElementById('timeline-frame-label');
+  if (label) label.textContent = `${timelineFrame} / ${timelineTotalFrames}`;
+  const slider = document.getElementById('timeline-slider');
+  if (slider) slider.value = String(timelineFrame);
+}
+
+function seekToFrame(frame) {
+  if (!nativeRunning || !window.inspectorAPI) return;
+  window.inspectorAPI.nativeSendCommand({
+    type: 'seek_frame',
+    frame,
+  }).catch(() => { /* ignore */ });
+}
+
+function startTimelinePlayback() {
+  if (timelineTimerId) return;
+  timelineTimerId = setInterval(() => {
+    if (!timelinePlaying) {
+      stopTimelinePlayback();
+      return;
+    }
+    timelineFrame = (timelineFrame + 1) % Math.max(1, timelineTotalFrames);
+    updateFrameCounter();
+    seekToFrame(timelineFrame);
+  }, 1000 / 24); // 24 FPS playback rate
+}
+
+function stopTimelinePlayback() {
+  if (timelineTimerId) {
+    clearInterval(timelineTimerId);
+    timelineTimerId = null;
+  }
+}
+
+// ─── Comparison metrics panel ────────────────────────────────────
+
+/**
+ * Update the comparison metrics panel with structured evaluation scores.
+ * Called when the comparison tab is active and metrics data is available.
+ * @param {object} metrics - Object with metric keys and numeric values.
+ */
+function updateComparisonMetrics(metrics) {
+  const panel = document.getElementById('comparison-metrics');
+  if (!panel) return;
+
+  panel.replaceChildren();
+
+  const title = document.createElement('div');
+  title.className = 'bundle-name';
+  title.textContent = 'Comparison Metrics';
+  panel.appendChild(title);
+
+  if (!metrics || typeof metrics !== 'object') {
+    const empty = document.createElement('div');
+    empty.className = 'prop-row';
+    empty.textContent = 'No metrics available';
+    panel.appendChild(empty);
+    return;
+  }
+
+  for (const [key, val] of Object.entries(metrics)) {
+    const row = createPropRow(
+      key,
+      typeof val === 'number' ? val.toFixed(4) : String(val),
+    );
+    panel.appendChild(row);
+  }
+}
+
+// ─── Screenshot export ───────────────────────────────────────────
+
+/**
+ * Export the current viewport as a screenshot via main-process IPC.
+ * Uses the platform save dialog for path selection (secure).
+ */
+async function exportScreenshot() {
+  if (!window.inspectorAPI || !nativeRunning) {
+    updateStatus('Cannot export: native renderer not running');
+    return;
+  }
+  try {
+    const result = await window.inspectorAPI.exportScreenshot();
+    if (result && result.ok) {
+      updateStatus(`Screenshot saved: ${result.path}`);
+    } else if (result && result.error) {
+      updateStatus(`Screenshot error: ${result.error}`);
+    }
+  } catch (err) {
+    updateStatus(`Screenshot error: ${err.message || err}`);
+  }
+}
+
+// Wire up screenshot export button if present in DOM.
+const btnExport = document.getElementById('btn-export-screenshot');
+if (btnExport) {
+  btnExport.addEventListener('click', exportScreenshot);
 }
