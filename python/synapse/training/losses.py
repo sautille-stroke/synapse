@@ -55,9 +55,9 @@ class FlowMatchingLoss:
         """
         import torch
 
-        v_pred = torch.as_tensor(v_pred)
-        x_1 = torch.as_tensor(x_1)
-        x_0 = torch.as_tensor(x_0)
+        v_pred = torch.as_tensor(v_pred).float()
+        x_1 = torch.as_tensor(x_1).float()
+        x_0 = torch.as_tensor(x_0).float()
         target = x_1 - x_0
         return torch.mean((v_pred - target) ** 2)
 
@@ -145,8 +145,9 @@ class EdgePreservingLoss:
             .unsqueeze(0)
         )
 
-        gx = F.conv2d(x, sobel_x, padding=1)
-        gy = F.conv2d(x, sobel_y, padding=1)
+        x_pad = F.pad(x, (1, 1, 1, 1), mode="replicate")
+        gx = F.conv2d(x_pad, sobel_x, padding=0)
+        gy = F.conv2d(x_pad, sobel_y, padding=0)
         mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
         return mag
 
@@ -241,13 +242,18 @@ class NormalReconstructionLoss:
         n_g = torch.as_tensor(n_gt, dtype=torch.float32)
 
         # Handle various tensor layouts: [3, H, W], [B, 3, H, W], [B, C, T, H, W]
-        if n_p.ndim == 5:
-            # Video: [B, 3, T, H, W] → flatten to [B*T, H, W, 3]
-            b, c, t, h, w = n_p.shape
-            n_p = n_p.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, min(c, 3))
-            n_g = n_g.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, min(n_g.shape[1], 3))
+        is_5d = n_p.ndim == 5
+        if is_5d:
+            # Video: [B, C, T, H, W] → slice [:3] BEFORE permute/reshape so C > 3 never crashes
+            if n_p.shape[1] > 3:
+                n_p = n_p[:, :3]
+            if n_g.ndim == 5 and n_g.shape[1] > 3:
+                n_g = n_g[:, :3]
+            b, c_p, t, h, w = n_p.shape
+            n_p = n_p.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, c_p)
+            n_g = n_g.permute(0, 2, 3, 4, 1).reshape(b * t, h, w, n_g.shape[1])
         elif n_p.ndim == 4:
-            # Batch: [B, 3, H, W] → [B, H, W, 3]
+            # Batch: [B, C, H, W] → [B, H, W, C]
             n_p = n_p.permute(0, 2, 3, 1)
             n_g = n_g.permute(0, 2, 3, 1)
         elif n_p.ndim == 3 and n_p.shape[0] == 3:
@@ -273,6 +279,13 @@ class NormalReconstructionLoss:
 
         if mask is not None:
             fg = torch.as_tensor(mask, dtype=torch.float32, device=loss_map.device) > 0
+            if is_5d:
+                if fg.ndim == 5 and fg.shape[1] == 1:
+                    fg = fg.squeeze(1)
+                if fg.ndim == 4:
+                    fg = fg.reshape(-1, fg.shape[-2], fg.shape[-1])
+            elif fg.ndim == 4 and fg.shape[1] == 1 and loss_map.ndim == 3:
+                fg = fg.squeeze(1)
             if fg.any():
                 return torch.mean(loss_map[fg])
             return (n_p * 0.0).sum()
@@ -318,12 +331,12 @@ class DiffusionDPOLoss:
         """
         import torch
 
-        v_tw = torch.as_tensor(v_theta_w)
-        v_tl = torch.as_tensor(v_theta_l)
-        v_rw = torch.as_tensor(v_ref_w)
-        v_rl = torch.as_tensor(v_ref_l)
-        tw = torch.as_tensor(target_w)
-        tl = torch.as_tensor(target_l)
+        v_tw = torch.as_tensor(v_theta_w).float()
+        v_tl = torch.as_tensor(v_theta_l).float()
+        v_rw = torch.as_tensor(v_ref_w).float()
+        v_rl = torch.as_tensor(v_ref_l).float()
+        tw = torch.as_tensor(target_w).float()
+        tl = torch.as_tensor(target_l).float()
 
         # Per-sample reduction over non-batch dimensions
         if v_tw.ndim > 1:

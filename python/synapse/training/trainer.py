@@ -236,6 +236,8 @@ class StatelessLoRATrainer:
         self._micro_step: int = 0
         self._target_patterns: list[str] = []
         self._geometry_probe: Any = None
+        self._last_module: Any = None
+        self._last_sampled_t: Any = None
         self._flow_matching_loss = FlowMatchingLoss()
         self._edge_preserving_loss = EdgePreservingLoss()
         self._normal_reconstruction_loss = NormalReconstructionLoss()
@@ -354,6 +356,7 @@ class StatelessLoRATrainer:
         first_call = not self._target_patterns
         if target_patterns:
             self._target_patterns = list(target_patterns)
+        self._last_module = module
         self._optimizer = None
 
         if injected == 0 and target_patterns and first_call:
@@ -431,15 +434,47 @@ class StatelessLoRATrainer:
         else:
             logger.info("Module does not support gradient_checkpointing_enable()")
 
-    def save_state_dict(self, path: Path) -> Path:
-        """Save trainer state for checkpoint resume (Colab preemption)."""
+    def _collect_trainable_params(self, module: Any) -> list[Any]:
+        """Collect all trainable parameters from *module* and the geometry probe."""
+        params = [p for p in module.parameters() if p.requires_grad]
+        if self._geometry_probe is not None and hasattr(self._geometry_probe, "parameters"):
+            for p in self._geometry_probe.parameters():
+                if p.requires_grad:
+                    params.append(p)
+        return params
+
+    def save_state_dict(self, path: Path, module: Any | None = None) -> Path:
+        """Save full trainer + LoRA adapter + geometry probe state for checkpoint resume."""
         import torch
 
-        state = {
+        target_mod = module if module is not None else self._last_module
+        state: dict[str, Any] = {
             "step_count": self._step_count,
             "micro_step": self._micro_step,
             "config": self._config.model_dump(),
         }
+
+        if target_mod is not None:
+            LoRALinear = _get_lora_linear_class()
+            lora_state: dict[str, Any] = {}
+            for name, child in target_mod.named_modules():
+                if isinstance(child, LoRALinear):
+                    lora_a: Any = getattr(child, "lora_A")
+                    lora_b: Any = getattr(child, "lora_B")
+                    lora_state[f"{name}.lora_A"] = lora_a.data.detach().cpu().clone()
+                    lora_state[f"{name}.lora_B"] = lora_b.data.detach().cpu().clone()
+            state["lora_state_dict"] = lora_state
+
+        if self._geometry_probe is not None and hasattr(self._geometry_probe, "state_dict"):
+            state["geometry_probe_state_dict"] = {
+                k: v.detach().cpu().clone()
+                for k, v in self._geometry_probe.state_dict().items()
+            }
+            state["geometry_probe_meta"] = {
+                "in_channels": int(getattr(self._geometry_probe, "in_channels", 16)),
+                "out_channels": int(getattr(self._geometry_probe, "out_channels", 3)),
+            }
+
         if self._optimizer is not None:
             state["optimizer_state_dict"] = self._optimizer.state_dict()
         if hasattr(self, "_grad_scaler"):
@@ -450,16 +485,61 @@ class StatelessLoRATrainer:
         return out.resolve()
 
     def load_state_dict(self, path: Path, module: Any) -> int:
-        """Restore trainer state from checkpoint.
+        """Restore trainer, LoRA adapter, geometry probe, and optimizer state from checkpoint.
 
         Returns:
             The step count at which training was saved.
         """
         import torch
 
-        state = torch.load(str(path), weights_only=True)
-        self._step_count = state.get("step_count", 0)
-        self._micro_step = state.get("micro_step", 0)
+        try:
+            model_device = next(module.parameters()).device
+        except StopIteration:
+            model_device = torch.device("cpu")
+
+        state = torch.load(str(path), map_location=model_device, weights_only=True)
+        self._step_count = int(state.get("step_count", 0))
+        self._micro_step = int(state.get("micro_step", 0))
+        self._last_module = module
+
+        # Restore LoRA adapter weights
+        lora_state = state.get("lora_state_dict")
+        if isinstance(lora_state, dict):
+            LoRALinear = _get_lora_linear_class()
+            with torch.no_grad():
+                for name, child in module.named_modules():
+                    if isinstance(child, LoRALinear):
+                        lora_a: Any = getattr(child, "lora_A")
+                        lora_b: Any = getattr(child, "lora_B")
+                        key_a = f"{name}.lora_A"
+                        key_b = f"{name}.lora_B"
+                        if key_a in lora_state:
+                            lora_a.copy_(
+                                lora_state[key_a].to(
+                                    device=lora_a.device, dtype=lora_a.dtype
+                                )
+                            )
+                        if key_b in lora_state:
+                            lora_b.copy_(
+                                lora_state[key_b].to(
+                                    device=lora_b.device, dtype=lora_b.dtype
+                                )
+                            )
+
+        # Restore geometry probe weights if present
+        probe_state = state.get("geometry_probe_state_dict")
+        if isinstance(probe_state, dict):
+            if self._geometry_probe is None:
+                from synapse.training.losses import LatentGeometryProbe
+
+                meta = state.get("geometry_probe_meta", {})
+                self._geometry_probe = LatentGeometryProbe(
+                    in_channels=int(meta.get("in_channels", 16)),
+                    out_channels=int(meta.get("out_channels", 3)),
+                ).to(device=model_device)
+            self._geometry_probe.load_state_dict(probe_state)
+            self._geometry_probe.to(device=model_device)
+
         if "optimizer_state_dict" in state:
             if self._optimizer is None:
                 self._optimizer = self._build_optimizer(module)
@@ -476,7 +556,7 @@ class StatelessLoRATrainer:
         accum = max(1, self._config.grad_accum_steps)
         if self._micro_step % accum != 0:
             if self._optimizer is not None:
-                trainable_params = [p for p in module.parameters() if p.requires_grad]
+                trainable_params = self._collect_trainable_params(module)
                 if trainable_params:
                     import torch
 
@@ -521,6 +601,40 @@ class StatelessLoRATrainer:
         """
         import torch
 
+        self._last_module = module
+        # Shallow-copy caller batch so internal mutations (sampled 't',
+        # extracted depth/normal, device migration) never freeze future steps.
+        work_batch: dict[str, Any] = dict(batch)
+
+        # Mixed precision context — select device_type from actual model device
+        model_device = next(module.parameters()).device
+        device_type = "cuda" if model_device.type == "cuda" else "cpu"
+
+        # Auto-instantiate LatentGeometryProbe for 5D video latents when
+        # normal_loss_weight > 0 and no explicit normal_pred is supplied.
+        if (
+            self._config.loss_mode == "sft"
+            and self._config.normal_loss_weight > 0.0
+            and self._geometry_probe is None
+            and "normal_pred" not in work_batch
+            and "latent" in work_batch
+            and hasattr(work_batch["latent"], "ndim")
+            and work_batch["latent"].ndim == 5
+        ):
+            from synapse.training.losses import LatentGeometryProbe
+
+            in_ch = int(work_batch["latent"].shape[1])
+            self._geometry_probe = LatentGeometryProbe(
+                in_channels=in_ch, out_channels=3
+            ).to(device=model_device)
+            if self._optimizer is not None:
+                self._optimizer.add_param_group(
+                    {
+                        "params": list(self._geometry_probe.parameters()),
+                        "lr": self._config.lr_spatial,
+                    }
+                )
+
         if self._optimizer is None:
             self._optimizer = self._build_optimizer(module)
 
@@ -536,9 +650,6 @@ class StatelessLoRATrainer:
         if self._micro_step % accum == 0:
             self._optimizer.zero_grad()
 
-        # Mixed precision context — select device_type from actual model device
-        model_device = next(module.parameters()).device
-        device_type = "cuda" if model_device.type == "cuda" else "cpu"
         autocast_enabled = (
             self._config.mixed_precision in ("fp16", "bf16") and device_type == "cuda"
         )
@@ -550,17 +661,17 @@ class StatelessLoRATrainer:
             self._grad_scaler = torch.amp.GradScaler(device=device_type)  # type: ignore[attr-defined]
 
         # Move batch tensors to same device as module
-        for k, v in batch.items():
+        for k, v in work_batch.items():
             if hasattr(v, "to") and hasattr(v, "device"):
-                batch[k] = v.to(device=next(module.parameters()).device)
+                work_batch[k] = v.to(device=model_device)
 
         with torch.autocast(device_type=device_type, dtype=amp_dtype, enabled=autocast_enabled):
             if self._config.loss_mode == "sft":
-                raw_loss = self._sft_step(module, batch)
+                raw_loss = self._sft_step(module, work_batch)
             else:
                 raw_loss = self._dpo_step(
                     module,
-                    batch,
+                    work_batch,
                     beta=self._config.dpo_beta,
                 )
 
@@ -572,8 +683,8 @@ class StatelessLoRATrainer:
         self._micro_step += 1
 
         if self._micro_step % accum == 0:
-            # Gradient clipping for training stability
-            trainable_params = [p for p in module.parameters() if p.requires_grad]
+            # Gradient clipping for training stability (including geometry probe)
+            trainable_params = self._collect_trainable_params(module)
             if use_scaler:
                 self._grad_scaler.unscale_(self._optimizer)
                 torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
@@ -699,7 +810,8 @@ class StatelessLoRATrainer:
         x_1 = batch["latent"]
         x_0 = batch["noise"]
         t = self._sample_timesteps(x_1, batch)
-        # Store sampled t back into batch so _call_module can forward it to DiT
+        self._last_sampled_t = t
+        # Store sampled t into local work_batch so _call_module can forward it to DiT
         batch["t"] = t
         x_t = (1.0 - t) * x_0 + t * x_1
         v_pred = self._call_module(module, x_t, batch)
@@ -713,6 +825,7 @@ class StatelessLoRATrainer:
         ):
             self._extract_auxiliary_from_fgpp(batch)
 
+        z_pred: Any | None = None
         # Wire optional EdgePreservingLoss (operates on log-depth for scale invariance)
         if self._config.edge_loss_weight > 0.0:
             depth_key = (
@@ -725,8 +838,11 @@ class StatelessLoRATrainer:
 
                 z_pred = x_t + v_pred * (1.0 - t)
                 depth_val = batch[depth_key]
-                # Log-depth for scale-invariant edge alignment
-                log_depth = _torch.log1p(depth_val.clamp(min=0.0))
+                # Avoid double log1p when depth is already log-encoded (depth_latent or Wan 7ch)
+                if depth_key == "depth_latent" or batch.get("_depth_is_log", False):
+                    log_depth = depth_val
+                else:
+                    log_depth = _torch.log1p(depth_val.clamp(min=0.0))
                 loss = loss + self._config.edge_loss_weight * self._edge_preserving_loss(
                     z_pred, log_depth
                 )
@@ -741,7 +857,8 @@ class StatelessLoRATrainer:
                 # Use LatentGeometryProbe if available, otherwise skip
                 # (never directly slice 16ch latent as 3ch normal)
                 if hasattr(self, "_geometry_probe") and self._geometry_probe is not None:
-                    n_pred = self._geometry_probe(z_pred if "z_pred" in dir() else v_pred)
+                    probe_in = z_pred if z_pred is not None else (x_t + v_pred * (1.0 - t))
+                    n_pred = self._geometry_probe(probe_in)
                 else:
                     n_pred = batch.get("normal_pred")
                 if n_pred is not None:
@@ -817,11 +934,12 @@ class StatelessLoRATrainer:
                 normal_ds = _temporal_compress_and_spatial_ds(normal, dev)
                 batch["normal"] = normal_ds  # [B, 3, τ, H//8, W//8]
         elif fgpp.shape[-3 if fgpp.ndim == 5 else 0] == 7 or (fgpp.ndim == 5 and fgpp.shape[1] == 7):
-            # Wan control: [B, 7, T, H, W]
+            # Wan control: [B, 7, T, H, W] (ch0 is already log-encoded depth in [0, 1])
             if "depth" not in batch:
                 depth = fgpp[:, 0:1]  # [B, 1, T, H, W]
                 depth_ds = _temporal_compress_and_spatial_ds(depth, dev)
                 batch["depth"] = depth_ds
+                batch["_depth_is_log"] = True
             if "normal" not in batch:
                 normal = fgpp[:, 1:4]  # [B, 3, T, H, W]
                 normal_ds = _temporal_compress_and_spatial_ds(normal, dev)
@@ -852,7 +970,8 @@ class StatelessLoRATrainer:
         rejected = batch["rejected"]
         x_0 = batch["noise"]
         t = self._sample_timesteps(chosen, batch)
-        # Store t back so _call_module can forward timesteps to DiT
+        self._last_sampled_t = t
+        # Store t into local work_batch so _call_module can forward timesteps to DiT
         batch["t"] = t
         x_t_w = (1.0 - t) * x_0 + t * chosen
         x_t_l = (1.0 - t) * x_0 + t * rejected
