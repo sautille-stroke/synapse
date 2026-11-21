@@ -286,26 +286,39 @@ def border_ring_lab_match(
 
     # Merge: smoothly blend the inner band pixels using distance-based
     # transition weights instead of a hard step at the 16px boundary.
-    output_f = patch_f.copy()
+    # Blend in linear sRGB to avoid gamma-space banding artefacts.
+    patch_linear = srgb_to_linear(patch_f)
+    result_linear = srgb_to_linear(result_srgb)
+    output_linear = patch_linear.copy()
+
     # Compute distance from the inner edge of the mask toward the interior
     # for a smooth falloff over the ring_width_px band.
     if np.any(inner_band):
         from synapse.render_core.morphology import exact_euclidean_distance_transform
 
-        # Monotonic distance-based weight: 1.0 at mask boundary → 0.0 at eroded boundary
-        d_in = exact_euclidean_distance_transform(~mask)  # distance from outside into mask
-        d_out = exact_euclidean_distance_transform(mask)  # distance from inside toward outside
-        weight_map = d_in / np.maximum(d_in + d_out, 1e-6)
+        # d_core: distance from the eroded (core) boundary INTO the inner band.
+        # At the eroded boundary d_core = 0, increasing toward the mask edge.
+        d_core = exact_euclidean_distance_transform(eroded)
+        # d_in: distance from outside the mask INTO the mask.
+        # At mask boundary d_in = 0, increasing toward the interior.
+        d_in = exact_euclidean_distance_transform(~mask)
+        # Smooth feathering: w = 0 at eroded boundary → 1 at mask edge
+        eps = 1e-6
+        weight_map = d_core / np.maximum(d_in + d_core, eps)
         # Only apply within inner_band
         weight_3d = weight_map[..., np.newaxis]
-        output_f[inner_band] = (
-            weight_3d[inner_band] * result_srgb[inner_band]
-            + (1.0 - weight_3d[inner_band]) * patch_f[inner_band]
+        output_linear[inner_band] = (
+            weight_3d[inner_band] * result_linear[inner_band]
+            + (1.0 - weight_3d[inner_band]) * patch_linear[inner_band]
         )
+
+    # Convert blended result back to sRGB for output.
+    output_f = linear_to_srgb(np.clip(output_linear, 0.0, None))
+    output_f = np.clip(output_f, 0.0, 1.0)
 
     if is_uint8:
         return np.asarray(np.rint(np.clip(output_f * 255.0, 0.0, 255.0)).astype(np.uint8))
-    return np.asarray(np.clip(output_f, 0.0, 1.0).astype(src_dtype))
+    return np.asarray(output_f.astype(src_dtype))
 
 
 def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:

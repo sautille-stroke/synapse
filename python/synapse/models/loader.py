@@ -252,7 +252,10 @@ def load_model(
     if isinstance(loaded, trimesh.Scene):
         # Merge all geometries into a single mesh or pick the primary one
         if len(loaded.geometry) == 0:
-            raise ValueError(f"Scene in {path} has no geometry.")
+            raise ContractValidationError(
+                f"Scene in {path} has no geometry.",
+                agent_fix_hint=f"Ensure the file '{path}' contains at least one mesh geometry.",
+            )
         geoms = list(loaded.geometry.values())
         if len(geoms) == 1:
             asset = _load_from_trimesh_geom(path.stem, geoms[0])
@@ -263,7 +266,10 @@ def load_model(
     elif isinstance(loaded, trimesh.Trimesh):
         asset = _load_from_trimesh_geom(path.stem, loaded)
     else:
-        raise ValueError(f"Unsupported geometry type loaded from {path}: {type(loaded)}")
+        raise ContractValidationError(
+            f"Unsupported geometry type loaded from {path}: {type(loaded)}",
+            agent_fix_hint=f"The file '{path}' did not load as a mesh. Supported formats: OBJ, GLB, GLTF, PLY, STL.",
+        )
 
     if normalize:
         asset = asset.normalize(target_radius=target_radius)

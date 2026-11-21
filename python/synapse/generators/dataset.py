@@ -207,8 +207,18 @@ class DatasetGenerator:
             else None
         )
 
+        def _release_writers() -> None:
+            """Safely release all VideoWriter handles."""
+            for wr in (video_writer, train_writer, val_writer):
+                if wr is not None:
+                    try:
+                        wr.release()
+                    except Exception:
+                        pass
+
         writers_ok = video_writer.isOpened() and train_writer.isOpened() and (val_writer is None or val_writer.isOpened())
         if not writers_ok:
+            _release_writers()
             raise BackendUnavailableError(
                 "cv2.VideoWriter failed to open video codecs for writing",
                 agent_fix_hint="Check ffmpeg and OpenCV video codec availability for mp4v.",
@@ -325,10 +335,7 @@ class DatasetGenerator:
                     )
                     Image.fromarray(contact).save(out_dir / "contact_sheet.png")
         finally:
-            video_writer.release()
-            train_writer.release()
-            if val_writer is not None:
-                val_writer.release()
+            _release_writers()
 
         # 5. FGPP sequence metadata and OpenEXR export
         fgpp_seq = FGPPSequence(
