@@ -67,10 +67,18 @@ class SynapseError(Exception):
 
             if isinstance(obj, PurePath):
                 return str(obj)
+            if isinstance(obj, set):
+                return sorted(str(v) for v in obj)
             if isinstance(obj, dict):
                 return {str(k): _sanitize(v) for k, v in obj.items()}
             if isinstance(obj, (list, tuple)):
                 return [_sanitize(v) for v in obj]
+            # NumPy ndarray → nested list
+            if hasattr(obj, "tolist") and hasattr(obj, "shape"):
+                try:
+                    return obj.tolist()
+                except (ValueError, AttributeError):
+                    return str(obj)
             # NumPy scalar → Python scalar
             if hasattr(obj, "item"):
                 try:

@@ -231,15 +231,22 @@ class TestFoundaryClient:
         assert resp.elapsed_seconds == 0.5
 
     def test_http_transport_raises(self) -> None:
-        """HttpFoundaryTransport raises BackendUnavailableError."""
-        transport = HttpFoundaryTransport(
-            base_url="http://localhost:9999",
-            timeout_seconds=0.5,
-        )
-        req = FoundaryRequest(service="sam2", job_id="j-002")
-        with pytest.raises(BackendUnavailableError) as exc_info:
-            transport.submit(req)
-        assert exc_info.value.exit_code == 30
+        """HttpFoundaryTransport raises on blocked loopback or unreachable host."""
+        # localhost resolves to loopback (127.0.0.1 / ::1), which is now
+        # blocked by SSRF hardening.  Verify that ContractValidationError
+        # is raised at construction time.
+        with pytest.raises(ContractValidationError):
+            HttpFoundaryTransport(
+                base_url="http://localhost:9999",
+                timeout_seconds=0.5,
+            )
+
+        # Also verify direct loopback IP is blocked
+        with pytest.raises(ContractValidationError):
+            HttpFoundaryTransport(
+                base_url="http://127.0.0.1:9999",
+                timeout_seconds=0.5,
+            )
 
     def test_request_model_defaults(self) -> None:
         """FoundaryRequest has sensible defaults."""
@@ -432,7 +439,13 @@ class TestHttpSecurityAndLedger:
 
         from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
 
-        transport = HttpFoundaryTransport(base_url="http://localhost:8080")
+        # Use a non-loopback address to avoid SSRF loopback blocking.
+        # Monkeypatch validate_safe_url so the DNS resolution doesn't fail.
+        monkeypatch.setattr(
+            "synapse.bridge.http_security.validate_safe_url",
+            lambda url: (url, ["10.0.0.1"]),
+        )
+        transport = HttpFoundaryTransport(base_url="http://10.0.0.1:8080")
         captured_reqs: list[Any] = []
 
         mock_resp = MagicMock()
@@ -457,7 +470,12 @@ class TestHttpSecurityAndLedger:
 
         from synapse.bridge.foundary_client import FoundaryRequest, HttpFoundaryTransport
 
-        transport = HttpFoundaryTransport(base_url="http://localhost:8080")
+        # Use a non-loopback address to avoid SSRF loopback blocking.
+        monkeypatch.setattr(
+            "synapse.bridge.http_security.validate_safe_url",
+            lambda url: (url, ["10.0.0.1"]),
+        )
+        transport = HttpFoundaryTransport(base_url="http://10.0.0.1:8080")
 
         # Mock safe_urlopen to return an error response
         mock_resp = MagicMock()
