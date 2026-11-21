@@ -99,36 +99,63 @@ y_{\text{knee}} + \frac{y - y_{\text{knee}}}{1.0 + \frac{y - y_{\text{knee}}}{1.
 \end{cases}$$
 其中 $y_{\text{knee}} = 0.85$。该算子确保 $T(y) \in [0, 1)$，在一阶导数处 $C^1$ 连续，并有效保留高光梯度。
 
+### 3.3 StyleProfile v2.0.0 (`StyleDescriptor`) 字段规约
+
+`synapse.style.descriptor.StyleDescriptor`（对应 `schemas/style_profile.v2.0.0.schema.json`）定义以下跨引擎光学与风格描述字段：
+
+| 字段名 | 类型 | 默认值 / 范围 | 语义说明 |
+| :--- | :--- | :--- | :--- |
+| `working_colorspace` | `str` | `"ACEScg"` | 工作色彩空间标识（必须为 `ACEScg`） |
+| `color_temp_kelvin` | `float` | `6500.0` (`[1000, 40000]`) | 相关色温（开尔文） |
+| `tint` | `float` | `0.0` (`[-1.0, 1.0]`) | 绿-品红偏色补偿 |
+| `exposure_ev` | `float` | `0.0` (`[-10.0, 10.0]`) | 曝光补偿（EV 档位） |
+| `contrast` | `float` | `1.0` (`[0.0, 2.0]`) | 线性对比度倍率 |
+| `saturation` | `float` | `1.0` (`[0.0, 2.0]`) | 色度饱和度倍率 |
+| `key_light_dir_world` | `list[float]` (3) | `[0.0, 1.0, 0.0]` | 世界空间主光单位方向向量 |
+| `key_light_rgb` | `list[float]` (3) | `[1.0, 1.0, 1.0]` | 主光线性 RGB 辐射色 |
+| `ambient_ratio` | `float` | `0.3` (`[0.0, 1.0]`) | 环境光与主光能量比 |
+| `grain_sigma` | `float` | `0.0` (`>= 0.0`) | 胶片颗粒噪声标准差 |
+| `vignette_strength` | `float` | `0.0` (`[0.0, 1.0]`) | 镜头暗角强度 |
+| `tone_curve_lut_1d` | `list[float] \| None` | `None` | 可选 1D 色调映射 LUT |
+
 ---
 
 ## 4. 共享内存（SHM）与 Seqlock 无锁协议
 
-桌面端检查器（`Data Inspector` Electron 前端）与 C++20 本地引擎（`InspectorApp`）通过共享内存实现 60 FPS 零拷贝预览。
+桌面端检查器（`Data Inspector` Electron 前端）与 C++20 本地引擎（`InspectorApp`）通过共享内存（`@aether//pal:shm`）实现 60 FPS 三缓冲零拷贝预览，头文件权威定义见 `tools/data-inspector/native/inspector_shm_server.h`。
 
-### 4.1 SHM 结构体对齐（64 字节对齐）
+### 4.1 SHM 结构体对齐（64 字节三缓冲头 `InspectorShmHeader`）
 
 ```text
-Offset 0x00: uint32_t seqlock_sequence   (写者自增：奇数=写中，偶数=就绪)
-Offset 0x04: uint32_t width               (帧宽度)
-Offset 0x08: uint32_t height              (帧高度)
-Offset 0x0C: uint32_t stride              (行跨度，字节)
-Offset 0x10: uint32_t channels            (通道数，通常为 4: RGBA)
-Offset 0x14: float    fps                 (当前渲染帧率)
-Offset 0x18: float    render_time_ms      (单帧耗时毫秒)
-Offset 0x20: uint8_t  pixel_data[...]     (原始像素缓冲区，大小 = width * height * 4)
+Offset 0x00: uint32_t              magic         (0x494E5350 = "INSP")
+Offset 0x04: uint32_t              version       (协议版本 = 1)
+Offset 0x08: uint32_t              width         (帧宽度，1..8192)
+Offset 0x0C: uint32_t              height        (帧高度，1..8192)
+Offset 0x10: atomic<uint32_t>      writeIdx      (最新已完成帧缓冲区索引 0..2)
+Offset 0x14: uint32_t              bufferCount   (环形缓冲区数量 = 3)
+Offset 0x18: atomic<uint64_t>      frameReady    (Seqlock 序号：偶数=就绪，奇数=写中)
+Offset 0x20: atomic<float>         fps           (当前渲染帧率)
+Offset 0x24: atomic<float>         deltaTime     (上一帧耗时，秒)
+Offset 0x28: atomic<uint8_t>       debugView     (当前调试视图模式)
+Offset 0x29: uint8_t[3]            _pad0         (对齐填充)
+Offset 0x2C: atomic<uint32_t>      generation    (Resize 世代计数，resizeViewport 时单调递增)
+Offset 0x30: uint8_t[16]           reserved      (填充至 64 字节)
+Offset 0x40: uint8_t[3 * W * H * 4] pixel_data   (3 块 RGBA8 环形帧缓冲区，每块 = W * H * 4)
 ```
 
 ### 4.2 读者无锁校验伪代码
 
 ```cpp
-uint32_t seq1, seq2;
+uint64_t seq1, seq2;
+uint32_t idx;
 do {
-    seq1 = shm->sequence.load(std::memory_order_acquire);
-    while (seq1 & 1) { // 正在写入中，短暂让出 CPU
+    seq1 = shm->frameReady.load(std::memory_order_acquire);
+    while (seq1 & 1u) { // 正在写入中，短暂让出 CPU
         std::this_thread::yield();
-        seq1 = shm->sequence.load(std::memory_order_acquire);
+        seq1 = shm->frameReady.load(std::memory_order_acquire);
     }
-    std::memcpy(local_buffer, shm->pixel_data, frame_size);
-    seq2 = shm->sequence.load(std::memory_order_acquire);
+    idx = shm->writeIdx.load(std::memory_order_acquire) % shm->bufferCount;
+    std::memcpy(local_buffer, pixel_base + idx * frame_size, frame_size);
+    seq2 = shm->frameReady.load(std::memory_order_acquire);
 } while (seq1 != seq2);
 ```
