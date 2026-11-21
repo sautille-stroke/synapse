@@ -40,9 +40,18 @@ def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:
     Returns:
         Estimated CCT in kelvin, clamped to [2000, 20000].
     """
-    # Mean colour
-    mean_rgb = np.mean(rgb_linear, axis=(0, 1))  # (3,)
-    mean_rgb = np.clip(mean_rgb, 1e-10, None)
+    # Exclude clipped/overexposed pixels (> 0.98) and near-black pixels (< 1e-4)
+    # when valid mid-tone pixels exist, and use ACEScg-aware log-chromaticity mean.
+    max_c = np.max(rgb_linear, axis=-1)
+    min_c = np.min(rgb_linear, axis=-1)
+    valid = (max_c > 1e-4) & (max_c < 0.98) & (min_c >= 0.0)
+    if np.any(valid):
+        samples = np.clip(rgb_linear[valid], 1e-10, None)
+        # Geometric (log-space) mean chromaticity avoids highlight dominance
+        mean_rgb = np.exp(np.mean(np.log(samples), axis=0))
+    else:
+        mean_rgb = np.mean(rgb_linear, axis=(0, 1))  # (3,)
+        mean_rgb = np.clip(mean_rgb, 1e-10, None)
 
     # Convert to XYZ then xy chromaticity
     xyz = mean_rgb @ _M_LINEAR_TO_XYZ.T

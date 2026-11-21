@@ -218,14 +218,15 @@ def border_ring_lab_match(
         range as the input *patch_srgb*.
     """
     src_dtype = patch_srgb.dtype
-    is_uint8 = np.issubdtype(src_dtype, np.integer)
+    is_int = np.issubdtype(src_dtype, np.integer)
+    int_max = float(np.iinfo(src_dtype).max) if is_int else 1.0
 
     # Normalise to [0, 1] float64.
     patch_f = patch_srgb.astype(np.float64)
     bg_f = bg_srgb.astype(np.float64)
-    if is_uint8:
-        patch_f = patch_f / 255.0
-        bg_f = bg_f / 255.0
+    if is_int:
+        patch_f = patch_f / int_max
+        bg_f = bg_f / int_max
 
     mask = binary_mask.astype(bool)
 
@@ -240,8 +241,11 @@ def border_ring_lab_match(
     dilated = _binary_dilation(mask, se)
     outer_ring = dilated & (~mask)
 
-    # Inner edge band: M \ Erode(M)
-    eroded = _binary_erosion(mask, se)
+    # Inner edge band: M \ Erode(M) using edge padding so masks touching the
+    # image frame border are not falsely eroded along the frame edge.
+    pad_r = max(int(ring_width_px), 1)
+    mask_padded = np.pad(mask, ((pad_r, pad_r), (pad_r, pad_r)), mode="edge")
+    eroded = _binary_erosion(mask_padded, se)[pad_r:-pad_r, pad_r:-pad_r]
     inner_band = mask & (~eroded)
 
     # If rings are empty fall back to the full regions.
@@ -274,38 +278,32 @@ def border_ring_lab_match(
             scale = outer_std / (inner_std + _EPS)
             scale = float(np.clip(scale, _SCALE_CLAMP_LO, _SCALE_CLAMP_HI))
 
-        # Apply only within the inner band (gradually blending into
-        # the mask interior to avoid a secondary seam).
         # Full affine: x' = (x - inner_mean) * scale + outer_mean
         result_lab[inner_band, ch] = (inner_lab[:, ch] - inner_mean) * scale + outer_mean
 
     # Convert back: LAB → linear → sRGB.
-    # Inverse of rgb_to_cielab is not provided in aces_color, so we
-    # do it inline.
     result_srgb = _lab_to_srgb_float(result_lab)
 
-    # Merge: smoothly blend the inner band pixels using distance-based
-    # transition weights instead of a hard step at the 16px boundary.
-    # Blend in linear sRGB to avoid gamma-space banding artefacts.
-    patch_linear = srgb_to_linear(patch_f)
+    # Merge: apply full LAB correction across the outer 75% of inner_band and
+    # smoothstep-feather across the innermost 25% into the untouched core so
+    # boundary-ring CIEDE2000 stays < 2.0 while avoiding a hard inner step.
     result_linear = srgb_to_linear(result_srgb)
     output_linear = patch_linear.copy()
 
-    # Compute distance from the inner edge of the mask toward the interior
-    # for a smooth falloff over the ring_width_px band.
     if np.any(inner_band):
-        from synapse.render_core.morphology import exact_euclidean_distance_transform
+        if np.any(eroded):
+            from synapse.render_core.morphology import exact_euclidean_distance_transform
 
-        # d_core: distance from the eroded (core) boundary INTO the inner band.
-        # At the eroded boundary d_core = 0, increasing toward the mask edge.
-        d_core = exact_euclidean_distance_transform(eroded)
-        # d_in: distance from outside the mask INTO the mask.
-        # At mask boundary d_in = 0, increasing toward the interior.
-        d_in = exact_euclidean_distance_transform(~mask)
-        # Smooth feathering: w = 0 at eroded boundary → 1 at mask edge
-        eps = 1e-6
-        weight_map = d_core / np.maximum(d_in + d_core, eps)
-        # Only apply within inner_band
+            # d_core: distance from the eroded core boundary outward into inner_band.
+            d_core = exact_euclidean_distance_transform(eroded)
+            feather_w = max(float(ring_width_px) * 0.25, 1.0)
+            t_ramp = np.clip(d_core / feather_w, 0.0, 1.0)
+            weight_map = t_ramp * t_ramp * (3.0 - 2.0 * t_ramp)
+        else:
+            # Small mask completely covered by inner_band: apply full correction cleanly
+            # without inf/inf NaN from empty eroded core.
+            weight_map = np.ones(mask.shape, dtype=np.float64)
+
         weight_3d = weight_map[..., np.newaxis]
         output_linear[inner_band] = (
             weight_3d[inner_band] * result_linear[inner_band]
@@ -316,8 +314,8 @@ def border_ring_lab_match(
     output_f = linear_to_srgb(np.clip(output_linear, 0.0, None))
     output_f = np.clip(output_f, 0.0, 1.0)
 
-    if is_uint8:
-        return np.asarray(np.rint(np.clip(output_f * 255.0, 0.0, 255.0)).astype(np.uint8))
+    if is_int:
+        return np.asarray(np.rint(np.clip(output_f * int_max, 0.0, int_max)).astype(src_dtype))
     return np.asarray(output_f.astype(src_dtype))
 
 
@@ -662,20 +660,25 @@ def composite_optical_increments(
             raise ValueError(
                 f"caustics_map shape {caustics_map.shape} != expected {expected_caustics}"
             )
+    src_dtype = video_frames_srgb.dtype
+    is_int = np.issubdtype(src_dtype, np.integer)
+    int_max = float(np.iinfo(src_dtype).max) if is_int else 1.0
     result = np.empty_like(video_frames_srgb)
 
     for t in range(t_count):
-        frame_srgb = video_frames_srgb[t].astype(np.float64) / 255.0
+        frame_srgb = video_frames_srgb[t].astype(np.float64)
+        if is_int:
+            frame_srgb = frame_srgb / int_max
 
         # 1. LDR → linear → soft-knee inverse tonemap → ACEScg.
         frame_linear = srgb_to_linear(frame_srgb)
         frame_hdr = soft_knee_inverse_tonemap(frame_linear)
         frame_acescg = linear_srgb_to_acescg(frame_hdr)
 
-        # 2. Build guide from Cryptomatte boundary.
+        # 2. Build guide from Cryptomatte boundary (preserve 3ch separation via weighted luminance).
         cid = cryptomatte_ids[t]
         guide_3ch = _cryptomatte_boundary_guide(cid)
-        guide = np.mean(guide_3ch, axis=-1)
+        guide = 0.299 * guide_3ch[..., 0] + 0.587 * guide_3ch[..., 1] + 0.114 * guide_3ch[..., 2]
 
         # IMPORTANT: Do NOT apply guided filter to the original video
         # background. The guided filter is only used for aligning
@@ -717,7 +720,10 @@ def composite_optical_increments(
         frame_srgb_out = linear_to_srgb(frame_tonemapped)
         frame_srgb_out = np.clip(frame_srgb_out, 0.0, 1.0)
 
-        result[t] = np.rint(np.clip(frame_srgb_out * 255.0, 0.0, 255.0)).astype(np.uint8)
+        if is_int:
+            result[t] = np.rint(np.clip(frame_srgb_out * int_max, 0.0, int_max)).astype(src_dtype)
+        else:
+            result[t] = frame_srgb_out.astype(src_dtype)
 
     return result
 
