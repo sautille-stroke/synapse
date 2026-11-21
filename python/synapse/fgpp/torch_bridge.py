@@ -117,12 +117,21 @@ def tensors_to_frame(
             t = t.detach()
         if hasattr(t, "cpu"):
             t = t.cpu()
+        if hasattr(t, "dtype") and str(t.dtype) == "torch.bfloat16":
+            t = t.float()
         if hasattr(t, "contiguous"):
             t = t.contiguous()
 
         if field == "cryptomatte_id":
-            # int32 tensor → uint32 numpy
-            arr = t.numpy().view(np.uint32)
+            # int32 tensor → uint32 bit-reinterpret; other integer dtypes (e.g. int64) cast safely
+            # without corrupting array shape via view(np.uint32).
+            arr_raw = t.numpy()
+            if arr_raw.dtype == np.int32:
+                arr = arr_raw.view(np.uint32).copy()
+            elif arr_raw.dtype == np.uint32:
+                arr = arr_raw.copy()
+            else:
+                arr = arr_raw.astype(np.uint32, copy=True)
         else:
             arr = t.numpy()
 

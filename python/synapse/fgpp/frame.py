@@ -72,8 +72,13 @@ class CameraParams:
         intrinsics ``(fx, fy, cx, cy, width, height, z_near, z_far)``, preserving
         principal point offsets and independent focal lengths.
         """
-        w, h = float(self.width), float(max(self.height, 1))
+        w, h = float(max(self.width, 1)), float(max(self.height, 1))
         near, far = float(self.z_near), float(self.z_far)
+        if not math.isfinite(near) or not math.isfinite(far) or near <= 0.0 or far <= near:
+            raise ContractValidationError(
+                f"Invalid camera depth planes: z_near={near}, z_far={far} (require 0 < z_near < z_far).",
+                agent_fix_hint="Set finite z_near > 0 and z_far > z_near on CameraParams.",
+            )
 
         if self.fx > 0 and self.fy > 0:
             p00 = 2.0 * float(self.fx) / w
@@ -159,6 +164,7 @@ class CameraConvention:
     OPENGL = "opengl"
     VULKAN_RH_ZO = "vulkan_rh_zo"
     FULGUR_INF_REVERSED_Z = "fulgur_inf_reversed_z"
+    FULGUR_FINITE_REVERSED_Z = "fulgur_finite_reversed_z"
     ORTHOGRAPHIC = "orthographic"
     UNKNOWN = "unknown"
 
@@ -179,6 +185,10 @@ class CameraConvention:
         # Fulgur infinite reversed-Z: p22 == 0, p32 == -1, p23 == z_near > 0
         if abs(p22) < 1e-8 and abs(p32 + 1.0) < 1e-6 and p23 > 0:
             return CameraConvention.FULGUR_INF_REVERSED_Z
+
+        # Finite reversed-Z: p22 = near/(far-near) > 0, p23 = (far*near)/(far-near) > 0, p32 == -1
+        if abs(p32 + 1.0) < 1e-6 and p22 > 0.0 and p23 > 0.0:
+            return CameraConvention.FULGUR_FINITE_REVERSED_Z
 
         # Vulkan RH_ZO [0,1]: p22 = -far/(far-near) < 0, p23 = -(far*near)/(far-near) < 0
         # p32 == -1, and -1 < p22 < 0
@@ -223,6 +233,17 @@ class CameraConvention:
             z_far = 10000.0 * max(z_near, 1e-7)
             out[2, 2] = -(z_far + z_near) / (z_far - z_near)
             out[2, 3] = -2.0 * z_far * z_near / (z_far - z_near)
+            return out
+        elif convention == CameraConvention.FULGUR_FINITE_REVERSED_Z:
+            # Finite reversed-Z: p22 = n/(f-n) > 0, p23 = f*n/(f-n) > 0
+            p22 = float(proj[2, 2])
+            p23 = float(proj[2, 3])
+            if p22 > 1e-12 and p23 > 0.0:
+                z_near = p23 / (1.0 + p22)
+                z_far = p23 / p22
+                if z_far > z_near > 0.0:
+                    out[2, 2] = -(z_far + z_near) / (z_far - z_near)
+                    out[2, 3] = -2.0 * z_far * z_near / (z_far - z_near)
             return out
         # ORTHOGRAPHIC or UNKNOWN: return as-is
         return out
@@ -459,7 +480,11 @@ class FGPPSequence:
                     if width > 0:
                         cx = (1.0 - p02) * float(width) / 2.0
                     if height > 0:
-                        cy = (1.0 + p12) * float(height) / 2.0
+                        # Vulkan Y-flip negates row 1 (p11 < 0), inverting p12's sign.
+                        if p11 < 0.0:
+                            cy = (1.0 - p12) * float(height) / 2.0
+                        else:
+                            cy = (1.0 + p12) * float(height) / 2.0
 
                     # Near and far reconstruction based on convention
                     if convention == CameraConvention.FULGUR_INF_REVERSED_Z:
@@ -467,6 +492,14 @@ class FGPPSequence:
                         if p23 > 0:
                             z_near = float(p23)
                             z_far = 100000.0  # infinite far
+                    elif convention == CameraConvention.FULGUR_FINITE_REVERSED_Z:
+                        # p22 = n/(f-n) > 0, p23 = f*n/(f-n) > 0
+                        if p22 > 1e-12 and p23 > 0.0:
+                            rec_near = p23 / (1.0 + p22)
+                            rec_far = p23 / p22
+                            if 0.0 < rec_near < rec_far:
+                                z_near = float(rec_near)
+                                z_far = float(rec_far)
                     elif convention == CameraConvention.VULKAN_RH_ZO:
                         # p22 = -far/(far-near), p23 = -(far*near)/(far-near)
                         if abs(p22) > 1e-8 and abs(p23) > 1e-8:

@@ -167,6 +167,47 @@ class TestSingleModelEvaluation:
         assert res.gate_results["chamfer_mm"] is True
         assert res.overall_passed is True
 
+    def test_uv_seamed_obj_preserves_watertight_topology(self, tmp_path: Path) -> None:
+        """OBJ with distinct per-face UVs on a closed tetrahedron must remain watertight."""
+        obj_file = tmp_path / "seamed_tet.obj"
+        obj_file.write_text(
+            "v 0.0 0.0 0.0\n"
+            "v 1.0 0.0 0.0\n"
+            "v 0.0 1.0 0.0\n"
+            "v 0.0 0.0 1.0\n"
+            "vt 0.0 0.0\n"
+            "vt 1.0 0.0\n"
+            "vt 0.0 1.0\n"
+            "vt 0.5 0.5\n"
+            "vt 0.2 0.8\n"
+            "vt 0.8 0.2\n"
+            "f 1/1 3/2 2/3\n"
+            "f 1/4 2/5 4/6\n"
+            "f 2/1 3/4 4/2\n"
+            "f 3/5 1/6 4/3\n",
+            encoding="utf-8",
+        )
+        res = evaluate_single_model(
+            model_path=obj_file,
+            profile_name="TRACK_A_ASSET",
+            resolution=32,
+            num_views=4,
+            reference_mesh=None,
+            require_reference=False,
+            geometry_backend=_BACKEND,  # type: ignore[arg-type]
+        )
+        assert res.topology.is_watertight is True
+        assert res.topology.num_boundary_edges == 0
+
+    def test_obj_zero_index_raises_contract_error(self, tmp_path: Path) -> None:
+        """OBJ 0 vertex index (invalid 1-based index) must raise ContractValidationError."""
+        from synapse.render_core.mesh import load_obj
+
+        bad_obj = tmp_path / "bad.obj"
+        bad_obj.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 0 1 2\n", encoding="utf-8")
+        with pytest.raises(ContractValidationError, match="0 vertex index"):
+            load_obj(bad_obj)
+
 
 @pytest.mark.slow
 class TestModelDirectoryEvaluation:
