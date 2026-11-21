@@ -957,12 +957,28 @@ class TestPR117TrainerEnhancements:
         assert np.isfinite(result["loss"])
 
     def test_sft_step_stores_t_in_batch(self) -> None:
-        """PR-117: _sft_step stores sampled timestep t back into batch."""
+        """PR-186: train_step does not mutate caller batch['t'] and samples fresh t each step."""
         import torch
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
 
         torch.manual_seed(117)
-        model = self._make_toy_model()
+        seen_t: list[torch.Tensor] = []
+
+        class _TimeAwareModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ffn = torch.nn.Sequential(
+                    torch.nn.Linear(64, 128),
+                    torch.nn.GELU(),
+                    torch.nn.Linear(128, 64),
+                )
+
+            def forward(self, x: Any, t: Any = None) -> Any:
+                if t is not None:
+                    seen_t.append(t.detach().clone())
+                return self.ffn(x)
+
+        model = _TimeAwareModel()
         cfg = LoRATrainConfig(category="style", rank=4)
         trainer = StatelessLoRATrainer(cfg)
         trainer.freeze_backbone(model)
@@ -974,9 +990,11 @@ class TestPR117TrainerEnhancements:
         }
         assert "t" not in batch
         trainer.train_step(model, batch, 0)
-        # After train_step, batch should contain 't' from the SFT flow
-        assert "t" in batch
-        assert isinstance(batch["t"], torch.Tensor)
+        trainer.train_step(model, batch, 1)
+        # Caller batch must NEVER be mutated (prevents frozen timestep bug)
+        assert "t" not in batch
+        assert len(seen_t) == 2
+        assert not torch.allclose(seen_t[0], seen_t[1]), "Each train_step must sample fresh t"
 
     def test_extract_auxiliary_from_raw_fgpp(self) -> None:
         """PR-117 / PR-140: _extract_auxiliary_from_fgpp extracts depth/normal from [T,H,W,15].
@@ -1093,3 +1111,147 @@ class TestNormalReconstructionLoss4D5D:
         assert torch.isfinite(loss)
         loss.backward()
         assert n_pred.grad is not None
+
+
+class TestPR186CheckpointAndLossHardening:
+    """PR-186: Full LoRA/probe checkpoint parity, bf16 precision, 5D normal mask, replicate Sobel."""
+
+    def test_checkpoint_save_reset_load_exact_parity(self, tmp_path: Any) -> None:
+        """save_state_dict -> zero LoRA weights -> load_state_dict restores output < 1e-7."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        torch.manual_seed(186)
+
+        class _SmallModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ffn = torch.nn.Linear(16, 16)
+
+            def forward(self, x: Any) -> Any:
+                return self.ffn(x)
+
+        model = _SmallModel()
+        trainer = StatelessLoRATrainer(LoRATrainConfig(category="style", rank=4, alpha=4.0))
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn"])
+
+        batch = {"latent": torch.randn(2, 16), "noise": torch.randn(2, 16)}
+        for step in range(3):
+            trainer.train_step(model, batch, step)
+
+        probe_x = torch.randn(2, 16)
+        with torch.no_grad():
+            expected_out = model(probe_x).clone()
+
+        ckpt = tmp_path / "trainer_state.pt"
+        trainer.save_state_dict(ckpt)
+
+        # Corrupt / reset LoRA weights to zeros
+        with torch.no_grad():
+            for name, p in model.named_parameters():
+                if "lora_" in name:
+                    p.zero_()
+            corrupted_out = model(probe_x).clone()
+        assert float((expected_out - corrupted_out).abs().max().item()) > 1e-5
+
+        # Restore into fresh trainer and verify exact parity < 1e-7
+        restored_trainer = StatelessLoRATrainer(LoRATrainConfig(category="style", rank=4, alpha=4.0))
+        step_restored = restored_trainer.load_state_dict(ckpt, model)
+        assert step_restored == 2
+        with torch.no_grad():
+            restored_out = model(probe_x).clone()
+        assert float((expected_out - restored_out).abs().max().item()) < 1e-7
+
+    def test_bf16_flow_and_dpo_losses_promoted_to_float32(self) -> None:
+        """FlowMatchingLoss and DiffusionDPOLoss compute in float32 to prevent bf16 cancellation."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.training.losses import DiffusionDPOLoss, FlowMatchingLoss
+
+        fm = FlowMatchingLoss()
+        x1 = torch.ones(2, 8, dtype=torch.bfloat16)
+        x0 = torch.zeros(2, 8, dtype=torch.bfloat16)
+        v = torch.full((2, 8), 0.5, dtype=torch.bfloat16, requires_grad=True)
+        loss_fm = fm(v, x1, x0)
+        assert loss_fm.dtype == torch.float32
+        assert abs(float(loss_fm.item()) - 0.25) < 1e-5
+
+        dpo = DiffusionDPOLoss(beta=500.0)
+        t_w = torch.ones(2, 8, dtype=torch.bfloat16)
+        t_l = -torch.ones(2, 8, dtype=torch.bfloat16)
+        v_ref_w = torch.full((2, 8), 0.5, dtype=torch.bfloat16)
+        v_ref_l = torch.full((2, 8), -0.5, dtype=torch.bfloat16)
+        loss_dpo = dpo(v_ref_w, v_ref_l, v_ref_w, v_ref_l, t_w, t_l)
+        assert loss_dpo.dtype == torch.float32
+        assert abs(float(loss_dpo.item()) - float(np.log(2.0))) < 1e-5
+
+    def test_normal_loss_5d_gt3_channels_and_5d_mask(self) -> None:
+        """NormalReconstructionLoss handles 5D C>3 tensors and 5D [B,1,T,H,W] masks."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.training.losses import NormalReconstructionLoss
+
+        loss_fn = NormalReconstructionLoss()
+        n_pred = torch.randn(2, 6, 3, 4, 4, requires_grad=True)
+        n_gt = torch.randn(2, 6, 3, 4, 4)
+        mask_5d = torch.ones(2, 1, 3, 4, 4)
+        loss = loss_fn(n_pred, n_gt, mask=mask_5d)
+        assert torch.isfinite(loss)
+        loss.backward()
+        assert n_pred.grad is not None
+
+    def test_edge_preserving_replicate_padding_zero_border_artifact(self) -> None:
+        """Constant non-zero 2D image must have near-zero Sobel gradient at borders."""
+        pytest.importorskip("torch")
+        import torch
+        import torch.nn.functional as F
+        from synapse.training.losses import EdgePreservingLoss
+
+        flat = torch.full((1, 1, 8, 8), 5.0, dtype=torch.float32)
+        mag = EdgePreservingLoss._sobel_magnitude_batch(flat, F)
+        assert float(mag.max().item()) < 1e-3
+
+    def test_auto_instantiated_geometry_probe_and_checkpoint_roundtrip(
+        self, tmp_path: Any
+    ) -> None:
+        """normal_loss_weight > 0 auto-creates LatentGeometryProbe, trains & persists it."""
+        pytest.importorskip("torch")
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        class _VideoModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ffn = torch.nn.Linear(4, 4)
+
+            def forward(self, x: Any) -> Any:
+                return self.ffn(x)
+
+        model = _VideoModel()
+        cfg = LoRATrainConfig(
+            category="control", rank=4, alpha=4.0, normal_loss_weight=0.5, lr_spatial=1e-2
+        )
+        trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
+        trainer.inject_lora(model, target_patterns=["ffn"])
+
+        batch = {
+            "latent": torch.randn(1, 4, 2, 4, 4),
+            "noise": torch.randn(1, 4, 2, 4, 4),
+            "normal_gt": torch.randn(1, 3, 2, 4, 4),
+        }
+        res = trainer.train_step(model, batch, 0)
+        assert np.isfinite(res["loss"])
+        assert trainer._geometry_probe is not None
+
+        ckpt = tmp_path / "probe_ckpt.pt"
+        trainer.save_state_dict(ckpt)
+        orig_probe_w = trainer._geometry_probe._conv.weight.detach().clone()
+
+        trainer2 = StatelessLoRATrainer(cfg)
+        trainer2.load_state_dict(ckpt, model)
+        assert trainer2._geometry_probe is not None
+        torch.testing.assert_close(trainer2._geometry_probe._conv.weight, orig_probe_w)
+
