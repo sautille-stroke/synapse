@@ -240,11 +240,11 @@ class AssetRegistry:
 
         # Download with timeout and clean up partial file on failure
         try:
-            import urllib.request
+            from synapse.bridge.http_security import safe_urlopen
 
             logger.info("Downloading %s -> %s", entry.url, local_path)
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(entry.url, timeout=30.0) as resp, open(local_path, "wb") as f:
+            with safe_urlopen(entry.url, timeout=30.0) as resp, open(local_path, "wb") as f:
                 while chunk := resp.read(65536):
                     f.write(chunk)
         except Exception as exc:

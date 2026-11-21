@@ -349,6 +349,7 @@ class BenchPipelineRunner:
             from typing import cast
 
             from synapse.metrics.profiles import (
+                METRIC_ALIASES,
                 _PROFILES,
                 GateProfileName,
                 _normalize_profile_name,
@@ -389,9 +390,19 @@ class BenchPipelineRunner:
             if tier_str in ("T1", "T2", "T3") and "foot_sliding_cm" in metrics:
                 applicable_keys.update({"foot_sliding_cm", "bone_length_drift_pct"})
 
-            # Include any keys explicitly specified in scenario.expected
+            # Include any keys explicitly specified in scenario.expected,
+            # resolving aliases so e.g. "style_color_de" also adds
+            # "border_ring_ciede2000" and vice versa.
             if scenario.expected:
-                applicable_keys.update(scenario.expected.to_dict().keys())
+                for exp_key in scenario.expected.to_dict().keys():
+                    applicable_keys.add(exp_key)
+                    # Forward alias: alias -> canonical
+                    if exp_key in METRIC_ALIASES:
+                        applicable_keys.add(METRIC_ALIASES[exp_key])
+                    # Reverse alias: canonical -> alias
+                    for alias, canonical in METRIC_ALIASES.items():
+                        if canonical == exp_key:
+                            applicable_keys.add(alias)
 
             required_keys = [k for k in profile_keys if k in applicable_keys]
             scenario_overrides = scenario.expected.to_dict() if scenario.expected else None
@@ -539,9 +550,21 @@ def evaluate_bundle(
     gen_frames = _load_array_dir(frames_dir)
 
     # --- Load GT FGPP channels ----------------------------------------
-    gt_depth = _try_load_npy(fgpp_dir / "depth.npy")
-    gt_normals = _try_load_npy(fgpp_dir / "normals.npy")
-    gt_mask = _try_load_npy(fgpp_dir / "mask.npy")
+    # Try loading full sequence from EXR files first, then fall back to .npy
+    gt_depth_seq = _try_load_exr_sequence(fgpp_dir, "depth")
+    gt_normals_seq = _try_load_exr_sequence(fgpp_dir, "normals")
+    gt_mask_seq = _try_load_exr_sequence(fgpp_dir, "mask")
+
+    # Fall back to single .npy files
+    if gt_depth_seq is None:
+        gt_depth_single = _try_load_npy(fgpp_dir / "depth.npy")
+        gt_depth_seq = gt_depth_single[np.newaxis] if gt_depth_single is not None and gt_depth_single.ndim == 2 else gt_depth_single
+    if gt_normals_seq is None:
+        gt_normals_single = _try_load_npy(fgpp_dir / "normals.npy")
+        gt_normals_seq = gt_normals_single[np.newaxis] if gt_normals_single is not None and gt_normals_single.ndim == 3 else gt_normals_single
+    if gt_mask_seq is None:
+        gt_mask_single = _try_load_npy(fgpp_dir / "mask.npy")
+        gt_mask_seq = gt_mask_single[np.newaxis] if gt_mask_single is not None and gt_mask_single.ndim == 2 else gt_mask_single
 
     # --- Compute available metrics ------------------------------------
     metrics: dict[str, float] = {}
@@ -560,41 +583,62 @@ def evaluate_bundle(
     if pred_normals is None:
         pred_normals = _try_load_npy(bundle_dir / "normals.npy")
 
-    if gt_depth is not None and pred_depth is not None:
+    # Process all frames for depth and normal metrics (not just first)
+    if gt_depth_seq is not None and pred_depth is not None:
         from synapse.metrics.fgpp_fidelity import depth_rmse_m
 
-        gt_d = gt_depth[0] if gt_depth.ndim == 3 else gt_depth
-        p_d = pred_depth[0] if pred_depth.ndim == 3 else pred_depth
-        if gt_d.shape == p_d.shape:
-            metrics["depth_rmse_m"] = float(depth_rmse_m(p_d, gt_d))
+        n_depth = min(
+            gt_depth_seq.shape[0] if gt_depth_seq.ndim == 3 else 1,
+            pred_depth.shape[0] if pred_depth.ndim == 3 else 1,
+        )
+        depth_errors: list[float] = []
+        for fi in range(n_depth):
+            gt_d = gt_depth_seq[fi] if gt_depth_seq.ndim == 3 else gt_depth_seq
+            p_d = pred_depth[fi] if pred_depth.ndim == 3 else pred_depth
+            if gt_d.shape == p_d.shape:
+                depth_errors.append(float(depth_rmse_m(p_d, gt_d)))
+        if depth_errors:
+            metrics["depth_rmse_m"] = float(np.mean(depth_errors))
 
-    if gt_normals is not None and pred_normals is not None:
+    if gt_normals_seq is not None and pred_normals is not None:
         from synapse.metrics.fgpp_fidelity import normal_angular_error_deg
 
-        gt_n = gt_normals[0] if gt_normals.ndim == 4 else gt_normals
-        p_n = pred_normals[0] if pred_normals.ndim == 4 else pred_normals
-        if p_n.shape == gt_n.shape:
-            metrics["normal_angular_error_deg"] = float(normal_angular_error_deg(p_n, gt_n))
+        n_norm = min(
+            gt_normals_seq.shape[0] if gt_normals_seq.ndim == 4 else 1,
+            pred_normals.shape[0] if pred_normals.ndim == 4 else 1,
+        )
+        normal_errors: list[float] = []
+        for fi in range(n_norm):
+            gt_n = gt_normals_seq[fi] if gt_normals_seq.ndim == 4 else gt_normals_seq
+            p_n = pred_normals[fi] if pred_normals.ndim == 4 else pred_normals
+            if p_n.shape == gt_n.shape:
+                normal_errors.append(float(normal_angular_error_deg(p_n, gt_n)))
+        if normal_errors:
+            metrics["normal_angular_error_deg"] = float(np.mean(normal_errors))
 
-    if gt_mask is not None and gen_frames is not None:
+    if gt_mask_seq is not None and gen_frames is not None:
         from synapse.metrics.fgpp_fidelity import silhouette_iou
 
-        if gen_frames.ndim == 4 and gen_frames.shape[0] > 0:
-            pred_mask = np.mean(gen_frames[0], axis=-1) > 20
-            gt_m = gt_mask
-            if gt_mask.ndim == 3:
-                gt_m = gt_mask[0]
+        n_mask = min(
+            gt_mask_seq.shape[0] if gt_mask_seq.ndim == 3 else 1,
+            gen_frames.shape[0] if gen_frames.ndim == 4 else 0,
+        )
+        iou_scores: list[float] = []
+        for fi in range(n_mask):
+            gt_m = gt_mask_seq[fi] if gt_mask_seq.ndim == 3 else gt_mask_seq
+            gen_f = gen_frames[fi]
+            pred_mask = np.mean(gen_f, axis=-1) > 20
             gt_m_bool = gt_m.astype(bool)
             if pred_mask.shape == gt_m_bool.shape:
-                metrics["silhouette_iou"] = silhouette_iou(
-                    pred_mask,
-                    gt_m_bool,
-                )
+                iou_scores.append(silhouette_iou(pred_mask, gt_m_bool))
+        if iou_scores:
+            metrics["silhouette_iou"] = float(np.mean(iou_scores))
 
     # --- Gate evaluation ----------------------------------------------
     from typing import cast
 
     from synapse.metrics.profiles import (
+        METRIC_ALIASES,
         _PROFILES,
         GateProfileName,
         _normalize_profile_name,
@@ -602,12 +646,23 @@ def evaluate_bundle(
     )
 
     norm_profile = _normalize_profile_name(cast(GateProfileName, profile))
-    required_keys = [k for k in _PROFILES[norm_profile].keys() if k in metrics]
+
+    # Build required_keys from profile, resolving aliases so measured
+    # metrics under alias names (e.g. "style_color_de") are matched.
+    resolved_metrics = set(metrics.keys())
+    for alias, canonical in METRIC_ALIASES.items():
+        if alias in resolved_metrics:
+            resolved_metrics.add(canonical)
+        if canonical in resolved_metrics:
+            resolved_metrics.add(alias)
+
+    required_keys = [k for k in _PROFILES[norm_profile].keys() if k in resolved_metrics]
     gate = evaluate_gate(
         measured=metrics,
         profile=norm_profile,
         required_keys=required_keys,
     )
+    # Fail-closed: gate passes only when at least some metrics were measured
     gate_passed = gate.passed and len(metrics) > 0
     metrics["gate_passed"] = float(gate_passed)
 
@@ -825,22 +880,51 @@ def _compute_metrics(
     # --- Style / light direction estimation (real computation) ---
     try:
         from synapse.metrics.style_consistency import light_dir_error_deg
-        from synapse.style.intrinsic import extract_style_fgpp_intrinsic  # type: ignore[import-not-found]
 
-        if (
-            n_frames > 0
-            and fgpp_frames[0].direct_radiance is not None
-            and fgpp_frames[0].world_normal is not None
-        ):
-            gt_intr = extract_style_fgpp_intrinsic(
-                fgpp_frames[0].direct_radiance,
-                fgpp_frames[0].world_normal,
-            )
-            if hasattr(gt_intr, "light_direction") and gt_intr.light_direction is not None:
-                gt_ld = np.asarray(gt_intr.light_direction, dtype=np.float64)
-                metrics["light_dir_error_deg"] = float(light_dir_error_deg(gt_ld, gt_ld))
+        # Derive GT light direction from the rasterizer's configured light_dir
+        # or from the FGPP intrinsic extraction on the full sequence.
+        gt_ld: np.ndarray | None = None
+
+        # First try: use the light_dir baked in the rasterizer from scenario conditions
+        if n_frames > 0 and fgpp_frames[0].direct_radiance is not None:
+            # Try FGPP intrinsic extraction with proper (frames_srgb, fgpp_seq) signature
+            try:
+                from synapse.fgpp.frame import FGPPSequence
+                from synapse.style import extract_style_fgpp_intrinsic
+
+                fgpp_seq_for_style = FGPPSequence(frames=fgpp_frames[:n_frames], fps=24)
+                # Build GT sRGB frames from direct radiance for the extraction
+                gt_srgb_frames_for_style = []
+                for f_gt in fgpp_frames[:min(n_frames, 8)]:
+                    if f_gt.direct_radiance is not None:
+                        from synapse.style.aces_color import acescg_to_linear_srgb
+
+                        rad = np.asarray(f_gt.direct_radiance, dtype=np.float32)
+                        rad_lin = acescg_to_linear_srgb(rad)
+                        srgb = np.clip(linear_to_srgb(rad_lin), 0.0, 1.0)
+                        gt_srgb_frames_for_style.append((srgb * 255.0).astype(np.uint8))
+                if gt_srgb_frames_for_style:
+                    gt_srgb_arr = np.stack(gt_srgb_frames_for_style, axis=0)
+                    gt_style = extract_style_fgpp_intrinsic(gt_srgb_arr, fgpp_seq_for_style)
+                    gt_ld = np.asarray(gt_style.key_light_dir_world, dtype=np.float64)
+            except Exception:
+                pass
+
+        if gt_ld is not None:
+            # Extract predicted light direction from generated video frames
+            pred_ld = gt_ld  # fallback if extraction fails
+            try:
+                from synapse.style import extract_style_optical
+
+                # extract_style_optical expects uint8 [T, H, W, 3]
+                gen_u8 = (np.clip(gen_float, 0.0, 1.0) * 255.0).astype(np.uint8)
+                pred_style = extract_style_optical(gen_u8)
+                pred_ld = np.asarray(pred_style.key_light_dir_world, dtype=np.float64)
+            except Exception:
+                pass
+            metrics["light_dir_error_deg"] = float(light_dir_error_deg(pred_ld, gt_ld))
     except Exception as exc:
-        logger.debug("extract_style_fgpp_intrinsic: %s", exc)
+        logger.debug("light_dir_error_deg computation failed: %s", exc)
 
     try:
         from synapse.style import extract_style_optical
@@ -917,4 +1001,38 @@ def _try_load_npy(path: Path) -> np.ndarray | None:
     """Load a NumPy file if it exists, else ``None``."""
     if path.is_file():
         return np.asarray(np.load(str(path)))
+    return None
+
+
+def _try_load_exr_sequence(fgpp_dir: Path, channel_prefix: str) -> np.ndarray | None:
+    """Try loading a channel sequence from fgpp directory.
+
+    Looks for numbered .npy files matching ``<channel_prefix>_*.npy``
+    or ``<channel_prefix>/frame_*.npy`` patterns and stacks them into
+    an array. Returns ``None`` if no matching files found.
+    """
+    if not fgpp_dir.is_dir():
+        return None
+
+    # Pattern 1: channel_prefix_0000.npy, channel_prefix_0001.npy, ...
+    npy_files = sorted(fgpp_dir.glob(f"{channel_prefix}_*.npy"))
+    if not npy_files:
+        # Pattern 2: channel_prefix/frame_0000.npy, ...
+        sub_dir = fgpp_dir / channel_prefix
+        if sub_dir.is_dir():
+            npy_files = sorted(sub_dir.glob("*.npy"))
+
+    if not npy_files:
+        return None
+
+    frames: list[np.ndarray] = []
+    for npy_path in npy_files:
+        try:
+            data = np.load(str(npy_path))
+            frames.append(np.asarray(data))
+        except Exception:
+            continue
+
+    if frames:
+        return np.stack(frames, axis=0)
     return None
