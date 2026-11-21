@@ -178,6 +178,51 @@ def _marching_cubes(
     return np.array(vertices, dtype=np.float32), np.array(faces, dtype=np.int32)
 
 
+def _weld_vertices(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    epsilon: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weld duplicate vertices within epsilon distance.
+
+    Merges vertices whose positions are within *epsilon* Euclidean distance,
+    remaps face indices to the merged vertex set, and removes degenerate faces.
+
+    Args:
+        vertices: Vertex positions, shape ``(V, 3)``, ``float32``.
+        faces: Triangle indices, shape ``(F, 3)``, ``int32``.
+        epsilon: Maximum distance to consider vertices identical.
+
+    Returns:
+        ``(welded_vertices, remapped_faces)`` with compacted vertex array.
+    """
+    if len(vertices) == 0:
+        return vertices, faces
+
+    # Quantize positions to grid cells of size epsilon and merge
+    quantized = np.round(vertices / max(epsilon, 1e-12)).astype(np.int64)
+    # Create unique keys from quantized coordinates
+    keys = quantized[:, 0] * 1_000_000_007 + quantized[:, 1] * 1_000_003 + quantized[:, 2]
+
+    # Find unique vertices
+    _, unique_indices, inverse_map = np.unique(keys, return_index=True, return_inverse=True)
+    welded_verts = vertices[unique_indices]
+
+    # Remap face indices
+    remapped_faces = inverse_map[faces.ravel()].reshape(faces.shape).astype(np.int32)
+
+    # Remove degenerate faces (where welding collapsed a triangle)
+    if remapped_faces.ndim == 2 and remapped_faces.shape[1] == 3:
+        non_degen = (
+            (remapped_faces[:, 0] != remapped_faces[:, 1])
+            & (remapped_faces[:, 1] != remapped_faces[:, 2])
+            & (remapped_faces[:, 0] != remapped_faces[:, 2])
+        )
+        remapped_faces = remapped_faces[non_degen]
+
+    return welded_verts.astype(np.float32), remapped_faces
+
+
 # Keep backward-compatible alias
 _marching_cubes_naive = _marching_cubes
 
@@ -432,21 +477,24 @@ class MultiViewInitializer:
                 ),
             )
 
-        # Compute angular span using directions from the volume center
-        # (mean camera look-at intersection or centroid) to each camera.
-        volume_center = np.mean(positions, axis=0)
-        dirs_from_center = positions - volume_center[np.newaxis, :]
-        norms = np.linalg.norm(dirs_from_center, axis=1, keepdims=True)
-        # Avoid division by zero for cameras at the centroid.
-        norms = np.clip(norms, 1e-12, None)
-        dirs_normalised = dirs_from_center / norms
+        # Compute angular span using camera view directions (optical axes).
+        # Using directions from the centroid to each camera fails when cameras
+        # are arranged symmetrically (e.g., ring orbit around origin) because
+        # directions from the centroid are zero or near-zero.  Instead, we use
+        # the camera's forward (Z-axis) direction from the rotation matrix.
+        view_dirs = np.array(
+            [c.rotation_matrix[2, :] for c in cameras], dtype=np.float64,
+        )
+        view_norms = np.linalg.norm(view_dirs, axis=1, keepdims=True)
+        view_norms = np.clip(view_norms, 1e-12, None)
+        view_dirs_normalised = view_dirs / view_norms
 
-        # Maximum pairwise angular separation.
+        # Maximum pairwise angular separation between view directions.
         max_angle_deg = 0.0
-        n = len(dirs_normalised)
+        n = len(view_dirs_normalised)
         for i in range(n):
             for j in range(i + 1, n):
-                cos_val = float(np.dot(dirs_normalised[i], dirs_normalised[j]))
+                cos_val = float(np.dot(view_dirs_normalised[i], view_dirs_normalised[j]))
                 cos_val = np.clip(cos_val, -1.0, 1.0)
                 angle = math.degrees(math.acos(cos_val))
                 if angle > max_angle_deg:
@@ -647,10 +695,28 @@ class MultiViewInitializer:
             # Simple 6-connected flood fill from surface-inside to unobserved
             unobserved = ~observed
             fill_mask = np.zeros_like(unobserved)
-            # Seed: unobserved voxels adjacent to observed-inside voxels
+            # Seed: unobserved voxels adjacent to observed-inside voxels.
+            # Use slicing instead of np.roll to avoid wrap-around leakage
+            # across opposite volume boundaries.
+            def _shift_no_wrap(
+                arr: np.ndarray, direction: int, axis: int,
+            ) -> np.ndarray:
+                """Shift array along axis without wrapping (fill with False)."""
+                result = np.zeros_like(arr)
+                slices_src: list[slice] = [slice(None)] * arr.ndim
+                slices_dst: list[slice] = [slice(None)] * arr.ndim
+                if direction == 1:
+                    slices_src[axis] = slice(None, -1)
+                    slices_dst[axis] = slice(1, None)
+                else:
+                    slices_src[axis] = slice(1, None)
+                    slices_dst[axis] = slice(None, -1)
+                result[tuple(slices_dst)] = arr[tuple(slices_src)]
+                return result
+
             for axis in range(3):
                 for direction in (-1, 1):
-                    shifted = np.roll(surface_inside, shift=direction, axis=axis)
+                    shifted = _shift_no_wrap(surface_inside, direction, axis)
                     fill_mask |= shifted & unobserved
 
             # Iterative propagation (bounded by grid size)
@@ -663,7 +729,7 @@ class MultiViewInitializer:
                 new_fill = np.copy(fill_mask)
                 for axis in range(3):
                     for direction in (-1, 1):
-                        shifted = np.roll(fill_mask, shift=direction, axis=axis)
+                        shifted = _shift_no_wrap(fill_mask, direction, axis)
                         expansion = shifted & unobserved & (~fill_mask)
                         if np.any(expansion):
                             new_fill |= expansion
@@ -689,7 +755,12 @@ class MultiViewInitializer:
 
             _cg = get_aether_geo()
             if _cg is not None and hasattr(_cg, "marching_cubes"):
-                mc_result = _cg.marching_cubes(tsdf, 0.0, effective_voxel, mc_origin.tolist())
+                # C++ marching_cubes expects Z-major layout (nz, ny, nx).
+                # Our volume is stored as (nx, ny, nz), so transpose axes.
+                tsdf_zyx = np.ascontiguousarray(np.transpose(tsdf, (2, 1, 0)))
+                mc_result = _cg.marching_cubes(
+                    tsdf_zyx, 0.0, effective_voxel, mc_origin.tolist(),
+                )
                 # C++ binding returns dict {"vertices": ..., "faces": ...}
                 if isinstance(mc_result, dict):
                     verts = np.asarray(mc_result["vertices"], dtype=np.float32)
@@ -698,6 +769,16 @@ class MultiViewInitializer:
                     verts, faces = mc_result
                     verts = np.asarray(verts, dtype=np.float32)
                     faces = np.asarray(faces, dtype=np.int32)
+
+                # C++ outputs face soup (V=3F) with CW winding. Fix both:
+                if verts.ndim == 2 and verts.shape[1] == 3 and len(faces) > 0:
+                    # 1. Flip triangle winding CW → CCW for outward normals
+                    if faces.ndim == 2 and faces.shape[1] == 3:
+                        faces = faces[:, [0, 2, 1]]
+
+                    # 2. Weld duplicate vertices (merge within epsilon)
+                    if len(verts) > 0:
+                        verts, faces = _weld_vertices(verts, faces, epsilon=effective_voxel * 0.01)
             else:
                 verts, faces = _marching_cubes(tsdf, effective_voxel, mc_origin, isovalue=0.0)
         except AttributeError:
