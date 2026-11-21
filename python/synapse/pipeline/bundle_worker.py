@@ -118,20 +118,30 @@ class EngineSpec(BaseModel):
     mode: str = ""
 
 
+class PresignedEndpoint(BaseModel):
+    """RFC 0039 time-limited presigned HTTP endpoint matching Go ``render-farm``."""
+
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    method: str = ""
+    url: str = ""
+    expires_at: str = ""
+
+
 class OutputSink(BaseModel):
     """Upstream output sink specification from RFC 0039 JobBundle.
 
     Attributes:
         format: Output format (e.g. ``"mp4"``, ``"exr"``, ``"npy"``).
         channels: Requested output channels.
-        write_capability: Where output is written.
+        write_capability: Presigned endpoint (Go ``PresignedEndpoint``) or URI string.
     """
 
     model_config = {"extra": "allow", "populate_by_name": True}
 
     format: str = ""
     channels: list[str] = Field(default_factory=list)
-    write_capability: str = ""
+    write_capability: str | PresignedEndpoint | dict[str, Any] = ""
 
 
 class SceneSpec(BaseModel):
@@ -209,6 +219,8 @@ class BundleManifest(BaseModel):
     def from_rfc0039_job_bundle(
         cls,
         raw: dict[str, Any],
+        *,
+        workspace_root: str | Path | None = None,
     ) -> BundleManifest:
         """Create a ``BundleManifest`` from an RFC 0039 ``render-farm`` / ``grand-studio`` JobBundle.
 
@@ -220,17 +232,20 @@ class BundleManifest(BaseModel):
 
         Args:
             raw: Raw JSON-decoded dict from the upstream scheduler.
+            workspace_root: Optional workspace sandbox directory; when set,
+                ``asset_manifest`` paths are validated against symlinks and
+                containment before reading.
 
         Returns:
             Normalised ``BundleManifest``.
 
         Raises:
             :class:`~synapse.errors.ContractValidationError`:
-                Unknown ``closure_type`` or missing required fields.
+                Unknown ``closure_type``, missing required fields, or sandbox violation.
             :class:`~synapse.errors.AssetNotFoundError`:
                 SHA-256 mismatch in ``asset_manifest``.
         """
-        from synapse.errors import ContractValidationError
+        from synapse.errors import AssetNotFoundError, ContractValidationError
 
         job_id = raw.get("job_id", "")
         if not job_id:
@@ -250,10 +265,38 @@ class BundleManifest(BaseModel):
                 ),
             )
 
-        # Defer asset_manifest SHA-256 validation until after workspace
-        # sandbox is established (see below) to prevent reads of
-        # arbitrary host files outside the sandbox.
-        asset_manifest = raw.get("asset_manifest", [])
+        asset_manifest = raw.get("asset_manifest", []) or []
+        ws_root_resolved = Path(workspace_root).resolve() if workspace_root is not None else None
+        for entry in asset_manifest:
+            if not isinstance(entry, dict):
+                continue
+            expected_sha = str(entry.get("sha256", "") or "")
+            asset_path = str(entry.get("path", "") or entry.get("logical_path", "") or "")
+            if not (expected_sha and asset_path):
+                continue
+            raw_asset = Path(asset_path)
+            if raw_asset.is_symlink() or _check_ancestor_symlinks(raw_asset):
+                raise ContractValidationError(
+                    f"Symlinks are forbidden in asset_manifest: '{asset_path}'.",
+                    agent_fix_hint="Provide real non-symlink paths in asset_manifest.",
+                )
+            resolved_asset = raw_asset.resolve()
+            if ws_root_resolved is not None and not resolved_asset.is_relative_to(ws_root_resolved):
+                raise ContractValidationError(
+                    f"Asset path escapes workspace sandbox: '{asset_path}' resolves to "
+                    f"'{resolved_asset}' outside '{ws_root_resolved}'.",
+                    agent_fix_hint=f"Ensure all asset_manifest paths are inside '{ws_root_resolved}'.",
+                )
+            if resolved_asset.is_file():
+                actual_sha = _compute_sha256(resolved_asset)
+                if actual_sha != expected_sha:
+                    raise AssetNotFoundError(
+                        f"SHA-256 mismatch for asset '{asset_path}': "
+                        f"expected {expected_sha[:16]}..., got {actual_sha[:16]}...",
+                        agent_fix_hint=(
+                            f"Re-download or re-export '{asset_path}' with matching SHA-256."
+                        ),
+                    )
 
         scene_spec_raw = raw.get("scene_spec", {}) or {}
         payload_raw = raw.get("payload", {}) or {}
@@ -286,16 +329,32 @@ class BundleManifest(BaseModel):
             if scene_spec is not None:
                 if scene_spec.resolution is not None:
                     params.setdefault("resolution", scene_spec.resolution)
+                    if len(scene_spec.resolution) == 2:
+                        params.setdefault("width", int(scene_spec.resolution[0]))
+                        params.setdefault("height", int(scene_spec.resolution[1]))
                 if scene_spec.frame_range is not None:
                     params.setdefault("frame_range", scene_spec.frame_range)
+                    if len(scene_spec.frame_range) == 2 and scene_spec.frame_range[1] >= scene_spec.frame_range[0]:
+                        params.setdefault(
+                            "num_frames",
+                            int(scene_spec.frame_range[1] - scene_spec.frame_range[0] + 1),
+                        )
                 if scene_spec.crop_window is not None:
                     params.setdefault("crop_window", scene_spec.crop_window)
                 if scene_spec.target_crypto_ids is not None:
                     params.setdefault("target_crypto_ids", scene_spec.target_crypto_ids)
+            if isinstance(scene_spec_raw.get("frames"), int):
+                params.setdefault("num_frames", int(scene_spec_raw["frames"]))
 
-        # Merge payload into params (payload: null is acceptable)
+        # Merge payload into params (unwrap Go render-farm nested payload[closure_type] if present)
         if isinstance(payload_raw, dict):
-            params.update(payload_raw)
+            nested = payload_raw.get(str(closure_type))
+            for pk, pv in payload_raw.items():
+                if pk == str(closure_type) and isinstance(pv, dict):
+                    continue
+                params[pk] = pv
+            if isinstance(nested, dict):
+                params.update(nested)
 
         # Parse OutputSink and map actual file paths to outputs
         if isinstance(output_sink_raw, dict):
@@ -322,7 +381,13 @@ class BundleManifest(BaseModel):
                 if output_sink.channels:
                     params.setdefault("output_channels", output_sink.channels)
                 if output_sink.write_capability:
-                    params.setdefault("write_capability", output_sink.write_capability)
+                    if isinstance(output_sink.write_capability, PresignedEndpoint):
+                        params.setdefault(
+                            "write_capability",
+                            output_sink.write_capability.model_dump(),
+                        )
+                    else:
+                        params.setdefault("write_capability", output_sink.write_capability)
 
         # Parse EngineSpec if present
         engine_raw = raw.get("engine", {}) or {}
@@ -580,8 +645,9 @@ def _handle_neural_video_generate(
     num_frames = int(params.get("num_frames", 97))
     height = int(params.get("height", 512))
     width = int(params.get("width", 512))
-    model_variant = str(params.get("model_variant", "wan2.1_14b"))
     adapter_name = str(params.get("adapter", "mock"))
+    default_variant = "wan2.1_1.3b" if adapter_name == "mock" else "wan2.1_14b"
+    model_variant = str(params.get("model_variant") or default_variant)
 
     # --- OOM forecasting ---
     forecast = MemoryForecaster.estimate_dit_peak_gb(
@@ -596,12 +662,13 @@ def _handle_neural_video_generate(
 
     if ratio > 1.05:
         # Level 2: short causal window
-        params["window_frames"] = 49
+        short_window = min(num_frames, 49)
+        params["window_frames"] = short_window
         fallback_level = "LEVEL_2_CAUSAL_SHORT_WINDOW_49F"
 
         # Re-estimate with reduced frames
         forecast2 = MemoryForecaster.estimate_dit_peak_gb(
-            num_frames=49,
+            num_frames=short_window,
             height=height,
             width=width,
             model_variant=model_variant,
@@ -688,9 +755,11 @@ def _handle_neural_video_generate(
     )
 
     # Write output
+    ws_root = params.get("_workspace_root")
+    default_out = (Path(ws_root) / "output" / "video.npy") if ws_root else (Path("output") / "video.npy")
     output_path = manifest.outputs.get(
         "video",
-        str(Path("output") / "video.npy"),
+        manifest.outputs.get("result_video", str(default_out)),
     )
     out_p = Path(output_path)
     # np.save auto-appends .npy if suffix missing; normalise beforehand
@@ -1032,6 +1101,8 @@ class JobBundleWorker:
                     )
 
                 raw = Path(val)
+                if not raw.is_absolute() and self.workspace_root is not None:
+                    raw = self.workspace_root / raw
 
                 # Check the leaf path itself
                 if raw.is_symlink():
@@ -1097,10 +1168,15 @@ class JobBundleWorker:
 
                 mapping[key] = str(resolved)
 
-        # Also check params for path-like values
+        # Also check params for path-like values (including bare filenames on *_path/*_dir/*_file keys)
         for pkey, pval in manifest.params.items():
-            if isinstance(pval, str) and (os.sep in pval or "/" in pval):
+            if not isinstance(pval, str) or pkey.startswith("_"):
+                continue
+            is_path_key = pkey.endswith(("_path", "_dir", "_file"))
+            if os.sep in pval or "/" in pval or is_path_key:
                 raw_p = Path(pval)
+                if not raw_p.is_absolute() and self.workspace_root is not None:
+                    raw_p = self.workspace_root / raw_p
                 if raw_p.is_symlink():
                     return ResultManifest(
                         job_id=manifest.job_id,
@@ -1149,6 +1225,9 @@ class JobBundleWorker:
                             ),
                         )
 
+        if self.workspace_root is not None:
+            manifest.params["_workspace_root"] = str(self.workspace_root)
+
         # ---- Deferred SHA-256 validation (after sandbox is enforced) ----
         # The asset_manifest was deferred from from_rfc0039_job_bundle()
         # so it only reads files inside the established workspace sandbox.
@@ -1161,7 +1240,21 @@ class JobBundleWorker:
                 expected_sha = entry.get("sha256", "")
                 asset_path = entry.get("path", "") or entry.get("logical_path", "")
                 if expected_sha and asset_path:
-                    p = Path(asset_path).resolve()
+                    raw_asset = Path(asset_path)
+                    if not raw_asset.is_absolute() and self.workspace_root is not None:
+                        raw_asset = self.workspace_root / raw_asset
+                    if raw_asset.is_symlink() or _check_ancestor_symlinks(raw_asset):
+                        return ResultManifest(
+                            job_id=manifest.job_id,
+                            stage=manifest.stage,
+                            status="error",
+                            exit_code=10,
+                            error_type="ContractValidationError",
+                            message=f"Symlinks are forbidden in asset_manifest: '{asset_path}'.",
+                            timings={"total_seconds": time.monotonic() - t_start},
+                            agent_fix_hint="Use real non-symlink paths in asset_manifest.",
+                        )
+                    p = raw_asset.resolve()
                     # Enforce sandbox for asset paths too
                     if self.workspace_root is not None:
                         if not p.is_relative_to(self.workspace_root):
@@ -1414,7 +1507,7 @@ def run_worker_cli(
     # ``closure_type`` key and route through the normaliser.
     try:
         if "closure_type" in raw:
-            manifest = BundleManifest.from_rfc0039_job_bundle(raw)
+            manifest = BundleManifest.from_rfc0039_job_bundle(raw, workspace_root=workspace_root)
         else:
             manifest = BundleManifest(**raw)
     except Exception as exc:
