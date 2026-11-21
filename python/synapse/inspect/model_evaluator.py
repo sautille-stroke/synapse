@@ -273,14 +273,20 @@ def register_default_mesh_loader(loader: Callable[[str], Any]) -> None:
     _DEFAULT_MESH_LOADER = loader
 
 
-def _default_load_mesh(p: str) -> Any:
-    """Load mesh without upward Tier 3 dependencies."""
+def _default_load_mesh(p: str, *, normalize: bool = False) -> Any:
+    """Load mesh without upward Tier 3 dependencies.
+
+    Args:
+        p: Path to mesh file.
+        normalize: If True, normalize mesh to unit bounding sphere.
+            Default False to preserve physical world (metric) scale.
+    """
     if _DEFAULT_MESH_LOADER is not None:
         return _DEFAULT_MESH_LOADER(p)
     path = Path(p)
     if path.suffix.lower() == ".obj" and path.exists():
         mesh = load_obj(path)
-        return mesh.normalize()
+        return mesh.normalize() if normalize else mesh
     try:
         import trimesh
 
@@ -291,7 +297,7 @@ def _default_load_mesh(p: str) -> Any:
             faces=np.asarray(tm.faces, dtype=np.int32),
             normals=np.asarray(tm.vertex_normals, dtype=np.float32),
         )
-        return mesh.normalize()
+        return mesh.normalize() if normalize else mesh
     except Exception as exc:
         raise ValueError(f"Cannot load mesh '{p}': {exc}") from exc
 
@@ -541,6 +547,11 @@ def evaluate_3d_models_directory(
     reference_meshes: dict[str, Any] = {}
     if reference_dir is not None:
         ref_dir = Path(reference_dir)
+        if not ref_dir.exists() or not ref_dir.is_dir():
+            raise AssetNotFoundError(
+                f"Reference directory does not exist: {reference_dir}",
+                agent_fix_hint="Provide a valid --reference-dir directory path, or omit it for no-reference mode.",
+            )
         if ref_dir.exists() and ref_dir.is_dir():
             _ref_loader_fn = _default_load_mesh
 

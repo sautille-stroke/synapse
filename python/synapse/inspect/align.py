@@ -98,6 +98,7 @@ def compute_silhouette(
     faces: np.ndarray,
     camera_pose: CameraPose,
     resolution: int | tuple[int, int] = 128,
+    z_near: float = 0.1,
 ) -> np.ndarray:
     """Render a binary silhouette mask via Z-buffer rasterisation.
 
@@ -111,6 +112,9 @@ def compute_silhouette(
         Camera from which to render.
     resolution:
         Output image size: square ``resolution`` or ``(height, width)``.
+    z_near:
+        Near-plane clipping distance in view space (default 0.1).
+        Triangles with all vertices closer than ``z_near`` are culled.
 
     Returns
     -------
@@ -157,8 +161,8 @@ def compute_silhouette(
             return np.zeros((H, W), dtype=bool)
 
         z_faces = sz[faces_arr]  # [F, 3]
-        # Skip triangles fully behind camera
-        valid_tri_mask = ~((z_faces[:, 0] > -0.1) & (z_faces[:, 1] > -0.1) & (z_faces[:, 2] > -0.1))
+        # Skip triangles fully behind camera (near-plane clip)
+        valid_tri_mask = ~((z_faces[:, 0] > -z_near) & (z_faces[:, 1] > -z_near) & (z_faces[:, 2] > -z_near))
         valid_faces = faces_arr[valid_tri_mask]
         if valid_faces.shape[0] == 0:
             return np.zeros((H, W), dtype=bool)
@@ -183,8 +187,8 @@ def compute_silhouette(
         x1, y1, z1 = sx[i1], sy[i1], sz[i1]
         x2, y2, z2 = sx[i2], sy[i2], sz[i2]
 
-        # Skip triangles fully behind camera
-        if z0 > -0.1 and z1 > -0.1 and z2 > -0.1:
+        # Skip triangles fully behind camera (near-plane clip)
+        if z0 > -z_near and z1 > -z_near and z2 > -z_near:
             continue
 
         # Bounding box
