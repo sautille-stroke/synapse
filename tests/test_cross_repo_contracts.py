@@ -759,6 +759,47 @@ class TestRenderFarmJobBundleContract:
             finally:
                 os.chdir(prev_cwd)
 
+    def test_go_render_farm_wire_format_presigned_endpoint_and_nested_payload(self) -> None:
+        """Go render-farm JobBundle with PresignedEndpoint write_capability and nested payload[closure_type]."""
+        go_bundle = {
+            "job_id": "job-go-wire-001",
+            "project_name": "shot_010",
+            "closure_type": "neural_video",
+            "engine": {"name": "wan-2.1", "version": "v2.1", "mode": "fgpp_bake_track_b"},
+            "scene_spec": {
+                "resolution": [832, 480],
+                "frame_range": [10, 25],
+                "spp": 1,
+            },
+            "asset_manifest": [],
+            "output_sink": {
+                "format": "exr",
+                "channels": ["DirectRadiance.RGB", "CameraLinearDepth.Z"],
+                "write_capability": {
+                    "method": "PUT",
+                    "url": "https://vault.example.com/upload/job-go-wire-001",
+                    "expires_at": "2026-12-01T00:00:00Z",
+                },
+            },
+            "payload": {
+                "neural_video": {
+                    "model_tier": "tier1_whitebox",
+                    "style_prompt": "cinematic neon rain",
+                    "anchor_interval_frames": 48,
+                }
+            },
+        }
+        manifest = BundleManifest.from_rfc0039_job_bundle(go_bundle)
+        assert manifest.stage == "neural_video_generate"
+        assert manifest.params["width"] == 832
+        assert manifest.params["height"] == 480
+        assert manifest.params["num_frames"] == 16
+        assert manifest.params["model_tier"] == "tier1_whitebox"
+        assert manifest.params["style_prompt"] == "cinematic neon rain"
+        assert manifest.params["anchor_interval_frames"] == 48
+        assert isinstance(manifest.params["write_capability"], dict)
+        assert manifest.params["write_capability"]["method"] == "PUT"
+
 
 # ===========================================================================
 # Contract 4: tools/data-inspector/native <-> Electron ShmFrameReader
