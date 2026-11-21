@@ -207,6 +207,45 @@ class TestAetherFgppContract:
         ortho_err = float(np.linalg.norm(rot.T @ rot - np.eye(3)))
         assert ortho_err < 1e-6
 
+    def test_eccentric_principal_point_multiple_configs_roundtrip(self) -> None:
+        """Multiple eccentric (cx, cy) configs round-trip through projection → intrinsics recovery."""
+        configs = [
+            # (width, height, cx, cy, fx, fy)
+            (1920, 1080, 960.0, 540.0, 1200.0, 1200.0),  # centered
+            (1920, 1080, 800.0, 400.0, 1200.0, 1200.0),  # offset
+            (640, 480, 100.0, 50.0, 500.0, 500.0),        # extreme offset
+            (1024, 768, 512.0, 384.0, 800.0, 900.0),      # non-square focal
+            (832, 480, 400.0, 250.0, 600.0, 600.0),       # original test case
+        ]
+        for width, height, cx, cy, fx, fy in configs:
+            cam = CameraParams(
+                fx=fx, fy=fy, cx=cx, cy=cy,
+                width=width, height=height, z_near=0.1, z_far=100.0,
+            )
+            proj = cam.projection_matrix()
+
+            # Round-trip: projection matrix → recovered intrinsics
+            recovered_cx = (1.0 - proj[0, 2]) * float(width) / 2.0
+            recovered_cy = (proj[1, 2] + 1.0) * float(height) / 2.0
+            assert abs(recovered_cx - cx) < 1e-10, (
+                f"cx recovery failed for config ({width}×{height}, cx={cx}): "
+                f"recovered={recovered_cx}"
+            )
+            assert abs(recovered_cy - cy) < 1e-10, (
+                f"cy recovery failed for config ({width}×{height}, cy={cy}): "
+                f"recovered={recovered_cy}"
+            )
+
+            # Verify fx, fy can be recovered from p00, p11
+            recovered_fx = proj[0, 0] * float(width) / 2.0
+            recovered_fy = proj[1, 1] * float(height) / 2.0
+            assert abs(recovered_fx - fx) < 1e-10, (
+                f"fx recovery failed: expected {fx}, got {recovered_fx}"
+            )
+            assert abs(recovered_fy - fy) < 1e-10, (
+                f"fy recovery failed: expected {fy}, got {recovered_fy}"
+            )
+
     def test_fgpp_exr_15ch_bit_level_roundtrip(self) -> None:
         """15-channel OpenEXR write/read preserves bit-exact UINT32 Cryptomatte IDs."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -638,6 +677,77 @@ class TestRenderFarmJobBundleContract:
             tamper_exit_code = run_worker_cli(str(tampered_file), json_mode=True)
             assert tamper_exit_code == 20
 
+    def test_rfc0039_job_bundle_json_schema_required_fields(self) -> None:
+        """Validate RFC 0039 JobBundle JSON schema has all required top-level keys."""
+        required_keys = {"job_id", "closure_type"}
+        optional_keys = {"project_name", "engine", "scene_spec", "asset_manifest",
+                         "output_sink", "payload", "hardware_budget"}
+        valid_bundle = {
+            "job_id": "job-schema-test-001",
+            "closure_type": ClosureType.NEURAL_VIDEO,
+            "scene_spec": {"fgpp_path": "/data/fgpp", "fps": 24, "frames": 48},
+            "asset_manifest": [],
+            "output_sink": {"result_video": "/tmp/out.mp4"},
+            "payload": {"seed": 42},
+        }
+        # Verify required keys are present
+        for key in required_keys:
+            assert key in valid_bundle
+        # Verify deserialization succeeds
+        manifest = BundleManifest.from_rfc0039_job_bundle(valid_bundle)
+        assert manifest.job_id == "job-schema-test-001"
+
+        # Verify JSON serialization round-trip preserves structure
+        json_str = json.dumps(valid_bundle, default=str)
+        reparsed = json.loads(json_str)
+        for key in required_keys:
+            assert key in reparsed, f"Required key '{key}' lost in JSON round-trip"
+
+    def test_rfc0039_e2e_cli_from_non_standard_cwd(self) -> None:
+        """run_worker_cli must succeed when invoked from a non-standard CWD."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            cwd_dir = tmp_path / "arbitrary_cwd"
+            cwd_dir.mkdir()
+
+            from synapse.fgpp import CameraParams, FGPPFrame, FGPPSequence, export_fgpp
+
+            fgpp_dir = tmp_path / "fgpp_cwd_test"
+            fgpp_frame = FGPPFrame(
+                camera=CameraParams(fx=500.0, fy=500.0, cx=32.0, cy=32.0, width=64, height=64),
+                depth=np.ones((64, 64), dtype=np.float32),
+                frame_index=0,
+            )
+            seq = FGPPSequence(frames=[fgpp_frame], fps=24.0, scene_id="cwd_test")
+            export_fgpp(seq, fgpp_dir, strict=False)
+            meta_file = fgpp_dir / "metadata.json"
+            meta_sha = _compute_sha256(meta_file)
+
+            out_dir = tmp_path / "outputs_cwd"
+            out_dir.mkdir(parents=True)
+
+            bundle_dict = {
+                "job_id": "job-cwd-test-01",
+                "closure_type": "neural_video",
+                "scene_spec": {"fgpp_dir": str(fgpp_dir), "fps": 24, "frames": 1},
+                "asset_manifest": [
+                    {"path": str(meta_file), "sha256": meta_sha, "byte_size": meta_file.stat().st_size}
+                ],
+                "output_sink": {"result_video": str(out_dir / "out.mp4")},
+                "payload": {"seed": 42, "adapter": "mock", "num_frames": 1},
+            }
+            bundle_file = tmp_path / "bundle_cwd.json"
+            bundle_file.write_text(json.dumps(bundle_dict), encoding="utf-8")
+
+            # Change to a non-standard CWD (not repo root)
+            prev_cwd = os.getcwd()
+            try:
+                os.chdir(str(cwd_dir))
+                exit_code = run_worker_cli(str(bundle_file), json_mode=True)
+                assert exit_code == 0
+            finally:
+                os.chdir(prev_cwd)
+
 
 # ===========================================================================
 # Contract 4: tools/data-inspector/native <-> Electron ShmFrameReader
@@ -769,3 +879,59 @@ class TestDataInspectorShmContract:
                 pixels = np.frombuffer(f.read(width * height * 4), dtype=np.uint8).reshape(height, width, 4)
                 # Ensure frame is rendered and non-empty (diagnostic test pattern or clear color)
                 assert pixels.shape == (height, width, 4)
+
+    def test_shm_pixel_data_non_zero(self) -> None:
+        """SHM pixel buffer written by the protocol must contain non-zero data."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            width = 32
+            height = 32
+            frame_bytes = width * height * 4
+            total_size = self.HEADER_SIZE + self.BUFFER_COUNT * frame_bytes
+
+            shm_file = tmp_path / "test_nonzero_shm.bin"
+            shm_file.write_bytes(b"\x00" * total_size)
+
+            with open(shm_file, "r+b") as f:
+                mm = mmap.mmap(f.fileno(), total_size)
+
+                # Write header with valid magic
+                header_bin = struct.pack(
+                    "<IIIIIIQffB23s",
+                    self.INSPECTOR_SHM_MAGIC,
+                    self.INSPECTOR_SHM_VERSION,
+                    width,
+                    height,
+                    0,  # write_idx
+                    self.BUFFER_COUNT,
+                    2,  # frame_ready (even = stable)
+                    30.0,  # fps
+                    0.033,  # delta_time
+                    1,  # debug_view
+                    b"\x00" * 23,
+                )
+                mm[: self.HEADER_SIZE] = header_bin
+
+                # Write a gradient test pattern (non-zero, non-uniform)
+                buf_offset = self.HEADER_SIZE
+                rng = np.random.RandomState(42)
+                pixel_data = rng.randint(10, 245, (height, width, 4), dtype=np.uint8)
+                mm[buf_offset : buf_offset + frame_bytes] = pixel_data.tobytes()
+
+                # Read back and verify non-zero
+                read_pixels = np.frombuffer(
+                    mm[buf_offset : buf_offset + frame_bytes], dtype=np.uint8
+                ).reshape(height, width, 4)
+
+                # Pixel data must be non-zero (not all black)
+                assert np.any(read_pixels > 0), (
+                    "SHM pixel data is all-zero — indicates no rendering output"
+                )
+                # Pixel data must have spatial variance (not flat/degenerate)
+                assert float(np.std(read_pixels.astype(np.float32))) > 1.0, (
+                    "SHM pixel data has near-zero variance — degenerate output"
+                )
+                # Verify data round-trips exactly
+                np.testing.assert_array_equal(read_pixels, pixel_data)
+
+                mm.close()

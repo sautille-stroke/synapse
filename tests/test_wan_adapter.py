@@ -553,18 +553,37 @@ class TestWanSlidingWindowAndGuards:
 
     def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
         """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""
-        from unittest.mock import MagicMock
-
         from synapse.adapters.wan_diffusers import DiffusersWanBackend
 
-        mock_pipe = MagicMock()
-        mock_pipe.device = "cpu"
-        mock_transformer = MagicMock()
-        mock_pipe.transformer = mock_transformer
+        # Typed stub pipeline that simulates diffusers WanPipeline interface
+        class _StubTransformer:
+            """Minimal stub for Wan transformer module."""
+            pass
 
-        out_mock = MagicMock()
-        out_mock.frames = [np.ones((4, 16, 16, 3), dtype=np.float32)]
-        mock_pipe.return_value = out_mock
+        class _StubPipelineOutput:
+            """Stub for diffusers pipeline output."""
+            def __init__(self, frames: list[np.ndarray]) -> None:
+                self.frames = frames
+
+        class _StubPipeline:
+            """Typed stub for diffusers WanPipeline with explicit interface."""
+            def __init__(self, transformer: _StubTransformer) -> None:
+                self.device = "cpu"
+                self.transformer = transformer
+                self._called = False
+
+            def __call__(self, **kwargs: Any) -> _StubPipelineOutput:
+                self._called = True
+                return _StubPipelineOutput(
+                    frames=[np.ones((4, 16, 16, 3), dtype=np.float32)]
+                )
+
+            @property
+            def called(self) -> bool:
+                return self._called
+
+        mock_transformer = _StubTransformer()
+        mock_pipe = _StubPipeline(transformer=mock_transformer)
 
         backend = DiffusersWanBackend(pipeline=mock_pipe, transformer=mock_transformer)
         assert backend.model is mock_transformer

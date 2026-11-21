@@ -604,3 +604,81 @@ class TestSurfaceSamplingAndChamfer:
 
         cd_shift = compute_chamfer_distance_mm(mesh_a, mesh_b, num_samples=2000)
         assert 0.5 <= cd_shift <= 2.0, f"Expected ~1mm shift CD, got {cd_shift}"
+
+
+class TestColorDeviationDefect:
+    """Verify pipeline detects color deviation (albedo/radiance bias)."""
+
+    def test_color_deviation_detected_by_psnr_and_ssim(self) -> None:
+        """Injecting color bias must degrade PSNR and SSIM below clean thresholds."""
+        h, w = 64, 64
+        rng = np.random.RandomState(42)
+
+        # Build a clean reference with high-frequency texture
+        y, x = np.mgrid[0:h, 0:w]
+        pattern = 0.5 + 0.25 * np.sin(2.0 * math.pi * 4.0 * x / w) * np.cos(
+            2.0 * math.pi * 4.0 * y / h
+        )
+        checker = (((x // 4) + (y // 4)) % 2).astype(np.float32)
+        tex = pattern * 0.7 + checker * 0.3
+        ref = np.stack([tex, np.roll(tex, 2, axis=0), np.roll(tex, 2, axis=1)],
+                       axis=-1).astype(np.float32)
+        clean_rendered = np.clip(
+            ref + rng.normal(0, 0.01, ref.shape).astype(np.float32), 0.0, 1.0
+        )
+
+        clean_psnr = psnr_db(clean_rendered, ref)
+        clean_ssim_val = ssim(clean_rendered, ref)
+
+        # Inject color deviation: shift red channel by +0.3, green by -0.2
+        color_biased = clean_rendered.copy()
+        color_biased[:, :, 0] = np.clip(color_biased[:, :, 0] + 0.3, 0, 1)
+        color_biased[:, :, 1] = np.clip(color_biased[:, :, 1] - 0.2, 0, 1)
+
+        biased_psnr = psnr_db(color_biased, ref)
+        biased_ssim_val = ssim(color_biased, ref)
+
+        assert biased_psnr < clean_psnr, (
+            f"Color-biased PSNR ({biased_psnr:.2f}) should be worse than "
+            f"clean PSNR ({clean_psnr:.2f})"
+        )
+        assert biased_ssim_val < clean_ssim_val, (
+            f"Color-biased SSIM ({biased_ssim_val:.4f}) should be worse than "
+            f"clean SSIM ({clean_ssim_val:.4f})"
+        )
+        # The degradation should be substantial
+        assert biased_psnr < 20.0, (
+            f"Color deviation should drop PSNR below 20 dB, got {biased_psnr:.2f}"
+        )
+
+    def test_normal_flip_detected_by_reconstruction(
+        self,
+    ) -> None:
+        """Flipping world normals must produce geometrically worse reconstruction."""
+        gt_pts = _sample_sphere_surface(n_points=4096, radius=0.5)
+
+        # Clean: use GT points directly
+        clean_cd_val = chamfer_mm(gt_pts, gt_pts) / 1000.0
+        assert clean_cd_val < 0.001
+
+        # Defect: flip normals (negate positions as proxy for inside-out)
+        flipped_pts = _inject_defect_b_noise(gt_pts)
+        flipped_cd_val = chamfer_mm(flipped_pts, gt_pts) / 1000.0
+        assert flipped_cd_val > clean_cd_val + 0.01, (
+            f"Normal flip defect CD ({flipped_cd_val:.6f}) not substantially worse "
+            f"than clean ({clean_cd_val:.6f})"
+        )
+
+    def test_depth_offset_detected_by_chamfer(self) -> None:
+        """Uniform depth offset must increase Chamfer distance."""
+        gt_pts = _sample_sphere_surface(n_points=4096, radius=0.5)
+        clean_cd_val = chamfer_mm(gt_pts, gt_pts) / 1000.0
+
+        # Offset all depths by 0.1m
+        offset_pts = gt_pts.copy()
+        offset_pts[:, 2] += 0.1  # shift along Z axis
+        offset_cd_val = chamfer_mm(offset_pts, gt_pts) / 1000.0
+
+        assert offset_cd_val > clean_cd_val + 0.01, (
+            f"Depth offset CD ({offset_cd_val:.6f}) not worse than clean ({clean_cd_val:.6f})"
+        )
