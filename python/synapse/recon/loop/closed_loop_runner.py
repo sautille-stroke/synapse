@@ -153,6 +153,12 @@ class ClosedLoopRunner:
         conditioning: dict[str, np.ndarray] | None = None,
         adapter: Any = None,
         n_production_frames: int | None = None,
+        *,
+        track: str | None = None,
+        has_gen3d_highpoly: bool = False,
+        mesh_vertex_count: int = 0,
+        has_articulated_limbs: bool = False,
+        is_character: bool = False,
     ) -> ClosedLoopResult:
         """Execute all 5 closed-loop steps.
 
@@ -167,10 +173,27 @@ class ClosedLoopRunner:
                 the CPU mock pass-through.
             n_production_frames: Number of production frames for forward
                 guide.  Defaults to ``source_frames.shape[0]``.
+            track: Optional distillation track (e.g. ``"track_b_whitebox"``)
+                enforcing Redline #3 geometry gate before back-projection.
+            has_gen3d_highpoly: Whether Track-B asset passed Gen-3D highpoly.
+            mesh_vertex_count: Mesh vertex count for character coarseness floor.
+            has_articulated_limbs: Whether character proxy has articulated limbs.
+            is_character: Whether the target asset is a character proxy.
 
         Returns:
             :class:`ClosedLoopResult` with all diagnostics.
         """
+        if track is not None:
+            from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
+
+            enforce_distillation_geometry_gate(
+                track=track,
+                has_gen3d_highpoly=has_gen3d_highpoly,
+                vertex_count=mesh_vertex_count,
+                has_articulated_limbs=has_articulated_limbs,
+                is_character=is_character,
+            )
+
         t_total_start = time.monotonic()
         step_timings: dict[str, float] = {}
         t_count = source_frames.shape[0]

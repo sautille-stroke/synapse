@@ -805,6 +805,7 @@ def delight_multiview_albedo(
     cameras: list[CameraExtrinsics],
     mesh: MeshGeometry,
     shading_model: str = "sh2",
+    texture_resolution: int | None = None,
 ) -> DelightResult:
     """Multi-view albedo de-lighting via UV texel-space inverse rendering.
 
@@ -840,12 +841,14 @@ def delight_multiview_albedo(
     n_views = frames_arr.shape[0]
     h, w = frames_arr.shape[1], frames_arr.shape[2]
 
-    # Determine UV texture resolution from mesh UVs
+    # Determine output UV atlas resolution: default matches input frame (H, W)
+    # so callers expecting (H, W, 3) receive aligned shapes; explicit
+    # texture_resolution yields a square (R, R, 3) UV texture atlas.
     mesh_uvs = getattr(mesh, "uvs", None)
-    tex_res = 256  # default UV atlas resolution
-    if mesh_uvs is not None and len(mesh_uvs) > 0:
-        # Scale resolution to mesh complexity
-        tex_res = max(128, min(1024, int(np.sqrt(len(mesh_uvs)) * 4)))
+    if texture_resolution is not None and texture_resolution > 0:
+        out_h = out_w = int(texture_resolution)
+    else:
+        out_h, out_w = h, w
 
     # Compute mesh vertex normals if not present
     mesh_normals = getattr(mesh, "normals", None)
@@ -857,12 +860,13 @@ def delight_multiview_albedo(
     mesh_verts = np.asarray(mesh.vertices, dtype=np.float64)
     mesh_nrms = np.asarray(mesh_normals, dtype=np.float64)
 
-    # --- UV texel-space accumulation buffers (R, R, 3) ---
-    # Accumulate per-texel albedo in UV space to avoid screen-space
-    # ghosting from multi-view misalignment.
-    albedo_uv_accum = np.zeros((tex_res, tex_res, 3), dtype=np.float64)
-    shading_uv_accum = np.zeros((tex_res, tex_res, 3), dtype=np.float64)
-    weight_uv_accum = np.zeros((tex_res, tex_res, 1), dtype=np.float64)
+    # --- UV texel-space accumulation buffers (out_h, out_w, 3) ---
+    # Accumulate per-texel albedo, shading, and observed radiance in UV space
+    # to eliminate multi-view ghosting and enable true specular & Delta-E residuals.
+    albedo_uv_accum = np.zeros((out_h, out_w, 3), dtype=np.float64)
+    shading_uv_accum = np.zeros((out_h, out_w, 3), dtype=np.float64)
+    radiance_uv_accum = np.zeros((out_h, out_w, 3), dtype=np.float64)
+    weight_uv_accum = np.zeros((out_h, out_w, 1), dtype=np.float64)
 
     per_view_sh_coeffs = []
 
@@ -957,11 +961,11 @@ def delight_multiview_albedo(
                 mesh_verts, mesh_uvs, getattr(mesh, "faces", None),
                 cam, h, w,
             )
-            # Scatter to UV atlas with bilinear sub-texel addressing
+            # Scatter to UV atlas with sub-texel addressing
             uv_u = uv_map[..., 0]  # (H, W)
             uv_v = uv_map[..., 1]  # (H, W)
-            tx = np.clip((uv_u * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
-            ty = np.clip((uv_v * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
+            tx = np.clip((uv_u * (out_w - 1)).astype(np.intp), 0, out_w - 1)
+            ty = np.clip((uv_v * (out_h - 1)).astype(np.intp), 0, out_h - 1)
 
             valid_pixels = proj_valid & (w_map > 0.01)
             flat_tx = tx[valid_pixels].ravel()
@@ -969,35 +973,39 @@ def delight_multiview_albedo(
             flat_w = w_map[valid_pixels].ravel()
             flat_albedo = view_albedo[valid_pixels]  # (K, 3)
             flat_shading = view_shading[valid_pixels]  # (K, 3)
-            flat_uv_idx = flat_ty * tex_res + flat_tx  # (K,)
+            flat_radiance = frame_rgb[valid_pixels]  # (K, 3)
+            flat_uv_idx = flat_ty * out_w + flat_tx  # (K,)
 
             # Weighted scatter to UV accumulation buffers
             albedo_uv_flat = albedo_uv_accum.reshape(-1, 3)
             shading_uv_flat = shading_uv_accum.reshape(-1, 3)
+            radiance_uv_flat = radiance_uv_accum.reshape(-1, 3)
             weight_uv_flat = weight_uv_accum.reshape(-1, 1)
 
             for c in range(3):
                 np.add.at(albedo_uv_flat[:, c], flat_uv_idx, flat_w * flat_albedo[:, c])
                 np.add.at(shading_uv_flat[:, c], flat_uv_idx, flat_w * flat_shading[:, c])
+                np.add.at(radiance_uv_flat[:, c], flat_uv_idx, flat_w * flat_radiance[:, c])
             np.add.at(weight_uv_flat[:, 0], flat_uv_idx, flat_w)
         else:
             # Fallback: uniform scatter when no UV mapping is available
-            # Still accumulate in UV space via planar projection
             valid_pixels = w_map > 0.01
             if np.any(valid_pixels):
                 yy, xx = np.where(valid_pixels)
-                tx = np.clip((xx / max(w - 1, 1) * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
-                ty = np.clip((yy / max(h - 1, 1) * (tex_res - 1)).astype(np.intp), 0, tex_res - 1)
-                flat_uv_idx = ty * tex_res + tx
+                tx = np.clip((xx / max(w - 1, 1) * (out_w - 1)).astype(np.intp), 0, out_w - 1)
+                ty = np.clip((yy / max(h - 1, 1) * (out_h - 1)).astype(np.intp), 0, out_h - 1)
+                flat_uv_idx = ty * out_w + tx
                 flat_w = w_map[valid_pixels].ravel()
 
                 albedo_uv_flat = albedo_uv_accum.reshape(-1, 3)
                 shading_uv_flat = shading_uv_accum.reshape(-1, 3)
+                radiance_uv_flat = radiance_uv_accum.reshape(-1, 3)
                 weight_uv_flat = weight_uv_accum.reshape(-1, 1)
 
                 for c in range(3):
                     np.add.at(albedo_uv_flat[:, c], flat_uv_idx, flat_w * view_albedo[valid_pixels][:, c])
                     np.add.at(shading_uv_flat[:, c], flat_uv_idx, flat_w * view_shading[valid_pixels][:, c])
+                    np.add.at(radiance_uv_flat[:, c], flat_uv_idx, flat_w * frame_rgb[valid_pixels][:, c])
                 np.add.at(weight_uv_flat[:, 0], flat_uv_idx, flat_w)
 
     # --- Weighted average in UV texel space ---
@@ -1044,11 +1052,11 @@ def delight_multiview_albedo(
     avg_albedo_uv = avg_albedo_uv.astype(np.float32)
 
     avg_shading_uv = np.clip(shading_uv_accum / safe_weight, 0.0, 20.0).astype(np.float32)
+    avg_radiance_uv = np.clip(radiance_uv_accum / safe_weight, 0.0, None)
 
-    # Specular residual in UV space
+    # Specular residual = observed radiance - diffuse re-lit (albedo * shading)
     relit_uv = avg_albedo_uv.astype(np.float64) * avg_shading_uv.astype(np.float64)
-    # Approximate specular from mean frame projected to UV
-    specular_uv = np.maximum(0.0, avg_albedo_uv.astype(np.float64) - relit_uv).astype(np.float32)
+    specular_uv = np.maximum(0.0, avg_radiance_uv - relit_uv).astype(np.float32)
 
     # Average SH coefficients across views
     if per_view_sh_coeffs:
@@ -1056,12 +1064,16 @@ def delight_multiview_albedo(
     else:
         ambient_sh = np.zeros((9, 3), dtype=np.float64)
 
-    # Compute CIEDE2000 delta_e_residual between re-lit UV and original
+    # Compute CIEDE2000 delta_e_residual between re-lit UV and observed radiance
     relit_clamped = np.clip(relit_uv, 0.0, 1.0)
-    albedo_clamped = np.clip(avg_albedo_uv.astype(np.float64), 0.0, 1.0)
+    observed_clamped = np.clip(avg_radiance_uv, 0.0, 1.0)
     lab_relit = _rgb_to_lab(relit_clamped, is_linear=True)
-    lab_albedo = _rgb_to_lab(albedo_clamped, is_linear=True)
-    delta_e = float(np.mean(_delta_e_00(lab_relit, lab_albedo)))
+    lab_observed = _rgb_to_lab(observed_clamped, is_linear=True)
+    obs_mask = weight_uv_accum[..., 0] > 1e-8
+    if np.any(obs_mask):
+        delta_e = float(np.mean(_delta_e_00(lab_relit[obs_mask], lab_observed[obs_mask])))
+    else:
+        delta_e = float(np.mean(_delta_e_00(lab_relit, lab_observed)))
 
     return DelightResult(
         albedo=avg_albedo_uv,

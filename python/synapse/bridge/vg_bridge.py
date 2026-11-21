@@ -116,6 +116,17 @@ def get_vg_backend(mock: bool = False, fallback_to_recon: bool = True) -> VgBack
 # -----------------------------------------------------------------------
 
 
+_VALID_DISTILLATION_TRACKS: frozenset[str] = frozenset(
+    {
+        "track_a",
+        "track_a_caelum",
+        "track_a_pathtracer",
+        "track_b_whitebox",
+        "track_c_gen3d",
+    }
+)
+
+
 def enforce_distillation_geometry_gate(
     track: str,
     has_gen3d_highpoly: bool,
@@ -132,7 +143,8 @@ def enforce_distillation_geometry_gate(
     limbs).
 
     Args:
-        track: Pipeline track identifier (e.g. ``"track_b_whitebox"``).
+        track: Pipeline track identifier (must be a member of
+            ``_VALID_DISTILLATION_TRACKS``).
         has_gen3d_highpoly: Whether the asset has been through
             generative 3D high-poly reconstruction.
         vertex_count: Mesh vertex count.
@@ -140,10 +152,20 @@ def enforce_distillation_geometry_gate(
         is_character: Whether this is a character asset.
 
     Raises:
-        ContractValidationError: If the gate check fails (exit_code=10).
+        ContractValidationError: If the track is unrecognized or gate fails (exit_code=10).
     """
+    if track not in _VALID_DISTILLATION_TRACKS:
+        raise ContractValidationError(
+            f"Unrecognized distillation track '{track}'. Allowed values: "
+            f"{sorted(_VALID_DISTILLATION_TRACKS)}",
+            agent_fix_hint=(
+                "Pass a canonical track identifier ('track_a', 'track_a_caelum', "
+                "'track_b_whitebox', or 'track_c_gen3d')."
+            ),
+        )
+
     if track != "track_b_whitebox":
-        return  # Non Track-B pipelines are unconstrained
+        return  # Verified Track-A / Track-C pipelines are unconstrained
 
     if not has_gen3d_highpoly:
         raise ContractValidationError(

@@ -369,25 +369,25 @@ def refine_pose_6dof(
     return mat
 
 
-def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
-    """Generate UV coordinates for a mesh.
+def _unwrap_uv_atlas_with_seams(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    expand_seams: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Generate UV coordinates via xatlas or spherical fallback.
 
-    Attempts to use xatlas binding (``aether_geo.unwrap_uv_atlas``)
-    for high-quality UV unwrapping.  Falls back to a spherical projection unwrap
-    if the C++ extension is unavailable.
-
-    Args:
-        vertices: Vertex positions, shape (V, 3).
-        faces: Face indices, shape (F, 3) or (F, 4).
-
-    Returns:
-        UV coordinates of shape (V, 2) float32, or None on failure.
+    When ``expand_seams=True`` and xatlas splits vertices along UV seams
+    (providing ``original_vertex_map`` and ``indices``), expands the vertex
+    and face buffers so every seam corner keeps its exact unaveraged UV.
+    When ``expand_seams=False``, selects the primary chart UV per vertex
+    instead of arithmetically averaging disconnected seam UVs (e.g. 0.01 & 0.99).
     """
     v = np.asarray(vertices, dtype=np.float32)
     f = np.asarray(faces, dtype=np.int32)
 
     if len(v) == 0 or len(f) == 0:
-        return None
+        return v, f, None
 
     # Try xatlas C++ binding first
     try:
@@ -404,48 +404,52 @@ def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
                 tri_faces[1::2, 0] = f[:, 0]
                 tri_faces[1::2, 1] = f[:, 2]
                 tri_faces[1::2, 2] = f[:, 3]
-                uvs = _cg.unwrap_uv_atlas(v, tri_faces)
+                raw_res = _cg.unwrap_uv_atlas(v, tri_faces)
             else:
-                uvs = _cg.unwrap_uv_atlas(v, f)
-            # C++ binding may return dict {"uvs": ndarray, "original_vertex_map": ndarray}
-            # or just ndarray.  When xatlas splits vertices for UV seams,
-            # the returned UV array has more rows than the input vertex count.
-            # ``original_vertex_map`` maps each output vertex back to its
-            # source index in the input vertex array.
+                raw_res = _cg.unwrap_uv_atlas(v, f)
+
             original_vertex_map = None
-            if isinstance(uvs, dict):
-                original_vertex_map = uvs.get("original_vertex_map", None)
-                uvs = uvs.get("uvs", uvs.get("uv_coords", np.empty((0, 2))))
+            new_indices = None
+            if isinstance(raw_res, dict):
+                original_vertex_map = raw_res.get("original_vertex_map", None)
+                new_indices = raw_res.get("indices", raw_res.get("faces", None))
+                uvs = raw_res.get("uvs", raw_res.get("uv_coords", np.empty((0, 2))))
+            else:
+                uvs = raw_res
             uvs = np.asarray(uvs, dtype=np.float32)
 
             if uvs.shape[0] == len(v) and uvs.shape[1] == 2:
-                # No vertex splitting — UVs map 1:1
-                return uvs
+                return v, f, uvs
             elif (
                 uvs.shape[0] > len(v)
                 and uvs.shape[1] == 2
                 and original_vertex_map is not None
             ):
-                # xatlas split vertices for UV seam cuts.  Rebuild the mesh
-                # vertex/face arrays to match by expanding positions using
-                # the original_vertex_map, and return the full UV array.
-                # The caller (quad_remesh / _generate_uvs) must accept that
-                # the returned UV count may differ from the input vertex count
-                # and handle vertex expansion accordingly.
-                #
-                # For now, project back to original vertex count by averaging
-                # UVs that map to the same original vertex.
                 ovm = np.asarray(original_vertex_map, dtype=np.int64)
-                merged_uvs = np.zeros((len(v), 2), dtype=np.float64)
-                counts = np.zeros(len(v), dtype=np.float64)
+                if expand_seams and new_indices is not None:
+                    idx_arr = np.asarray(new_indices, dtype=np.int32)
+                    v_exp = v[ovm].astype(np.float32)
+                    if f.shape[1] == 3 and idx_arr.size == len(f) * 3:
+                        return v_exp, idx_arr.reshape(len(f), 3), uvs
+                    if f.shape[1] == 4 and idx_arr.size == len(f) * 6:
+                        tri_idx = idx_arr.reshape(len(f) * 2, 3)
+                        quad_exp = np.empty((len(f), 4), dtype=np.int32)
+                        quad_exp[:, 0] = tri_idx[0::2, 0]
+                        quad_exp[:, 1] = tri_idx[0::2, 1]
+                        quad_exp[:, 2] = tri_idx[0::2, 2]
+                        quad_exp[:, 3] = tri_idx[1::2, 2]
+                        return v_exp, quad_exp, uvs
+
+                # Non-expanding path: preserve primary chart UV per vertex
+                # (never average disconnected seam UVs like 0.01 and 0.99 to 0.5).
+                primary_uvs = np.zeros((len(v), 2), dtype=np.float32)
+                seen = np.zeros(len(v), dtype=bool)
                 for new_idx in range(len(ovm)):
                     orig_idx = int(ovm[new_idx])
-                    if 0 <= orig_idx < len(v):
-                        merged_uvs[orig_idx] += uvs[new_idx].astype(np.float64)
-                        counts[orig_idx] += 1.0
-                valid = counts > 0
-                merged_uvs[valid] /= counts[valid, np.newaxis]
-                return merged_uvs.astype(np.float32)
+                    if 0 <= orig_idx < len(v) and not seen[orig_idx]:
+                        primary_uvs[orig_idx] = uvs[new_idx]
+                        seen[orig_idx] = True
+                return v, f, primary_uvs
     except (ImportError, AttributeError, RuntimeError):
         pass
 
@@ -456,14 +460,19 @@ def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
     r = np.clip(r, 1e-8, None)
     normalized = centered / r
 
-    # Spherical coordinates
-    theta = np.arctan2(normalized[:, 0], normalized[:, 2])  # azimuth
-    phi = np.arcsin(np.clip(normalized[:, 1], -1.0, 1.0))  # elevation
+    theta = np.arctan2(normalized[:, 0], normalized[:, 2])
+    phi = np.arcsin(np.clip(normalized[:, 1], -1.0, 1.0))
 
     u = (theta / (2.0 * np.pi)) + 0.5
     v_coord = (phi / np.pi) + 0.5
 
     uvs = np.stack([u, v_coord], axis=-1).astype(np.float32)
+    return v, f, uvs
+
+
+def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
+    """Generate UV coordinates for a mesh."""
+    _, _, uvs = _unwrap_uv_atlas_with_seams(vertices, faces, expand_seams=False)
     return uvs
 
 
@@ -514,10 +523,20 @@ def _qem_decimate(
         quadrics[b] += Q
         quadrics[c] += Q
 
-    # Build edge set and priority queue
-    # Track which vertices and faces are alive
-    alive_faces = set(range(len(f)))
+    # Build vertex -> incident faces adjacency and initial edges
+    alive_faces: set[int] = set(range(len(f)))
     vertex_alias = list(range(num_verts))  # union-find for merged vertices
+    vert_to_faces: dict[int, set[int]] = defaultdict(set)
+    edge_set: set[tuple[int, int]] = set()
+    for fi in alive_faces:
+        tri = f[fi]
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        vert_to_faces[a].add(fi)
+        vert_to_faces[b].add(fi)
+        vert_to_faces[c].add(fi)
+        edge_set.add((min(a, b), max(a, b)))
+        edge_set.add((min(b, c), max(b, c)))
+        edge_set.add((min(c, a), max(c, a)))
 
     def _find(x: int) -> int:
         while vertex_alias[x] != x:
@@ -525,13 +544,98 @@ def _qem_decimate(
             x = vertex_alias[x]
         return x
 
-    # Build initial edges from faces
-    edge_set: set[tuple[int, int]] = set()
-    for fi in alive_faces:
-        tri = f[fi]
-        for i in range(3):
-            a, b = int(tri[i]), int(tri[(i + 1) % 3])
-            edge_set.add((min(a, b), max(a, b)))
+    def _is_boundary_vertex(vr: int) -> bool:
+        edge_counts: dict[tuple[int, int], int] = defaultdict(int)
+        for fi in vert_to_faces[vr]:
+            if fi not in alive_faces:
+                continue
+            tri = f[fi]
+            for i in range(3):
+                u_i = _find(int(tri[i]))
+                w_i = _find(int(tri[(i + 1) % 3]))
+                if u_i == vr or w_i == vr:
+                    edge_counts[(min(u_i, w_i), max(u_i, w_i))] += 1
+        return any(cnt == 1 for cnt in edge_counts.values())
+
+    def _link_and_normal_safe(va: int, vb: int, new_pos: np.ndarray) -> bool:
+        """Dey-Edelsbrunner Link Condition + boundary pinch + normal-flip guard."""
+        inc_a = vert_to_faces[va]
+        inc_b = vert_to_faces[vb]
+        shared_faces = inc_a & inc_b
+        n_shared = len(shared_faces)
+        if n_shared == 0 or n_shared > 2:
+            return False
+
+        nb_a: set[int] = set()
+        for fi in inc_a:
+            tri = f[fi]
+            for i in range(3):
+                r = _find(int(tri[i]))
+                if r != va and r != vb:
+                    nb_a.add(r)
+
+        nb_b: set[int] = set()
+        for fi in inc_b:
+            tri = f[fi]
+            for i in range(3):
+                r = _find(int(tri[i]))
+                if r != va and r != vb:
+                    nb_b.add(r)
+
+        # Link Condition: common neighbors must match the opposite vertices of shared faces
+        common_nb = nb_a & nb_b
+        if len(common_nb) != n_shared:
+            return False
+
+        # Reject collapsing an edge of a 3-vertex cap / tetrahedron (where an
+        # opposite vertex w has degree <= 3), which would fold two faces onto each other.
+        for w_nb in common_nb:
+            if len(vert_to_faces[w_nb]) <= 3:
+                return False
+
+        # Boundary pinch guard: interior edge connecting two boundary vertices would pinch
+        if n_shared == 2 and _is_boundary_vertex(va) and _is_boundary_vertex(vb):
+            return False
+
+        # Duplicate triangle & normal-flip guard on all surviving incident faces
+        surviving = (inc_a | inc_b) - shared_faces
+        existing_triples: set[tuple[int, int, int]] = set()
+        seen_triples: set[tuple[int, int, int]] = set()
+        for w_nb in common_nb:
+            for fi_w in vert_to_faces[w_nb]:
+                if fi_w in alive_faces and fi_w not in shared_faces and fi_w not in surviving:
+                    tw = f[fi_w]
+                    sw = sorted((_find(int(tw[0])), _find(int(tw[1])), _find(int(tw[2]))))
+                    existing_triples.add((sw[0], sw[1], sw[2]))
+        for fi in surviving:
+            tri = f[fi]
+            r0, r1, r2 = _find(int(tri[0])), _find(int(tri[1])), _find(int(tri[2]))
+            nr0 = va if r0 == vb else r0
+            nr1 = va if r1 == vb else r1
+            nr2 = va if r2 == vb else r2
+            if nr0 in (nr1, nr2) or nr1 == nr2:
+                return False
+            sk = sorted((nr0, nr1, nr2))
+            key = (sk[0], sk[1], sk[2])
+            if key in seen_triples or key in existing_triples:
+                return False
+            seen_triples.add(key)
+
+            p0_old, p1_old, p2_old = v[r0], v[r1], v[r2]
+            n_old = np.cross(p1_old - p0_old, p2_old - p0_old)
+            l_old = float(np.linalg.norm(n_old))
+
+            p0_new = new_pos if nr0 == va else v[nr0]
+            p1_new = new_pos if nr1 == va else v[nr1]
+            p2_new = new_pos if nr2 == va else v[nr2]
+            n_new = np.cross(p1_new - p0_new, p2_new - p0_new)
+            l_new = float(np.linalg.norm(n_new))
+            if l_new < 1e-12:
+                return False
+            if l_old > 1e-12 and float(np.dot(n_old, n_new)) <= 0.1 * l_old * l_new:
+                return False
+
+        return True
 
     # Compute edge costs
     heap: list[tuple[float, int, int, int]] = []  # (cost, seq, v1, v2)
@@ -539,8 +643,6 @@ def _qem_decimate(
 
     for a, b in edge_set:
         Q_sum = quadrics[a] + quadrics[b]
-        # Optimal position: try to solve Q_sum * v_opt = 0
-        # Fallback to midpoint
         midpoint = (v[a] + v[b]) * 0.5
         v_hom = np.array([midpoint[0], midpoint[1], midpoint[2], 1.0])
         cost = float(v_hom @ Q_sum @ v_hom)
@@ -550,47 +652,46 @@ def _qem_decimate(
     current_face_count = len(alive_faces)
 
     while current_face_count > target_faces and heap:
-        cost, _, va, vb = heapq.heappop(heap)
+        _, _, va_raw, vb_raw = heapq.heappop(heap)
 
-        # Resolve aliases
-        va = _find(va)
-        vb = _find(vb)
+        va = _find(va_raw)
+        vb = _find(vb_raw)
         if va == vb:
             continue
 
-        # Merge vb into va
         new_pos = (v[va] + v[vb]) * 0.5
+        if not _link_and_normal_safe(va, vb, new_pos):
+            continue
+
+        # Commit collapse: merge vb into va in O(deg) using vert_to_faces
         v[va] = new_pos
         quadrics[va] = quadrics[va] + quadrics[vb]
         vertex_alias[vb] = va
 
-        # Update faces: replace vb with va, remove degenerate
-        faces_to_remove = set()
+        affected = list(vert_to_faces[va] | vert_to_faces[vb])
         neighbors: set[int] = set()
-        for fi in list(alive_faces):
+        for fi in affected:
+            if fi not in alive_faces:
+                continue
             tri = f[fi]
-            changed = False
-            for i in range(3):
-                resolved = _find(int(tri[i]))
-                if resolved != int(tri[i]):
-                    tri[i] = resolved
-                    changed = True
-            if changed:
-                f[fi] = tri
-            # Check degeneracy
-            if tri[0] == tri[1] or tri[1] == tri[2] or tri[0] == tri[2]:
-                faces_to_remove.add(fi)
-            elif changed:
-                for i in range(3):
-                    nb = _find(int(tri[(i + 1) % 3]))
+            r0, r1, r2 = _find(int(tri[0])), _find(int(tri[1])), _find(int(tri[2]))
+            f[fi] = [r0, r1, r2]
+            if r0 in (r1, r2) or r1 == r2:
+                alive_faces.discard(fi)
+                vert_to_faces[r0].discard(fi)
+                vert_to_faces[r1].discard(fi)
+                vert_to_faces[r2].discard(fi)
+                vert_to_faces[va].discard(fi)
+                vert_to_faces[vb].discard(fi)
+            else:
+                vert_to_faces[va].add(fi)
+                for nb in (r0, r1, r2):
                     if nb != va:
                         neighbors.add(nb)
-
-        for fi in faces_to_remove:
-            alive_faces.discard(fi)
+        vert_to_faces[vb].clear()
         current_face_count = len(alive_faces)
 
-        # Push new edges from va to its neighbors
+        # Push updated edges from va to its neighbors
         for nb in neighbors:
             Q_sum = quadrics[va] + quadrics[nb]
             mid = (v[va] + v[nb]) * 0.5
@@ -621,6 +722,8 @@ def quad_remesh(
     vertices: np.ndarray,
     faces: np.ndarray,
     target_faces: int = 0,
+    *,
+    expand_uv_seams: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Remesh a triangle mesh into a quad-dominant or quad mesh.
 
@@ -645,7 +748,7 @@ def quad_remesh(
         return v, f, None
 
     if f.shape[1] == 4:
-        uvs = _generate_uvs(v, f)
+        v, f, uvs = _unwrap_uv_atlas_with_seams(v, f, expand_seams=expand_uv_seams)
         return v, f, uvs  # Already quad mesh
 
     if f.shape[1] != 3:
@@ -841,7 +944,9 @@ def quad_remesh(
         new_faces = f
 
     # Generate UV coordinates via xatlas binding or projection unwrap fallback
-    uvs = _generate_uvs(v, new_faces)
+    v, new_faces, uvs = _unwrap_uv_atlas_with_seams(
+        v, new_faces, expand_seams=expand_uv_seams
+    )
     return v, new_faces, uvs
 
 

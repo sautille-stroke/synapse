@@ -162,20 +162,23 @@ def _lucas_kanade_track(
     new_points = np.copy(points)
     status = np.ones(n_pts, dtype=bool)
 
-    # Build Gaussian pyramids
+    # Build Gaussian pyramids with [1, 2, 1]/4 separable anti-aliasing pre-blur
     def _build_pyramid(img: np.ndarray, levels: int) -> list[np.ndarray]:
         pyr = [img]
         for _ in range(levels - 1):
-            # Simple 2x downscale with averaging
             ph, pw = pyr[-1].shape
-            if ph < 4 or pw < 4:
+            if ph < 8 or pw < 8:
                 break
+            p = np.pad(pyr[-1], 1, mode="reflect")
+            bh = 0.25 * p[1:-1, :-2] + 0.5 * p[1:-1, 1:-1] + 0.25 * p[1:-1, 2:]
+            p2 = np.pad(bh, 1, mode="reflect")
+            blurred = 0.25 * p2[:-2, 1:-1] + 0.5 * p2[1:-1, 1:-1] + 0.25 * p2[2:, 1:-1]
             nh, nw = ph // 2, pw // 2
             down = (
-                pyr[-1][: nh * 2 : 2, : nw * 2 : 2]
-                + pyr[-1][1 : nh * 2 : 2, : nw * 2 : 2]
-                + pyr[-1][: nh * 2 : 2, 1 : nw * 2 : 2]
-                + pyr[-1][1 : nh * 2 : 2, 1 : nw * 2 : 2]
+                blurred[: nh * 2 : 2, : nw * 2 : 2]
+                + blurred[1 : nh * 2 : 2, : nw * 2 : 2]
+                + blurred[: nh * 2 : 2, 1 : nw * 2 : 2]
+                + blurred[1 : nh * 2 : 2, 1 : nw * 2 : 2]
             ) * 0.25
             pyr.append(down)
         return pyr
@@ -183,8 +186,6 @@ def _lucas_kanade_track(
     pyr_prev = _build_pyramid(prev_gray, num_levels)
     pyr_curr = _build_pyramid(curr_gray, num_levels)
     actual_levels = min(len(pyr_prev), len(pyr_curr))
-
-    half_win = win_size // 2
 
     # Iterate from coarsest to finest level
     flow = np.zeros((n_pts, 2), dtype=np.float32)
@@ -194,6 +195,10 @@ def _lucas_kanade_track(
         p_img = pyr_prev[level]
         c_img = pyr_curr[level]
         lh, lw = p_img.shape
+        # Clamp window size at coarse pyramid levels so small frames (e.g. 64x64 -> 16x16)
+        # still track interior points instead of skipping the coarse level completely.
+        lvl_win = min(win_size, max(5, (min(lh, lw) // 2) | 1))
+        half_win = lvl_win // 2
 
         # Compute gradients on previous image
         padded_p = np.pad(p_img, 1, mode="reflect")
@@ -213,13 +218,17 @@ def _lucas_kanade_track(
             # Window bounds in previous image
             x0 = int(round(px)) - half_win
             y0 = int(round(py)) - half_win
-            x1 = x0 + win_size
-            y1 = y0 + win_size
+            x1 = x0 + lvl_win
+            y1 = y0 + lvl_win
 
             if x0 < 0 or y0 < 0 or x1 > lw or y1 > lh:
                 # Window falls outside image at this pyramid level;
                 # skip this level for this point (keep it stationary).
                 continue
+
+            # Exact center of patch_p so patch_c alignment has zero subpixel bias
+            px_c = float(x0 + half_win)
+            py_c = float(y0 + half_win)
 
             # Extract patches
             patch_p = p_img[y0:y1, x0:x1]
@@ -233,29 +242,26 @@ def _lucas_kanade_track(
 
             det = sxx * syy - sxy * sxy
             if abs(det) < 1e-6:
-                # Zero gradient — no texture to track. Keep the point
-                # stationary rather than marking it lost (graceful
-                # degradation on uniform/textureless patches).
                 continue
 
-            # Iterative refinement (3 iterations) with sub-pixel bilinear interpolation
+            # Iterative refinement (up to 8 iterations) with sub-pixel bilinear interpolation
             dx, dy = fx, fy
-            for _ in range(3):
-                cx = px + dx
-                cy = py + dy
-                x0 = int(np.floor(cx)) - half_win
-                y0 = int(np.floor(cy)) - half_win
+            for _ in range(8):
+                cx = px_c + dx
+                cy = py_c + dy
+                cx0 = int(np.floor(cx)) - half_win
+                cy0 = int(np.floor(cy)) - half_win
                 alpha = float(cx - np.floor(cx))
                 beta = float(cy - np.floor(cy))
 
-                if x0 < 0 or y0 < 0 or (x0 + win_size + 1) > lw or (y0 + win_size + 1) > lh:
+                if cx0 < 0 or cy0 < 0 or (cx0 + lvl_win + 1) > lw or (cy0 + lvl_win + 1) > lh:
                     status[pi] = False
                     break
 
-                p00 = c_img[y0 : y0 + win_size, x0 : x0 + win_size]
-                p10 = c_img[y0 : y0 + win_size, x0 + 1 : x0 + 1 + win_size]
-                p01 = c_img[y0 + 1 : y0 + 1 + win_size, x0 : x0 + win_size]
-                p11 = c_img[y0 + 1 : y0 + 1 + win_size, x0 + 1 : x0 + 1 + win_size]
+                p00 = c_img[cy0 : cy0 + lvl_win, cx0 : cx0 + lvl_win]
+                p10 = c_img[cy0 : cy0 + lvl_win, cx0 + 1 : cx0 + 1 + lvl_win]
+                p01 = c_img[cy0 + 1 : cy0 + 1 + lvl_win, cx0 : cx0 + lvl_win]
+                p11 = c_img[cy0 + 1 : cy0 + 1 + lvl_win, cx0 + 1 : cx0 + 1 + lvl_win]
                 patch_c = (
                     (1.0 - alpha) * (1.0 - beta) * p00
                     + alpha * (1.0 - beta) * p10
@@ -272,6 +278,8 @@ def _lucas_kanade_track(
                 ddy = inv_det * (-sxy * bx + sxx * by)
                 dx += ddx
                 dy += ddy
+                if abs(ddx) + abs(ddy) < 1e-3:
+                    break
 
             if status[pi]:
                 flow[pi, 0] = dx * scale
@@ -437,10 +445,10 @@ def _solve_fundamental_matrix_8point(pts1: np.ndarray, pts2: np.ndarray) -> np.n
 def _solve_fundamental_matrix(
     pts1: np.ndarray,
     pts2: np.ndarray,
-    max_iters: int = 50,
+    max_iters: int = 100,
     threshold: float = 2.0,
 ) -> np.ndarray:
-    """Estimate fundamental matrix using RANSAC + normalized 8-point algorithm."""
+    """Estimate fundamental matrix using RANSAC + normalized 8-point algorithm with inlier refit."""
     n = len(pts1)
     if n < 8:
         return np.eye(3, dtype=np.float64)
@@ -450,6 +458,7 @@ def _solve_fundamental_matrix(
 
     best_inliers = 0
     best_F = None
+    best_mask: np.ndarray | None = None
     rng = np.random.default_rng(42)
 
     pts1_h = np.column_stack([pts1, np.ones(n, dtype=np.float64)])
@@ -466,13 +475,17 @@ def _solve_fundamental_matrix(
         denom = Fx1[:, 0] ** 2 + Fx1[:, 1] ** 2 + Ftx2[:, 0] ** 2 + Ftx2[:, 1] ** 2
         sampson_dist = np.sqrt(num / np.maximum(denom, 1e-12))
 
-        inliers = int(np.sum(sampson_dist < threshold))
+        mask = sampson_dist < threshold
+        inliers = int(np.sum(mask))
         if inliers > best_inliers:
             best_inliers = inliers
             best_F = F_cand
+            best_mask = mask
 
     if best_F is None or best_inliers < 8:
-        best_F = _solve_fundamental_matrix_8point(pts1, pts2)
+        return _solve_fundamental_matrix_8point(pts1, pts2)
+    if best_mask is not None and best_inliers >= 8:
+        return _solve_fundamental_matrix_8point(pts1[best_mask], pts2[best_mask])
     return best_F
 
 
@@ -558,6 +571,101 @@ def _essential_to_rotation_translation(
     return best_R, best_t
 
 
+def _fit_homography_dlt(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray | None:
+    """Estimate planar homography H (pts2 ~ H @ pts1) via normalized DLT."""
+    n = len(pts1)
+    if n < 4:
+        return None
+
+    def _norm(pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        mean = np.mean(pts, axis=0)
+        centered = pts - mean
+        avg_d = float(np.mean(np.linalg.norm(centered, axis=1)))
+        s = math.sqrt(2.0) / max(avg_d, 1e-10)
+        T = np.array([[s, 0.0, -s * mean[0]], [0.0, s, -s * mean[1]], [0.0, 0.0, 1.0]], dtype=np.float64)
+        ph = np.column_stack([pts, np.ones(len(pts), dtype=np.float64)])
+        return (T @ ph.T).T[:, :2], T
+
+    p1n, T1 = _norm(pts1)
+    p2n, T2 = _norm(pts2)
+    A = np.zeros((2 * n, 9), dtype=np.float64)
+    for i in range(n):
+        x1, y1 = p1n[i]
+        x2, y2 = p2n[i]
+        A[2 * i] = [0.0, 0.0, 0.0, -x1, -y1, -1.0, y2 * x1, y2 * y1, y2]
+        A[2 * i + 1] = [x1, y1, 1.0, 0.0, 0.0, 0.0, -x2 * x1, -x2 * y1, -x2]
+    _, _, Vt = np.linalg.svd(A)
+    Hn = Vt[-1].reshape(3, 3)
+    try:
+        H = np.linalg.inv(T2) @ Hn @ T1
+    except np.linalg.LinAlgError:
+        return None
+    if abs(H[2, 2]) > 1e-12:
+        H = H / H[2, 2]
+    return np.asarray(H, dtype=np.float64)
+
+
+def _is_pure_rotation_parallax_gric(
+    pts1: np.ndarray,
+    pts2: np.ndarray,
+    F: np.ndarray,
+    R_rel: np.ndarray,
+    K: np.ndarray,
+) -> bool:
+    """Resolution-invariant pure-rotation test using de-rotated ray parallax + H/F GRIC.
+
+    Replaces the resolution-broken ``e_norm < 1e-3 * k_norm**2`` heuristic (which
+    falsely zeroed translation for any video wider than ~435 px).
+    """
+    n = len(pts1)
+    if n < 8:
+        return True
+
+    # Near-zero pixel motion -> static camera (no translation)
+    med_disp = float(np.median(np.linalg.norm(pts2 - pts1, axis=1)))
+    if med_disp < 1e-3:
+        return True
+
+    # 1. De-rotated bearing-ray parallax angle (invariant to focal length / resolution)
+    K_inv = np.linalg.inv(K)
+    p1_h = np.column_stack([pts1, np.ones(n, dtype=np.float64)])
+    p2_h = np.column_stack([pts2, np.ones(n, dtype=np.float64)])
+    r1 = (K_inv @ p1_h.T).T
+    r2 = (K_inv @ p2_h.T).T
+    r1 /= np.maximum(np.linalg.norm(r1, axis=1, keepdims=True), 1e-12)
+    r2 /= np.maximum(np.linalg.norm(r2, axis=1, keepdims=True), 1e-12)
+    r1_rot = (R_rel @ r1.T).T
+    cos_ang = np.clip(np.sum(r1_rot * r2, axis=1), -1.0, 1.0)
+    median_parallax_deg = float(np.median(np.degrees(np.arccos(cos_ang))))
+
+    if median_parallax_deg >= 0.2:
+        return False
+
+    # 2. H vs F GRIC model selection (Torr 1998)
+    H = _fit_homography_dlt(pts1, pts2)
+    if H is None:
+        return median_parallax_deg < 0.05
+
+    proj2 = (H @ p1_h.T).T
+    z2 = np.where(np.abs(proj2[:, 2]) > 1e-10, proj2[:, 2], 1e-10)
+    err_h_sq = np.sum((proj2[:, :2] / z2[:, None] - pts2) ** 2, axis=1)
+
+    Fx1 = (F @ p1_h.T).T
+    Ftx2 = (F.T @ p2_h.T).T
+    denom = np.maximum(Fx1[:, 0] ** 2 + Fx1[:, 1] ** 2 + Ftx2[:, 0] ** 2 + Ftx2[:, 1] ** 2, 1e-12)
+    err_f_sq = (np.sum(p2_h * Fx1, axis=1) ** 2) / denom
+
+    sigma2 = 1.0
+    lambda1 = math.log(4.0)
+    lambda2 = math.log(max(4 * n, 8))
+    lambda3 = 2.0
+    # Homography: d=2, k=8; Fundamental: d=3, k=7
+    gric_h = float(np.sum(np.minimum(err_h_sq / sigma2, lambda3 * (4 - 2)))) + lambda1 * 2 * n + lambda2 * 8
+    gric_f = float(np.sum(np.minimum(err_f_sq / sigma2, lambda3 * (4 - 3)))) + lambda1 * 3 * n + lambda2 * 7
+    med_err_h = float(np.sqrt(np.median(err_h_sq)))
+    return bool(gric_h < gric_f and med_err_h < 1.5)
+
+
 def solve_camera_trajectory(
     tracks_2d: np.ndarray,
     tracks_3d: np.ndarray | None = None,
@@ -629,8 +737,8 @@ def solve_camera_trajectory(
     )
 
     # Track incremental relative pose between consecutive frames
-    # Previous 3D triangulated points for inter-step scale estimation
-    prev_3d_points: np.ndarray | None = None
+    # Previous 3D triangulated points keyed by global feature track ID
+    prev_3d_map: dict[int, np.ndarray] = {}
 
     for t in range(1, num_frames):
         pts_prev = tracks_2d[t - 1].astype(np.float64)
@@ -640,8 +748,9 @@ def solve_camera_trajectory(
         valid = np.isfinite(pts_prev).all(axis=1) & np.isfinite(pts_curr).all(axis=1)
         if visibility is not None and visibility.shape[0] > t:
             valid = valid & visibility[t - 1] & visibility[t]
-        pts_prev_v = pts_prev[valid]
-        pts_curr_v = pts_curr[valid]
+        valid_ids = np.where(valid)[0]
+        pts_prev_v = pts_prev[valid_ids]
+        pts_curr_v = pts_curr[valid_ids]
 
         if len(pts_prev_v) >= 8:
             # Estimate fundamental matrix
@@ -649,20 +758,6 @@ def solve_camera_trajectory(
 
             # Essential matrix: E = K^T @ F @ K
             E = K.T @ F @ K
-
-            # GRIC-based pure-rotation suppression: if the essential matrix
-            # has near-zero translation component, the motion is pure rotation
-            # and we should not accumulate a spurious translation.
-            U_e, S_e, Vt_e = np.linalg.svd(E)
-            # For a valid E with real translation, the two non-zero singular
-            # values should be approximately equal and significantly > 0.
-            # For pure rotation, E ≈ 0 (all singular values near zero).
-            # Also check via homography: compute H and test reprojection.
-            # Robust test: ratio of Frobenius norm of E to norm of K^T @ K
-            e_norm = float(np.linalg.norm(E, "fro"))
-            k_norm = float(np.linalg.norm(K, "fro"))
-            # Normalise by K scale to get a scale-invariant measure
-            is_pure_rotation = e_norm < 1e-3 * (k_norm ** 2)
 
             # Decompose essential matrix
             R_rel, t_rel = _essential_to_rotation_translation(
@@ -672,23 +767,25 @@ def solve_camera_trajectory(
                 K,
             )
 
+            # Resolution-invariant parallax + H/F GRIC pure-rotation guard
+            is_pure_rotation = _is_pure_rotation_parallax_gric(
+                pts_prev_v, pts_curr_v, F, R_rel, K
+            )
+
             if is_pure_rotation:
                 # Suppress translation for pure rotation to prevent drift
                 t_rel = np.zeros(3, dtype=np.float64)
 
-            # Inter-step scale estimation from shared 3D points.
-            # Triangulate between frame t-1 and frame t using the *relative*
-            # pose (R_rel, t_rel) instead of frame 0 as reference — using
-            # frame 0 at t=1 gives zero baseline (both are identity).
-            if prev_3d_points is not None and len(pts_prev_v) >= 8 and not is_pure_rotation:
-                # Triangulate using relative pose between t-1 and t
+            # Inter-step scale estimation matching shared global landmark track IDs
+            if not is_pure_rotation:
                 P1_rel = K @ np.eye(3, 4, dtype=np.float64)
                 T_rel_34 = np.hstack([R_rel, t_rel.reshape(3, 1)])
                 P2_rel = K @ T_rel_34
-                curr_3d_pts = []
-                for idx in range(min(len(pts_prev_v), 20)):
-                    x1 = np.array([pts_prev_v[idx, 0], pts_prev_v[idx, 1], 1.0])
-                    x2 = np.array([pts_curr_v[idx, 0], pts_curr_v[idx, 1], 1.0])
+                curr_3d_map: dict[int, np.ndarray] = {}
+                for local_idx in range(min(len(pts_prev_v), 30)):
+                    track_id = int(valid_ids[local_idx])
+                    x1 = np.array([pts_prev_v[local_idx, 0], pts_prev_v[local_idx, 1], 1.0])
+                    x2 = np.array([pts_curr_v[local_idx, 0], pts_curr_v[local_idx, 1], 1.0])
                     A_tri = np.zeros((4, 4), dtype=np.float64)
                     A_tri[0] = x1[0] * P1_rel[2] - P1_rel[0]
                     A_tri[1] = x1[1] * P1_rel[2] - P1_rel[1]
@@ -697,47 +794,28 @@ def solve_camera_trajectory(
                     _, _, Vt_tri = np.linalg.svd(A_tri)
                     pt4 = Vt_tri[-1]
                     if abs(pt4[3]) > 1e-8:
-                        curr_3d_pts.append(pt4[:3] / pt4[3])
-                if len(curr_3d_pts) >= 4 and len(prev_3d_points) >= 4:
-                    curr_arr = np.array(curr_3d_pts[:len(prev_3d_points)])
-                    if len(curr_arr) == len(prev_3d_points):
-                        scale_ratios = np.linalg.norm(
-                            curr_arr[1:] - curr_arr[:-1], axis=1
-                        ) / np.clip(
-                            np.linalg.norm(
-                                prev_3d_points[1:] - prev_3d_points[:-1], axis=1
-                            ),
-                            1e-8,
-                            None,
-                        )
-                        median_scale = float(np.median(scale_ratios))
-                        if 0.5 < median_scale < 2.0:
+                        p3 = pt4[:3] / pt4[3]
+                        if p3[2] > 0.01:
+                            curr_3d_map[track_id] = p3
+
+                shared_ids = sorted(set(prev_3d_map.keys()) & set(curr_3d_map.keys()))
+                if len(shared_ids) >= 4:
+                    prev_arr = np.array([prev_3d_map[k] for k in shared_ids], dtype=np.float64)
+                    curr_arr = np.array([curr_3d_map[k] for k in shared_ids], dtype=np.float64)
+                    d_prev = np.linalg.norm(prev_arr[1:] - prev_arr[:-1], axis=1)
+                    d_curr = np.linalg.norm(curr_arr[1:] - curr_arr[:-1], axis=1)
+                    good = (d_prev > 1e-6) & (d_curr > 1e-6)
+                    if np.any(good):
+                        # Ratio prev/curr rescales unit-norm t_rel to match previous metric scale
+                        median_scale = float(np.median(d_prev[good] / d_curr[good]))
+                        if 0.2 < median_scale < 5.0:
                             t_rel *= median_scale
-                        prev_3d_points = np.array(curr_3d_pts[:20])
-                    else:
-                        prev_3d_points = np.array(curr_3d_pts[:20]) if curr_3d_pts else None
-                else:
-                    prev_3d_points = np.array(curr_3d_pts[:20]) if curr_3d_pts else None
-            elif prev_3d_points is None and len(pts_prev_v) >= 8:
-                # Initialize 3D points from first pair
-                P1 = K @ np.eye(3, 4, dtype=np.float64)
-                T_curr = np.hstack([R_rel, t_rel.reshape(3, 1)])
-                P2_curr = K @ T_curr
-                init_pts = []
-                for idx in range(min(len(pts_prev_v), 20)):
-                    x1 = np.array([pts_prev_v[idx, 0], pts_prev_v[idx, 1], 1.0])
-                    x2 = np.array([pts_curr_v[idx, 0], pts_curr_v[idx, 1], 1.0])
-                    A_tri = np.zeros((4, 4), dtype=np.float64)
-                    A_tri[0] = x1[0] * P1[2] - P1[0]
-                    A_tri[1] = x1[1] * P1[2] - P1[1]
-                    A_tri[2] = x2[0] * P2_curr[2] - P2_curr[0]
-                    A_tri[3] = x2[1] * P2_curr[2] - P2_curr[1]
-                    _, _, Vt_tri = np.linalg.svd(A_tri)
-                    pt4 = Vt_tri[-1]
-                    if abs(pt4[3]) > 1e-8:
-                        init_pts.append(pt4[:3] / pt4[3])
-                if init_pts:
-                    prev_3d_points = np.array(init_pts[:20])
+                            curr_3d_map = {k: v * median_scale for k, v in curr_3d_map.items()}
+                if curr_3d_map:
+                    # Transform landmarks into current frame coordinates for step t+1
+                    prev_3d_map = {
+                        k: R_rel @ p + t_rel for k, p in curr_3d_map.items()
+                    }
         else:
             # Not enough points — assume identity relative pose
             R_rel = np.eye(3, dtype=np.float64)
