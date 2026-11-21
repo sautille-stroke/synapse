@@ -128,7 +128,9 @@ class HttpJevTransport:
             req.add_header("Authorization", f"Bearer {self.api_key}")
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            from synapse.bridge.http_security import safe_urlopen
+
+            with safe_urlopen(req, timeout=self.timeout) as resp:
                 resp_bytes = resp.read()
                 data = json.loads(resp_bytes.decode("utf-8"))
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:

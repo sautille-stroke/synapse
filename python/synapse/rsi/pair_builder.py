@@ -168,11 +168,16 @@ class PreferenceDatasetBuilder:
 
     @staticmethod
     def _deduplicate(pairs: list[PreferencePair]) -> list[PreferencePair]:
-        """Deduplicate pairs by (pair_id, condition_key, chosen_uri, rejected_uri)."""
-        seen: set[tuple[str, str, str, str]] = set()
+        """Deduplicate pairs by (pair_id, source, condition_key, chosen_uri, rejected_uri).
+
+        Includes ``source`` in the dedup key so that golden, human, and self
+        pairs sharing the same pair_id are kept distinct — dropping ``source``
+        could silently discard golden samples during merge.
+        """
+        seen: set[tuple[str, str, str, str, str]] = set()
         out: list[PreferencePair] = []
         for p in pairs:
-            key = (p.pair_id, p.condition_key, p.chosen_uri, p.rejected_uri)
+            key = (p.pair_id, p.source, p.condition_key, p.chosen_uri, p.rejected_uri)
             if key not in seen:
                 seen.add(key)
                 out.append(p)

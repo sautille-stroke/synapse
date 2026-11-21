@@ -361,6 +361,19 @@ def scenario_reports_to_bench_report(
 
     scenario_scores: list[BenchScenarioScore] = []
     for rep in scenario_reports:
+        # Detect crashed / errored reports to prevent 0.0 wash-out.
+        # A report with an error field should NOT be silently scored as 0.0
+        # and averaged in — that would wash out the crash signal.
+        rep_error = None
+        if hasattr(rep, "error"):
+            rep_error = rep.error
+        elif isinstance(rep, dict):
+            rep_error = rep.get("error")
+        if rep_error is not None and rep_error:
+            # Skip errored scenarios entirely — they must not pollute
+            # the aggregate with false 0.0 scores.
+            continue
+
         if hasattr(rep, "scenario_name"):
             sc_id = str(rep.scenario_name)
             metrics = dict(rep.metrics) if hasattr(rep, "metrics") and rep.metrics else {}
@@ -374,20 +387,31 @@ def scenario_reports_to_bench_report(
             metrics = getattr(rep, "metrics", {})
             verdict = None
 
-        # Extract pillar sub-scores safely
-        raw_geom = metrics.get("f_score_1mm") or metrics.get("f_score") or metrics.get("watertight_pct", 80.0)
+        # Extract pillar sub-scores safely — use `is not None` checks
+        # to prevent valid 0.0 scores from being falsy-swallowed into defaults.
+        raw_geom = metrics.get("f_score_1mm")
+        if raw_geom is None:
+            raw_geom = metrics.get("f_score")
+        if raw_geom is None:
+            raw_geom = metrics.get("watertight_pct", 80.0)
         geom_val = float(raw_geom) if raw_geom is not None else 0.8
         geom_score = max(0.0, min(1.0, geom_val if geom_val <= 1.0 else geom_val / 100.0))
 
-        raw_temp = metrics.get("temporal_consistency") or metrics.get("ssim", 0.85)
+        raw_temp = metrics.get("temporal_consistency")
+        if raw_temp is None:
+            raw_temp = metrics.get("ssim")
         temp_val = float(raw_temp) if raw_temp is not None else 0.85
         temp_score = max(0.0, min(1.0, temp_val))
 
-        raw_style = metrics.get("style_consistency") or metrics.get("histogram_intersection", 0.85)
+        raw_style = metrics.get("style_consistency")
+        if raw_style is None:
+            raw_style = metrics.get("histogram_intersection")
         style_val = float(raw_style) if raw_style is not None else 0.85
         style_score = max(0.0, min(1.0, style_val))
 
-        raw_fgpp = metrics.get("silhouette_iou") or metrics.get("fgpp_fidelity", 0.9)
+        raw_fgpp = metrics.get("silhouette_iou")
+        if raw_fgpp is None:
+            raw_fgpp = metrics.get("fgpp_fidelity")
         fgpp_val = float(raw_fgpp) if raw_fgpp is not None else 0.9
         fgpp_score = max(0.0, min(1.0, fgpp_val))
 
