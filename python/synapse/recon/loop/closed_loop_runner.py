@@ -426,7 +426,7 @@ class ClosedLoopRunner:
                 x0, y0, x1, y1 = 0, 0, w, h
 
             ref = RefinementResult(
-                refined_acescg=rerendered[t],
+                refined_acescg=rerendered[t, y0:y1, x0:x1].copy(),
                 region=AnatomicalRegion.FULL_BODY,
                 fusion_method=FusionMethod.LAPLACIAN_FREQUENCY,
                 quality_score=1.0,
