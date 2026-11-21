@@ -369,7 +369,7 @@ class TestBackendTransport:
 
     def test_local_callable_is_available(self) -> None:
         """LocalCallableBackend.is_available() should return True."""
-        backend = LocalCallableBackend(pipeline_fn=lambda p, c: None)
+        backend = LocalCallableBackend(pipeline_fn=lambda p, c: None)  # type: ignore[arg-type,return-value]
         assert backend.is_available() is True
 
     def test_foundary_http_raises_on_connection_refused(self) -> None:

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import jsonschema
+import jsonschema  # type: ignore[import-untyped]
 import numpy as np
 import pydantic
 import pytest
@@ -403,9 +403,7 @@ class TestHypothesisJsonSchemaParity:
                     severity=0.5,
                     confidence=0.9,
                     category="mesh_crumple",
-                    description="Collinear edge detected",
-                    mesh_slot="mesh_0",
-                    center_3d=(0.0, 0.0, 0.0),
+                    center_3d=[0.0, 0.0, 0.0],
                     bounding_radius_m=0.1,
                     affected_vertices_count=10,
                 )

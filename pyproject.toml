@@ -91,6 +91,8 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
+mypy_path = ["python"]
+explicit_package_bases = true
 files = ["python/synapse", "tests", "scripts", "tools"]
 exclude = ["bazel-.*", ".*\\.runfiles", "\\.pytest_tmp", "tools/data-inspector"]
 
@@ -141,13 +143,16 @@ exclude = ["._*"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "E501", "F", "I", "UP", "B", "SIM", "RUF", "W", "PT", "S108", "S202", "S301", "S310", "S602", "S603"]
 ignore = [
+    "E501",
     "E712",
     "B007", "B009", "B010",
     "SIM102", "SIM105", "SIM108", "SIM117", "SIM118", "SIM300",
     "UP006", "UP007", "UP015", "UP035",
     "RUF001", "RUF002", "RUF003", "RUF005", "RUF015", "RUF022", "RUF043", "RUF046", "RUF059",
-    "E501", "W", "PT", "S108", "S301", "S310", "S602", "S603",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/*" = ["E402"]
+"scripts/*" = ["E402", "S603"]
+"tests/*" = ["S108", "S301", "S310", "S602", "S603", "PT004", "PT011", "PT012", "PT018"]
+"tools/*" = ["S310"]
+"python/synapse/*" = ["S310"]

@@ -38,17 +38,17 @@ def _gradient_patch(seed: int = 42) -> np.ndarray:
     return np.clip(patch, 0.0, 1.0)
 
 
-@pytest.fixture()
+@pytest.fixture
 def fusion() -> MultiModelRefineFusion:
     return MultiModelRefineFusion()
 
 
-@pytest.fixture()
+@pytest.fixture
 def two_candidates() -> list[np.ndarray]:
     return [_make_patch(seed=0, value=0.4), _make_patch(seed=1, value=0.6)]
 
 
-@pytest.fixture()
+@pytest.fixture
 def three_candidates() -> list[np.ndarray]:
     return [
         _make_patch(seed=10, value=0.3),
@@ -57,12 +57,12 @@ def three_candidates() -> list[np.ndarray]:
     ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def uniform_weights_2() -> np.ndarray:
     return np.array([0.5, 0.5], dtype=np.float32)
 
 
-@pytest.fixture()
+@pytest.fixture
 def weights_3() -> np.ndarray:
     return np.array([0.5, 0.3, 0.2], dtype=np.float32)
 
