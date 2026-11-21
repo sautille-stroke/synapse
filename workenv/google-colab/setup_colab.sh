@@ -34,9 +34,18 @@ sudo apt-get install -y libgl1 2>/dev/null || sudo apt-get install -y libgl1-mes
 # Optional: shallow-clone aether for native geometry compilation
 SYNAPSE_ROOT="$(pwd)"
 if [ ! -d "${SYNAPSE_ROOT}/../aether" ]; then
-  echo "[setup_colab] Cloning aether (shallow) for native _c_geometry build..."
-  git clone --depth 1 https://github.com/dervgen/aether.git "${SYNAPSE_ROOT}/../aether" 2>/dev/null || \
+  echo "[setup_colab] Cloning aether (shallow) for native geometry build..."
+  git clone --depth 1 https://github.com/sautille-stroke/aether.git "${SYNAPSE_ROOT}/../aether" 2>/dev/null || \
     echo "[setup_colab] WARNING: Could not clone aether. Native geometry build may not work."
+fi
+
+# Install Bazelisk if bazel/bazelisk not found (required for native kernel build)
+if ! command -v bazel &>/dev/null && ! command -v bazelisk &>/dev/null; then
+  echo "[setup_colab] Installing Bazelisk..."
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64"
+  curl -fsSL "${BAZELISK_URL}" -o /usr/local/bin/bazel
+  chmod +x /usr/local/bin/bazel
+  echo "[setup_colab] ✅ Bazelisk installed as /usr/local/bin/bazel"
 fi
 
 echo ""
@@ -64,10 +73,10 @@ python3 -m pip install --quiet \
     "huggingface_hub>=0.24.0" \
     "pybind11>=2.12.0"
 
-# Build and install native C++20 geometry kernel (_c_geometry)
-echo ">>> Building native _c_geometry extension kernel..."
-if python3 scripts/build_native.py; then
-    python3 -c "from synapse._c_geometry import validate_mesh_geometry; print('native _c_geometry OK')" || true
+# Build and install native C++20 geometry kernel (@aether//python:aether_geo)
+echo ">>> Building native aether_geo extension kernel..."
+if python3 scripts/build_native.py --output-dir python; then
+    python3 -c "from synapse.bridge.aether_bridge import require_aether_geo; require_aether_geo(); print('✅ aether_geo native extension OK')"
 else
     echo "⚠️ Native compilation skipped or failed; operating in pure Python Oracle geometry mode."
 fi
@@ -131,3 +140,4 @@ echo ""
 echo "======================================================================"
 echo "🎉 Colab Environment Setup Complete! Ready for experiments E1-E4."
 echo "======================================================================"
+
