@@ -100,7 +100,19 @@ def extract_colab_bundle(bundle_path: Path, extract_dir: Path) -> Path:
 
 
 def init_job_workspace(job_dir: Path, user: str, job_id: str, date_str: str) -> None:
-    """Initialize SSOT V2.0 job hierarchy under /dervgen/work/{user}/synapse/{date}/{job_id}."""
+    """Initialize SSOT V2.0 job hierarchy under /dervgen/work/{user}/synapse/{date}/{job_id}.
+
+    Raises:
+        ValueError: If job_dir path does not contain ``/dervgen/`` segment,
+            preventing accidental writes outside the designated workspace.
+    """
+    # Path guard: prevent polluting directories outside /dervgen/ workspace
+    if "/dervgen/" not in str(job_dir):
+        raise ValueError(
+            f"Job directory '{job_dir}' does not contain '/dervgen/' path segment. "
+            "All Colab outputs must reside under the SSOT V2.0 /dervgen/ workspace "
+            "to prevent polluting MyDrive root or other directories."
+        )
     (job_dir / "input").mkdir(parents=True, exist_ok=True)
     (job_dir / "output").mkdir(parents=True, exist_ok=True)
     (job_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
@@ -230,8 +242,8 @@ def _verify_e1_real_gpu(
     seq_track_a: FGPPSequence,
     checkpoint_dir: Path,
 ) -> dict[str, Any]:
-    """Verify E1 with real CUDA WanAdapter and diffusers pipeline."""
-    from synapse.adapters import VideoGenerationConfig, WanAdapter
+    """Verify E1 with real CUDA WanAdapter and DiffusersWanBackend pipeline."""
+    from synapse.adapters import DiffusersWanBackend, VideoGenerationConfig, WanAdapter
 
     model_id = os.environ.get("WAN_MODEL_PATH") or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
     weights_path = Path(model_id)
@@ -267,14 +279,20 @@ def _verify_e1_real_gpu(
     assert payload_b.control_tensor is not None
     assert payload_a.control_tensor is not None
 
-    # Actually run inference to verify GPU pipeline produces valid output
+    # Actually run inference via DiffusersWanBackend to verify real GPU pipeline
     try:
-        result_b = adapter.generate(payload_b, cfg)
-        assert result_b is not None, "adapter.generate() returned None for Track-B"
+        gpu_profile = detect_gpu_profile()
+        backend = DiffusersWanBackend(
+            model_id=model_id,
+            dtype=gpu_profile.get("dtype", "float16"),
+            enable_model_cpu_offload=gpu_profile.get("enable_model_cpu_offload", True),
+        )
+        result_b = backend.generate(payload_b, cfg)
+        assert result_b is not None, "DiffusersWanBackend.generate() returned None for Track-B"
         result_shape = list(result_b.frames_srgb_u8.shape)
     except Exception as exc:
         raise BackendUnavailableError(
-            f"WanAdapter.generate() failed on real GPU: {exc}",
+            f"DiffusersWanBackend.generate() failed on real GPU: {exc}",
             agent_fix_hint="Verify CUDA drivers, model weights, and GPU memory.",
         ) from exc
 
@@ -342,6 +360,16 @@ def _verify_e4_real_gpu(
 
         toy_module = _ToyAttnBlock().to(device)
         trainer.inject_lora(toy_module, target_patterns=["cross_attn"])
+
+        # Execute a real training step with gradient chain to verify E4 GPU
+        # pipeline end-to-end (not just checkpoint export)
+        dummy_latent = torch.randn(1, 16, 8, 8, device=device)
+        dummy_noise = torch.randn_like(dummy_latent)
+        train_batch = {"latent": dummy_latent, "noise": dummy_noise}
+        step_result = trainer.train_step(toy_module, train_batch, step=0)
+        assert "loss" in step_result, "train_step must return dict with 'loss'"
+        assert step_result["loss"] > 0.0, "train_step loss must be positive"
+
         trainer.export_checkpoint(toy_module, lora_dst)
     except (ImportError, Exception) as exc:
         # If trainer is unavailable or fails, honestly exit with code 50
@@ -510,7 +538,9 @@ def run_colab_suite(
             state.setdefault("completed", {})[exp] = res
             _persist_state(state_path, state)
             print(f"[CHECKPOINT SAVED] {exp} -> {state_path}")
-    except Exception:
+    except BaseException:
+        # Catch BaseException (not just Exception) to ensure checkpoint state
+        # is persisted on KeyboardInterrupt, SystemExit, and SIGTERM signals.
         _persist_state(state_path, state)
         raise
 
@@ -574,6 +604,16 @@ def main() -> int:
         default="auto",
         help="Execution mode: auto (detect GPU), mock (smoke CPU/MockVideoAdapter), real-gpu (require CUDA).",
     )
+    parser.add_argument(
+        "--auto-release",
+        action="store_true",
+        default=False,
+        help=(
+            "Automatically release GPU VRAM and disconnect Colab runtime "
+            "after all experiments complete successfully. Useful for unattended "
+            "batch runs to free GPU quota."
+        ),
+    )
     args = parser.parse_args()
 
     profile = detect_gpu_profile()
@@ -614,6 +654,23 @@ def main() -> int:
         if is_cloud_job:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")
         print(json.dumps(state, indent=2))
+
+        # Auto-release GPU VRAM and optionally disconnect Colab runtime
+        if args.auto_release:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    print("[auto-release] GPU VRAM cache cleared.")
+            except ImportError:
+                pass
+            try:
+                from google.colab import runtime as colab_runtime  # type: ignore[import-untyped]
+                print("[auto-release] Disconnecting Colab runtime...")
+                colab_runtime.unassign()
+            except (ImportError, Exception):
+                pass  # Not running in Colab or runtime API unavailable
+
         return 0
     except SynapseError as err:
         t_duration = time.time() - t_start

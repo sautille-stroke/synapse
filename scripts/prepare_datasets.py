@@ -220,6 +220,16 @@ def _export_fulgur_course102(
             bazel_env.setdefault(
                 "USE_BAZEL_VERSION", "9.3.1"
             )
+            # Check Bazel cache directory exists and is writable
+            bazel_cache = Path(
+                bazel_env.get("BAZEL_OUTPUT_USER_ROOT", "/var/cache/bazel")
+            )
+            if bazel_cache.exists() and not os.access(bazel_cache, os.W_OK):
+                logger.warning(
+                    "Bazel cache %s exists but is not writable; "
+                    "build may be slower without shared cache.",
+                    bazel_cache,
+                )
             subprocess.run(
                 ["bazel", "build", "//course:102-pbr-direct"],
                 cwd=str(fulgur_repo),
@@ -269,6 +279,7 @@ def _export_fulgur_course102(
             env=env,
             capture_output=True,
             text=True,
+            timeout=300,
         )
         if result.returncode != 0:
             sig = -result.returncode if result.returncode < 0 else result.returncode
@@ -284,6 +295,12 @@ def _export_fulgur_course102(
         logger.warning(
             "fulgur binary not found at %s; falling back to SoftwareRasterizer.",
             bin_path,
+        )
+        _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "fulgur course_102 export timed out after 300s; "
+            "falling back to SoftwareRasterizer.",
         )
         _export_software_rasterizer_fallback(out_dir, num_frames, width, height)
 
@@ -543,20 +560,20 @@ def _export_caelum_track_a_17f(
         out_file.close()
 
     # Enrich metadata.json with Track-A specific fields — honest provenance
+    # This function always uses the self-contained SoftwareRasterizer FGPP
+    # generator (not caelum-core path-tracing), so provenance must honestly
+    # reflect the actual rendering source regardless of whether the
+    # caelum-core repository directory exists on disk.
     meta_path = out_dir / "metadata.json"
     if meta_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        # Honestly mark as synthetic reference when caelum-core is not available
-        if caelum_repo.is_dir():
-            meta["generator"] = "caelum-core"
-            meta["render_track"] = "offline_pathtraced"
-            meta["provenance"] = "caelum_track_a_pathtraced"
-            meta["spp"] = 256
-            meta["max_bounces"] = 8
-        else:
-            meta["generator"] = "synapse.render_core.SoftwareRasterizer"
-            meta["render_track"] = "synthetic_track_a_reference"
-            meta["provenance"] = "synthetic_track_a_reference"
+        meta["generator"] = "synapse.render_core.SoftwareRasterizer"
+        meta["render_track"] = "synthetic_track_a_reference"
+        meta["provenance"] = "synthetic_track_a_reference"
+        meta["note"] = (
+            "Self-contained FGPP reference data; not rendered by caelum-core. "
+            "SPP/bounce metadata intentionally omitted to avoid false provenance."
+        )
         for f_dict in meta.get("frames", []):
             f_idx = f_dict.get("frame_index", 0)
             f_dict["beauty_gt_file"] = f"beauty_{f_idx:06d}.exr"
