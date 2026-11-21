@@ -595,7 +595,6 @@ def stage_from_remote_huggingface(
                 repo_type="dataset",
                 token=hf_token,
                 local_dir=str(target_root),
-                local_dir_use_symlinks=False,
             )
             downloaded_path = Path(downloaded_path)
         except Exception as e:

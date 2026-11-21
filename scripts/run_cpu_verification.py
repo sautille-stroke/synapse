@@ -121,9 +121,11 @@ def _check_manifest_sha256(dataset_dir: Path) -> dict[str, Any]:
         if not fname or not expected_sha:
             continue
         fpath = dataset_dir / fname
-        if not fpath.is_file():
-            continue
         result["checked"] += 1
+        if not fpath.is_file():
+            result["failed"] += 1
+            result["mismatches"].append(f"{fname} (missing)")
+            continue
         if _verify_sha256(fpath, expected_sha):
             result["passed"] += 1
         else:
@@ -474,16 +476,10 @@ def main() -> int:
         with tarfile.open(bundle_tar, "r:gz") as tar:
             tar.extractall(path=args.dataset_root, filter="data")
 
-    print("Loading Golden FGPP sequences from", args.dataset_root)
-    seq_b_17f = import_fgpp(dir_b_17f, lazy=False)
-    seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
-    seq_a_17f = import_fgpp(dir_a_17f, lazy=False)
-    assert isinstance(seq_b_17f, FGPPSequence)
-    assert isinstance(seq_b_97f, FGPPSequence)
-    assert isinstance(seq_a_17f, FGPPSequence)
-
-    # SHA-256 manifest verification of EXR frame files
+    # SHA-256 manifest verification of EXR frame files BEFORE decoding EXR bytes
+    # (fail-closed if checked == 0 or any file is tampered/missing -> exit code 20)
     sha_results: dict[str, dict[str, Any]] = {}
+    sha_checked_total = 0
     sha_failures_total = 0
     for label, ddir in [
         ("track_b_17f", dir_b_17f),
@@ -492,12 +488,21 @@ def main() -> int:
     ]:
         sha_res = _check_manifest_sha256(ddir)
         sha_results[label] = sha_res
-        sha_failures_total += sha_res["failed"]
+        sha_checked_total += int(sha_res["checked"])
+        sha_failures_total += int(sha_res["failed"])
         if sha_res["checked"] > 0:
             print(
                 f"  [SHA-256] {label}: {sha_res['passed']}/{sha_res['checked']} passed"
                 + (f", MISMATCHES: {sha_res['mismatches']}" if sha_res["failed"] else "")
             )
+
+    if sha_checked_total == 0:
+        print(
+            "ERROR: 0 EXR files had SHA-256 entries in metadata.json. "
+            "Re-run scripts/prepare_datasets.py to generate per-frame SHA-256 checksums.",
+            file=sys.stderr,
+        )
+        return 20  # Exit code 20: fail-closed when no checksums were verified
 
     if sha_failures_total > 0:
         print(
@@ -506,6 +511,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 20  # Exit code 20: input file SHA256 mismatch
+
+    print("Loading Golden FGPP sequences from", args.dataset_root)
+    seq_b_17f = import_fgpp(dir_b_17f, lazy=False)
+    seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
+    seq_a_17f = import_fgpp(dir_a_17f, lazy=False)
+    assert isinstance(seq_b_17f, FGPPSequence)
+    assert isinstance(seq_b_97f, FGPPSequence)
+    assert isinstance(seq_a_17f, FGPPSequence)
 
     print("[E1] Verifying 7-ch conditioning ablation & MockVideoAdapter ...")
     res_e1 = _verify_e1_conditioning_ablation(seq_b_17f, seq_a_17f)
@@ -526,6 +539,7 @@ def main() -> int:
         "environment": "ubuntu24_cpu_headless",
         "elapsed_sec": round(time.time() - t0, 3),
         "all_passed": True,
+        "sha256_checked": sha_checked_total,
         "sha256_verification": sha_results,
         "experiments": {
             "E1_fgpp_conditioning_ablation": res_e1,
