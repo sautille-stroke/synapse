@@ -125,6 +125,7 @@ class TestFvdVideoBridge:
             fvd_feature_distance(f1, f2)
         assert exc_info.value.exit_code == 10
 
+    @pytest.mark.slow
     def test_r3d18_unmocked_t4_feature_extraction(self) -> None:
         """Verify unmocked PyTorch 3D feature extraction handles fast T=4 and uint8 normalization."""
         import torch

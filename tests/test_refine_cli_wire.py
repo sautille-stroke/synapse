@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 # -------------------------------------------------------------------
 # 1. CLI smoke test
@@ -286,6 +287,7 @@ def test_pipeline_circuit_breaker_propagates() -> None:
     assert int(exc_info.value.exit_code) == 40
 
 
+@pytest.mark.slow
 def test_pipeline_no_candidates_dispatches_to_refiner() -> None:
     """Without candidates_per_roi, output patches must differ from input crop_acescg (not identity)."""
     from synapse.refine.pipeline import LocalRefinementPipeline

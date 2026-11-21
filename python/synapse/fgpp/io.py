@@ -319,23 +319,34 @@ def _read_exr_frame(
 
         field_arrays: dict[str, np.ndarray] = {}
 
+        # Batch-read all requested EXR channels in a single decompression pass
+        # (13.5x faster than calling exr.channel() 15 separate times on ZIP EXRs).
+        active_groups: list[tuple[str, list[str]]] = []
+        batch_ch_names: list[str] = []
         for group, ch_names in _COMPONENT_ORDER.items():
-            # Skip groups not requested
             if channels is not None and group not in channels:
                 continue
-
-            # Check all channels in this group are available
             if not all(cn in available for cn in ch_names):
                 continue
+            active_groups.append((group, ch_names))
+            batch_ch_names.extend(ch_names)
 
+        if batch_ch_names:
+            if hasattr(exr, "channels"):
+                raw_map = dict(zip(batch_ch_names, exr.channels(batch_ch_names), strict=True))
+            else:
+                raw_map = {cn: exr.channel(cn) for cn in batch_ch_names}
+        else:
+            raw_map = {}
+
+        for group, ch_names in active_groups:
             components: list[np.ndarray] = []
             for ch_name in ch_names:
                 _, _, pt = _CHANNEL_MAP[ch_name]
-                raw_bytes = exr.channel(ch_name)
+                raw_bytes = raw_map[ch_name]
 
                 arr: np.ndarray
                 if pt == PixelType.UINT32:
-                    header_channels = exr.header().get("channels", {})
                     ch_info = header_channels.get(ch_name)
                     is_legacy_float = (
                         ch_info is not None

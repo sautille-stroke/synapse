@@ -504,39 +504,63 @@ def _qem_decimate(
         return v.astype(np.float32), f.astype(np.int32)
 
     num_verts = len(v)
-    # Compute per-vertex quadric matrices (4x4 from face planes)
-    quadrics = [np.zeros((4, 4), dtype=np.float64) for _ in range(num_verts)]
+    num_faces = len(f)
 
-    for tri in f:
-        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
-        edge1 = v[b] - v[a]
-        edge2 = v[c] - v[a]
-        normal = np.cross(edge1, edge2)
-        n_len = np.linalg.norm(normal)
-        if n_len < 1e-15:
-            continue
-        normal /= n_len
-        d = -np.dot(normal, v[a])
-        plane = np.array([normal[0], normal[1], normal[2], d])
-        Q = np.outer(plane, plane)
-        quadrics[a] += Q
-        quadrics[b] += Q
-        quadrics[c] += Q
+    # Vectorized per-vertex symmetric 4x4 quadric accumulation (10 upper-tri floats/vert)
+    va_arr = v[f[:, 0]]
+    e1_arr = v[f[:, 1]] - va_arr
+    e2_arr = v[f[:, 2]] - va_arr
+    fn_arr = np.cross(e1_arr, e2_arr)
+    fn_len = np.linalg.norm(fn_arr, axis=1)
+    valid_fn = fn_len >= 1e-15
+    fn_unit = np.zeros_like(fn_arr)
+    fn_unit[valid_fn] = fn_arr[valid_fn] / fn_len[valid_fn, None]
+    d_arr = -np.einsum("ij,ij->i", fn_unit, va_arr)
+    d_arr[~valid_fn] = 0.0
+
+    # Symmetric 4x4 outer product terms: (a, b, c, d) -> 10 unique entries
+    pa, pb, pc, pd = fn_unit[:, 0], fn_unit[:, 1], fn_unit[:, 2], d_arr
+    q_arr = np.zeros((num_verts, 10), dtype=np.float64)
+    q_face = np.stack(
+        [
+            pa * pa,
+            pa * pb,
+            pa * pc,
+            pa * pd,
+            pb * pb,
+            pb * pc,
+            pb * pd,
+            pc * pc,
+            pc * pd,
+            pd * pd,
+        ],
+        axis=1,
+    )
+    for col in range(3):
+        np.add.at(q_arr, f[:, col], q_face)
+
+    # Pure-Python scalar arrays avoid per-element NumPy allocation overhead in the collapse loop
+    vx: list[float] = v[:, 0].tolist()
+    vy: list[float] = v[:, 1].tolist()
+    vz: list[float] = v[:, 2].tolist()
+    f0: list[int] = f[:, 0].tolist()
+    f1: list[int] = f[:, 1].tolist()
+    f2: list[int] = f[:, 2].tolist()
+    q_list: list[list[float]] = q_arr.tolist()
 
     # Build vertex -> incident faces adjacency and initial edges
-    alive_faces: set[int] = set(range(len(f)))
-    vertex_alias = list(range(num_verts))  # union-find for merged vertices
-    vert_to_faces: dict[int, set[int]] = defaultdict(set)
+    alive_faces: set[int] = set(range(num_faces))
+    vertex_alias = list(range(num_verts))
+    vert_to_faces: list[set[int]] = [set() for _ in range(num_verts)]
     edge_set: set[tuple[int, int]] = set()
-    for fi in alive_faces:
-        tri = f[fi]
-        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+    for fi in range(num_faces):
+        a, b, c = f0[fi], f1[fi], f2[fi]
         vert_to_faces[a].add(fi)
         vert_to_faces[b].add(fi)
         vert_to_faces[c].add(fi)
-        edge_set.add((min(a, b), max(a, b)))
-        edge_set.add((min(b, c), max(b, c)))
-        edge_set.add((min(c, a), max(c, a)))
+        edge_set.add((a, b) if a < b else (b, a))
+        edge_set.add((b, c) if b < c else (c, b))
+        edge_set.add((c, a) if c < a else (a, c))
 
     def _find(x: int) -> int:
         while vertex_alias[x] != x:
@@ -544,20 +568,48 @@ def _qem_decimate(
             x = vertex_alias[x]
         return x
 
+    def _edge_cost(a: int, b: int) -> float:
+        mx = 0.5 * (vx[a] + vx[b])
+        my = 0.5 * (vy[a] + vy[b])
+        mz = 0.5 * (vz[a] + vz[b])
+        qa = q_list[a]
+        qb = q_list[b]
+        q00 = qa[0] + qb[0]
+        q01 = qa[1] + qb[1]
+        q02 = qa[2] + qb[2]
+        q03 = qa[3] + qb[3]
+        q11 = qa[4] + qb[4]
+        q12 = qa[5] + qb[5]
+        q13 = qa[6] + qb[6]
+        q22 = qa[7] + qb[7]
+        q23 = qa[8] + qb[8]
+        q33 = qa[9] + qb[9]
+        return (
+            q00 * mx * mx
+            + 2.0 * q01 * mx * my
+            + 2.0 * q02 * mx * mz
+            + 2.0 * q03 * mx
+            + q11 * my * my
+            + 2.0 * q12 * my * mz
+            + 2.0 * q13 * my
+            + q22 * mz * mz
+            + 2.0 * q23 * mz
+            + q33
+        )
+
     def _is_boundary_vertex(vr: int) -> bool:
-        edge_counts: dict[tuple[int, int], int] = defaultdict(int)
+        edge_counts: dict[tuple[int, int], int] = {}
         for fi in vert_to_faces[vr]:
             if fi not in alive_faces:
                 continue
-            tri = f[fi]
-            for i in range(3):
-                u_i = _find(int(tri[i]))
-                w_i = _find(int(tri[(i + 1) % 3]))
+            r0, r1, r2 = _find(f0[fi]), _find(f1[fi]), _find(f2[fi])
+            for u_i, w_i in ((r0, r1), (r1, r2), (r2, r0)):
                 if u_i == vr or w_i == vr:
-                    edge_counts[(min(u_i, w_i), max(u_i, w_i))] += 1
+                    ek = (u_i, w_i) if u_i < w_i else (w_i, u_i)
+                    edge_counts[ek] = edge_counts.get(ek, 0) + 1
         return any(cnt == 1 for cnt in edge_counts.values())
 
-    def _link_and_normal_safe(va: int, vb: int, new_pos: np.ndarray) -> bool:
+    def _link_and_normal_safe(va: int, vb: int, nx_pos: float, ny_pos: float, nz_pos: float) -> bool:
         """Dey-Edelsbrunner Link Condition + boundary pinch + normal-flip guard."""
         inc_a = vert_to_faces[va]
         inc_b = vert_to_faces[vb]
@@ -568,17 +620,13 @@ def _qem_decimate(
 
         nb_a: set[int] = set()
         for fi in inc_a:
-            tri = f[fi]
-            for i in range(3):
-                r = _find(int(tri[i]))
+            for r in (_find(f0[fi]), _find(f1[fi]), _find(f2[fi])):
                 if r != va and r != vb:
                     nb_a.add(r)
 
         nb_b: set[int] = set()
         for fi in inc_b:
-            tri = f[fi]
-            for i in range(3):
-                r = _find(int(tri[i]))
+            for r in (_find(f0[fi]), _find(f1[fi]), _find(f2[fi])):
                 if r != va and r != vb:
                     nb_b.add(r)
 
@@ -587,8 +635,7 @@ def _qem_decimate(
         if len(common_nb) != n_shared:
             return False
 
-        # Reject collapsing an edge of a 3-vertex cap / tetrahedron (where an
-        # opposite vertex w has degree <= 3), which would fold two faces onto each other.
+        # Reject collapsing an edge of a 3-vertex cap / tetrahedron (degree <= 3)
         for w_nb in common_nb:
             if len(vert_to_faces[w_nb]) <= 3:
                 return False
@@ -597,57 +644,84 @@ def _qem_decimate(
         if n_shared == 2 and _is_boundary_vertex(va) and _is_boundary_vertex(vb):
             return False
 
-        # Duplicate triangle & normal-flip guard on all surviving incident faces
         surviving = (inc_a | inc_b) - shared_faces
         existing_triples: set[tuple[int, int, int]] = set()
         seen_triples: set[tuple[int, int, int]] = set()
         for w_nb in common_nb:
             for fi_w in vert_to_faces[w_nb]:
                 if fi_w in alive_faces and fi_w not in shared_faces and fi_w not in surviving:
-                    tw = f[fi_w]
-                    sw = sorted((_find(int(tw[0])), _find(int(tw[1])), _find(int(tw[2]))))
-                    existing_triples.add((sw[0], sw[1], sw[2]))
+                    a_w, b_w, c_w = _find(f0[fi_w]), _find(f1[fi_w]), _find(f2[fi_w])
+                    if a_w > b_w:
+                        a_w, b_w = b_w, a_w
+                    if b_w > c_w:
+                        b_w, c_w = c_w, b_w
+                    if a_w > b_w:
+                        a_w, b_w = b_w, a_w
+                    existing_triples.add((a_w, b_w, c_w))
+
         for fi in surviving:
-            tri = f[fi]
-            r0, r1, r2 = _find(int(tri[0])), _find(int(tri[1])), _find(int(tri[2]))
+            r0, r1, r2 = _find(f0[fi]), _find(f1[fi]), _find(f2[fi])
             nr0 = va if r0 == vb else r0
             nr1 = va if r1 == vb else r1
             nr2 = va if r2 == vb else r2
             if nr0 in (nr1, nr2) or nr1 == nr2:
                 return False
-            sk = sorted((nr0, nr1, nr2))
-            key = (sk[0], sk[1], sk[2])
+            a_k, b_k, c_k = nr0, nr1, nr2
+            if a_k > b_k:
+                a_k, b_k = b_k, a_k
+            if b_k > c_k:
+                b_k, c_k = c_k, b_k
+            if a_k > b_k:
+                a_k, b_k = b_k, a_k
+            key = (a_k, b_k, c_k)
             if key in seen_triples or key in existing_triples:
                 return False
             seen_triples.add(key)
 
-            p0_old, p1_old, p2_old = v[r0], v[r1], v[r2]
-            n_old = np.cross(p1_old - p0_old, p2_old - p0_old)
-            l_old = float(np.linalg.norm(n_old))
+            # Scalar cross products for normal-flip guard (zero NumPy overhead)
+            ox0, oy0, oz0 = vx[r0], vy[r0], vz[r0]
+            oe1x, oe1y, oe1z = vx[r1] - ox0, vy[r1] - oy0, vz[r1] - oz0
+            oe2x, oe2y, oe2z = vx[r2] - ox0, vy[r2] - oy0, vz[r2] - oz0
+            onx = oe1y * oe2z - oe1z * oe2y
+            ony = oe1z * oe2x - oe1x * oe2z
+            onz = oe1x * oe2y - oe1y * oe2x
+            l_old_sq = onx * onx + ony * ony + onz * onz
 
-            p0_new = new_pos if nr0 == va else v[nr0]
-            p1_new = new_pos if nr1 == va else v[nr1]
-            p2_new = new_pos if nr2 == va else v[nr2]
-            n_new = np.cross(p1_new - p0_new, p2_new - p0_new)
-            l_new = float(np.linalg.norm(n_new))
-            if l_new < 1e-12:
+            if nr0 == va:
+                px0, py0, pz0 = nx_pos, ny_pos, nz_pos
+            else:
+                px0, py0, pz0 = vx[nr0], vy[nr0], vz[nr0]
+            if nr1 == va:
+                px1, py1, pz1 = nx_pos, ny_pos, nz_pos
+            else:
+                px1, py1, pz1 = vx[nr1], vy[nr1], vz[nr1]
+            if nr2 == va:
+                px2, py2, pz2 = nx_pos, ny_pos, nz_pos
+            else:
+                px2, py2, pz2 = vx[nr2], vy[nr2], vz[nr2]
+
+            ne1x, ne1y, ne1z = px1 - px0, py1 - py0, pz1 - pz0
+            ne2x, ne2y, ne2z = px2 - px0, py2 - py0, pz2 - pz0
+            nnx = ne1y * ne2z - ne1z * ne2y
+            nny = ne1z * ne2x - ne1x * ne2z
+            nnz = ne1x * ne2y - ne1y * ne2x
+            l_new_sq = nnx * nnx + nny * nny + nnz * nnz
+            if l_new_sq < 1e-24:
                 return False
-            if l_old > 1e-12 and float(np.dot(n_old, n_new)) <= 0.1 * l_old * l_new:
-                return False
+            if l_old_sq > 1e-24:
+                dot = onx * nnx + ony * nny + onz * nnz
+                if dot <= 0.0 or (dot * dot) <= 0.01 * l_old_sq * l_new_sq:
+                    return False
 
         return True
 
-    # Compute edge costs
-    heap: list[tuple[float, int, int, int]] = []  # (cost, seq, v1, v2)
+    # Build initial edge heap
+    heap: list[tuple[float, int, int, int]] = []
     seq_counter = 0
-
     for a, b in edge_set:
-        Q_sum = quadrics[a] + quadrics[b]
-        midpoint = (v[a] + v[b]) * 0.5
-        v_hom = np.array([midpoint[0], midpoint[1], midpoint[2], 1.0])
-        cost = float(v_hom @ Q_sum @ v_hom)
-        heapq.heappush(heap, (cost, seq_counter, a, b))
+        heap.append((_edge_cost(a, b), seq_counter, a, b))
         seq_counter += 1
+    heapq.heapify(heap)
 
     current_face_count = len(alive_faces)
 
@@ -659,13 +733,18 @@ def _qem_decimate(
         if va == vb:
             continue
 
-        new_pos = (v[va] + v[vb]) * 0.5
-        if not _link_and_normal_safe(va, vb, new_pos):
+        nx_pos = 0.5 * (vx[va] + vx[vb])
+        ny_pos = 0.5 * (vy[va] + vy[vb])
+        nz_pos = 0.5 * (vz[va] + vz[vb])
+        if not _link_and_normal_safe(va, vb, nx_pos, ny_pos, nz_pos):
             continue
 
-        # Commit collapse: merge vb into va in O(deg) using vert_to_faces
-        v[va] = new_pos
-        quadrics[va] = quadrics[va] + quadrics[vb]
+        # Commit collapse: merge vb into va in O(deg)
+        vx[va], vy[va], vz[va] = nx_pos, ny_pos, nz_pos
+        qa = q_list[va]
+        qb = q_list[vb]
+        for qi in range(10):
+            qa[qi] += qb[qi]
         vertex_alias[vb] = va
 
         affected = list(vert_to_faces[va] | vert_to_faces[vb])
@@ -673,9 +752,8 @@ def _qem_decimate(
         for fi in affected:
             if fi not in alive_faces:
                 continue
-            tri = f[fi]
-            r0, r1, r2 = _find(int(tri[0])), _find(int(tri[1])), _find(int(tri[2]))
-            f[fi] = [r0, r1, r2]
+            r0, r1, r2 = _find(f0[fi]), _find(f1[fi]), _find(f2[fi])
+            f0[fi], f1[fi], f2[fi] = r0, r1, r2
             if r0 in (r1, r2) or r1 == r2:
                 alive_faces.discard(fi)
                 vert_to_faces[r0].discard(fi)
@@ -685,34 +763,30 @@ def _qem_decimate(
                 vert_to_faces[vb].discard(fi)
             else:
                 vert_to_faces[va].add(fi)
-                for nb in (r0, r1, r2):
-                    if nb != va:
-                        neighbors.add(nb)
+                if r0 != va:
+                    neighbors.add(r0)
+                if r1 != va:
+                    neighbors.add(r1)
+                if r2 != va:
+                    neighbors.add(r2)
         vert_to_faces[vb].clear()
         current_face_count = len(alive_faces)
 
-        # Push updated edges from va to its neighbors
         for nb in neighbors:
-            Q_sum = quadrics[va] + quadrics[nb]
-            mid = (v[va] + v[nb]) * 0.5
-            v_hom = np.array([mid[0], mid[1], mid[2], 1.0])
-            cost = float(v_hom @ Q_sum @ v_hom)
-            heapq.heappush(heap, (cost, seq_counter, va, nb))
+            heapq.heappush(heap, (_edge_cost(va, nb), seq_counter, va, nb))
             seq_counter += 1
 
     # Compact output
-    kept_faces = np.array([f[fi] for fi in sorted(alive_faces)], dtype=np.int64)
-    if len(kept_faces) == 0:
+    if not alive_faces:
         return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.int32)
 
-    # Resolve all aliases in faces
-    for fi in range(len(kept_faces)):
-        for i in range(3):
-            kept_faces[fi, i] = _find(int(kept_faces[fi, i]))
-
-    # Compact vertices
+    kept_faces = np.array(
+        [[_find(f0[fi]), _find(f1[fi]), _find(f2[fi])] for fi in sorted(alive_faces)],
+        dtype=np.int64,
+    )
+    v_out = np.column_stack([vx, vy, vz])
     unique_verts, inverse = np.unique(kept_faces.ravel(), return_inverse=True)
-    new_verts = v[unique_verts]
+    new_verts = v_out[unique_verts]
     new_faces = inverse.reshape(kept_faces.shape)
 
     return new_verts.astype(np.float32), new_faces.astype(np.int32)

@@ -34,7 +34,7 @@ flowchart LR
 
 1. **分镜布景**：在 `grand-studio` 宿主内通过 `scene-forge`、`film-studio` 与 `wgp` 完成 3D 代理白模（角色满足 $\ge 1500$ 顶点粗糙度下限）与运镜轨迹规划。
 2. **白模引导生成**：`fulgur` / `caelum-core` 导出 15 标量通道 **FGPP** OpenEXR 序列，`synapse.adapters` 驱动白盒主力（`Wan 2.1 14B` + ControlNeXt + 3D Causal VAE 软光流偏置）或黑盒商业 API（`Seedance 2.5` / `Kling 1.5` / `Veo`）生成时空受控视频。
-3. **精细 3D 资产反哺**：经 `foundary` 正交关键帧 3D 重建（`TRELLIS`/`Hunyuan3D`）破解白模反投悖论，由自包含逆向重建模块 `synapse.recon` 与 `csrc/geometry`（`@aether//geo` 委托，兼容 `synapse.bridge` 可选扩展）完成流形门禁、去光照、Quad 重拓扑与足底防滑 IK，并由 L2 美术在 `asset-forge` 限时精修（15 分钟硬熔断）。
+3. **精细 3D 资产反哺**：经 `foundary` 正交关键帧 3D 重建（`TRELLIS`/`Hunyuan3D`）破解白模反投悖论，由自包含逆向重建模块 `synapse.recon` 与 `@aether//geo` 原生几何加速桥（`synapse.bridge.aether_bridge`）完成流形门禁、去光照、Quad 重拓扑与足底防滑 IK，并由 L2 美术在 `asset-forge` 限时精修（15 分钟硬熔断）。
 4. **局部手术刀重渲染与风格对齐**：`synapse.style` 提取视频色温、曝光与球谐主光映射为 `StyleProfile` 驱动 3D 局部重渲；`synapse.composite` 构建 `3D ∪ SAM2` 运动膨胀掩膜，在 CIE LAB 与线性 ACEScg 空间完成无缝融合。
 5. **终审合成与评测闭环**：叠加高阶物理接触阴影/焦散，全流程由 `Synapse-Bench` 四维 16 项指标量化守门。
 
@@ -42,11 +42,11 @@ flowchart LR
 
 ## 3. 模块架构与当前就绪状态
 
-> 全系统权威架构设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，跨语言线格式与协议规约见 [docs/WIRE_CONTRACTS.md](docs/WIRE_CONTRACTS.md)，历史阶段审计见 [docs/archive/](docs/archive/README.md)，M1–M36 全量 152-PR 实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。在 **`Release v4.0.0`** 基线上，云端主力机 `ubuntu24` 独立实测 **`1,491+` 项 pytest 用例全通过**（`1,314` fast 单进程与并发全绿 + `169` slow 并发全绿 + 8 property contracts）、**`mypy --strict` 零错误**、`ruff` 零报错、全仓 Markdown 相对路径 **`0 broken links`**。
+> 全系统权威架构设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，跨语言线格式与协议规约见 [docs/WIRE_CONTRACTS.md](docs/WIRE_CONTRACTS.md)，历史阶段审计见 [docs/archive/](docs/archive/README.md)，全景实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。在 **`Release v4.2.0`** 基线上，云端主力机 `ubuntu24` 独立实测 **`1,560+` 项 pytest 用例全通过**、**`mypy --strict` 零错误**、`ruff` 零报错、`wire_guard --require-aether` 与 `import_dag_guard` 全绿、全仓 Markdown 相对路径 **`0 broken links`**。
 
-| 模块路径 | 核心职责 | 当前状态 (`Release v4.0.0`) | 交付与收口里程碑 |
+| 模块路径 | 核心职责 | 当前状态 (`Release v4.2.0`) | 交付与收口里程碑 |
 | :--- | :--- | :---: | :---: |
-| `csrc/geometry/` | Tier 0 现代 C++20 几何绑定与校验门禁（Bazel 9.3.1，委托 `@aether//geo` + `@aether//math` `DVec3`） | ✅ 全面就绪 | `PR-47..121`, `PR-133`, `PR-141`, `PR-149` |
+| `python/synapse/bridge/aether_bridge.py` | Layer 0 `@aether//geo`、`@aether//metrics`、`@aether//color` C++20 原生扩展统一桥接（支持 `scripts/build_native.py` 自动编译与纯 Python Oracle 零依赖回退） | ✅ 全面就绪 | `RFC-0071`, `PR-153`, `PR-174`, `PR-192` |
 | `python/synapse/render_core/` | 无状态底层纯 CPU 软光栅化、相机投影模型与基础几何生成原语 | ✅ 全面就绪 | `PR-48..114`, `PR-138`, `PR-150` |
 | `python/synapse/recon/` | Video-to-3D 几何逆向重建与可微闭环（RFC 0060/0062）：4D 追踪、6-DoF 运镜、流形拓扑、Quad 重拓扑、足底防滑 IK、去光照 | ✅ 全面就绪 | `SYN-RFC-0060/0062`, `PR-142`, `PR-148` |
 | `python/synapse/refine/` | 局部解剖智能修正与多模型融合（RFC 0061）：MANO/Face、多模型融合、512×512 瓦片与手术刀缝合 | ✅ 全面就绪 | `SYN-RFC-0061`, `PR-143`, `PR-148` |

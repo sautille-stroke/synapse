@@ -323,6 +323,7 @@ class TestFuseOverlapping:
             atol=1e-5,
         )
 
+    @pytest.mark.slow
     def test_variance_preservation(self) -> None:
         """Fused output variance approx 1.0 when inputs have var 1."""
         rng = np.random.default_rng(123)

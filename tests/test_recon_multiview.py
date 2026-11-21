@@ -14,6 +14,8 @@ from synapse.errors import ContractValidationError
 from synapse.recon.multiview import MultiViewInitializer
 from synapse.recon.types import CameraExtrinsics
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -131,6 +133,7 @@ def _make_sphere_masks(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMultiView12Views:
     """TSDF fusion with 12 ring cameras + sphere depth."""
 

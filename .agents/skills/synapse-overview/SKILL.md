@@ -1,7 +1,7 @@
 ---
 name: synapse-overview
 description: >-
-  Synapse（Layer 2）3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器执行核与跨模态往返评测基准（Synapse-Bench）全景指南。涵盖架构边界、全模块索引（含 3D 模型评估、csrc/geometry 自包含双轨几何核、synapse.recon 逆向反演）、跨仓协作契约（@aether//fgpp、fulgur、caelum-core、foundary）、CLI 确定性状态码（含 50）以及 ubuntu24 + Google Colab 双阶段实验工作流。在进入 synapse 开发、定位模块或执行测试前必读。
+  Synapse（Layer 2）3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器执行核与跨模态往返评测基准（Synapse-Bench）全景指南。涵盖架构边界、全模块索引（含 3D 模型评估、`aether_bridge` 双轨原生几何核、`synapse.recon` 逆向反演）、跨仓协作契约（@aether//fgpp、fulgur、caelum-core、foundary）、CLI 确定性状态码（含 50）以及 ubuntu24 + Google Colab 双阶段实验工作流。在进入 synapse 开发、定位模块或执行测试前必读。
 ---
 
 # Synapse 架构全景与开发指南
@@ -17,17 +17,17 @@ description: >-
 | **底层跨语言契约 SSOT** | `aether` (`@aether//fgpp` 已落地，`@aether//style` 规划中) | Layer 0 C++20 已落地 `@aether//fgpp`（15 标量 EXR 通道与 `fgpp.v1.0` `metadata.json`）；`@aether//style` 尚在规划中（当前 `StyleProfile` Schema 由 `synapse.style` 镜像维护）；`synapse` 在 Python 端严格镜像并通过跨语言黄金测试锁死。 |
 | **实时光栅 FGPP 生产端 (Track B)** | `fulgur` (`//engine/fgpp_export`) | 导出 15 通道 OpenEXR 序列 + `metadata.json`；当开启 `--export-fgpp` 时，`SampleApp` 自动挂载 `PickingPass` (`Editor_PickingEntityId`, `R32_UINT`) 生成非零 `Cryptomatte.ID`。 |
 | **离线光追 FGPP + 真值生产端 (Track A)** | `caelum-core` (`caelum.camera.fgpp_exporter`) | 基于 C++20/CUDA 离线路径追踪引擎，将 `AOVBuffer` 与 `Camera` 导出为 15 通道 `frame_XXXXXX.exr` (`render_track = "offline_pathtraced"`) + 配对路径追踪 `beauty_XXXXXX.exr` Ground Truth；在无卡/CI 纯 CPU 环境由 `prepare_datasets.py` 软光栅生成 `synthetic_track_a_reference` 回退。 |
-| **全仓自包含原生算法与逆向重建核** | `synapse` (`csrc/geometry/` + `synapse.recon`) | 现代 C++20 原生几何算子（Bazel 委托 `@aether//geo` / `@aether//math`，含 `scripts/build_native.py` 纯 C++ 编译分发）与 Python Ground Truth Oracle（`synapse.recon.geometry`）100% 双轨互验；实现 2-流形/水密闭合校验、简并面剔除、共面 2D SAT + Möller–Trumbore 自穿插检测、4D 点追踪、6-DoF 运镜解算、足底防滑零位移 IK 与本征去光照（RFC 0060）。 |
+| **全仓自包含原生算法与逆向重建核** | `synapse` (`aether_bridge` + `synapse.recon`) | Layer 0 `@aether//geo` / `@aether//math` 现代 C++20 原生几何算子（通过 `scripts/build_native.py` 委托编译安装 `aether_geo`/`aether_metrics`）与 Python Ground Truth Oracle（`synapse.recon.geometry`）100% 双轨互验；实现 2-流形/水密闭合校验、简并面剔除、共面 2D SAT + Möller–Trumbore 自穿插检测、4D 点追踪、6-DoF 运镜解算、足底防滑零位移 IK 与本征去光照（RFC 0060）。 |
 | **跨仓 FFI 与 DCC 精修委托** | `synapse.bridge` (`vg_bridge`, `foundary_client`, `hitl`) | 通过薄桥接层按需调用 `foundary`（`HttpFoundaryTransport` 对接 TRELLIS/SAM2）或通过 `SynapseReconBackend` 执行自包含原生几何逆向与重拓扑；内建 `MockVgBackend` 保证脱离外部环境时全套测试与门禁 100% 跑通；通过 `PersistentHitlLedger` 维护 15 分钟（900s）HITL 熔断账本。 |
 | **分布式调度与上层创作工坊** | `render-farm` / `foundary` / `grand-studio` | 服务端由 Go 承载；`synapse` 仅作为纯算法 SDK 与单次执行即退出的无状态 CLI Worker（遵循 Server-side Zero-Python 铁律）。 |
 
 ---
 
-## 二、核心模块地图（`python/synapse/` 与 `csrc/`）
+## 二、核心模块地图（`python/synapse/` 与 `tools/`）
 
 | 模块路径 | 核心类 / 函数 | 职责说明 |
 | :--- | :--- | :--- |
-| `csrc/geometry/` | `checkManifold`, `checkWatertight`, `checkDegenerateFaces`, `checkSelfIntersections` | 现代 C++20 原生几何拓扑算子核（Bazel 委托 `@aether//geo` / `@aether//math`，亦可通过 `scripts/build_native.py` 免 Bazel 直编），单线程极速毫秒级流形/闭合/自交校验。 |
+| `synapse.bridge.aether_bridge` | `get_aether_geo`, `get_aether_metrics`, `get_aether_color`, `has_aether_*` | Layer 0 `@aether//geo`、`@aether//metrics`、`@aether//color` C++20 原生扩展统一桥接，提供单线程毫秒级流形/闭合/自交/颜色/指标算子与纯 Python Oracle 自动回退。 |
 | `synapse.render_core` | `SoftwareRasterizer`, `CameraParams`, `procedural`, `pyramid` (Gaussian/Laplacian), `conditions` | 纯 CPU 离线软光栅核、相机投影数学模型、拉普拉斯多分辨率金字塔无损分解/重构算子、几何基元与评测环境基底。 |
 | `synapse.cli` | `_app`, `_bench`, `_fgpp`, `_generate`, `_inspect`, `_lora`, `_recon`, `_refine`, `_rsi`, `_worker`, `common` | 模块化解耦 CLI 领域分发核（11 个轻量模块），遵循确定性退出状态码与机器可读 `--json` 信封。 |
 | `synapse.recon` | `ReconPipeline`, `check_manifold`, `check_watertight`, `solve_camera_trajectory`, `solve_zero_slip_ik`, `delight` | Video-to-3D 几何逆向重建与资产蒸馏（RFC 0060）：4D 点追踪、6-DoF 运镜解算、流形闭合 Python Oracle、Quad 重拓扑、足底防滑零位移 IK 与本征去光照。 |
@@ -52,7 +52,7 @@ description: >-
 
 | 环境节点 | 角色定位 | 标准执行命令 |
 | :--- | :--- | :--- |
-| **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy` 静态门禁、`csrc/geometry` Bazel 构建与 C++/Python 双轨一致性校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (Tier-1 <= 30s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -n auto -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy python/synapse && /root/venv-synapse/bin/python tools/wire_guard.py --check && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd csrc/geometry && bazel test //... --config=linux)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py` |
+| **`ubuntu24` (P0 云端主力机)** | **全量/快速单测 (`pytest`)、`ruff`/`mypy --strict` 静态门禁、`@aether//geo` 双轨构建与 `data-inspector` Bazel 校验、黄金数据集打包与 E1–E5 无卡基线验证** | `# 快速回归测试 (Tier-1 <= 10s)`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -m 'not slow' -n auto -q"`<br><br>`# 全量 CI 与静态门禁`<br>`ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ tools/ && /root/venv-synapse/bin/mypy --strict python/synapse tests/ scripts/ tools/ && /root/venv-synapse/bin/python tools/wire_guard.py --check --require-aether && /root/venv-synapse/bin/python tools/import_dag_guard.py --check && (cd tools/data-inspector/native && bazel --output_user_root=/var/cache/bazel test //... --config=opt)"`<br><br>`# 原生 C++20 内核打包分发`<br>`python scripts/build_native.py --backend=auto` |
 | **Google Colab / win-dev (P1 GPU)** | **全量自动化测试（1,510+ 项单测回归）、重型视频大模型 (Wan 2.1) 推理与 E1–E4 闭环实验**<br>遵循 SSOT V2.0 铁律与主动释放资源机制（详见 `.agents/skills/synapse-colab-testing/SKILL.md` 与 `workenv/google-colab/`），使用 `synapse_colab_bundle_v1.tar.gz` 与 Google Drive 断点续跑 | `bash workenv/google-colab/setup_colab.sh && pytest tests/ -v && python scripts/colab_runner.py --dataset-dir /content/datasets/synapse --job-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all --mode auto --exp all && python3 -c "from google.colab import runtime; runtime.unassign()"` |
 | **macOS 本地开发机** | **代码主控与 Git Worktree 管理**<br>严禁在本地拉起视频大模型或跑全量重型套件 | `pytest tests/test_bench.py -k "test_scenario_create" -v` |
 

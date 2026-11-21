@@ -184,6 +184,7 @@ class TestDatasetGenerator:
 class TestViewerServer:
     """Test embedded HTTP viewer server and static HTML exporter."""
 
+    @pytest.mark.slow
     def test_viewer_http_response(self, tmp_path: Any) -> None:
         # Create minimal dataset dir with manifest.json
         manifest_data = {

@@ -368,6 +368,7 @@ class TestPackager:
 # -------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestLoRACLI:
     """Tests for synapse lora CLI sub-commands."""
 

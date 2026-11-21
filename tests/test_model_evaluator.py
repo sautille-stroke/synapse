@@ -151,6 +151,7 @@ class TestSingleModelEvaluation:
         assert res.gate_results["reference_required_not_evaluated"] is False
         assert res.gate_results["chamfer_mm"] is False
 
+    @pytest.mark.slow
     def test_with_reference_passes(self, tmp_path: Path) -> None:
         """Single model evaluated with matching reference mesh passes gate."""
         obj_file = _create_test_obj(tmp_path / "cube.obj")

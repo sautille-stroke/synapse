@@ -66,7 +66,7 @@ for sample in iter_feature_shards(shard_paths):
 ## 三、3D 建模智能质检 (`synapse.inspect`) 与 RSI 自演进飞轮 (`synapse.rsi`)
 
 1. **Tier 0 确定性几何拓扑硬门禁 (`synapse.inspect.geometry_gate`)**：
-   - 双轨架构互验：生产级 `csrc/geometry/` C++20 算子核（Bazel + `@aether//math`）与 `synapse.recon.geometry` Python Oracle；
+   - 双轨架构互验：Layer 0 `@aether//geo` C++20 算子核（`synapse.bridge.aether_bridge`）与 `synapse.recon.geometry` Python Oracle；
    - 包含流形（2-Manifold）、水密闭合（Watertight）、简并面（Degenerate Faces）、自相交（Self-Intersections）与浮动碎岛过滤；
    - `validate_mesh_geometry(vertices, faces, require_watertight=...)` 输出结构化 `GeometricValidationResult`，前置硬阻断劣化网格进入下游神经评测。
 2. **白模粗糙度防呆门禁（RFC 0044 §4.4）**：

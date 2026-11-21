@@ -814,6 +814,7 @@ class TestReconBackendInterop:
 class TestStagesReconPersistence:
     """PR-80: stages/recon persisted file can be read back with non-empty faces."""
 
+    @pytest.mark.slow
     def test_video_to_3d_invert_persists_full_mesh(self, tmp_path: Any) -> None:
         """handle_video_to_3d_invert saves vertices, faces (and uvs) to
         output .npz, and the persisted file can be read back with

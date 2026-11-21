@@ -20,6 +20,8 @@ from synapse.training.losses import (
     normal_reconstruction_loss,
 )
 
+pytestmark = pytest.mark.slow
+
 # -------------------------------------------------------------------
 # Loss function tests (numpy-only, no torch needed)
 # -------------------------------------------------------------------
@@ -1113,6 +1115,7 @@ class TestNormalReconstructionLoss4D5D:
         assert n_pred.grad is not None
 
 
+@pytest.mark.slow
 class TestPR186CheckpointAndLossHardening:
     """PR-186: Full LoRA/probe checkpoint parity, bf16 precision, 5D normal mask, replicate Sobel."""
 

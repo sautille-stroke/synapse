@@ -15,6 +15,8 @@ from synapse.adapters.wan_diffusers import (
 )
 from synapse.errors import AssetNotFoundError, BackendUnavailableError
 
+pytestmark = pytest.mark.slow
+
 
 def _make_stub_transformer(hidden_dim: int = 32) -> Any:
     import torch

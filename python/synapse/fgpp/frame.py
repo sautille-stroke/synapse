@@ -18,6 +18,8 @@ import numpy as np
 from synapse.errors import ContractValidationError
 from synapse.fgpp.schema import (
     DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
+    FGPP_BYTES_PER_PIXEL,
+    FGPP_NUM_CHANNELS,
     FGPP_SCHEMA_VERSION,
     is_physical_anchor_frame,
 )
@@ -396,6 +398,7 @@ class FGPPSequence:
             )
 
         metadata = {
+            "schema": FGPP_SCHEMA_VERSION,
             "schema_version": FGPP_SCHEMA_VERSION,
             "scene_id": self.scene_id,
             "fps": self.fps,
@@ -408,6 +411,17 @@ class FGPPSequence:
             "z_near_meters": min(z_nears) if z_nears else 0.1,
             "z_far_meters": max(z_fars) if z_fars else 1000.0,
             "anchor_interval_frames": DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
+            "coordinate_system": {
+                "handedness": "right",
+                "up": "+Y",
+                "forward": "-Z",
+                "units": "meters",
+            },
+            "matrix_layout": "column_major",
+            "channels": {
+                "count": FGPP_NUM_CHANNELS,
+                "bytes_per_pixel": FGPP_BYTES_PER_PIXEL,
+            },
             "frames": frame_records,
         }
 

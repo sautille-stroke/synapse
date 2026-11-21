@@ -753,69 +753,75 @@ def solve_camera_trajectory(
         pts_curr_v = pts_curr[valid_ids]
 
         if len(pts_prev_v) >= 8:
-            # Estimate fundamental matrix
-            F = _solve_fundamental_matrix(pts_prev_v, pts_curr_v)
-
-            # Essential matrix: E = K^T @ F @ K
-            E = K.T @ F @ K
-
-            # Decompose essential matrix
-            R_rel, t_rel = _essential_to_rotation_translation(
-                E,
-                pts_prev_v,
-                pts_curr_v,
-                K,
-            )
-
-            # Resolution-invariant parallax + H/F GRIC pure-rotation guard
-            is_pure_rotation = _is_pure_rotation_parallax_gric(
-                pts_prev_v, pts_curr_v, F, R_rel, K
-            )
-
-            if is_pure_rotation:
-                # Suppress translation for pure rotation to prevent drift
+            # Fast-path static/zero-motion frame pairs to avoid degenerate 8-point SVDs
+            med_motion = float(np.median(np.linalg.norm(pts_curr_v - pts_prev_v, axis=1)))
+            if med_motion < 1e-4:
+                R_rel = np.eye(3, dtype=np.float64)
                 t_rel = np.zeros(3, dtype=np.float64)
+            else:
+                # Estimate fundamental matrix
+                F = _solve_fundamental_matrix(pts_prev_v, pts_curr_v)
 
-            # Inter-step scale estimation matching shared global landmark track IDs
-            if not is_pure_rotation:
-                P1_rel = K @ np.eye(3, 4, dtype=np.float64)
-                T_rel_34 = np.hstack([R_rel, t_rel.reshape(3, 1)])
-                P2_rel = K @ T_rel_34
-                curr_3d_map: dict[int, np.ndarray] = {}
-                for local_idx in range(min(len(pts_prev_v), 30)):
-                    track_id = int(valid_ids[local_idx])
-                    x1 = np.array([pts_prev_v[local_idx, 0], pts_prev_v[local_idx, 1], 1.0])
-                    x2 = np.array([pts_curr_v[local_idx, 0], pts_curr_v[local_idx, 1], 1.0])
-                    A_tri = np.zeros((4, 4), dtype=np.float64)
-                    A_tri[0] = x1[0] * P1_rel[2] - P1_rel[0]
-                    A_tri[1] = x1[1] * P1_rel[2] - P1_rel[1]
-                    A_tri[2] = x2[0] * P2_rel[2] - P2_rel[0]
-                    A_tri[3] = x2[1] * P2_rel[2] - P2_rel[1]
-                    _, _, Vt_tri = np.linalg.svd(A_tri)
-                    pt4 = Vt_tri[-1]
-                    if abs(pt4[3]) > 1e-8:
-                        p3 = pt4[:3] / pt4[3]
-                        if p3[2] > 0.01:
-                            curr_3d_map[track_id] = p3
+                # Essential matrix: E = K^T @ F @ K
+                E = K.T @ F @ K
 
-                shared_ids = sorted(set(prev_3d_map.keys()) & set(curr_3d_map.keys()))
-                if len(shared_ids) >= 4:
-                    prev_arr = np.array([prev_3d_map[k] for k in shared_ids], dtype=np.float64)
-                    curr_arr = np.array([curr_3d_map[k] for k in shared_ids], dtype=np.float64)
-                    d_prev = np.linalg.norm(prev_arr[1:] - prev_arr[:-1], axis=1)
-                    d_curr = np.linalg.norm(curr_arr[1:] - curr_arr[:-1], axis=1)
-                    good = (d_prev > 1e-6) & (d_curr > 1e-6)
-                    if np.any(good):
-                        # Ratio prev/curr rescales unit-norm t_rel to match previous metric scale
-                        median_scale = float(np.median(d_prev[good] / d_curr[good]))
-                        if 0.2 < median_scale < 5.0:
-                            t_rel *= median_scale
-                            curr_3d_map = {k: v * median_scale for k, v in curr_3d_map.items()}
-                if curr_3d_map:
-                    # Transform landmarks into current frame coordinates for step t+1
-                    prev_3d_map = {
-                        k: R_rel @ p + t_rel for k, p in curr_3d_map.items()
-                    }
+                # Decompose essential matrix
+                R_rel, t_rel = _essential_to_rotation_translation(
+                    E,
+                    pts_prev_v,
+                    pts_curr_v,
+                    K,
+                )
+
+                # Resolution-invariant parallax + H/F GRIC pure-rotation guard
+                is_pure_rotation = _is_pure_rotation_parallax_gric(
+                    pts_prev_v, pts_curr_v, F, R_rel, K
+                )
+
+                if is_pure_rotation:
+                    # Suppress translation for pure rotation to prevent drift
+                    t_rel = np.zeros(3, dtype=np.float64)
+
+                # Inter-step scale estimation matching shared global landmark track IDs
+                if not is_pure_rotation:
+                    P1_rel = K @ np.eye(3, 4, dtype=np.float64)
+                    T_rel_34 = np.hstack([R_rel, t_rel.reshape(3, 1)])
+                    P2_rel = K @ T_rel_34
+                    curr_3d_map: dict[int, np.ndarray] = {}
+                    for local_idx in range(min(len(pts_prev_v), 30)):
+                        track_id = int(valid_ids[local_idx])
+                        x1 = np.array([pts_prev_v[local_idx, 0], pts_prev_v[local_idx, 1], 1.0])
+                        x2 = np.array([pts_curr_v[local_idx, 0], pts_curr_v[local_idx, 1], 1.0])
+                        A_tri = np.zeros((4, 4), dtype=np.float64)
+                        A_tri[0] = x1[0] * P1_rel[2] - P1_rel[0]
+                        A_tri[1] = x1[1] * P1_rel[2] - P1_rel[1]
+                        A_tri[2] = x2[0] * P2_rel[2] - P2_rel[0]
+                        A_tri[3] = x2[1] * P2_rel[2] - P2_rel[1]
+                        _, _, Vt_tri = np.linalg.svd(A_tri)
+                        pt4 = Vt_tri[-1]
+                        if abs(pt4[3]) > 1e-8:
+                            p3 = pt4[:3] / pt4[3]
+                            if p3[2] > 0.01:
+                                curr_3d_map[track_id] = p3
+
+                    shared_ids = sorted(set(prev_3d_map.keys()) & set(curr_3d_map.keys()))
+                    if len(shared_ids) >= 4:
+                        prev_arr = np.array([prev_3d_map[k] for k in shared_ids], dtype=np.float64)
+                        curr_arr = np.array([curr_3d_map[k] for k in shared_ids], dtype=np.float64)
+                        d_prev = np.linalg.norm(prev_arr[1:] - prev_arr[:-1], axis=1)
+                        d_curr = np.linalg.norm(curr_arr[1:] - curr_arr[:-1], axis=1)
+                        good = (d_prev > 1e-6) & (d_curr > 1e-6)
+                        if np.any(good):
+                            # Ratio prev/curr rescales unit-norm t_rel to match previous metric scale
+                            median_scale = float(np.median(d_prev[good] / d_curr[good]))
+                            if 0.2 < median_scale < 5.0:
+                                t_rel *= median_scale
+                                curr_3d_map = {k: v * median_scale for k, v in curr_3d_map.items()}
+                    if curr_3d_map:
+                        # Transform landmarks into current frame coordinates for step t+1
+                        prev_3d_map = {
+                            k: R_rel @ p + t_rel for k, p in curr_3d_map.items()
+                        }
         else:
             # Not enough points — assume identity relative pose
             R_rel = np.eye(3, dtype=np.float64)
