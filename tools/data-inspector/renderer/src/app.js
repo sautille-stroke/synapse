@@ -349,6 +349,17 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
       }
     }
 
+    // Show/hide tab-specific panels (timeline for animation/video, metrics for comparison).
+    const timelineEl = document.getElementById('timeline-controls');
+    if (timelineEl) {
+      timelineEl.style.display =
+        (currentView === 'animation' || currentView === 'video') ? 'flex' : 'none';
+    }
+    const cmpEl = document.getElementById('comparison-metrics');
+    if (cmpEl) {
+      cmpEl.style.display = currentView === 'comparison' ? 'block' : 'none';
+    }
+
     // Notify native process of tab switch.
     if (nativeRunning && window.inspectorAPI) {
       window.inspectorAPI.nativeSendCommand({

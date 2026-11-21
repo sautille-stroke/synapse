@@ -76,6 +76,7 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width,
   hdr->fps.store(0.0f, std::memory_order_relaxed);
   hdr->deltaTime.store(0.0f, std::memory_order_relaxed);
   hdr->debugView.store(0u, std::memory_order_relaxed);
+  hdr->generation.store(m_generation, std::memory_order_release);
 
   return true;
 }
@@ -182,6 +183,7 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
   hdr->fps.store(0.0f, std::memory_order_relaxed);
   hdr->deltaTime.store(0.0f, std::memory_order_relaxed);
   hdr->debugView.store(0u, std::memory_order_relaxed);
+  hdr->generation.store(m_generation, std::memory_order_release);
 
   return true;
 }
@@ -262,9 +264,10 @@ uint64_t InspectorShmServer::sequenceNumber() const noexcept {
 }
 
 void InspectorShmServer::bumpGeneration() noexcept {
+  ++m_generation;
   if (!m_shm.isValid()) return;
   auto* hdr = m_shm.as<InspectorShmHeader>(0);
-  hdr->generation.fetch_add(1u, std::memory_order_release);
+  hdr->generation.store(m_generation, std::memory_order_release);
 }
 
 }  // namespace synapse::inspector

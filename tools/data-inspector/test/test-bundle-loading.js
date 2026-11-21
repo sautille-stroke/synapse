@@ -759,6 +759,72 @@ test('InspectorProcessManager has exportScreenshot method', () => {
   assert.strictEqual(typeof mgr2.exportScreenshot, 'function');
 });
 
+// ── Section: PR-191 4-Tab DOM, seek_frame, roughness_metallic, 3-Resize Gen ──
+
+test('validateNativeCommand accepts seek_frame and roughness_metallic', () => {
+  const seekOk = validateNativeCommand({ type: 'seek_frame', frame: 12 });
+  assert.strictEqual(seekOk.ok, true);
+  assert.strictEqual(seekOk.command.frame, 12);
+  assert.strictEqual(validateNativeCommand({ type: 'seek_frame', frame: -1 }).ok, false);
+
+  const rmOk = validateNativeCommand({ type: 'set_debug_view', mode: 'roughness_metallic' });
+  assert.strictEqual(rmOk.ok, true);
+  assert.strictEqual(rmOk.command.mode, 'roughness_metallic');
+});
+
+test('index.html contains timeline-controls, comparison-metrics, screenshot, and R/M mode', () => {
+  const html = fs.readFileSync(
+    path.join(__dirname, '..', 'renderer', 'index.html'),
+    'utf8',
+  );
+  assert.ok(html.includes('id="timeline-controls"'), 'Missing #timeline-controls');
+  assert.ok(html.includes('id="comparison-metrics"'), 'Missing #comparison-metrics');
+  assert.ok(html.includes('id="btn-export-screenshot"'), 'Missing #btn-export-screenshot');
+  assert.ok(html.includes('data-mode="roughness_metallic"'), 'Missing roughness_metallic button');
+});
+
+test('ShmFrameReader tracks 3 consecutive resize generation increments without freezing', () => {
+  const tmpDir = makeTempDir('3-resizes');
+  const shmFile = path.join(tmpDir, 'frame.shm');
+  const writeShmFrame = (w, h, gen, seq) => {
+    const total = HEADER_SIZE + w * h * 4 * SHM_BUFFER_COUNT;
+    const buf = Buffer.alloc(total);
+    buf.writeUInt32LE(INSPECTOR_SHM_MAGIC, 0);
+    buf.writeUInt32LE(INSPECTOR_SHM_VERSION, 4);
+    buf.writeUInt32LE(w, 8);
+    buf.writeUInt32LE(h, 12);
+    buf.writeUInt32LE(0, 16);
+    buf.writeUInt32LE(SHM_BUFFER_COUNT, 20);
+    buf.writeBigUInt64LE(BigInt(seq), 24);
+    buf.writeUInt32LE(gen, OFF_GENERATION);
+    buf.fill(gen * 40, HEADER_SIZE, HEADER_SIZE + w * h * 4);
+    fs.writeFileSync(shmFile, buf);
+  };
+
+  try {
+    writeShmFrame(16, 16, 0, 2);
+    const reader = new ShmFrameReader(shmFile);
+    try {
+      const f0 = reader.pollOnce();
+      assert.ok(f0 && f0.header.generation === 0 && f0.header.width === 16);
+
+      // 3 consecutive resizes each reset frameReady to 2 but increment generation 1 -> 2 -> 3
+      for (const [gen, w, h] of [[1, 24, 24], [2, 32, 20], [3, 40, 30]]) {
+        writeShmFrame(w, h, gen, 2);
+        const f = reader.pollOnce();
+        assert.ok(f, `Resize gen=${gen} must not freeze ShmFrameReader`);
+        assert.strictEqual(f.header.generation, gen);
+        assert.strictEqual(f.header.width, w);
+        assert.strictEqual(f.header.height, h);
+      }
+    } finally {
+      reader.close();
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 // ─── Summary ─────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

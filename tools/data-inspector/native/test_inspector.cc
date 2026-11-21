@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <aether/fs/file_utils.h>
+#include <aether/fs/file_utils.h>
 #include <aether/fs/filesystem.h>
 
 #include <chrono>
@@ -1000,4 +1001,46 @@ TEST(InspectorApp, DegeneratePolygonMeshes) {
   ASSERT_TRUE(app.init());
   app.renderFrame(0.016f);
   (void)aether::fs::removeAll(bundleDir);
+}
+
+TEST(InspectorApp, ConsecutiveResizesStrictlyIncrementGeneration) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-3-resizes";
+  cfg.width = 32;
+  cfg.height = 32;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+  EXPECT_EQ(app.shmServer().generation(), 0u);
+
+  ASSERT_TRUE(app.resizeViewport(64, 48));
+  EXPECT_EQ(app.shmServer().generation(), 1u);
+
+  ASSERT_TRUE(app.resizeViewport(96, 64));
+  EXPECT_EQ(app.shmServer().generation(), 2u);
+
+  ASSERT_TRUE(app.resizeViewport(128, 72));
+  EXPECT_EQ(app.shmServer().generation(), 3u);
+
+  app.renderFrame(0.016f);
+  EXPECT_NE(app.shmServer().frontBuffer(), nullptr);
+}
+
+TEST(InspectorApp, SeekFrameAndRoughnessMetallicMode) {
+  InspectorConfig cfg;
+  cfg.shmName = "/test-insp-seek-rm";
+  cfg.width = 32;
+  cfg.height = 32;
+  cfg.headless = true;
+
+  InspectorApp app(cfg);
+  ASSERT_TRUE(app.init());
+
+  app.handleCommand(R"({"type":"seek_frame","frame":42})");
+  EXPECT_EQ(app.currentFrame(), 42u);
+
+  app.handleCommand(R"({"type":"set_debug_view","mode":"roughness_metallic"})");
+  EXPECT_EQ(app.debugViewMode(), DebugViewMode::kRoughnessMetallic);
+  app.renderFrame(0.016f);
 }

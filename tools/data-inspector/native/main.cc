@@ -98,8 +98,9 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (config.width == 0 || config.height == 0 || config.width > 7680 ||
-      config.height > 4320) {
+  if (config.width == 0 || config.height == 0 ||
+      config.width > synapse::inspector::kMaxDimension ||
+      config.height > synapse::inspector::kMaxDimension) {
     std::cerr << "[inspector] Resolution out of range: " << config.width << "x"
               << config.height << "\n";
     return 1;

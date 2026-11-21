@@ -19,6 +19,7 @@ const ALLOWED_COMMAND_TYPES = new Set([
   'set_entity_visible',
   'load_bundle',
   'select_tab',
+  'seek_frame',
   'resize',
   'quit',
 ]);
@@ -35,6 +36,7 @@ const ALLOWED_DEBUG_MODES = new Set([
   'depth',
   'albedo',
   'motion',
+  'roughness_metallic',
   'cryptomatte',
   'rgb',
 ]);
@@ -109,6 +111,13 @@ function validateNativeCommand(cmd) {
         return { ok: false, error: `Invalid tab: '${String(cmd.tab)}'` };
       }
       return { ok: true, command: { type: 'select_tab', tab: cmd.tab } };
+    }
+    case 'seek_frame': {
+      if (typeof cmd.frame !== 'number' || !Number.isInteger(cmd.frame) ||
+          cmd.frame < 0 || cmd.frame > 1000000) {
+        return { ok: false, error: 'seek_frame frame must be an integer in [0, 1000000]' };
+      }
+      return { ok: true, command: { type: 'seek_frame', frame: cmd.frame } };
     }
     case 'resize': {
       if (typeof cmd.width !== 'number' || typeof cmd.height !== 'number' ||
