@@ -1,6 +1,8 @@
 # Synapse Wire Contracts & Interop Specifications (SSOT)
 
 > 本文件为 Synapse 与上游渲染引擎（`fulgur`, `caelum-core`）、下游调度农场（`render-farm`, `narrative-rail`）及基础库（`@aether`）交互的**跨语言唯一事实源（Canonical Wire SSOT）**。
+>
+> **对齐版本**：FGPP v1.0 — `@aether//fgpp`（`aether/fgpp/include/aether/fgpp/fgpp_types.h`）
 
 ---
 
@@ -20,14 +22,15 @@ FGPP（Forward-Guided Production Package）是 3D CG 渲染引擎导出供神经
 | `DirectRadiance.B` | 未色调映射直接光蓝分量 | `HALF` (float16) | $[0.0, 65504.0]$ | 2 B | 0.0 |
 | `DirectRadiance.G` | 未色调映射直接光绿分量 | `HALF` (float16) | $[0.0, 65504.0]$ | 2 B | 0.0 |
 | `DirectRadiance.R` | 未色调映射直接光红分量 | `HALF` (float16) | $[0.0, 65504.0]$ | 2 B | 0.0 |
-| `MotionVector.X` | 屏幕空间光流/运动增量 X | `FLOAT` (float32) | $[-W, +W]$（像素） | 4 B | 0.0 |
-| `MotionVector.Y` | 屏幕空间光流/运动增量 Y | `FLOAT` (float32) | $[-H, +H]$（像素） | 4 B | 0.0 |
-| `RoughnessMetallic.B` | 预留几何曲率/环境遮挡 | `HALF` (float16) | $[0.0, 1.0]$ | 2 B | 0.0 |
-| `RoughnessMetallic.G` | 表面微平面粗糙度 (Roughness) | `HALF` (float16) | $[0.04, 1.0]$ | 2 B | 0.5 |
-| `RoughnessMetallic.R` | 金属度 (Metallic) | `HALF` (float16) | $[0.0, 1.0]$ | 2 B | 0.0 |
+| `MotionVector.X` | 屏幕空间光流/运动增量 X | `HALF` (float16) | $[-W, +W]$（像素） | 2 B | 0.0 |
+| `MotionVector.Y` | 屏幕空间光流/运动增量 Y | `HALF` (float16) | $[-H, +H]$（像素） | 2 B | 0.0 |
+| `RoughnessMetallic.G` | 金属度 (Metallic) | `HALF` (float16) | $[0.0, 1.0]$ | 2 B | 0.0 |
+| `RoughnessMetallic.R` | 表面微平面粗糙度 (Roughness) | `HALF` (float16) | $[0.04, 1.0]$ | 2 B | 0.5 |
 | `WorldNormal.X` | 世界空间单位法线 X 分量 | `HALF` (float16) | $[-1.0, 1.0]$ | 2 B | 0.0 |
 | `WorldNormal.Y` | 世界空间单位法线 Y 分量 | `HALF` (float16) | $[-1.0, 1.0]$ | 2 B | 1.0 |
 | `WorldNormal.Z` | 世界空间单位法线 Z 分量 | `HALF` (float16) | $[-1.0, 1.0]$ | 2 B | 0.0 |
+
+> **合计**：13×HALF (26 B) + 1×FLOAT (4 B) + 1×UINT32 (4 B) = **15 通道 / 34 B/px**
 
 > **关键铁律**：
 > 1. `Cryptomatte.ID` 必须以无符号 32 位整型存储，**严禁使用任何有损插值或双线性滤波**。
@@ -42,7 +45,7 @@ FGPP（Forward-Guided Production Package）是 3D CG 渲染引擎导出供神经
 - 偏心主点恢复关系：
   $$\begin{aligned}
   c_x &= \frac{1.0 - p_{02}}{2} \cdot W \\
-  c_y &= \frac{p_{12} + 1.0}{2} \cdot H
+  c_y &= \frac{1.0 + p_{12}}{2} \cdot H
   \end{aligned}$$
 - 旋转子矩阵 $\mathbf{R} \in \mathrm{SO}(3)$ 必须满足：$\det(\mathbf{R}) = 1.0 \pm 10^{-4}$，且 $\mathbf{R}^T \mathbf{R} = \mathbf{I}$。
 
@@ -54,18 +57,17 @@ FGPP（Forward-Guided Production Package）是 3D CG 渲染引擎导出供神经
 
 ```text
 <job_dir>/
-  ├── job.json                # Job 阶段编排与硬件预算声明
+  ├── bundle_manifest.json    # RFC 0039 阶段编排与硬件预算声明 (synapse.job_bundle.v1.0)
   ├── fgpp/                   # 输入多通道 FGPP 序列
-  │   ├── frame_0000.exr
-  │   ├── frame_0001.exr
+  │   ├── frame_000000.exr
+  │   ├── frame_000001.exr
   │   └── metadata.json
   ├── checkpoints/            # LoRA 适配器权重与 Manifest
   │   ├── lora_manifest.json
   │   └── weights.safetensors
-  ├── output/                 # 单次运行产物与评测日志
-  │   ├── generated.mp4
-  │   └── report.json
-  └── job_completed.flag      # 退出完成标记
+  └── output/                 # 单次运行产物与评测日志
+      ├── generated.mp4
+      └── report.json
 ```
 
 ### 2.2 统一确定性退出状态码
