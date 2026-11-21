@@ -176,16 +176,17 @@ class CameraConvention:
         if abs(p32) < 1e-8:
             return CameraConvention.ORTHOGRAPHIC
 
-        # Fulgur infinite reversed-Z: p22 == 0, p32 == -1, p23 == z_near
+        # Fulgur infinite reversed-Z: p22 == 0, p32 == -1, p23 == z_near > 0
         if abs(p22) < 1e-8 and abs(p32 + 1.0) < 1e-6 and p23 > 0:
             return CameraConvention.FULGUR_INF_REVERSED_Z
 
-        # Vulkan RH_ZO [0,1]: p22 = -far/(far-near), p23 = -(far*near)/(far-near)
-        # For standard perspective: p32 == -1, and 0 < -p22 < 1
-        if abs(p32 + 1.0) < 1e-6 and p22 < 0.0 and p22 > -1.0 - 1e-6:
+        # Vulkan RH_ZO [0,1]: p22 = -far/(far-near) < 0, p23 = -(far*near)/(far-near) < 0
+        # p32 == -1, and -1 < p22 < 0
+        if abs(p32 + 1.0) < 1e-6 and p22 < 0.0 and p22 > -1.0 - 1e-6 and p23 < 0.0:
             return CameraConvention.VULKAN_RH_ZO
 
-        # OpenGL [-1,1]: p22 = -(far+near)/(far-near), p32 == -1
+        # OpenGL [-1,1]: p22 = -(far+near)/(far-near) ≈ -1 (or < -1), p32 == -1
+        # p23 = -2*far*near/(far-near) < 0
         if abs(p32 + 1.0) < 1e-6:
             return CameraConvention.OPENGL
 
@@ -232,8 +233,15 @@ def _validate_view_matrix_so3(view_row: np.ndarray, frame_id: int | str) -> None
     if view_row.shape != (4, 4):
         return  # Skip validation for non-4x4 matrices
 
+    # Block NaN/Inf matrices before any numeric checks
+    if not np.all(np.isfinite(view_row)):
+        raise ContractValidationError(
+            f"Frame {frame_id}: view_matrix contains NaN or Inf values.",
+            agent_fix_hint="Ensure all view_matrix elements are finite numbers.",
+        )
+
     # Validate bottom row [0, 0, 0, 1]
-    if not np.allclose(view_row[3], [0.0, 0.0, 0.0, 1.0], atol=1e-4):
+    if not np.allclose(view_row[3], [0.0, 0.0, 0.0, 1.0], atol=1e-5):
         raise ContractValidationError(
             f"Frame {frame_id}: bottom row of view_matrix {view_row[3]} deviates from [0, 0, 0, 1].",
             agent_fix_hint="Ensure view_matrix has homogeneous last row [0, 0, 0, 1].",
@@ -242,16 +250,16 @@ def _validate_view_matrix_so3(view_row: np.ndarray, frame_id: int | str) -> None
     # Validate rotation determinant and orthogonality
     R = view_row[:3, :3]
     det = float(np.linalg.det(R))
-    if abs(det - 1.0) > 1e-4:
+    if abs(det - 1.0) > 1e-5:
         raise ContractValidationError(
-            f"Frame {frame_id}: rotation determinant {det:.6f} deviates from 1.0 by more than 1e-4.",
+            f"Frame {frame_id}: rotation determinant {det:.6f} deviates from 1.0 by more than 1e-5.",
             agent_fix_hint="Ensure camera rotation is a proper orthogonal matrix with det(R) = +1.0.",
         )
 
     ortho_err = float(np.linalg.norm(R.T @ R - np.eye(3)))
-    if ortho_err > 1e-4:
+    if ortho_err > 1e-5:
         raise ContractValidationError(
-            f"Frame {frame_id}: rotation matrix orthogonality error ||R^T R - I||_F = {ortho_err:.6e} > 1e-4.",
+            f"Frame {frame_id}: rotation matrix orthogonality error ||R^T R - I||_F = {ortho_err:.6e} > 1e-5.",
             agent_fix_hint="Ensure camera rotation matrix R satisfies R^T R = I.",
         )
 
@@ -383,7 +391,7 @@ class FGPPSequence:
         }
 
         path = output_dir / "metadata.json"
-        path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        path.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding="utf-8")
         return path
 
     @classmethod
@@ -392,8 +400,8 @@ class FGPPSequence:
 
         Converts ``_col_major`` 16-element arrays back to row-major
         NumPy 4×4 matrices (``reshape((4,4)).T``).  Validates that the
-        rotation sub-matrix has ``|det(R) - 1| < 1e-4``, orthogonality error
-        ``||R^T R - I||_F <= 1e-4``, and homogeneous last row ``[0, 0, 0, 1]``.
+        rotation sub-matrix has ``|det(R) - 1| < 1e-5``, orthogonality error
+        ``||R^T R - I||_F <= 1e-5``, and homogeneous last row ``[0, 0, 0, 1]``.
         """
         input_dir = Path(input_dir)
         meta_path = input_dir / "metadata.json"
@@ -451,7 +459,7 @@ class FGPPSequence:
                     if width > 0:
                         cx = (1.0 - p02) * float(width) / 2.0
                     if height > 0:
-                        cy = (1.0 - p12) * float(height) / 2.0
+                        cy = (1.0 + p12) * float(height) / 2.0
 
                     # Near and far reconstruction based on convention
                     if convention == CameraConvention.FULGUR_INF_REVERSED_Z:

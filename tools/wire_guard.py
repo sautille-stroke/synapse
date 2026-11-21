@@ -289,6 +289,14 @@ _SCHEMA_FILES: dict[str, dict[str, str]] = {
         "expected_version_field": "schema_version",
         "expected_version_value": "synapse.bundle.v1.0",
     },
+    "fgpp.v1.0.schema.json": {
+        "expected_version_field": "schema_version",
+        "expected_version_value": "fgpp.v1.0",
+    },
+    "style_profile.v2.0.0.schema.json": {
+        "expected_version_field": "working_colorspace",
+        "expected_version_value": "ACEScg",
+    },
 }
 
 # Map schema file to (Python module path, class name, expected required fields)
@@ -373,7 +381,7 @@ def _check_json_schemas() -> list[str]:
         ver_field = meta["expected_version_field"]
         if ver_field in props:
             ver_prop = props[ver_field]
-            const_val = ver_prop.get("const")
+            const_val = ver_prop.get("const", ver_prop.get("default"))
             if const_val != meta["expected_version_value"]:
                 errors.append(
                     f"Schema '{filename}': {ver_field}.const = "

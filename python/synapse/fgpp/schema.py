@@ -143,12 +143,14 @@ def linear_to_log_normalized_depth(
         return np.zeros_like(z_arr)
 
     z = np.asarray(z_m, dtype=np.float64)
-    # Clamp NaN/Inf to z_far before the log
-    z = np.where(np.isfinite(z), z, z_far_m)
+    # Map NaN/Inf to 0.0 (matching C++ fgpp_types.h:143 which uses 0.0f)
+    non_finite_mask = ~np.isfinite(z)
+    z = np.where(non_finite_mask, z_near_m, z)
     z = np.clip(z, z_near_m, z_far_m)
 
     log_ratio = np.log(z_far_m / z_near_m)
     result = np.log(z / z_near_m) / log_ratio
+    result = np.where(non_finite_mask, 0.0, result)
     return np.asarray(np.clip(result, 0.0, 1.0))
 
 
