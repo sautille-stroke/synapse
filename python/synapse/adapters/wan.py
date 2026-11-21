@@ -652,7 +652,6 @@ class WanAdapter(VideoModelAdapter):
         config: VideoGenerationConfig,
         model: nn.Module | None = None,
         fgpp_frames: list[FGPPFrame] | None = None,
-        check_non_degenerate: bool = True,
     ) -> VideoResult:
         """Generate video frames via the configured backend transport.
 
@@ -671,9 +670,11 @@ class WanAdapter(VideoModelAdapter):
             config: Generation configuration.
             model: Optional ``torch.nn.Module`` for LoRA weight injection.
                 Required when ``_lora_manager`` is active and frames have
-                Cryptomatte IDs.
+                Cryptomatte IDs.  If ``None``, falls back to
+                ``self._backend.model`` when the backend exposes one.
             fgpp_frames: Optional list of ``FGPPFrame`` objects from which
                 Cryptomatte entity ID maps are extracted for spatial masking.
+                If ``None``, falls back to ``conditions.fgpp_frames``.
 
         Returns:
             ``VideoResult`` with sRGB uint8 frames.
@@ -686,6 +687,31 @@ class WanAdapter(VideoModelAdapter):
                 "WanAdapter has no backend transport configured. "
                 "Pass a WanBackendTransport to the constructor.",
                 agent_fix_hint="Pass a valid WanBackendTransport to the constructor.",
+            )
+
+        # --- Consume conditions.fgpp_frames if caller didn't pass explicit frames ---
+        if fgpp_frames is None and conditions.fgpp_frames:
+            fgpp_frames = list(conditions.fgpp_frames)
+
+        # --- Fall back to backend.model for LoRA hook attachment ---
+        if model is None:
+            backend_model = getattr(self._backend, "model", None)
+            if backend_model is not None:
+                model = backend_model
+
+        # --- Enforce 16px resolution alignment ---
+        effective_height = config.height - (config.height % 16)
+        effective_width = config.width - (config.width % 16)
+        if effective_height != config.height or effective_width != config.width:
+            config = VideoGenerationConfig(
+                seed=config.seed,
+                fps=config.fps,
+                width=effective_width,
+                height=effective_height,
+                num_frames=config.num_frames,
+                guidance_scale=config.guidance_scale,
+                num_inference_steps=config.num_inference_steps,
+                extra=dict(config.extra),
             )
 
         # Defensively copy control_tensor before re-anchoring to avoid in-place mutation
@@ -814,13 +840,24 @@ class WanAdapter(VideoModelAdapter):
                 for w_idx, sw in enumerate(scheduled_windows):
                     w = sw.window
                     w_num_frames = w.end - w.start
+
+                    # Align tail (last) window frame count to 4k+1 for
+                    # Wan 2.1 causal VAE compatibility (temporal compression
+                    # factor 4 requires (T-1) % 4 == 0).
+                    if w_idx == len(scheduled_windows) - 1 and w_num_frames > 1:
+                        remainder = (w_num_frames - 1) % 4
+                        if remainder != 0:
+                            w_num_frames = w_num_frames - remainder
+                            if w_num_frames < 1:
+                                w_num_frames = 1
+
                     sub_control = (
-                        working_control[:, w.start : w.end]
+                        working_control[:, w.start : w.start + w_num_frames]
                         if working_control is not None
                         else None
                     )
                     sub_crypt = (
-                        conditions_to_use.cryptomatte_id[w.start : w.end]
+                        conditions_to_use.cryptomatte_id[w.start : w.start + w_num_frames]
                         if conditions_to_use.cryptomatte_id is not None
                         else None
                     )
@@ -836,7 +873,17 @@ class WanAdapter(VideoModelAdapter):
                         extra=dict(config.extra),
                     )
 
-                    if (
+                    # --- Scene-cut reanchoring (sw.needs_reanchor) ---
+                    # When a discontinuity is detected in this window,
+                    # truncate overlap blending and restart the anchor to
+                    # prevent cross-cut ghosting artefacts.
+                    if sw.needs_reanchor and w_idx > 0:
+                        # Truncate blending: do NOT carry warm-start context
+                        # across the scene cut boundary
+                        warm_start = []
+                        # Also clear prev_window_tail to prevent blending
+                        prev_window_tail = []
+                    elif (
                         w_idx > 0
                         and sw.window.causal_warmup_prefix_indices
                         and prev_window_tail
@@ -853,7 +900,7 @@ class WanAdapter(VideoModelAdapter):
                         text_prompt=conditions_to_use.text_prompt,
                         negative_prompt=conditions_to_use.negative_prompt,
                         cryptomatte_id=sub_crypt,
-                        fgpp_frames=fgpp_frames[w.start : w.end] if fgpp_frames else [],
+                        fgpp_frames=fgpp_frames[w.start : w.start + w_num_frames] if fgpp_frames else [],
                         extra=dict(conditions_to_use.extra),
                     )
                     if warm_start:
@@ -876,6 +923,12 @@ class WanAdapter(VideoModelAdapter):
 
                     if accumulated_frames is None:
                         accumulated_frames = sub_result
+                    elif sw.needs_reanchor:
+                        # Scene cut: concatenate without overlap blending
+                        accumulated_frames = np.concatenate(
+                            [accumulated_frames, sub_result],
+                            axis=0,
+                        )
                     else:
                         actual_overlap = min(
                             overlap, len(accumulated_frames), len(sub_result)
@@ -935,10 +988,9 @@ class WanAdapter(VideoModelAdapter):
             with single_hook_ctx:
                 raw_frames = self._backend.submit(conditions_to_use, config)
 
-        if check_non_degenerate:
-            from synapse.metrics.image_quality import validate_output_non_degenerate
+        from synapse.metrics.image_quality import validate_output_non_degenerate
 
-            validate_output_non_degenerate(raw_frames)
+        validate_output_non_degenerate(raw_frames)
 
         return VideoResult(
             frames_srgb_u8=raw_frames,
