@@ -603,3 +603,20 @@ class TestPatcher:
         )
 
         hook.detach(linear)
+
+    def test_pr184_3d_video_mask_mismatch_raises_fail_closed(self) -> None:
+        """PR-184: Mismatched 3D video spatial mask must raise ContractValidationError."""
+        torch = pytest.importorskip("torch")
+        from synapse.adapters.lora.patcher import LoRAPatchHook
+        from synapse.errors import ContractValidationError
+
+        linear = torch.nn.Linear(8, 8, bias=False)
+        hook = LoRAPatchHook(lora_delta=torch.ones(8, 8) * 0.1)
+        # 3D video mask (2, 3, 3) -> pooled 1*1*1=1, raw 18, neither matches L=11
+        bad_mask = torch.ones((2, 3, 3), dtype=torch.float32)
+        hook.attach(linear, mask=bad_mask)
+        try:
+            with pytest.raises(ContractValidationError, match="does not match DiT token count"):
+                linear(torch.ones(1, 11, 8))
+        finally:
+            hook.detach(linear)

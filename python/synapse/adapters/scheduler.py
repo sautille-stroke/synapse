@@ -575,23 +575,35 @@ def fuse_overlapping_latents(
     shape = (overlap_steps,) + (1,) * extra_dims
     a = alphas.reshape(shape)
 
+    # Separate per-step mean so variance-preserving normalization does not
+    # distort non-zero means or inflate identical latents (rho == 1.0).
+    reduce_axes = tuple(range(1, zp.ndim))
+    zp_mean = zp.mean(axis=reduce_axes, keepdims=True)
+    zc_mean = zc.mean(axis=reduce_axes, keepdims=True)
+    zp_c = zp - zp_mean
+    zc_c = zc - zc_mean
+
     # Compute correlation rho if not supplied
     if rho is None:
-        zp_c = zp - zp.mean(axis=tuple(range(1, zp.ndim)), keepdims=True)
-        zc_c = zc - zc.mean(axis=tuple(range(1, zc.ndim)), keepdims=True)
-        zp_var = np.mean(zp_c**2, axis=tuple(range(1, zp.ndim)), keepdims=True)
-        zc_var = np.mean(zc_c**2, axis=tuple(range(1, zc.ndim)), keepdims=True)
+        zp_var = np.mean(zp_c**2, axis=reduce_axes, keepdims=True)
+        zc_var = np.mean(zc_c**2, axis=reduce_axes, keepdims=True)
         denom = np.sqrt(np.maximum(zp_var * zc_var, 1e-12))
-        cov = np.mean(zp_c * zc_c, axis=tuple(range(1, zp.ndim)), keepdims=True)
-        rho_val = np.clip(cov / denom, -0.99, 0.99)
+        cov = np.mean(zp_c * zc_c, axis=reduce_axes, keepdims=True)
+        # Constant/identical slices (zero variance) have rho = 1.0 -> exact identity
+        rho_val: Any = np.where(
+            (zp_var < 1e-12) & (zc_var < 1e-12),
+            1.0,
+            np.clip(cov / denom, -0.99, 1.0),
+        )
     else:
-        rho_val = np.clip(float(rho), -0.99, 0.99)
+        rho_val = float(np.clip(float(rho), -0.99, 1.0))
 
-    blended = (1.0 - a) * zp + a * zc
+    blended_mean = (1.0 - a) * zp_mean + a * zc_mean
+    blended_c = (1.0 - a) * zp_c + a * zc_c
     normaliser = np.sqrt(np.maximum((1.0 - a) ** 2 + a**2 + 2.0 * a * (1.0 - a) * rho_val, 1e-12))
-    fused = blended / normaliser
+    fused = blended_mean + blended_c / normaliser
 
-    return fused.astype(z_prev.dtype)
+    return np.asarray(fused.astype(z_prev.dtype))
 
 
 def cross_dissolve_pixels(

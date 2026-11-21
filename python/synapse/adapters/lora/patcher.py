@@ -121,7 +121,8 @@ class LoRAPatchHook:
                 if lora_contrib.dim() == 3:
                     b_dim, l_dim, _ = lora_contrib.shape
                     # Check if m is a 3D video-space mask [T, Hm, Wm]
-                    if m.dim() == 3:
+                    # (skip when already shaped as token mask [1/B, L, 1])
+                    if m.dim() == 3 and not (m.shape[1] == l_dim and m.shape[2] == 1 and m.shape[0] in (1, b_dim)):
                         t_m, h_m, w_m = m.shape
                         tau = (t_m - 1) // 4 + 1
                         h16 = max(h_m // 2, 1)
@@ -134,14 +135,20 @@ class LoRAPatchHook:
                             ).reshape(1, l_dim, 1)
                         elif t_m * h_m * w_m == l_dim:
                             m = m.reshape(1, l_dim, 1)
+                        elif t_m * h_m * w_m == b_dim * l_dim:
+                            m = m.reshape(b_dim, l_dim, 1)
                         else:
-                            # Fail-closed: refuse to guess register token layout —
-                            # apply full LoRA (mask of ones) rather than silently
-                            # miscorrelating spatial positions
-                            m = torch.ones(
-                                (1, 1, 1),
-                                dtype=lora_contrib.dtype,
-                                device=lora_contrib.device,
+                            # True fail-closed: never silently broadcast ones on a
+                            # mismatched 3D spatial mask (would leak identity/style
+                            # across masked-out regions).
+                            raise ContractValidationError(
+                                f"3D video spatial mask shape {tuple(m.shape)} "
+                                f"(pooled tokens={expected_l}, raw tokens={t_m * h_m * w_m}) "
+                                f"does not match DiT token count L={l_dim} (B={b_dim}).",
+                                agent_fix_hint=(
+                                    "Ensure the Cryptomatte mask resolution aligns with "
+                                    "the DiT spatial/temporal patch grid."
+                                ),
                             )
 
                     if m.dim() == 1 and m.shape[0] == l_dim:
@@ -153,10 +160,6 @@ class LoRAPatchHook:
                     elif m.dim() >= 3 and m.numel() == l_dim:
                         m = m.reshape(1, l_dim, 1)
                     elif m.dim() == 3 and m.shape[1] == l_dim and m.shape[2] == 1:
-                        pass
-                    elif m.dim() == 3 and m.shape == (1, 1, 1):
-                        # Scalar broadcast (e.g. from spatial mismatch fallback):
-                        # applies full LoRA uniformly — valid fail-safe
                         pass
                     else:
                         # Fail-closed: dimension mismatch — raise instead of

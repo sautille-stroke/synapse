@@ -647,3 +647,47 @@ class TestDegenerateOutputValidation:
         assert captured_body["text_prompt"] == "a beautiful forest"
         assert captured_body["depth_guide"] is not None
         assert captured_body["normal_edge_guide"] is not None
+
+    def test_pr184_orbit_ccw_yaw_sign_and_text_prompt_propagation(self) -> None:
+        """PR-184: Positive +Y rotation is orbit_ccw; conditions.text_prompt reaches transport."""
+        from synapse.adapters.cloud import _fit_camera_motion
+
+        # Right-handed Y-up rotation by +theta (CCW when looking down from +Y)
+        angles = np.linspace(0.0, 0.8, 10)
+        traj = np.repeat(np.eye(4, dtype=np.float64)[None, ...], len(angles), axis=0)
+        for i, th in enumerate(angles):
+            traj[i, 0, 0] = np.cos(th)
+            traj[i, 0, 2] = np.sin(th)
+            traj[i, 2, 0] = -np.sin(th)
+            traj[i, 2, 2] = np.cos(th)
+
+        motion_ccw, _ = _fit_camera_motion(traj)
+        assert motion_ccw == "orbit_ccw"
+
+        # Negative rotation (-theta) -> orbit_cw
+        traj_cw = traj.copy()
+        for i, th in enumerate(-angles):
+            traj_cw[i, 0, 0] = np.cos(th)
+            traj_cw[i, 0, 2] = np.sin(th)
+            traj_cw[i, 2, 0] = -np.sin(th)
+            traj_cw[i, 2, 2] = np.cos(th)
+        motion_cw, _ = _fit_camera_motion(traj_cw)
+        assert motion_cw == "orbit_cw"
+
+        # Verify conditions.text_prompt propagates onto segment before submit_segment
+        seen_prompts: list[str] = []
+
+        class _CapturingTransport(MockCloudTransport):
+            def submit_segment(
+                self, segment: DegradedSegment, config: VideoGenerationConfig
+            ) -> np.ndarray:
+                seen_prompts.append(segment.text_prompt)
+                return super().submit_segment(segment, config)
+
+        adapter = SeedanceAdapter(transport=_CapturingTransport())
+        seq = _make_fgpp_sequence(50)
+        cfg = VideoGenerationConfig(seed=7, width=64, height=64, num_frames=50)
+        cond = adapter.prepare_conditions(seq, cfg)
+        cond.text_prompt = "cinematic golden hour"
+        adapter.generate(cond, cfg)
+        assert seen_prompts and all(p == "cinematic golden hour" for p in seen_prompts)
