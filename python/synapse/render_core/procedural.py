@@ -205,12 +205,13 @@ def _np_generate_sphere(
     # Top pole
     vertices.append([0.0, radius, 0.0])
     uvs_list.append([0.5, 0.0])
-    # Ring vertices
+    # Ring vertices (segments + 1 columns to preserve the u=0..1 UV seam matching aether_geo)
+    stride = segments + 1
     for i in range(1, rings):
         phi = math.pi * i / rings
         v_coord = i / rings
-        for j in range(segments):
-            theta = 2.0 * math.pi * j / segments
+        for j in range(stride):
+            theta = 2.0 * math.pi * (j % segments) / segments
             x = radius * math.sin(phi) * math.cos(theta)
             y = radius * math.cos(phi)
             z = radius * math.sin(phi) * math.sin(theta)
@@ -224,24 +225,21 @@ def _np_generate_sphere(
     faces_list: list[list[int]] = []
     # Top cap (outward CCW: +Y normal)
     for j in range(segments):
-        j_next = (j + 1) % segments
-        faces_list.append([0, 1 + j_next, 1 + j])
+        faces_list.append([0, 1 + j + 1, 1 + j])
     # Middle quads (outward CCW)
     for i in range(rings - 2):
-        base = 1 + i * segments
+        base = 1 + i * stride
         for j in range(segments):
-            j_next = (j + 1) % segments
             a = base + j
-            b = base + j_next
-            c = base + segments + j
-            d = base + segments + j_next
+            b = base + j + 1
+            c = base + stride + j
+            d = base + stride + j + 1
             faces_list.append([a, b, c])
             faces_list.append([b, d, c])
     # Bottom cap (outward CCW: -Y normal)
-    last_ring_base = 1 + (rings - 2) * segments
+    last_ring_base = 1 + (rings - 2) * stride
     for j in range(segments):
-        j_next = (j + 1) % segments
-        faces_list.append([last_ring_base + j, last_ring_base + j_next, bot_idx])
+        faces_list.append([last_ring_base + j, last_ring_base + j + 1, bot_idx])
 
     verts_arr = np.array(vertices, dtype=np.float64)
     faces_arr = np.array(faces_list, dtype=np.int32)
