@@ -1,6 +1,22 @@
-# Synapse Google Colab 实验与微调运行环境指南
+# Synapse Google Colab 实验与微调运行环境指南 (SSOT V2.0)
 
-> 本目录（`workenv/google-colab/`）为 **Synapse Layer 2** 算法在 Google Colab GPU 算力节点（T4 / L4 / A100）上进行视频生成适配器推理、长时序滑窗调度、ACEScg 风格合成与 LoRA 微调实验的完整环境规范与自动化部署套件。
+> 本目录（`workenv/google-colab/`）为 **Synapse Layer 2** 算法在 Google Colab GPU 算力节点（T4 / L4 / A100）与 High-RAM CPU 上进行全量自动化测试（1,510+ 项单测）、视频生成适配器推理、长时序滑窗调度、ACEScg 风格合成与 LoRA 微调实验的完整环境规范与自动化部署套件。遵循 DervGen 全生态统一规范（详见 [synapse-colab-testing](../../.agents/skills/synapse-colab-testing/SKILL.md) 与 [google-colab-environment](../../.agents/skills/google-colab-environment/SKILL.md)）。
+
+---
+
+## 🌟 核心原则与四大铁律 (Always-On Rules)
+
+1. **恰当选型，精准用量 (Right Runtime, Right Job)**：
+   - 单元测试回归（`pytest tests/`）：推荐 **T4 GPU**（16GB，低成本且激活真实 CUDA 检测分支）或常驻标准 CPU 节点。
+   - C++ 原生扩展与检查器编译（`@aether//python:aether_geo`、`tools/data-inspector/native`）：推荐 **High-RAM CPU**（51GB RAM，防 OOM）。
+   - 轻量推理与 3D 反演：推荐 **L4 GPU**（24GB，Wan 2.1 1.3B 全显存驻留）。
+   - 旗舰底模推理与全量微调：推荐 **A100 GPU**（40GB/80GB，Wan 2.1 14B 全显存常驻）。
+2. **主动释放，杜绝浪费 (Stop The Meter!)**：
+   - Colab 算力单元按实例开机时长实时扣费。**任务完成或异常退出后，必须立即主动销毁实例以停止计费**（执行 `runtime.unassign()`），严禁机器闲置空挂。
+3. **根目录零污染 (Zero Clutter in MyDrive)**：
+   - Google Drive 根目录唯一允许入口为 `/content/drive/MyDrive/dervgen/`。**严禁在 MyDrive 根目录下散落任何临时文件或独立目录**。
+4. **计算与存储严格分离 (Compute vs Storage)**：
+   - 代码克隆、临时缓存与虚拟环境全部置于本地 NVMe 磁盘（`/content/` 或 `/tmp/`）；Google Drive 仅用于只读数据集加载与最终产物（`job.json`, `README.md`, checkpoints）持久化。
 
 ---
 
@@ -107,9 +123,12 @@ Colab 容器基于 Ubuntu 22.04 LTS，需安装底层图像与多媒体 C/C++ �
 ### 方式 A：在 Google Colab Notebook 中一键运行（推荐）
 
 直接在 Colab 中打开 [`synapse_colab_workflow.ipynb`](synapse_colab_workflow.ipynb)，依次执行单元格：
-1. **挂载 Google Drive**：连接个人云端硬盘 `/content/drive/MyDrive/dervgen/` (SSOT V2.0)。
+1. **挂载 Google Drive 与安全凭据**：连接个人云端硬盘 `/content/drive/MyDrive/dervgen/` (SSOT V2.0)，从 Secrets 读取 `GITHUB_TOKEN` / `HF_TOKEN`。
 2. **初始化环境**：执行 `!bash workenv/google-colab/setup_colab.sh`。
-3. **检测硬件并执行实验**：运行 `python scripts/colab_runner.py --exp all`。
+3. **启动看门狗与硬件自检**：启动 `start_timeout_watchdog(max_hours=1.5)` 并执行 `python scripts/colab_runner.py --check-env`。
+4. **运行全量单测套件**：执行 `!pytest tests/ -v --durations=10`（61 个测试文件，1,510+ 项用例全量回归）。
+5. **挂载数据并执行闭环实验**：运行 `python scripts/colab_runner.py --exp all --mode auto`。
+6. **主动释放实例**：执行 `runtime.unassign()` 停止算力计费。
 
 ### 方式 B：终端 / 脚本命令行运行
 
@@ -121,15 +140,42 @@ chmod +x workenv/google-colab/setup_colab.sh
 # 2. 检查 GPU / VRAM Profile
 python scripts/colab_runner.py --check-env
 
-# 3. 指定 Google Drive 目录运行所有实验
+# 3. 运行全量单测回归 (1,510+ 项用例)
+pytest tests/ -v --durations=10
+
+# 4. 指定 Google Drive 目录运行所有实验 (E1-E4 断点续跑)
 python scripts/colab_runner.py \
   --bundle /content/synapse_colab_bundle_v1.tar.gz \
   --dataset-dir /content/datasets/synapse \
   --job-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/exp01-wan-lora \
+  --mode auto \
   --exp all
+
+# 5. 任务完成后主动释放实例停止计费 (Stop The Meter!)
+python3 -c "from google.colab import runtime; runtime.unassign()"
 ```
 
 > **说明**：`--exp all` 依次全量执行 E1（Wan 7 通道条件控制消融）、E2（ACEScg 风格锁与 16px 手术刀合成消融）、E3（97 帧长时序因果滑窗调度与切镜重锚定）以及 E4（FeatureStore WebDataset 分片与 Multi-LoRA 正交合并），并在每个阶段完成后向 Google Drive 实时保存 Checkpoint。
+
+---
+
+## 🔒 快速配置 Tailscale SSH（本地终端直连 Colab GPU）
+
+如果您希望从本地 macOS 终端使用原生 OpenSSH / Antigravity 直连 Colab GPU 实例：
+
+1. **获取 Tailscale Auth Key**：
+   - 登录 [Tailscale Admin > Settings > Keys](https://login.tailscale.com/admin/settings/keys)；
+   - 点击 **Generate auth key**；
+   - 勾选 **Reusable**、**Ephemeral**（实例关机后自动注销节点，杜绝幽灵设备）与 **Pre-authorized**；
+   - 复制密钥（`tskey-auth-xxxx`）。
+2. **在 Colab 中配置**（二选一）：
+   - **方式一（推荐，无感接入）**：在 Colab 左侧 🔑 **Secrets** 中添加名为 `TAILSCALE_AUTHKEY` 的密钥，并勾选“笔记本访问权限”；
+   - **方式二（手动交互）**：直接在单元格执行 `!bash workenv/google-colab/tailscale.sh`，点击输出的登录 URL 完成授权。
+3. **本地直连**：
+   ```bash
+   ssh root@synapse-colab-gpu
+   # 或查看 Tailscale 状态获取 IP 直连
+   ```
 
 ---
 

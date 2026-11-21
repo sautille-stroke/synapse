@@ -34,7 +34,8 @@
 | 环境节点 | 连接方式 | 角色定位与使用规范 |
 | :--- | :--- | :--- |
 | **Ubuntu 云端主力机 (`ubuntu24`)** | `ssh ubuntu24` | **P0 首选全量测试与 CI 验证环境**。全套 `pytest`（1,397 用例：1,263 fast + 134 slow）、`mypy`、`ruff`、OpenEXR 读写压测及 `MockVideoAdapter` 端到端回归**默认全部在 `ubuntu24` 上执行**。<br>• **Bazel 共享缓存**：使用 `/var/cache/bazel`（`startup --output_user_root=/var/cache/bazel`），禁止各自在 `~/.cache` 重复构建；<br>• **磁盘配额守卫**：构建与压测前预检 `df -h /`，确保存储余量 $\ge 11\sim 12\text{ GB}$；<br>• **Worktree 与 aether 依赖**：原生 C++ 构建依赖同级 `../aether`，在隔离 worktree 操作时需保证同级符号链接就绪，严禁在仓内创建嵌套工作区。 |
-| **Windows GPU 节点 (`win-dev`)** / **`foundary` 容器** | `ssh win-dev` / 算力集群 | **GPU 专有验证环境**。仅在验证真实 `Wan 2.1` / `SAM2` CUDA 推理或跨平台引擎（`fulgur`/`caelum-core`）联调时调用 |
+| **Colab CPU 常驻跑测节点 (`synapse-colab-gpu`)** | `ssh root@synapse-colab-gpu` (Tailscale) | **低成本常驻跑测/卸载节点**。标准 CPU 算力几乎免费，用户可长期保持该实例在线并接入 Tailscale，专门承载全量 `pytest` 回归与编译检查，杜绝本地 Mac 算力与电池消耗 |
+| **Windows GPU 节点 (`win-dev`)** / **Colab GPU (T4/L4/A100)** | `ssh win-dev` / Colab | **GPU 专有验证环境**。仅在验证真实 `Wan 2.1` / `SAM2` CUDA 推理或跨平台引擎联调时按需拉起，用完立即销毁释放 |
 | **macOS 本地开发机** | 本机 (`/Volumes/work/dervgen/synapse`) | **主控代码与文档编辑环境**。仅限单文件极速轻量语法/单测冒烟，**严禁在本地 Mac 拉起数十 GB 视频大模型或跑全量重型基准套件** |
 
 ```bash
@@ -42,11 +43,14 @@
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/pytest tests/ -q && /root/venv-synapse/bin/ruff check python/ tests/ scripts/ && /root/venv-synapse/bin/mypy python/synapse"
 ssh ubuntu24 "cd ~/work/dervgen/synapse && /root/venv-synapse/bin/python scripts/prepare_datasets.py && /root/venv-synapse/bin/python scripts/run_cpu_verification.py"
 
-# Google Colab GPU 节点：必须遵循 Google Colab 与 Google Drive SSOT V2.0 铁律（零污染 MyDrive 根目录，计算存储分离）
-# 完整环境规范见 workenv/google-colab/README.md 及 architecture/google-colab-and-drive-standards.md
+# Google Colab GPU 节点：必须遵循 Google Colab 与 Google Drive SSOT V2.0 铁律（零污染 MyDrive 根目录，计算存储分离，主动释放资源）
+# 完整环境规范见 workenv/google-colab/README.md 及 .agents/skills/synapse-colab-testing/SKILL.md
 bash workenv/google-colab/setup_colab.sh
-# 运行全量 E1–E4 实验（含 Wan 空间控制、ACEScg 风格、97f 因果滑窗调度与切镜重锚定、Multi-LoRA）
-python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --job-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4 --exp all
+# 1. 跑通全量单测 (1,510+ 项)
+pytest tests/ -v --durations=10
+# 2. 运行全量 E1–E4 实验（含 Wan 空间控制、ACEScg 风格、97f 因果滑窗调度与切镜重锚定、Multi-LoRA）
+python scripts/colab_runner.py --bundle /content/synapse_colab_bundle_v1.tar.gz --job-dir /content/drive/MyDrive/dervgen/work/yanglei/synapse/$(date +%F)/e1-e4 --mode auto --exp all
+# 3. 任务结束必须主动释放资源 (runtime.unassign) 停止计费
 
 # 本地极轻量单点冒烟（仅限纯 CPU 毫秒级单测）
 pytest tests/test_bench.py -k "test_scenario_create" -v
@@ -123,6 +127,8 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 | **`synapse-fgpp-and-datasets`** | [.agents/skills/synapse-fgpp-and-datasets/SKILL.md](.agents/skills/synapse-fgpp-and-datasets/SKILL.md) | 15 通道 OpenEXR 线格式（`34 B/px`）、`fulgur` Track-B 与 `caelum-core` Track-A 导出、`prepare_datasets.py` 与 Colab 数据包构建 |
 | **`synapse-adapters-and-experiments`** | [.agents/skills/synapse-adapters-and-experiments/SKILL.md](.agents/skills/synapse-adapters-and-experiments/SKILL.md) | `WanAdapter` 7 通道条件构建、$W=97$ 因果滑窗与切镜重锚定、ACEScg 风格锁、16px 手术刀合成及 `ubuntu24` + Colab 双阶段实验执行 |
 | **`synapse-lora-and-flywheel`** | [.agents/skills/synapse-lora-and-flywheel/SKILL.md](.agents/skills/synapse-lora-and-flywheel/SKILL.md) | WebDataset 潜变量分片、`LoRAManifest` 安全校验、Cryptomatte 空域注意力掩码、3D 智能质检与 RSI 飞轮 |
+| **`synapse-colab-testing`** | [.agents/skills/synapse-colab-testing/SKILL.md](.agents/skills/synapse-colab-testing/SKILL.md) | Synapse 在 Google Colab 云端算力节点（T4/L4/A100）上进行全量测试、1,510+ 项单测回归、E1–E4 闭环实验断点续跑、超时看门狗与主动释放资源（`runtime.unassign`）权威指南 |
+| **`google-colab-environment`** | [.agents/skills/google-colab-environment/SKILL.md](.agents/skills/google-colab-environment/SKILL.md) | DervGen 全生态 Google Colab 与 Google Drive SSOT V2.0 通用开发、测试与算力生命周期规范（四大核心铁律、Runtime 选型决策树、凭据安全、计算存储分离） |
 
 ---
 

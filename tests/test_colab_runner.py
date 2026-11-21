@@ -315,3 +315,57 @@ def test_colab_runner_error_preserves_completed_metrics(tmp_path: Path) -> None:
     # Key assertion: completed metrics must be preserved via flattening, NOT wiped to {}
     assert job_json["metrics"]["e1_status"] == "PASS"
     assert job_json["metrics"]["e1_elapsed_sec"] == 1.5
+
+
+def test_colab_notebook_cells_valid_python_ast() -> None:
+    """Every code cell in workenv/google-colab/*.ipynb must parse cleanly via ast.parse."""
+    import ast
+
+    repo_root = Path(__file__).resolve().parent.parent
+    notebooks = list((repo_root / "workenv" / "google-colab").glob("*.ipynb"))
+    assert notebooks, "Expected at least one Colab notebook under workenv/google-colab/"
+
+    for nb_path in notebooks:
+        nb_data = json.loads(nb_path.read_text(encoding="utf-8"))
+        for idx, cell in enumerate(nb_data.get("cells", [])):
+            if cell.get("cell_type") != "code":
+                continue
+            raw_src = "".join(cell.get("source", []))
+            # Strip Jupyter line magics (%cd, !bash) and shell continuation lines
+            cleaned_lines: list[str] = []
+            in_shell_cont = False
+            for line in raw_src.splitlines():
+                stripped = line.lstrip()
+                if in_shell_cont:
+                    in_shell_cont = line.rstrip().endswith("\\")
+                    cleaned_lines.append("")
+                    continue
+                if stripped.startswith(("!", "%")):
+                    in_shell_cont = line.rstrip().endswith("\\")
+                    cleaned_lines.append("")
+                    continue
+                cleaned_lines.append(line)
+            cleaned_src = "\n".join(cleaned_lines)
+            try:
+                ast.parse(cleaned_src, filename=f"{nb_path.name}#cell-{idx}")
+            except SyntaxError as exc:
+                pytest.fail(f"SyntaxError in {nb_path.name} cell #{idx}: {exc}")
+
+
+def test_colab_scripts_no_insecure_curl() -> None:
+    """No shell script under workenv/ or scripts/ may disable TLS verification (curl -k)."""
+    import re
+
+    repo_root = Path(__file__).resolve().parent.parent
+    insecure_re = re.compile(r"\bcurl\b[^\n]*(\s-[a-zA-Z]*k\b|--insecure\b)")
+    for folder in ("workenv", "scripts"):
+        root = repo_root / folder
+        if not root.is_dir():
+            continue
+        for script_path in root.rglob("*.sh"):
+            text = script_path.read_text(encoding="utf-8")
+            match = insecure_re.search(text)
+            assert match is None, (
+                f"Insecure TLS bypass (curl -k / --insecure) found in {script_path}: {match.group(0)}"
+            )
+

@@ -285,6 +285,23 @@ class TestTemporal:
         assert result.value >= 0.0
         assert np.isfinite(result.value)
 
+        # Explicitly verify statistical proxy extractor path & differential sensitivity
+        from synapse.metrics.temporal import _statistical_proxy_extractor
+
+        result_proxy_same = compute_fvd_from_videos(
+            real,
+            real.copy(),
+            feature_extractor=_statistical_proxy_extractor,
+        )
+        result_proxy = compute_fvd_from_videos(
+            real,
+            gen,
+            feature_extractor=_statistical_proxy_extractor,
+        )
+        assert result_proxy.value >= 0.0
+        assert np.isfinite(result_proxy.value)
+        assert result_proxy.value > result_proxy_same.value
+
     def test_compute_fvd_from_videos_no_proxy_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """compute_fvd_from_videos with require_pretrained=True raises BackendUnavailableError."""
         from synapse.errors import BackendUnavailableError
