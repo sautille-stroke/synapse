@@ -152,35 +152,32 @@ def _fuse_cascade(
     if n_cands == 1:
         return np.asarray(candidates[order[0]].copy())
 
-    # Start with low-frequency baseline from the worst candidate
-    worst_sigma = max(2.0 ** n_cands, 2.0)
-    result = separable_gaussian(candidates[order[0]].copy(), worst_sigma)
+    # Start with low-frequency baseline from the lowest-weight candidate.
+    # Build telescoping frequency bands so identical candidates reconstruct
+    # the exact identity (zero high-frequency energy loss):
+    #   G(s_0, c_0) + sum_{k=1}^{K-2} (G(s_k, c_k) - G(s_{k-1}, c_k)) + (c_{K-1} - G(s_{K-2}, c_{K-1}))
+    sigmas = [max(2.0 ** (n_cands - step), 1.0) for step in range(n_cands)]
+    result = separable_gaussian(candidates[order[0]].copy(), sigmas[0])
 
-    # Progressively add high-frequency detail from better candidates
+    # Progressively add telescoping high-frequency detail from higher-weight candidates
     for step in range(1, n_cands):
         cand_idx = order[step]
         cand = candidates[cand_idx]
-
-        # This candidate contributes detail at a specific frequency tier.
-        # Higher-weight candidates contribute finer detail (smaller sigma).
-        sigma = max(2.0 ** (n_cands - step), 1.0)
+        sigma_prev = sigmas[step - 1]
 
         if step < n_cands - 1:
-            # Extract the band-pass: detail between this tier and the next
-            sigma_next = max(2.0 ** (n_cands - step - 1), 1.0)
-            coarse = separable_gaussian(cand, sigma)
-            fine = separable_gaussian(cand, sigma_next)
+            sigma_curr = sigmas[step]
+            coarse = separable_gaussian(cand, sigma_prev)
+            fine = separable_gaussian(cand, sigma_curr)
             band_detail = fine - coarse
         else:
-            # Finest tier: everything above the current sigma
-            coarse = separable_gaussian(cand, sigma)
+            # Finest tier: all detail above the previous tier's cutoff
+            coarse = separable_gaussian(cand, sigma_prev)
             band_detail = cand - coarse
 
-        # Weight the contribution by the candidate's normalised weight
-        w_k = float(weights[cand_idx])
-        result = result + w_k * band_detail
+        result = result + band_detail
 
-    return np.asarray(result)
+    return np.asarray(result, dtype=np.float32)
 
 
 def _fuse_latent_timestep_switch(
@@ -243,23 +240,19 @@ def _fuse_uncertainty(
         local_vars[k] = smoothed[:, :, 0]
 
     if k_count == 2:
-        # Break K=2 symmetry using centroid distance decay and edge sharpness
-        h, w = candidates[0].shape[:2]
-        cy, cx = h / 2.0, w / 2.0
-        yy, xx = np.mgrid[:h, :w]
-        dist_sq = (yy - cy) ** 2 + (xx - cx) ** 2
-        sigma_sq = max(float(cy**2 + cx**2) * 0.5, 1.0)
-        center_decay = np.exp(-dist_sq / (2.0 * sigma_sq)).astype(np.float32)
-
+        # For K=2, consensus disagreement is symmetric (|c0 - mean|^2 == |c1 - mean|^2).
+        # Break symmetry using local gradient sharpness so sharper candidates receive
+        # lower uncertainty (higher weight), while identical candidates preserve exact weights.
         def _sharp(img: np.ndarray) -> np.ndarray:
             gy = np.diff(img, axis=0, prepend=img[:1, :])
             gx = np.diff(img, axis=1, prepend=img[:, :1])
-            return np.mean(np.abs(gx) + np.abs(gy), axis=-1).astype(np.float32)
+            mag = np.mean(np.abs(gx) + np.abs(gy), axis=-1).astype(np.float32)
+            return separable_gaussian(mag[:, :, np.newaxis], sigma=1.0)[:, :, 0]
 
         sharp0 = _sharp(candidates[0])
         sharp1 = _sharp(candidates[1])
-        local_vars[0] = (local_vars[0] + 0.1 * (1.0 - center_decay)) / (sharp0 + 1.0)
-        local_vars[1] = (local_vars[1] + 0.1 * center_decay) / (sharp1 + 1.0)
+        local_vars[0] = (local_vars[0] + 1e-3) / (sharp0 + 1.0)
+        local_vars[1] = (local_vars[1] + 1e-3) / (sharp1 + 1.0)
 
     eps = 1e-6
     inv_var = 1.0 / (local_vars + eps)
@@ -347,7 +340,32 @@ def _fuse_poisson_gradient(
 
     dirichlet_boundary = result.copy()
 
-    # Jacobi iterations for Poisson equation with fixed outer 1px Dirichlet boundary
+    # Exact O(HW log(HW)) 2D Discrete Sine Transform (DST-I) direct Poisson solver
+    # for interior Dirichlet problem L(u) = div, falling back to Jacobi if scipy is absent.
+    if h > 2 and w > 2:
+        try:
+            from scipy.fft import dstn, idstn
+
+            m_int, n_int = h - 2, w - 2
+            rhs = div[1:-1, 1:-1, :].astype(np.float64, copy=True)
+            rhs[0, :, :] -= dirichlet_boundary[0, 1:-1, :]
+            rhs[-1, :, :] -= dirichlet_boundary[-1, 1:-1, :]
+            rhs[:, 0, :] -= dirichlet_boundary[1:-1, 0, :]
+            rhs[:, -1, :] -= dirichlet_boundary[1:-1, -1, :]
+
+            py = np.arange(1, m_int + 1, dtype=np.float64)[:, None]
+            px = np.arange(1, n_int + 1, dtype=np.float64)[None, :]
+            eig = (2.0 * np.cos(np.pi * py / (m_int + 1)) - 2.0) + (
+                2.0 * np.cos(np.pi * px / (n_int + 1)) - 2.0
+            )
+            u_hat = dstn(rhs, type=1, axes=(0, 1)) / eig[:, :, np.newaxis]
+            u_int = idstn(u_hat, type=1, axes=(0, 1))
+            result[1:-1, 1:-1, :] = u_int.astype(np.float32)
+            return result
+        except ImportError:
+            pass
+
+    # Fallback: Jacobi iterations for Poisson equation with fixed outer 1px Dirichlet boundary
     for _ in range(n_iterations):
         padded = np.pad(result, ((1, 1), (1, 1), (0, 0)), mode="edge")
         neighbour_sum = (

@@ -334,6 +334,7 @@ class LocalRefinementPipeline:
                         crop_acescg=smoothed_crop,
                         region=roi.region,
                         confidence=roi.confidence,
+                        anatomical_quality_score=roi.anatomical_quality_score,
                         frame_index=roi.frame_index,
                     )
 

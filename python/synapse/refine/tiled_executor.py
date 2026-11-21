@@ -108,11 +108,13 @@ class TiledBypassExecutor:
                 else:
                     score = quality_fn(crop)
             else:
-                # Use anatomical_quality_score, NOT detection confidence.
-                # confidence measures detector certainty (e.g. 0.9 default);
-                # anatomical_quality_score measures actual anatomy quality
-                # (default 0.0 — always refine unless explicitly assessed).
-                score = roi.anatomical_quality_score
+                # Prefer explicit anatomical_quality_score when assessed;
+                # fall back to confidence when anatomical_quality_score is None.
+                score = (
+                    roi.anatomical_quality_score
+                    if roi.anatomical_quality_score is not None
+                    else roi.confidence
+                )
 
             if score > self._health_threshold:
                 bypass_count += 1

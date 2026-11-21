@@ -363,13 +363,13 @@ class MitsubaInverseOptimizer:
 
             mitsuba.set_variant("cuda_ad_rgb")
             self._mi = mitsuba
-        except ImportError:
+        except (ImportError, RuntimeError, AttributeError):
             try:
                 import mitsuba
 
                 mitsuba.set_variant("llvm_ad_rgb")
                 self._mi = mitsuba
-            except (ImportError, RuntimeError):
+            except (ImportError, RuntimeError, AttributeError):
                 pass
 
     def optimize_material_from_video(

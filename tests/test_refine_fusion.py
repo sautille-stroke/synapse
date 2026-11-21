@@ -350,3 +350,91 @@ def test_latent_timestep_switch_weight_normalization(
     de00 = ciede2000(result, patch_struct)
     assert np.isfinite(de00)
     assert de00 < 25.0, f"CIEDE2000 color difference {de00:.2f} exceeds 25.0 threshold"
+
+
+# ---------------------------------------------------------------------------
+# PR-189: Cascade telescoping identity, K=2 sharpness, DST Poisson, Bypass, Loop crop
+# ---------------------------------------------------------------------------
+
+
+def test_pr189_cascade_identical_candidates_exact_identity(
+    fusion: MultiModelRefineFusion,
+) -> None:
+    """Telescoping cascade bands must reconstruct identical inputs with zero high-freq loss."""
+    img = _gradient_patch(seed=123)
+    weights = np.array([0.2, 0.3, 0.5], dtype=np.float32)
+    result = fusion.fuse([img, img.copy(), img.copy()], FusionMethod.CASCADE, weights)
+    np.testing.assert_allclose(result, img, atol=1e-5)
+
+
+def test_pr189_uncertainty_k2_prefers_sharp_over_blurred(
+    fusion: MultiModelRefineFusion,
+) -> None:
+    """K=2 uncertainty fusion must favor a sharper candidate over a blurred one."""
+    from synapse.render_core.pyramid import separable_gaussian
+
+    rng = np.random.default_rng(7)
+    sharp = np.zeros((64, 64, 3), dtype=np.float32)
+    sharp[16:48, 16:48, :] = 0.85
+    sharp += rng.standard_normal((64, 64, 3)).astype(np.float32) * 0.05
+    sharp = np.clip(sharp, 0.0, 1.0)
+    blurred = separable_gaussian(sharp, sigma=3.0).astype(np.float32)
+
+    fused = fusion.fuse([blurred, sharp], FusionMethod.UNCERTAINTY_WEIGHTED)
+    err_to_sharp = float(np.mean(np.abs(fused - sharp)))
+    err_to_blurred = float(np.mean(np.abs(fused - blurred)))
+    assert err_to_sharp < err_to_blurred
+
+
+def test_pr189_poisson_dst_exact_identity(
+    fusion: MultiModelRefineFusion,
+) -> None:
+    """Direct 2D DST Poisson solver recovers identical inputs to near machine precision."""
+    img = _gradient_patch(seed=55)
+    fused = fusion.fuse([img, img.copy()], FusionMethod.POISSON_GRADIENT)
+    mse = float(np.mean((fused - img) ** 2))
+    assert mse < 1e-6, f"Expected exact DST Poisson reconstruction, got MSE={mse}"
+
+
+def test_pr189_anatomical_quality_score_overrides_confidence() -> None:
+    """Explicit anatomical_quality_score takes precedence over detection confidence."""
+    from synapse.refine.tiled_executor import TiledBypassExecutor
+    from synapse.refine.types import AnatomicalRegion, RefinementROI
+
+    crop = np.zeros((32, 32, 3), dtype=np.float32)
+    bbox = np.array([0, 0, 32, 32], dtype=np.float32)
+    roi_bad_anatomy = RefinementROI(
+        bbox_xyxy=bbox,
+        crop_acescg=crop,
+        region=AnatomicalRegion.HAND,
+        confidence=0.99,
+        anatomical_quality_score=0.25,
+    )
+    roi_good_anatomy = RefinementROI(
+        bbox_xyxy=bbox,
+        crop_acescg=crop,
+        region=AnatomicalRegion.HAND,
+        confidence=0.40,
+        anatomical_quality_score=0.95,
+    )
+    frames = np.zeros((1, 64, 64, 3), dtype=np.float32)
+    executor = TiledBypassExecutor(tile_size=64, health_threshold=0.8)
+    defective, bypassed = executor.extract_and_filter(frames, [roi_bad_anatomy, roi_good_anatomy])
+    assert bypassed == 1
+    assert len(defective) == 1
+    assert defective[0] is roi_bad_anatomy
+
+
+def test_pr189_closed_loop_refinements_cropped_to_bbox() -> None:
+    """ClosedLoopRunner._build_refinements must crop refined_acescg to bbox_xyxy dimensions."""
+    from synapse.recon.loop.closed_loop_runner import ClosedLoopRunner
+
+    source = np.zeros((2, 64, 64, 3), dtype=np.float32)
+    rerendered = np.zeros((2, 64, 64, 3), dtype=np.float32)
+    rerendered[:, 20:40, 15:35, :] = 0.7
+
+    refs = ClosedLoopRunner._build_refinements(rerendered, source)
+    assert len(refs) == 2
+    ref0 = refs[0][0]
+    x0, y0, x1, y1 = [int(v) for v in ref0.bbox_xyxy]
+    assert ref0.refined_acescg.shape == (y1 - y0, x1 - x0, 3)
