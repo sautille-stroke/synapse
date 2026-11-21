@@ -232,8 +232,60 @@ class TestProfilesDocSync:
 
         core_fields = ["working_colorspace", "color_temp_kelvin", "exposure_ev"]
         for field in core_fields:
-            assert field in combined or "ACEScg" in combined, (
+            assert field in combined, (
                 f"StyleDescriptor field {field!r} missing from documentation"
+            )
+
+    def test_wire_contracts_15ch_table_matches_fgpp_schema(self) -> None:
+        """Verify WIRE_CONTRACTS.md §1.1 channel table aligns with FGPP_CHANNEL_SPECS."""
+        from synapse.fgpp.schema import FGPP_CHANNEL_SPECS, get_channel_names
+
+        repo_root = Path(__file__).resolve().parent.parent
+        wire_path = repo_root / "docs" / "WIRE_CONTRACTS.md"
+        assert wire_path.is_file(), "docs/WIRE_CONTRACTS.md must exist"
+        wire_text = wire_path.read_text(encoding="utf-8")
+
+        # Parse channel names from the markdown table rows: | `ChannelName` | ...
+        channel_pattern = re.compile(r"^\|\s*`([A-Za-z]+\.[A-Z])`\s*\|", re.MULTILINE)
+        doc_channels = [m.group(1) for m in channel_pattern.finditer(wire_text)]
+
+        code_channels = get_channel_names()
+        assert len(doc_channels) == 15, (
+            f"WIRE_CONTRACTS.md should list 15 channels, found {len(doc_channels)}: {doc_channels}"
+        )
+        assert doc_channels == code_channels, (
+            f"Channel name mismatch:\n  Doc:  {doc_channels}\n  Code: {code_channels}"
+        )
+
+        # Verify 34 B/px is stated in doc
+        assert "34 B/px" in wire_text or "34 字节" in wire_text or "34B/px" in wire_text, (
+            "WIRE_CONTRACTS.md must state 34 B/px total"
+        )
+
+    def test_wire_contracts_shm_header_offsets(self) -> None:
+        """Verify WIRE_CONTRACTS.md §4.1 SHM header offsets match test constants."""
+        repo_root = Path(__file__).resolve().parent.parent
+        wire_path = repo_root / "docs" / "WIRE_CONTRACTS.md"
+        assert wire_path.is_file()
+        wire_text = wire_path.read_text(encoding="utf-8")
+
+        # §4.1 declares canonical offsets; verify key ones are present
+        expected_offsets = {
+            "0x00": "seqlock_sequence",
+            "0x04": "width",
+            "0x08": "height",
+        }
+        for offset, field_substr in expected_offsets.items():
+            assert offset in wire_text, (
+                f"SHM offset {offset} for {field_substr} missing from WIRE_CONTRACTS.md §4.1"
+            )
+            # Verify the offset line actually references the field
+            offset_line_pattern = re.compile(
+                rf"Offset\s+{re.escape(offset)}.*{re.escape(field_substr)}",
+                re.IGNORECASE,
+            )
+            assert offset_line_pattern.search(wire_text), (
+                f"SHM offset {offset} line does not reference '{field_substr}' in WIRE_CONTRACTS.md"
             )
 
     def test_readme_status_markers_clean_and_released(self) -> None:

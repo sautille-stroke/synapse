@@ -11,8 +11,10 @@ Covers:
 
 from __future__ import annotations
 
+import contextlib
+from contextlib import AbstractContextManager
 from typing import Any
-from unittest.mock import MagicMock
+from types import TracebackType
 
 import numpy as np
 import pytest
@@ -23,6 +25,100 @@ from synapse.adapters.base import (
 )
 from synapse.adapters.wan import LocalCallableBackend, WanAdapter
 from synapse.fgpp.frame import CameraParams, FGPPFrame
+
+
+# ---------------------------------------------------------------------------
+# Typed stub replacing MagicMock for MultiLoRAManager method tracking
+# ---------------------------------------------------------------------------
+
+
+class _SpatialHooksStub(AbstractContextManager["_SpatialHooksStub"]):
+    """Typed context manager stub for ``manage_spatial_hooks``."""
+
+    def __init__(self) -> None:
+        self.entered: bool = False
+        self.exited: bool = False
+
+    def __enter__(self) -> "_SpatialHooksStub":
+        self.entered = True
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
+        self.exited = True
+        return False
+
+
+class _LoRAManagerMethodTracker:
+    """Typed method tracker that replaces MagicMock for LoRA manager methods.
+
+    Records all calls with their (args, kwargs) so tests can assert on
+    call order and parameters without relying on MagicMock's magic behaviour.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def __call__(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append((args, kwargs))
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
+
+    def assert_called_once(self) -> None:
+        assert self.call_count == 1, (
+            f"Expected exactly 1 call, got {self.call_count}"
+        )
+
+    def assert_not_called(self) -> None:
+        assert self.call_count == 0, (
+            f"Expected no calls, got {self.call_count}"
+        )
+
+    def assert_called_once_with(self, *args: Any, **kwargs: Any) -> None:
+        self.assert_called_once()
+        actual_args, actual_kwargs = self.calls[0]
+        assert actual_args == args, (
+            f"Positional args mismatch: expected {args}, got {actual_args}"
+        )
+        assert actual_kwargs == kwargs, (
+            f"Keyword args mismatch: expected {kwargs}, got {actual_kwargs}"
+        )
+
+
+class _SpatialHooksTracker:
+    """Typed tracker for ``manage_spatial_hooks`` that returns a real context manager."""
+
+    def __init__(self, ctx: AbstractContextManager[Any] | None = None) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        self._ctx = ctx
+
+    def __call__(self, *args: Any, **kwargs: Any) -> AbstractContextManager[Any]:
+        self.calls.append((args, kwargs))
+        if self._ctx is not None:
+            return self._ctx
+        return contextlib.nullcontext()
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
+
+    def assert_called_once(self) -> None:
+        assert self.call_count == 1, f"Expected 1 call, got {self.call_count}"
+
+    def assert_not_called(self) -> None:
+        assert self.call_count == 0, f"Expected no calls, got {self.call_count}"
+
+    def assert_called_once_with(self, *args: Any, **kwargs: Any) -> None:
+        self.assert_called_once()
+        actual_args, actual_kwargs = self.calls[0]
+        assert actual_args == args
+        assert actual_kwargs == kwargs
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -156,8 +252,6 @@ class TestWanAdapterLoRAGenerate:
         """When LoRA is active and frames have Cryptomatte IDs,
         ``manage_spatial_hooks`` is called without global unmasked
         ``apply_merged_weights`` (avoiding 2x scaling and style leakage)."""
-        import contextlib
-
         manifests = _make_lora_manifests()
         adapter = WanAdapter(
             backend=_fake_backend(),
@@ -165,13 +259,21 @@ class TestWanAdapterLoRAGenerate:
             test_synthetic=True,
         )
 
-        # Patch the manager methods
+        # Patch the manager methods with typed stubs
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr,method-assign]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr,method-assign]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr,method-assign]
+        spatial_tracker = _SpatialHooksTracker()
+        apply_tracker = _LoRAManagerMethodTracker()
+        restore_tracker = _LoRAManagerMethodTracker()
+        mgr.manage_spatial_hooks = spatial_tracker  # type: ignore[union-attr,method-assign]
+        mgr.apply_merged_weights = apply_tracker  # type: ignore[union-attr,method-assign]
+        mgr.restore_base_weights = restore_tracker  # type: ignore[union-attr,method-assign]
 
-        mock_model = MagicMock()
+        # Create a typed stub for the model (instead of MagicMock)
+        class _StubModel:
+            """Minimal typed stub for a PyTorch-like nn.Module."""
+            pass
+
+        mock_model = _StubModel()
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
         payload = PreparedConditionPayload()
@@ -183,8 +285,8 @@ class TestWanAdapterLoRAGenerate:
             fgpp_frames=frames,
         )
 
-        mgr.manage_spatial_hooks.assert_called_once()  # type: ignore[union-attr]
-        mgr.apply_merged_weights.assert_not_called()  # type: ignore[union-attr]
+        spatial_tracker.assert_called_once()
+        apply_tracker.assert_not_called()
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_restores_on_error(self) -> None:
@@ -205,12 +307,14 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = None
-        mock_cm.__exit__.return_value = False
-        mgr.manage_spatial_hooks = MagicMock(return_value=mock_cm)  # type: ignore[union-attr,method-assign]
+        hooks_stub = _SpatialHooksStub()
+        spatial_tracker = _SpatialHooksTracker(ctx=hooks_stub)
+        mgr.manage_spatial_hooks = spatial_tracker  # type: ignore[union-attr,method-assign]
 
-        mock_model = MagicMock()
+        class _StubModel:
+            pass
+
+        mock_model = _StubModel()
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
         payload = PreparedConditionPayload()
@@ -224,13 +328,11 @@ class TestWanAdapterLoRAGenerate:
             )
 
         # Context manager __exit__ MUST still be called despite the error
-        assert mock_cm.__exit__.called
+        assert hooks_stub.exited
 
     def test_wan_adapter_generate_skips_lora_without_cryptomatte(self) -> None:
         """When frames lack ``cryptomatte_id``, ``manage_spatial_hooks`` is called
         with ``cryptomatte_ids=None``."""
-        import contextlib
-
         manifests = _make_lora_manifests()
         adapter = WanAdapter(
             backend=_fake_backend(),
@@ -239,9 +341,13 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr,method-assign]
+        spatial_tracker = _SpatialHooksTracker()
+        mgr.manage_spatial_hooks = spatial_tracker  # type: ignore[union-attr,method-assign]
 
-        mock_model = MagicMock()
+        class _StubModel:
+            pass
+
+        mock_model = _StubModel()
         frames = _make_fgpp_frames_without_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
         payload = PreparedConditionPayload()
@@ -253,7 +359,7 @@ class TestWanAdapterLoRAGenerate:
             fgpp_frames=frames,
         )
 
-        mgr.manage_spatial_hooks.assert_called_once_with(  # type: ignore[union-attr]
+        spatial_tracker.assert_called_once_with(
             mock_model,
             cryptomatte_ids=None,
             target_entity_ids=None,
@@ -271,7 +377,8 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock()  # type: ignore[union-attr,method-assign]
+        spatial_tracker = _SpatialHooksTracker()
+        mgr.manage_spatial_hooks = spatial_tracker  # type: ignore[union-attr,method-assign]
 
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
@@ -280,7 +387,7 @@ class TestWanAdapterLoRAGenerate:
         # model=None (default) → LoRA skipped
         result = adapter.generate(payload, config, fgpp_frames=frames)
 
-        mgr.manage_spatial_hooks.assert_not_called()  # type: ignore[union-attr]
+        spatial_tracker.assert_not_called()
         assert isinstance(result, VideoResult)
 
     def test_wan_adapter_generate_real_model_spatial_modification_and_bg_preservation(self) -> None:
