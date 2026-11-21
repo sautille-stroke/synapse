@@ -198,8 +198,13 @@ class MemoryForecaster:
         weight_gb = _MODEL_WEIGHT_GB.get(model_variant, 28.0)
         channels = _CHANNELS_FACTOR.get(model_variant, 16)
 
-        # Activation memory: N × H × W × C × dtype / 1 GiB
-        act_bytes = num_frames * height * width * channels * dtype_bytes
+        # Activation memory in *latent* space (not pixel space).
+        # Wan 2.1 VAE: temporal compression 4x, spatial compression 8x.
+        # Latent activations are proportional to the latent volume.
+        latent_t = max((num_frames - 1) // 4 + 1, 1)
+        latent_h = max(height // 8, 1)
+        latent_w = max(width // 8, 1)
+        act_bytes = latent_t * latent_h * latent_w * channels * dtype_bytes
         act_gb = act_bytes / (1024**3)
 
         # Spatiotemporal attention tokens.

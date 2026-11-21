@@ -527,25 +527,29 @@ class TestWanSlidingWindowAndGuards:
         seq = _make_fgpp_sequence(n_frames=total_frames, h=h, w=w)
 
         captured_warmup: list[list[np.ndarray]] = []
+        captured_frames: list[np.ndarray] = []
 
         def mock_pipeline(p: PreparedConditionPayload, c: VideoGenerationConfig) -> np.ndarray:
             captured_warmup.append(list(p.keyframe_images))
-            # Return distinct frames where frame i has value i
-            frames = np.zeros((c.num_frames, h, w, 3), dtype=np.uint8)
-            for idx in range(c.num_frames):
-                frames[idx] = (idx % 256)
+            # Return spatially varied, temporally distinct frames to pass
+            # non-degenerate quality gate (no bypass switch)
+            rng = np.random.Generator(np.random.PCG64(c.seed))
+            frames = rng.integers(10, 246, size=(c.num_frames, h, w, 3), dtype=np.uint8)
+            captured_frames.append(frames.copy())
             return frames
 
         adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=mock_pipeline))
-        adapter.generate(payload, config, fgpp_frames=seq.frames, check_non_degenerate=False)
+        adapter.generate(payload, config, fgpp_frames=seq.frames)
 
         # Window 0: no warmup
         assert len(captured_warmup[0]) == 0
         # Window 1: warmup must come from stride - 3 : stride (indices 61, 62, 63)
+        # of the FIRST window's output
         assert len(captured_warmup[1]) == 3
-        np.testing.assert_array_equal(captured_warmup[1][0], np.full((h, w, 3), 61, dtype=np.uint8))
-        np.testing.assert_array_equal(captured_warmup[1][1], np.full((h, w, 3), 62, dtype=np.uint8))
-        np.testing.assert_array_equal(captured_warmup[1][2], np.full((h, w, 3), 63, dtype=np.uint8))
+        # Verify warmup frames match window 0's output at indices 61, 62, 63
+        np.testing.assert_array_equal(captured_warmup[1][0], captured_frames[0][61])
+        np.testing.assert_array_equal(captured_warmup[1][1], captured_frames[0][62])
+        np.testing.assert_array_equal(captured_warmup[1][2], captured_frames[0][63])
 
     def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
         """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""

@@ -511,7 +511,10 @@ class HttpCloudTransport(CloudApiTransport):
     ) -> None:
         self._provider = provider
         self._api_token = api_token
-        raw_url = endpoint_url or os.environ.get(f"{provider.upper()}_API_URL", "")
+        # Sanitize provider name for env var lookup: dots are illegal in
+        # env var names (e.g. "seedance2.5" → "SEEDANCE25")
+        env_provider = provider.upper().replace(".", "")
+        raw_url = endpoint_url or os.environ.get(f"{env_provider}_API_URL", "")
         if raw_url:
             from synapse.bridge.http_security import validate_safe_url
 
@@ -558,8 +561,8 @@ class HttpCloudTransport(CloudApiTransport):
             else ""
         )
         text_prompt = (
-            getattr(config, "prompt", "")
-            or config.extra.get("text_prompt", "")
+            config.extra.get("text_prompt", "")
+            or getattr(config, "prompt", "")
             or getattr(segment, "text_prompt", "")
             or ""
         )
@@ -697,7 +700,9 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
                 agent_fix_hint=(f"export {self._env_var_name}=<your-token>"),
             )
 
-        endpoint_url = os.environ.get(f"{self.adapter_id.upper()}_API_URL", "")
+        # Sanitize adapter_id for env var: dots not allowed (e.g. seedance2.5 → SEEDANCE25)
+        env_adapter_id = self.adapter_id.upper().replace(".", "")
+        endpoint_url = os.environ.get(f"{env_adapter_id}_API_URL", "")
         if endpoint_url:
             live_transport = HttpCloudTransport(
                 self.adapter_id, self._api_token, endpoint_url=endpoint_url

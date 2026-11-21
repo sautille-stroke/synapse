@@ -178,10 +178,18 @@ class TestNonDegenerateQualityGate:
         payload = adapter.prepare_conditions(seq, config)
 
         with pytest.raises(QualityGateError):
-            adapter.generate(payload, config, check_non_degenerate=True)
+            adapter.generate(payload, config)
 
-        # When check_non_degenerate is disabled, it returns normally
-        result = adapter.generate(payload, config, check_non_degenerate=False)
+        # check_non_degenerate bypass has been removed — always validates.
+        # Provide non-degenerate frames to verify generate still works.
+        rng = np.random.Generator(np.random.PCG64(42))
+        varied_backend = LocalCallableBackend(
+            lambda payload, config: rng.integers(
+                10, 246, size=(8, 32, 32, 3), dtype=np.uint8,
+            )
+        )
+        adapter_ok = WanAdapter(backend=varied_backend)
+        result = adapter_ok.generate(payload, config)
         assert result.frames_srgb_u8.shape == (8, 32, 32, 3)
 
 
