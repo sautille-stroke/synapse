@@ -167,9 +167,9 @@ class TestWanAdapterLoRAGenerate:
 
         # Patch the manager methods
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr]
-        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr]
-        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr,method-assign]
+        mgr.apply_merged_weights = MagicMock()  # type: ignore[union-attr,method-assign]
+        mgr.restore_base_weights = MagicMock()  # type: ignore[union-attr,method-assign]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_with_cryptomatte()
@@ -208,7 +208,7 @@ class TestWanAdapterLoRAGenerate:
         mock_cm = MagicMock()
         mock_cm.__enter__.return_value = None
         mock_cm.__exit__.return_value = False
-        mgr.manage_spatial_hooks = MagicMock(return_value=mock_cm)  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock(return_value=mock_cm)  # type: ignore[union-attr,method-assign]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_with_cryptomatte()
@@ -239,7 +239,7 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock(return_value=contextlib.nullcontext())  # type: ignore[union-attr,method-assign]
 
         mock_model = MagicMock()
         frames = _make_fgpp_frames_without_cryptomatte()
@@ -271,7 +271,7 @@ class TestWanAdapterLoRAGenerate:
         )
 
         mgr = adapter._lora_manager
-        mgr.manage_spatial_hooks = MagicMock()  # type: ignore[union-attr]
+        mgr.manage_spatial_hooks = MagicMock()  # type: ignore[union-attr,method-assign]
 
         frames = _make_fgpp_frames_with_cryptomatte()
         config = VideoGenerationConfig(num_frames=2, width=8, height=8)
@@ -367,7 +367,7 @@ class TestWanAdapterLoRAGenerate:
 
         cfg = LoRATrainConfig(
             category="style",
-            learning_rate=1e-4,
+            lr_spatial=1e-4,
             loss_mode="sft",
             grad_accum_steps=1,
         )

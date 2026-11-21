@@ -547,7 +547,7 @@ class TestReconPipelineEndToEnd:
     """End-to-end integration tests for ReconPipeline."""
 
     @staticmethod
-    def _make_dense_sphere(n_subdivisions: int = 4) -> tuple:
+    def _make_dense_sphere(n_subdivisions: int = 4) -> tuple[Any, ...]:
         """Generate an icosphere with >=1500 vertices for Redline #3 gate.
 
         Uses iterative Loop subdivision of an icosahedron. With 4 subdivisions

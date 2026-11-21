@@ -295,7 +295,7 @@ class TestLoRATrainConfig:
 # -------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _require_torch() -> None:
     """Skip if torch is not installed."""
     pytest.importorskip("torch")

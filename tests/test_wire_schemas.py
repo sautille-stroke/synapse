@@ -34,7 +34,7 @@ if str(_TOOLS_DIR) not in sys.path:
 
 # Import the module directly
 sys.path.insert(0, str(_TOOLS_DIR))
-import wire_guard  # noqa: E402
+import wire_guard  # type: ignore[import-not-found]  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # TASK 5.1: wire_guard.py --check exits 0
@@ -349,7 +349,7 @@ class TestCppHeaderExtendedValidation:
     def aether_header_path(self) -> Path:
         for probe in wire_guard._DEFAULT_HEADER_PROBES:
             if probe.exists():
-                return probe
+                return probe  # type: ignore[no-any-return]
         pytest.skip("aether fgpp_types.h header not available")
 
     def test_parse_header_extracts_pixel_types_and_specs(self, aether_header_path: Path) -> None:

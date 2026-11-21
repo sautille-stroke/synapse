@@ -74,9 +74,7 @@ _PRIVATE_PREFIX = "_"
 
 # Files allowed to use non-constant ``importlib.import_module(var)`` because
 # they are dynamic extension loaders by design.
-_DYNAMIC_IMPORT_ALLOWLIST: frozenset[str] = frozenset({
-    "bridge/aether_bridge.py",
-})
+_DYNAMIC_IMPORT_ALLOWLIST: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -136,15 +134,22 @@ class _ImportVisitor(ast.NodeVisitor):
     tier enforcement.
     """
 
-    def __init__(self, source_pkg: str, file_package: str = "") -> None:
+    def __init__(self, source_pkg: str, file_package: str = "", source_lines: list[str] | None = None) -> None:
         self.source_pkg = source_pkg
         self.file_package = file_package
+        self._source_lines = source_lines or []
         # All edges (for cycle detection)
         self.edges: set[tuple[str, str]] = set()
         # Only module-level edges (for tier enforcement)
         self.toplevel_edges: set[tuple[str, str]] = set()
         self.errors: list[str] = []
         self._scope_depth: int = 0  # 0 = module level
+
+    def _has_inline_suppression(self, lineno: int) -> bool:
+        """Check whether the source line has a ``dag-guard: external-only`` comment."""
+        if 1 <= lineno <= len(self._source_lines):
+            return "dag-guard: external-only" in self._source_lines[lineno - 1]
+        return False
 
     def _record(self, module_name: str | None) -> None:
         if module_name is None:
@@ -204,14 +209,53 @@ class _ImportVisitor(ast.NodeVisitor):
         module_name: str | None = None
         is_dynamic_non_constant = False
 
-        if isinstance(func, ast.Name) and func.id == "__import__":
+        # Detect builtins.__import__("x") — attribute-based __import__ bypass
+        is_import_builtin = False
+        if isinstance(func, ast.Attribute) and func.attr == "__import__":
+            is_import_builtin = True
+
+        if (isinstance(func, ast.Name) and func.id == "__import__") or is_import_builtin:
+            # Check positional args
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 module_name = node.args[0].value
             elif node.args:
                 is_dynamic_non_constant = True
+            # Also check name= keyword argument
+            if module_name is None and not is_dynamic_non_constant:
+                for kw in node.keywords:
+                    if kw.arg == "name":
+                        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                            module_name = kw.value.value
+                        else:
+                            is_dynamic_non_constant = True
+                        break
         elif isinstance(func, ast.Name) and func.id == "import_module":
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                module_name = node.args[0].value
+                val = node.args[0].value
+                if val.startswith("."):
+                    # Relative import_module(".x", pkg) — resolve via 2nd arg
+                    pkg_arg: str | None = None
+                    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
+                        pkg_arg = node.args[1].value
+                    else:
+                        for kw in node.keywords:
+                            if kw.arg == "package" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                                pkg_arg = kw.value.value
+                                break
+                    if pkg_arg is not None:
+                        # Resolve: e.g. import_module(".fgpp", "synapse") -> "synapse.fgpp"
+                        level = len(val) - len(val.lstrip("."))
+                        rel_mod = val.lstrip(".")
+                        parts = pkg_arg.split(".")
+                        if level <= len(parts):
+                            base = ".".join(parts[: len(parts) - level + 1])
+                            module_name = f"{base}.{rel_mod}" if rel_mod else base
+                        else:
+                            is_dynamic_non_constant = True
+                    else:
+                        is_dynamic_non_constant = True
+                else:
+                    module_name = val
             elif node.args and isinstance(node.args[0], ast.JoinedStr):
                 first_val = node.args[0].values[0] if node.args[0].values else None
                 if isinstance(first_val, ast.Constant) and isinstance(first_val.value, str):
@@ -228,7 +272,30 @@ class _ImportVisitor(ast.NodeVisitor):
                 is_dynamic_non_constant = True
         elif isinstance(func, ast.Attribute) and func.attr == "import_module":
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                module_name = node.args[0].value
+                val = node.args[0].value
+                if val.startswith("."):
+                    # Relative import_module(".x", pkg) via attribute form
+                    pkg_arg_attr: str | None = None
+                    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
+                        pkg_arg_attr = node.args[1].value
+                    else:
+                        for kw in node.keywords:
+                            if kw.arg == "package" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                                pkg_arg_attr = kw.value.value
+                                break
+                    if pkg_arg_attr is not None:
+                        level = len(val) - len(val.lstrip("."))
+                        rel_mod = val.lstrip(".")
+                        parts = pkg_arg_attr.split(".")
+                        if level <= len(parts):
+                            base = ".".join(parts[: len(parts) - level + 1])
+                            module_name = f"{base}.{rel_mod}" if rel_mod else base
+                        else:
+                            is_dynamic_non_constant = True
+                    else:
+                        is_dynamic_non_constant = True
+                else:
+                    module_name = val
             elif node.args and isinstance(node.args[0], ast.JoinedStr):
                 # f-string: extract constant prefix to see if it starts
                 # with "synapse." (common pattern in __init__.py __getattr__)
@@ -246,7 +313,7 @@ class _ImportVisitor(ast.NodeVisitor):
             elif node.args:
                 is_dynamic_non_constant = True
 
-        if is_dynamic_non_constant:
+        if is_dynamic_non_constant and not self._has_inline_suppression(node.lineno):
             self.errors.append(
                 f"Non-constant dynamic import at line {node.lineno}"
             )
@@ -319,7 +386,7 @@ def scan_import_dag(
         except UnicodeDecodeError:
             continue
 
-        visitor = _ImportVisitor(source_pkg, file_package)
+        visitor = _ImportVisitor(source_pkg, file_package, source_lines=source.splitlines())
         visitor.visit(tree)
         all_edges.update(visitor.edges)
         toplevel_edges.update(visitor.toplevel_edges)

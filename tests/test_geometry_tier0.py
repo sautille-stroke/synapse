@@ -39,7 +39,7 @@ from synapse.recon.geometry import (
 # ===================================================================
 
 
-@pytest.fixture()
+@pytest.fixture
 def tetrahedron() -> None:
     """Regular tetrahedron — closed, watertight, 2-manifold, zero defects."""
     verts = np.array(
@@ -61,7 +61,7 @@ def tetrahedron() -> None:
     return verts, faces  # type: ignore[return-value]
 
 
-@pytest.fixture()
+@pytest.fixture
 def open_plane() -> None:
     """Single triangle — manifold but not watertight (boundary edges)."""
     verts = np.array(
@@ -75,7 +75,7 @@ def open_plane() -> None:
     return verts, faces  # type: ignore[return-value]
 
 
-@pytest.fixture()
+@pytest.fixture
 def needle_triangle() -> None:
     """Extremely thin needle triangle — should be flagged as degenerate."""
     verts = np.array(
@@ -89,7 +89,7 @@ def needle_triangle() -> None:
     return verts, faces  # type: ignore[return-value]
 
 
-@pytest.fixture()
+@pytest.fixture
 def bowtie_mesh() -> None:
     """Bowtie / hourglass — two triangles sharing only a single vertex.
 
@@ -113,7 +113,7 @@ def bowtie_mesh() -> None:
     return verts, faces  # type: ignore[return-value]
 
 
-@pytest.fixture()
+@pytest.fixture
 def self_intersecting_mesh() -> None:
     """Two triangles that cross through each other in 3D space."""
     verts = np.array(
@@ -137,7 +137,7 @@ def self_intersecting_mesh() -> None:
     return verts, faces  # type: ignore[return-value]
 
 
-@pytest.fixture()
+@pytest.fixture
 def mesh_with_debris() -> None:
     """Tetrahedron + tiny floating debris cube far away."""
     # Main body: tetrahedron

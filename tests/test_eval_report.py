@@ -308,11 +308,11 @@ class TestNormalizeMetric:
 
 @pytest.mark.slow
 class TestEvalScript:
-    @pytest.fixture()
+    @pytest.fixture
     def script_path(self) -> Path:
         return Path(__file__).parent.parent / "scripts" / "evaluate_3d_models.py"
 
-    @pytest.fixture()
+    @pytest.fixture
     def model_dir(self, tmp_path: Path) -> Path:
         """Create a temp dir with a procedural cube saved as .obj."""
         d = tmp_path / "models"

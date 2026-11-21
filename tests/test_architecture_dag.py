@@ -36,7 +36,7 @@ def _load_guard() -> Any:
 def _get_validation_result() -> tuple[Any, Any, Any, Any]:
     """Cache full AST graph validation result across tests in this module."""
     mod = _load_guard()
-    return mod.validate(_repo_root())
+    return mod.validate(_repo_root())  # type: ignore[no-any-return]
 
 
 def test_no_import_cycles() -> None:

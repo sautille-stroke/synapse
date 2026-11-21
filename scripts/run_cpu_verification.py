@@ -253,8 +253,10 @@ def _verify_e3_long_horizon_scheduler(
     )
     windows = plan.compute_windows()
     assert len(windows) == 2
-    assert windows[0].start == 0 and windows[0].end == 97
-    assert windows[1].start == 64 and windows[1].end == 161
+    assert windows[0].start == 0
+    assert windows[0].end == 97
+    assert windows[1].start == 64
+    assert windows[1].end == 161
 
     # Test variance-preserving sigmoid latent overlap fusion across 9 latent steps
     rng = np.random.default_rng(42)
@@ -328,7 +330,8 @@ def _verify_e4_feature_store_and_multi_lora(
         loaded_samples = list(iter_feature_shards(shards))
         assert len(loaded_samples) == 1
         s0 = loaded_samples[0]
-        assert "latent" in s0 and "prompt" in s0
+        assert "latent" in s0
+        assert "prompt" in s0
 
         # Verify Multi-LoRA Cryptomatte spatial attention mask isolation
         unique_ids = [int(x) for x in np.unique(f0.cryptomatte_id) if int(x) != 0]

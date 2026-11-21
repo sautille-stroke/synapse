@@ -24,7 +24,9 @@ import shutil
 import subprocess
 import sys
 import sysconfig
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 
 def _get_repo_root() -> Path:
@@ -146,7 +148,7 @@ def _install_extension(built_artifact: Path, target_dir: Path) -> list[Path]:
     return installed
 
 
-def _load_validate_func(target_dir: Path | None, repo_root: Path, quiet: bool) -> object | None:
+def _load_validate_func(target_dir: Path | None, repo_root: Path, quiet: bool) -> Callable[..., Any] | None:
     """Load validate_mesh_geometry from target_dir or via aether_bridge."""
     if target_dir is not None:
         ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or (
@@ -163,7 +165,7 @@ def _load_validate_func(target_dir: Path | None, repo_root: Path, quiet: bool) -
                         spec.loader.exec_module(mod)
                         fn = getattr(mod, "validate_mesh_geometry", None)
                         if fn is not None:
-                            return fn
+                            return fn  # type: ignore[no-any-return]
                 except Exception as exc:
                     if not quiet:
                         print(f"[build_native] Error loading {cand}: {exc}", file=sys.stderr)

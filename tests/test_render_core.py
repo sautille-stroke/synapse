@@ -350,6 +350,7 @@ class TestMotionVectors:
         cam = _make_camera(width=32, height=32, position=(0, 0, 5))
         frame = rast.render(verts, faces, norms, cam)
 
+        assert frame.motion_vector is not None
         assert np.allclose(frame.motion_vector, 0.0)
 
     def test_near_clip_triangle_with_motion_vectors(self) -> None:

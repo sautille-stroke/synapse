@@ -215,7 +215,7 @@ class TestSilhouette:
 class TestAlignPose:
     """Coarse-to-fine silhouette alignment tests."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def humanoid_mesh(
         self,
     ) -> tuple[np.ndarray, np.ndarray]:

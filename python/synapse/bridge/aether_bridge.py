@@ -68,7 +68,7 @@ def _import_aether_extension(stem: str) -> Any:
         except Exception:
             pass
     try:
-        return importlib.import_module(stem)
+        return importlib.import_module(stem)  # dag-guard: external-only
     except ImportError:
         pass
     for cand in _candidate_aether_python_dirs():
@@ -76,7 +76,7 @@ def _import_aether_extension(stem: str) -> Any:
             if str(cand) not in sys.path:
                 sys.path.insert(0, str(cand))
             try:
-                return importlib.import_module(stem)
+                return importlib.import_module(stem)  # dag-guard: external-only
             except ImportError:
                 pass
     return None
