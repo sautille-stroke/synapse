@@ -30,6 +30,7 @@ __all__ = [
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -225,10 +226,15 @@ def _check_style_profile() -> list[str]:
         errors.append(f"StyleProfile v2.0.0: cannot instantiate default: {e}")
 
     # Cross-repo aether style header validation (gracefully skip if unavailable)
-    _aether_style_probes = [
+    _aether_style_probes: list[Path] = []
+    if os.environ.get("AETHER_ROOT"):
+        _aether_style_probes.append(
+            Path(os.environ["AETHER_ROOT"]) / "style" / "include" / "aether" / "style" / "style_types.h"
+        )
+    _aether_style_probes.extend([
         _REPO_ROOT.parent / "aether" / "style" / "include" / "aether" / "style" / "style_types.h",
         Path("../aether/style/include/aether/style/style_types.h"),
-    ]
+    ])
     aether_style_path = None
     for probe in _aether_style_probes:
         if probe.exists():
@@ -334,7 +340,26 @@ _SCHEMA_PYTHON_ALIGNMENT: dict[str, tuple[str, str, list[str]]] = {
         "InspectionBundleManifest",
         ["schema_version", "bundle_id", "sources"],
     ),
+    "style_profile.v2.0.0.schema.json": (
+        "synapse.style.descriptor",
+        "StyleDescriptor",
+        ["working_colorspace"],
+    ),
 }
+
+# FGPP metadata schema fields emitted by FGPPSequence.save_metadata()
+_FGPP_METADATA_TOP_LEVEL_KEYS: frozenset[str] = frozenset({
+    "schema_version",
+    "scene_id",
+    "fps",
+    "total_frames",
+    "num_frames",
+    "resolution",
+    "z_near_meters",
+    "z_far_meters",
+    "anchor_interval_frames",
+    "frames",
+})
 
 
 def _check_json_schemas() -> list[str]:
@@ -467,6 +492,22 @@ def _check_json_schemas() -> list[str]:
                     f"Schema '{filename}': cannot import {mod_path}.{cls_name}: {e}"
                 )
 
+        # Validate fgpp.v1.0.schema.json properties match FGPPSequence.save_metadata() keys
+        if filename == "fgpp.v1.0.schema.json":
+            fgpp_schema_props = set(props.keys())
+            fgpp_missing_in_schema = set(_FGPP_METADATA_TOP_LEVEL_KEYS) - fgpp_schema_props
+            fgpp_missing_in_py = fgpp_schema_props - set(_FGPP_METADATA_TOP_LEVEL_KEYS)
+            if fgpp_missing_in_schema:
+                errors.append(
+                    f"Schema '{filename}': FGPPSequence.save_metadata() keys missing from schema: "
+                    f"{sorted(fgpp_missing_in_schema)}"
+                )
+            if fgpp_missing_in_py:
+                errors.append(
+                    f"Schema '{filename}': schema properties missing from FGPPSequence.save_metadata(): "
+                    f"{sorted(fgpp_missing_in_py)}"
+                )
+
         # Deep constraint validation
         def _validate_sub_constraints(obj_schema: dict[str, Any], path_prefix: str, filename: str = filename) -> None:
             for sub_schema in obj_schema.get("oneOf", []):
@@ -566,11 +607,11 @@ def _parse_header(path: Path) -> dict[str, Any]:
 
     channel_names: list[str] = [spec["name"] for spec in channel_specs]
     if not channel_names:
-        # Fallback regex if spec format differs
+        # Fallback regex preserving declaration order (do NOT sort away order mismatches)
         if m_body:
-            channel_names = sorted(set(_RE_CHANNEL_NAME.findall(m_body.group(1))))
+            channel_names = list(dict.fromkeys(_RE_CHANNEL_NAME.findall(m_body.group(1))))
         else:
-            channel_names = sorted(set(_RE_CHANNEL_NAME.findall(text)))
+            channel_names = list(dict.fromkeys(_RE_CHANNEL_NAME.findall(text)))
 
     pixel_type_values: dict[str, int] = {}
     m_pt_block = _RE_PIXEL_TYPE_BLOCK.search(text)
@@ -769,8 +810,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Section 5: Cross-language C++ header check ---
     header_path = args.aether_header
+    probes: list[Path] = []
+    if os.environ.get("AETHER_ROOT"):
+        probes.append(
+            Path(os.environ["AETHER_ROOT"]) / "fgpp" / "include" / "aether" / "fgpp" / "fgpp_types.h"
+        )
+    probes.extend(_DEFAULT_HEADER_PROBES)
     if header_path is None:
-        for probe in _DEFAULT_HEADER_PROBES:
+        for probe in probes:
             try:
                 if probe.is_file():
                     header_path = probe

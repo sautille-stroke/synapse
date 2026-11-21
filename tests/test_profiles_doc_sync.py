@@ -246,7 +246,7 @@ class TestProfilesDocSync:
         wire_text = wire_path.read_text(encoding="utf-8")
 
         # Parse channel names from the markdown table rows: | `ChannelName` | ...
-        channel_pattern = re.compile(r"^\|\s*`([A-Za-z]+\.[A-Z])`\s*\|", re.MULTILINE)
+        channel_pattern = re.compile(r"^\|\s*`([A-Za-z]+\.[A-Z]+)`\s*\|", re.MULTILINE)
         doc_channels = [m.group(1) for m in channel_pattern.finditer(wire_text)]
 
         code_channels = get_channel_names()
@@ -263,17 +263,23 @@ class TestProfilesDocSync:
         )
 
     def test_wire_contracts_shm_header_offsets(self) -> None:
-        """Verify WIRE_CONTRACTS.md §4.1 SHM header offsets match test constants."""
+        """Verify WIRE_CONTRACTS.md §4.1 SHM header offsets match inspector_shm_server.h."""
         repo_root = Path(__file__).resolve().parent.parent
         wire_path = repo_root / "docs" / "WIRE_CONTRACTS.md"
         assert wire_path.is_file()
         wire_text = wire_path.read_text(encoding="utf-8")
 
-        # §4.1 declares canonical offsets; verify key ones are present
+        # §4.1 declares canonical 64-byte InspectorShmHeader offsets
         expected_offsets = {
-            "0x00": "seqlock_sequence",
-            "0x04": "width",
-            "0x08": "height",
+            "0x00": "magic",
+            "0x04": "version",
+            "0x08": "width",
+            "0x0C": "height",
+            "0x10": "writeIdx",
+            "0x14": "bufferCount",
+            "0x18": "frameReady",
+            "0x2C": "generation",
+            "0x40": "pixel_data",
         }
         for offset, field_substr in expected_offsets.items():
             assert offset in wire_text, (

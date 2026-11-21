@@ -72,9 +72,12 @@ TIER_MAP: dict[str, int] = {
 # are exempt from tier checks.
 _PRIVATE_PREFIX = "_"
 
-# Files allowed to use non-constant ``importlib.import_module(var)`` because
-# they are dynamic extension loaders by design.
-_DYNAMIC_IMPORT_ALLOWLIST: frozenset[str] = frozenset()
+# Files allowed to use non-constant ``importlib.import_module(var)`` with an
+# explicit ``# dag-guard: external-only`` annotation because they are dynamic
+# external C++ extension loaders by design.
+_DYNAMIC_IMPORT_ALLOWLIST: frozenset[str] = frozenset({
+    "bridge/aether_bridge.py",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +137,17 @@ class _ImportVisitor(ast.NodeVisitor):
     tier enforcement.
     """
 
-    def __init__(self, source_pkg: str, file_package: str = "", source_lines: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        source_pkg: str,
+        file_package: str = "",
+        source_lines: list[str] | None = None,
+        rel_posix: str = "",
+    ) -> None:
         self.source_pkg = source_pkg
         self.file_package = file_package
         self._source_lines = source_lines or []
+        self._rel_posix = rel_posix
         # All edges (for cycle detection)
         self.edges: set[tuple[str, str]] = set()
         # Only module-level edges (for tier enforcement)
@@ -146,7 +156,12 @@ class _ImportVisitor(ast.NodeVisitor):
         self._scope_depth: int = 0  # 0 = module level
 
     def _has_inline_suppression(self, lineno: int) -> bool:
-        """Check whether the source line has a ``dag-guard: external-only`` comment."""
+        """Check whether an allowlisted file line has ``dag-guard: external-only``.
+
+        Non-allowlisted files cannot bypass dynamic import detection via inline comments.
+        """
+        if self._rel_posix not in _DYNAMIC_IMPORT_ALLOWLIST:
+            return False
         if 1 <= lineno <= len(self._source_lines):
             return "dag-guard: external-only" in self._source_lines[lineno - 1]
         return False
@@ -386,14 +401,17 @@ def scan_import_dag(
         except UnicodeDecodeError:
             continue
 
-        visitor = _ImportVisitor(source_pkg, file_package, source_lines=source.splitlines())
+        rel_posix = rel.as_posix()
+        visitor = _ImportVisitor(
+            source_pkg,
+            file_package,
+            source_lines=source.splitlines(),
+            rel_posix=rel_posix,
+        )
         visitor.visit(tree)
         all_edges.update(visitor.edges)
         toplevel_edges.update(visitor.toplevel_edges)
-        rel_posix = rel.as_posix()
         for err in visitor.errors:
-            if rel_posix in _DYNAMIC_IMPORT_ALLOWLIST and "Non-constant dynamic import" in err:
-                continue  # legitimate dynamic loader
             all_errors.append(f"{rel}: {err}")
 
     return all_edges, toplevel_edges, dict(pkg_files), all_errors
