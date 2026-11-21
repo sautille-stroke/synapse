@@ -111,6 +111,7 @@ class ReconPipeline:
             tracks_2d,
             frame_height=height,
             frame_width=width,
+            visibility=visibility,
         )
 
         # 3. Surface Geometry & Quad Remeshing

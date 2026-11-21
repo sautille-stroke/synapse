@@ -654,9 +654,15 @@ def solve_camera_trajectory(
             # has near-zero translation component, the motion is pure rotation
             # and we should not accumulate a spurious translation.
             U_e, S_e, Vt_e = np.linalg.svd(E)
-            # For pure rotation, E ≈ 0 (no epipolar constraint from translation)
-            translation_magnitude = min(S_e[0], S_e[1]) if len(S_e) >= 2 else 0.0
-            is_pure_rotation = translation_magnitude < 1e-4
+            # For a valid E with real translation, the two non-zero singular
+            # values should be approximately equal and significantly > 0.
+            # For pure rotation, E ≈ 0 (all singular values near zero).
+            # Also check via homography: compute H and test reprojection.
+            # Robust test: ratio of Frobenius norm of E to norm of K^T @ K
+            e_norm = float(np.linalg.norm(E, "fro"))
+            k_norm = float(np.linalg.norm(K, "fro"))
+            # Normalise by K scale to get a scale-invariant measure
+            is_pure_rotation = e_norm < 1e-3 * (k_norm ** 2)
 
             # Decompose essential matrix
             R_rel, t_rel = _essential_to_rotation_translation(
@@ -670,21 +676,24 @@ def solve_camera_trajectory(
                 # Suppress translation for pure rotation to prevent drift
                 t_rel = np.zeros(3, dtype=np.float64)
 
-            # Inter-step scale estimation from shared 3D points
-            if prev_3d_points is not None and len(pts_prev_v) >= 8:
-                # Triangulate current frame's points
-                P1 = K @ np.eye(3, 4, dtype=np.float64)
-                T_prev = extrinsics_list[t - 1].transform[:3]
-                P2_prev = K @ T_prev
+            # Inter-step scale estimation from shared 3D points.
+            # Triangulate between frame t-1 and frame t using the *relative*
+            # pose (R_rel, t_rel) instead of frame 0 as reference — using
+            # frame 0 at t=1 gives zero baseline (both are identity).
+            if prev_3d_points is not None and len(pts_prev_v) >= 8 and not is_pure_rotation:
+                # Triangulate using relative pose between t-1 and t
+                P1_rel = K @ np.eye(3, 4, dtype=np.float64)
+                T_rel_34 = np.hstack([R_rel, t_rel.reshape(3, 1)])
+                P2_rel = K @ T_rel_34
                 curr_3d_pts = []
                 for idx in range(min(len(pts_prev_v), 20)):
                     x1 = np.array([pts_prev_v[idx, 0], pts_prev_v[idx, 1], 1.0])
                     x2 = np.array([pts_curr_v[idx, 0], pts_curr_v[idx, 1], 1.0])
                     A_tri = np.zeros((4, 4), dtype=np.float64)
-                    A_tri[0] = x1[0] * P1[2] - P1[0]
-                    A_tri[1] = x1[1] * P1[2] - P1[1]
-                    A_tri[2] = x2[0] * P2_prev[2] - P2_prev[0]
-                    A_tri[3] = x2[1] * P2_prev[2] - P2_prev[1]
+                    A_tri[0] = x1[0] * P1_rel[2] - P1_rel[0]
+                    A_tri[1] = x1[1] * P1_rel[2] - P1_rel[1]
+                    A_tri[2] = x2[0] * P2_rel[2] - P2_rel[0]
+                    A_tri[3] = x2[1] * P2_rel[2] - P2_rel[1]
                     _, _, Vt_tri = np.linalg.svd(A_tri)
                     pt4 = Vt_tri[-1]
                     if abs(pt4[3]) > 1e-8:

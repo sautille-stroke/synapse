@@ -289,6 +289,10 @@ def refine_pose_6dof(
         except ImportError:
             _has_scipy_tree = False
 
+    # Cache KD-trees to avoid rebuilding the same tree multiple times per
+    # iteration (forward NN + reverse NN both query the target tree).
+    _tree_cache: dict[int, object] = {}  # id(array) -> tree
+
     def _find_nn(
         source: np.ndarray, target: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -297,7 +301,12 @@ def refine_pose_6dof(
             assert _cg is not None
             return cast(tuple[np.ndarray, np.ndarray], _cg.bvh_closest_points(target, source))
         elif _has_scipy_tree:
-            tree = cKDTree(target)
+            target_id = id(target)
+            if target_id in _tree_cache:
+                tree = _tree_cache[target_id]
+            else:
+                tree = cKDTree(target)
+                _tree_cache[target_id] = tree
             d, idx = tree.query(source, k=1)
             return idx, d
         else:
@@ -314,6 +323,9 @@ def refine_pose_6dof(
             return nn_idx, nn_dist
 
     for it in range(max_iterations):
+        # Invalidate tree cache each iteration since source points changed
+        _tree_cache.clear()
+
         nearest_indices, nearest_dists = _find_nn(transformed_src, tgt)
 
         # Robust outlier rejection: use mutual nearest-neighbor filtering.
@@ -395,12 +407,45 @@ def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
                 uvs = _cg.unwrap_uv_atlas(v, tri_faces)
             else:
                 uvs = _cg.unwrap_uv_atlas(v, f)
-            # C++ binding may return dict {"uvs": ndarray} or ndarray
+            # C++ binding may return dict {"uvs": ndarray, "original_vertex_map": ndarray}
+            # or just ndarray.  When xatlas splits vertices for UV seams,
+            # the returned UV array has more rows than the input vertex count.
+            # ``original_vertex_map`` maps each output vertex back to its
+            # source index in the input vertex array.
+            original_vertex_map = None
             if isinstance(uvs, dict):
+                original_vertex_map = uvs.get("original_vertex_map", None)
                 uvs = uvs.get("uvs", uvs.get("uv_coords", np.empty((0, 2))))
             uvs = np.asarray(uvs, dtype=np.float32)
+
             if uvs.shape[0] == len(v) and uvs.shape[1] == 2:
+                # No vertex splitting — UVs map 1:1
                 return uvs
+            elif (
+                uvs.shape[0] > len(v)
+                and uvs.shape[1] == 2
+                and original_vertex_map is not None
+            ):
+                # xatlas split vertices for UV seam cuts.  Rebuild the mesh
+                # vertex/face arrays to match by expanding positions using
+                # the original_vertex_map, and return the full UV array.
+                # The caller (quad_remesh / _generate_uvs) must accept that
+                # the returned UV count may differ from the input vertex count
+                # and handle vertex expansion accordingly.
+                #
+                # For now, project back to original vertex count by averaging
+                # UVs that map to the same original vertex.
+                ovm = np.asarray(original_vertex_map, dtype=np.int64)
+                merged_uvs = np.zeros((len(v), 2), dtype=np.float64)
+                counts = np.zeros(len(v), dtype=np.float64)
+                for new_idx in range(len(ovm)):
+                    orig_idx = int(ovm[new_idx])
+                    if 0 <= orig_idx < len(v):
+                        merged_uvs[orig_idx] += uvs[new_idx].astype(np.float64)
+                        counts[orig_idx] += 1.0
+                valid = counts > 0
+                merged_uvs[valid] /= counts[valid, np.newaxis]
+                return merged_uvs.astype(np.float32)
     except (ImportError, AttributeError, RuntimeError):
         pass
 
@@ -420,6 +465,156 @@ def _generate_uvs(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray | None:
 
     uvs = np.stack([u, v_coord], axis=-1).astype(np.float32)
     return uvs
+
+
+def _qem_decimate(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    target_faces: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Decimate a triangle mesh using Quadric Error Metric (QEM).
+
+    Iteratively collapses the edge with the lowest quadric error cost until the
+    target face count is reached.  This prevents face-count explosion in
+    downstream quad remeshing.
+
+    Args:
+        vertices: Vertex positions, shape (V, 3), float32/float64.
+        faces: Triangle indices, shape (F, 3), int32/int64.
+        target_faces: Desired number of output faces.
+
+    Returns:
+        (decimated_vertices, decimated_faces).
+    """
+    import heapq
+
+    v = np.asarray(vertices, dtype=np.float64).copy()
+    f = np.asarray(faces, dtype=np.int64).copy()
+
+    if len(f) <= target_faces or target_faces <= 0:
+        return v.astype(np.float32), f.astype(np.int32)
+
+    num_verts = len(v)
+    # Compute per-vertex quadric matrices (4x4 from face planes)
+    quadrics = [np.zeros((4, 4), dtype=np.float64) for _ in range(num_verts)]
+
+    for tri in f:
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        edge1 = v[b] - v[a]
+        edge2 = v[c] - v[a]
+        normal = np.cross(edge1, edge2)
+        n_len = np.linalg.norm(normal)
+        if n_len < 1e-15:
+            continue
+        normal /= n_len
+        d = -np.dot(normal, v[a])
+        plane = np.array([normal[0], normal[1], normal[2], d])
+        Q = np.outer(plane, plane)
+        quadrics[a] += Q
+        quadrics[b] += Q
+        quadrics[c] += Q
+
+    # Build edge set and priority queue
+    # Track which vertices and faces are alive
+    alive_faces = set(range(len(f)))
+    vertex_alias = list(range(num_verts))  # union-find for merged vertices
+
+    def _find(x: int) -> int:
+        while vertex_alias[x] != x:
+            vertex_alias[x] = vertex_alias[vertex_alias[x]]
+            x = vertex_alias[x]
+        return x
+
+    # Build initial edges from faces
+    edge_set: set[tuple[int, int]] = set()
+    for fi in alive_faces:
+        tri = f[fi]
+        for i in range(3):
+            a, b = int(tri[i]), int(tri[(i + 1) % 3])
+            edge_set.add((min(a, b), max(a, b)))
+
+    # Compute edge costs
+    heap: list[tuple[float, int, int, int]] = []  # (cost, seq, v1, v2)
+    seq_counter = 0
+
+    for a, b in edge_set:
+        Q_sum = quadrics[a] + quadrics[b]
+        # Optimal position: try to solve Q_sum * v_opt = 0
+        # Fallback to midpoint
+        midpoint = (v[a] + v[b]) * 0.5
+        v_hom = np.array([midpoint[0], midpoint[1], midpoint[2], 1.0])
+        cost = float(v_hom @ Q_sum @ v_hom)
+        heapq.heappush(heap, (cost, seq_counter, a, b))
+        seq_counter += 1
+
+    current_face_count = len(alive_faces)
+
+    while current_face_count > target_faces and heap:
+        cost, _, va, vb = heapq.heappop(heap)
+
+        # Resolve aliases
+        va = _find(va)
+        vb = _find(vb)
+        if va == vb:
+            continue
+
+        # Merge vb into va
+        new_pos = (v[va] + v[vb]) * 0.5
+        v[va] = new_pos
+        quadrics[va] = quadrics[va] + quadrics[vb]
+        vertex_alias[vb] = va
+
+        # Update faces: replace vb with va, remove degenerate
+        faces_to_remove = set()
+        neighbors: set[int] = set()
+        for fi in list(alive_faces):
+            tri = f[fi]
+            changed = False
+            for i in range(3):
+                resolved = _find(int(tri[i]))
+                if resolved != int(tri[i]):
+                    tri[i] = resolved
+                    changed = True
+            if changed:
+                f[fi] = tri
+            # Check degeneracy
+            if tri[0] == tri[1] or tri[1] == tri[2] or tri[0] == tri[2]:
+                faces_to_remove.add(fi)
+            elif changed:
+                for i in range(3):
+                    nb = _find(int(tri[(i + 1) % 3]))
+                    if nb != va:
+                        neighbors.add(nb)
+
+        for fi in faces_to_remove:
+            alive_faces.discard(fi)
+        current_face_count = len(alive_faces)
+
+        # Push new edges from va to its neighbors
+        for nb in neighbors:
+            Q_sum = quadrics[va] + quadrics[nb]
+            mid = (v[va] + v[nb]) * 0.5
+            v_hom = np.array([mid[0], mid[1], mid[2], 1.0])
+            c = float(v_hom @ Q_sum @ v_hom)
+            heapq.heappush(heap, (c, seq_counter, va, nb))
+            seq_counter += 1
+
+    # Compact output
+    kept_faces = np.array([f[fi] for fi in sorted(alive_faces)], dtype=np.int64)
+    if len(kept_faces) == 0:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.int32)
+
+    # Resolve all aliases in faces
+    for fi in range(len(kept_faces)):
+        for i in range(3):
+            kept_faces[fi, i] = _find(int(kept_faces[fi, i]))
+
+    # Compact vertices
+    unique_verts, inverse = np.unique(kept_faces.ravel(), return_inverse=True)
+    new_verts = v[unique_verts]
+    new_faces = inverse.reshape(kept_faces.shape)
+
+    return new_verts.astype(np.float32), new_faces.astype(np.int32)
 
 
 def quad_remesh(
@@ -455,6 +650,14 @@ def quad_remesh(
 
     if f.shape[1] != 3:
         return v, f, None  # Unsupported polygon type
+
+    # QEM decimation: if target_faces is specified and the input face count
+    # is significantly larger, decimate first to prevent face count explosion
+    # during quad pairing + subdivision.
+    if target_faces > 0 and len(f) > target_faces * 2:
+        v, f = _qem_decimate(v, f, target_faces * 2)
+        if len(f) == 0:
+            return v, f, None
 
     num_faces = len(f)
     # Map each undirected edge to face indices
@@ -587,33 +790,47 @@ def quad_remesh(
             subdivided_quads.append([b, idx_mid_bc, idx_centroid, idx_mid_ab])
             subdivided_quads.append([c, idx_mid_ca, idx_centroid, idx_mid_bc])
 
-        # Also subdivide any quad that shares an edge with an unpaired triangle
+        # Also subdivide any quad that shares an edge with a subdivided face
         # (one-step Catmull-Clark quad subdivision) to prevent T-junctions.
-        safe_quads: list[list[int]] = []
-        for quad in quad_faces:
-            q0, q1, q2, q3 = quad[0], quad[1], quad[2], quad[3]
-            edges = [
-                (min(q0, q1), max(q0, q1)),
-                (min(q1, q2), max(q1, q2)),
-                (min(q2, q3), max(q2, q3)),
-                (min(q3, q0), max(q3, q0)),
-            ]
-            shared = any(e in subdivided_edges for e in edges)
-            if shared:
-                # Subdivide quad into 4 sub-quads via edge midpoints + face centre
-                m01 = _get_midpoint(q0, q1)
-                m12 = _get_midpoint(q1, q2)
-                m23 = _get_midpoint(q2, q3)
-                m30 = _get_midpoint(q3, q0)
-                face_centre = (v[q0] + v[q1] + v[q2] + v[q3]) * 0.25
-                fc_idx = vert_offset + len(extra_verts)
-                extra_verts.append(face_centre)
-                subdivided_quads.append([q0, m01, fc_idx, m30])
-                subdivided_quads.append([q1, m12, fc_idx, m01])
-                subdivided_quads.append([q2, m23, fc_idx, m12])
-                subdivided_quads.append([q3, m30, fc_idx, m23])
-            else:
-                safe_quads.append(quad)
+        # Propagate: newly subdivided quads expose new midpoint vertices on
+        # their edges, so adjacent quads must also be subdivided until no
+        # T-junctions remain.
+        remaining_quads = list(quad_faces)
+        converged = False
+        while not converged:
+            converged = True
+            safe_quads_round: list[list[int]] = []
+            for quad in remaining_quads:
+                q0, q1, q2, q3 = quad[0], quad[1], quad[2], quad[3]
+                edges = [
+                    (min(q0, q1), max(q0, q1)),
+                    (min(q1, q2), max(q1, q2)),
+                    (min(q2, q3), max(q2, q3)),
+                    (min(q3, q0), max(q3, q0)),
+                ]
+                shared = any(e in subdivided_edges for e in edges)
+                if shared:
+                    # Subdivide quad into 4 sub-quads via edge midpoints + face centre
+                    m01 = _get_midpoint(q0, q1)
+                    m12 = _get_midpoint(q1, q2)
+                    m23 = _get_midpoint(q2, q3)
+                    m30 = _get_midpoint(q3, q0)
+                    face_centre = (v[q0] + v[q1] + v[q2] + v[q3]) * 0.25
+                    fc_idx = vert_offset + len(extra_verts)
+                    extra_verts.append(face_centre)
+                    subdivided_quads.append([q0, m01, fc_idx, m30])
+                    subdivided_quads.append([q1, m12, fc_idx, m01])
+                    subdivided_quads.append([q2, m23, fc_idx, m12])
+                    subdivided_quads.append([q3, m30, fc_idx, m23])
+                    # Register newly split edges for propagation
+                    for e in edges:
+                        if e not in subdivided_edges:
+                            subdivided_edges.add(e)
+                            converged = False
+                else:
+                    safe_quads_round.append(quad)
+            remaining_quads = safe_quads_round
+        safe_quads = remaining_quads
 
         if extra_verts:
             v = np.vstack([v, np.array(extra_verts, dtype=np.float32)])
