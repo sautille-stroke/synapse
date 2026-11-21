@@ -209,88 +209,68 @@ class BenchPipelineRunner:
 
         from synapse.bench.registry import AssetRegistry
 
-        try:
-            asset_path = AssetRegistry().resolve(scenario.asset.id)
-            mesh = load_mesh(str(asset_path), normalize=True)
-        except Exception:
-            mesh = load_mesh(scenario.asset.id, normalize=True)
+        def _load_asset_mesh(asset_id: str) -> Any:
+            try:
+                ap = AssetRegistry().resolve(asset_id)
+                return load_mesh(str(ap), normalize=True)
+            except Exception:
+                return load_mesh(asset_id, normalize=True)
 
-        # Drive physical rasterizer params from scenario.conditions
-        rasterizer_kwargs: dict[str, Any] = {
-            "width": width,
-            "height": height,
-        }
-        if "ambient" in scenario.conditions:
-            rasterizer_kwargs["ambient"] = float(scenario.conditions["ambient"])
-        elif "ambient_light" in scenario.conditions:
-            rasterizer_kwargs["ambient"] = float(scenario.conditions["ambient_light"])
+        mesh = _load_asset_mesh(scenario.asset.id)
+        mesh, entity_slices = _build_scene_mesh(scenario, mesh, _load_asset_mesh)
 
-        if "light_dir" in scenario.conditions:
-            ld = np.asarray(scenario.conditions["light_dir"], dtype=np.float64)
-            norm = np.linalg.norm(ld)
-            if norm > 1e-8:
-                ld = ld / norm
-            rasterizer_kwargs["light_dir"] = ld
-        elif "key_light_elevation_deg" in scenario.conditions:
-            elev = np.radians(float(scenario.conditions["key_light_elevation_deg"]))
-            azim = np.radians(float(scenario.conditions.get("key_light_azimuth_deg", 45.0)))
-            ld = np.array(
-                [
-                    np.cos(elev) * np.sin(azim),
-                    np.sin(elev),
-                    np.cos(elev) * np.cos(azim),
-                ],
-                dtype=np.float64,
-            )
-            norm = np.linalg.norm(ld)
-            if norm > 1e-8:
-                ld = ld / norm
-            rasterizer_kwargs["light_dir"] = ld
+        # Drive physical rasterizer params from scenario.conditions (T1/T4 lighting)
+        rasterizer_kwargs = _build_rasterizer_kwargs(scenario.conditions, width, height)
+        multi_light_count = int(scenario.conditions.get("light_directions", 0) or 0)
 
-        if "light_color" in scenario.conditions:
-            rasterizer_kwargs["light_color"] = np.asarray(
-                scenario.conditions["light_color"], dtype=np.float64
-            )
-        elif "color_temperature_k" in scenario.conditions:
-            temp = float(scenario.conditions["color_temperature_k"]) / 100.0
-            if temp <= 66:
-                r_c = 255.0
-                g_c = max(0.0, min(255.0, 99.4708025861 * np.log(temp) - 161.1195681661))
-                b_c = (
-                    0.0
-                    if temp <= 19
-                    else max(0.0, min(255.0, 138.5177312231 * np.log(temp - 10) - 305.0447927307))
-                )
-            else:
-                r_c = max(0.0, min(255.0, 329.698727446 * ((temp - 60) ** -0.1332047592)))
-                g_c = max(0.0, min(255.0, 288.1221695283 * ((temp - 60) ** -0.0755148492)))
-                b_c = 255.0
-            rasterizer_kwargs["light_color"] = np.array(
-                [r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64
-            )
-
-        ambient_val = rasterizer_kwargs.get("ambient", 0.1)
-        light_dir_val = tuple(rasterizer_kwargs.get("light_dir", (0.0, 1.0, 0.0)))
-        light_col_val = tuple(rasterizer_kwargs.get("light_color", (1.0, 1.0, 1.0)))
-        cache_key = f"{width}x{height}_a{ambient_val}_ld{light_dir_val}_lc{light_col_val}"
-        if self._rasterizer_cache is not None and cache_key in self._rasterizer_cache:
-            rasterizer = self._rasterizer_cache[cache_key]
-        else:
-            rasterizer = SoftwareRasterizer(**rasterizer_kwargs)
+        def _get_rasterizer(kwargs: dict[str, Any]) -> Any:
+            ambient_val = kwargs.get("ambient", 0.1)
+            light_dir_val = tuple(kwargs.get("light_dir", (0.0, 1.0, 0.0)))
+            light_col_val = tuple(kwargs.get("light_color", (1.0, 1.0, 1.0)))
+            ckey = f"{width}x{height}_a{ambient_val}_ld{light_dir_val}_lc{light_col_val}"
+            if self._rasterizer_cache is not None and ckey in self._rasterizer_cache:
+                return self._rasterizer_cache[ckey]
+            rast = SoftwareRasterizer(**kwargs)
             if self._rasterizer_cache is not None:
-                self._rasterizer_cache[cache_key] = rasterizer
+                self._rasterizer_cache[ckey] = rast
+            return rast
+
+        base_rasterizer = _get_rasterizer(rasterizer_kwargs)
+        fps = float(scenario.camera_params.get("fps", 24.0))
+        has_motion = bool(scenario.conditions.get("animation")) or (
+            scenario.tier in ("T2", "T3")
+            or getattr(scenario.tier, "value", "") in ("T2", "T3")
+        )
 
         fgpp_frames: list[FGPPFrame] = []
         prev_verts: np.ndarray | None = None
         for i, cam in enumerate(cameras):
-            curr_verts = _deform_vertices(mesh.vertices, i, len(cameras), scenario.tier)
+            curr_verts = _deform_vertices(
+                mesh.vertices,
+                i,
+                len(cameras),
+                scenario.tier,
+                conditions=scenario.conditions,
+                fps=fps,
+                entity_slices=entity_slices,
+            )
             curr_normals = (
                 _compute_vertex_normals(curr_verts, mesh.faces)
-                if scenario.tier in ("T2", "T3")
-                or getattr(scenario.tier, "value", "") in ("T2", "T3")
+                if has_motion
                 else mesh.normals
             )
-            frame = rasterizer.render(
+            if multi_light_count > 1:
+                az = 2.0 * np.pi * (i % multi_light_count) / float(multi_light_count)
+                frame_kwargs = dict(rasterizer_kwargs)
+                frame_kwargs["light_dir"] = np.array(
+                    [np.cos(0.6) * np.sin(az), np.sin(0.6), np.cos(0.6) * np.cos(az)],
+                    dtype=np.float64,
+                )
+                frame_rasterizer = _get_rasterizer(frame_kwargs)
+            else:
+                frame_rasterizer = base_rasterizer
+
+            frame = frame_rasterizer.render(
                 vertices=curr_verts,
                 faces=mesh.faces,
                 normals=curr_normals,
@@ -478,31 +458,247 @@ def _compute_vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarr
     return (normals / lens).astype(np.float32)
 
 
+def _build_rasterizer_kwargs(
+    conditions: dict[str, Any],
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    """Translate T1/T4 scenario lighting conditions into SoftwareRasterizer kwargs."""
+    kwargs: dict[str, Any] = {"width": width, "height": height}
+    style = str(conditions.get("style", "")).lower()
+
+    if "ambient" in conditions:
+        kwargs["ambient"] = float(conditions["ambient"])
+    elif "ambient_light" in conditions:
+        kwargs["ambient"] = float(conditions["ambient_light"])
+    elif "ambient_intensity" in conditions:
+        kwargs["ambient"] = float(conditions["ambient_intensity"])
+    elif style == "backlit_silhouette":
+        kwargs["ambient"] = float(conditions.get("fill_intensity", 0.1))
+    elif style == "high_contrast_split":
+        ratio = max(float(conditions.get("key_fill_ratio", 8.0)), 1.0)
+        kwargs["ambient"] = 1.0 / ratio
+    elif style == "three_point":
+        kwargs["ambient"] = 0.25
+
+    if "light_dir" in conditions:
+        ld = np.asarray(conditions["light_dir"], dtype=np.float64)
+        norm = float(np.linalg.norm(ld))
+        if norm > 1e-8:
+            kwargs["light_dir"] = ld / norm
+    elif style == "backlit_silhouette":
+        ld = np.array([0.0, 0.2, -1.0], dtype=np.float64)
+        kwargs["light_dir"] = ld / float(np.linalg.norm(ld))
+    elif (
+        "key_light_elevation_deg" in conditions
+        or "key_light_azimuth_deg" in conditions
+        or "key_azimuth_deg" in conditions
+    ):
+        elev = np.radians(float(conditions.get("key_light_elevation_deg", 35.0)))
+        azim = np.radians(
+            float(
+                conditions.get(
+                    "key_light_azimuth_deg",
+                    conditions.get("key_azimuth_deg", 45.0),
+                )
+            )
+        )
+        ld = np.array(
+            [
+                np.cos(elev) * np.sin(azim),
+                np.sin(elev),
+                np.cos(elev) * np.cos(azim),
+            ],
+            dtype=np.float64,
+        )
+        norm = float(np.linalg.norm(ld))
+        if norm > 1e-8:
+            kwargs["light_dir"] = ld / norm
+
+    if "light_color" in conditions:
+        kwargs["light_color"] = np.asarray(conditions["light_color"], dtype=np.float64)
+    elif "color_temperature_k" in conditions:
+        temp = float(conditions["color_temperature_k"]) / 100.0
+        if temp <= 66:
+            r_c = 255.0
+            g_c = max(0.0, min(255.0, 99.4708025861 * np.log(temp) - 161.1195681661))
+            b_c = (
+                0.0
+                if temp <= 19
+                else max(0.0, min(255.0, 138.5177312231 * np.log(temp - 10) - 305.0447927307))
+            )
+        else:
+            r_c = max(0.0, min(255.0, 329.698727446 * ((temp - 60) ** -0.1332047592)))
+            g_c = max(0.0, min(255.0, 288.1221695283 * ((temp - 60) ** -0.0755148492)))
+            b_c = 255.0
+        kwargs["light_color"] = np.array(
+            [r_c / 255.0, g_c / 255.0, b_c / 255.0], dtype=np.float64
+        )
+    elif style == "ambient_only":
+        direct = float(conditions.get("direct_intensity", 0.0))
+        kwargs["light_color"] = np.full(3, max(0.0, direct), dtype=np.float64)
+    elif style == "backlit_silhouette":
+        intensity = min(float(conditions.get("backlight_intensity", 5.0)), 5.0)
+        kwargs["light_color"] = np.full(3, intensity, dtype=np.float64)
+
+    return kwargs
+
+
+def _build_scene_mesh(
+    scenario: Any,
+    base_mesh: Any,
+    load_asset_fn: Any,
+) -> tuple[Any, list[tuple[int, int]]]:
+    """Compose multi-object scenes for T3/T5 scenarios with distinct spatial layouts.
+
+    Returns ``(combined_mesh, entity_slices)`` where ``entity_slices`` lists
+    ``(start_v, end_v)`` vertex index ranges for each object in the scene.
+    """
+    from synapse.bench.model_loader import MeshData
+
+    cond = scenario.conditions
+    if cond.get("scene_type") != "multi_object":
+        return base_mesh, [(0, len(base_mesh.vertices))]
+
+    placements: list[tuple[Any, np.ndarray, float]] = []
+    layout = str(cond.get("layout", "")).lower()
+
+    if "occluder" in cond and "occludee" in cond:
+        occludee_m = load_asset_fn(str(cond["occludee"]))
+        occluder_m = load_asset_fn(str(cond["occluder"]))
+        placements.append((occludee_m, np.array([0.0, 0.0, -0.45], dtype=np.float32), 0.7))
+        placements.append((occluder_m, np.array([0.0, 0.0, 0.45], dtype=np.float32), 0.7))
+    elif "prop" in cond:
+        prop_m = load_asset_fn(str(cond["prop"]))
+        placements.append((base_mesh, np.array([0.0, 0.0, 0.0], dtype=np.float32), 1.0))
+        placements.append((prop_m, np.array([0.55, 0.1, 0.25], dtype=np.float32), 0.35))
+    elif layout == "ring":
+        count = max(2, int(cond.get("object_count", 8)))
+        radius = 0.85
+        for k in range(count):
+            ang = 2.0 * np.pi * k / float(count)
+            pos = np.array([radius * np.cos(ang), 0.0, radius * np.sin(ang)], dtype=np.float32)
+            placements.append((base_mesh, pos, 0.28))
+    elif layout == "vertical_stack":
+        obj_names = list(cond.get("objects", [scenario.asset.id]))
+        for idx, name in enumerate(obj_names):
+            m = load_asset_fn(str(name))
+            y_off = (idx - (len(obj_names) - 1) / 2.0) * 0.65
+            placements.append((m, np.array([0.0, y_off, 0.0], dtype=np.float32), 0.5))
+    elif layout == "scattered" or "objects" in cond:
+        obj_names = list(cond.get("objects", [scenario.asset.id]))
+        for idx, name in enumerate(obj_names):
+            m = load_asset_fn(str(name))
+            ang = 2.0 * np.pi * idx / max(len(obj_names), 1)
+            pos = np.array([0.65 * np.cos(ang), 0.0, 0.65 * np.sin(ang)], dtype=np.float32)
+            placements.append((m, pos, 0.55))
+    elif int(cond.get("object_count", 1)) >= 2:
+        count = int(cond["object_count"])
+        for idx in range(count):
+            x_off = -0.6 + 1.2 * idx / max(count - 1, 1)
+            z_off = -0.25 if idx % 2 == 0 else 0.25
+            placements.append(
+                (base_mesh, np.array([x_off, 0.0, z_off], dtype=np.float32), 0.55)
+            )
+    else:
+        return base_mesh, [(0, len(base_mesh.vertices))]
+
+    all_v: list[np.ndarray] = []
+    all_f: list[np.ndarray] = []
+    all_n: list[np.ndarray] = []
+    slices: list[tuple[int, int]] = []
+    v_offset = 0
+    for m, offset, scale in placements:
+        v = m.vertices.astype(np.float32) * float(scale) + offset[None, :]
+        f = m.faces.astype(np.int32) + v_offset
+        n = m.normals.astype(np.float32)
+        slices.append((v_offset, v_offset + len(v)))
+        all_v.append(v)
+        all_f.append(f)
+        all_n.append(n)
+        v_offset += len(v)
+
+    combined = MeshData(
+        name=str(getattr(scenario, "id", "multi_object_scene")),
+        vertices=np.concatenate(all_v, axis=0),
+        faces=np.concatenate(all_f, axis=0),
+        normals=np.concatenate(all_n, axis=0),
+        base_color=base_mesh.base_color,
+    )
+    return combined, slices
+
+
 def _deform_vertices(
     base_verts: np.ndarray,
     frame_idx: int,
     num_frames: int,
     tier: Any,
+    conditions: dict[str, Any] | None = None,
+    fps: float = 24.0,
+    entity_slices: list[tuple[int, int]] | None = None,
 ) -> np.ndarray:
-    """Procedural deformation for dynamic T2/T3 scenarios."""
+    """Procedural animation/deformation driven by scenario.conditions and tier."""
+    cond = conditions or {}
+    anim = str(cond.get("animation", "")).lower()
     tier_str = tier.value if hasattr(tier, "value") else str(tier)
-    if tier_str not in ("T2", "T3"):
+
+    if not anim and tier_str not in ("T2", "T3"):
         return base_verts
+
     t = float(frame_idx) / max(1, num_frames - 1)
+    t_sec = float(frame_idx) / max(fps, 1.0)
     phase = 2.0 * np.pi * t
     verts = base_verts.copy().astype(np.float64)
-    if tier_str == "T2":
-        # Skeletal/dynamic wave deformation along Y and Z
+
+    if anim == "fall":
+        g = float(cond.get("gravity_m_s2", 9.81))
+        h0 = float(cond.get("initial_height_m", 2.0))
+        y_drop = min(0.5 * g * (t_sec**2), h0)
+        verts[:, 1] += (h0 - y_drop) * 0.4
+    elif anim == "rotate_y":
+        speed = float(cond.get("rotation_speed_deg_per_s", 90.0))
+        theta = np.radians(speed * t_sec)
+        c, s = np.cos(theta), np.sin(theta)
+        x = verts[:, 0] * c - verts[:, 2] * s
+        z = verts[:, 0] * s + verts[:, 2] * c
+        verts[:, 0] = x
+        verts[:, 2] = z
+    elif anim == "pendulum":
+        amp = np.radians(float(cond.get("amplitude_deg", 45.0)))
+        period = max(float(cond.get("period_s", 2.0)), 1e-3)
+        theta = amp * np.sin(2.0 * np.pi * t_sec / period)
+        pivot_y = float(np.max(verts[:, 1])) + 0.5
+        c, s = np.cos(theta), np.sin(theta)
+        dx = verts[:, 0]
+        dy = verts[:, 1] - pivot_y
+        verts[:, 0] = dx * c - dy * s
+        verts[:, 1] = dx * s + dy * c + pivot_y
+    elif anim == "walk":
+        cycles = float(cond.get("walk_cycles", 2.0))
+        w_phase = 2.0 * np.pi * cycles * t
+        verts[:, 1] += 0.04 * abs(np.sin(w_phase))
+        verts[:, 2] += 0.12 * np.sin(w_phase) * np.clip(-base_verts[:, 1], 0.0, 1.0)
+        verts[:, 0] += 0.04 * np.sin(w_phase + base_verts[:, 1] * 2.5)
+    elif anim in ("idle", "idle_hold"):
+        verts[:, 1] += 0.02 * np.sin(phase)
+        verts[:, 0] *= 1.0 + 0.015 * np.sin(phase)
+    elif anim == "cross_paths" and entity_slices and len(entity_slices) >= 2:
+        s0, e0 = entity_slices[0]
+        s1, e1 = entity_slices[1]
+        shift = 1.2 * (t - 0.5)
+        verts[s0:e0, 0] += shift
+        verts[s1:e1, 0] -= shift
+    elif tier_str == "T2":
         verts[:, 0] += 0.08 * np.sin(phase + base_verts[:, 1] * 3.0)
         verts[:, 2] += 0.05 * np.cos(phase + base_verts[:, 0] * 2.0)
     elif tier_str == "T3":
-        # Multi-body interaction oscillation and translation
         theta = 0.25 * np.sin(phase)
         c, s = np.cos(theta), np.sin(theta)
         x = verts[:, 0] * c - verts[:, 2] * s + 0.1 * np.sin(phase)
         z = verts[:, 0] * s + verts[:, 2] * c
         verts[:, 0] = x
         verts[:, 2] = z
+
     out_verts: np.ndarray = np.asarray(verts, dtype=np.float32)
     return out_verts
 
@@ -822,14 +1018,11 @@ def _compute_metrics(
                     silhouette_iou(pred_mask, gt_mask),
                 )
 
-        # Image quality against rendered FGPP direct_radiance (linear -> sRGB)
+        # Image quality against rendered FGPP direct_radiance (already linear sRGB from rasterizer)
         if gt.direct_radiance is not None:
-            from synapse.style.aces_color import acescg_to_linear_srgb
-
             rad = np.asarray(gt.direct_radiance, dtype=np.float32)
-            rad_srgb_lin = acescg_to_linear_srgb(rad)
             gt_srgb = np.clip(
-                linear_to_srgb(rad_srgb_lin),
+                linear_to_srgb(rad),
                 0.0,
                 1.0,
             )
@@ -893,15 +1086,12 @@ def _compute_metrics(
                 from synapse.style import extract_style_fgpp_intrinsic
 
                 fgpp_seq_for_style = FGPPSequence(frames=fgpp_frames[:n_frames], fps=24)
-                # Build GT sRGB frames from direct radiance for the extraction
+                # Build GT sRGB frames from direct radiance (already linear sRGB)
                 gt_srgb_frames_for_style = []
                 for f_gt in fgpp_frames[:min(n_frames, 8)]:
                     if f_gt.direct_radiance is not None:
-                        from synapse.style.aces_color import acescg_to_linear_srgb
-
                         rad = np.asarray(f_gt.direct_radiance, dtype=np.float32)
-                        rad_lin = acescg_to_linear_srgb(rad)
-                        srgb = np.clip(linear_to_srgb(rad_lin), 0.0, 1.0)
+                        srgb = np.clip(linear_to_srgb(rad), 0.0, 1.0)
                         gt_srgb_frames_for_style.append((srgb * 255.0).astype(np.uint8))
                 if gt_srgb_frames_for_style:
                     gt_srgb_arr = np.stack(gt_srgb_frames_for_style, axis=0)
@@ -911,8 +1101,9 @@ def _compute_metrics(
                 pass
 
         if gt_ld is not None:
-            # Extract predicted light direction from generated video frames
-            pred_ld = gt_ld  # fallback if extraction fails
+            # Extract predicted light direction from generated video frames;
+            # fail-closed with NaN on extraction error (never copy gt_ld -> fake 0.0 deg).
+            pred_ld: np.ndarray | None = None
             try:
                 from synapse.style import extract_style_optical
 
@@ -921,8 +1112,11 @@ def _compute_metrics(
                 pred_style = extract_style_optical(gen_u8)
                 pred_ld = np.asarray(pred_style.key_light_dir_world, dtype=np.float64)
             except Exception:
-                pass
-            metrics["light_dir_error_deg"] = float(light_dir_error_deg(pred_ld, gt_ld))
+                pred_ld = None
+            if pred_ld is not None:
+                metrics["light_dir_error_deg"] = float(light_dir_error_deg(pred_ld, gt_ld))
+            else:
+                metrics["light_dir_error_deg"] = float("nan")
     except Exception as exc:
         logger.debug("light_dir_error_deg computation failed: %s", exc)
 

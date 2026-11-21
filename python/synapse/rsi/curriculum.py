@@ -387,40 +387,61 @@ def scenario_reports_to_bench_report(
             metrics = getattr(rep, "metrics", {})
             verdict = None
 
-        # Extract pillar sub-scores safely — use `is not None` checks
-        # to prevent valid 0.0 scores from being falsy-swallowed into defaults.
+        # Extract pillar sub-scores fail-closed: guard math.isfinite() so NaN never
+        # washes out via min(1.0, NaN) == 1.0, and never fabricate passing scores
+        # (80.0 / 0.85 / 0.9) when metrics are missing.
+        def _clamp_unit(val: Any, allow_pct: bool = False) -> tuple[float, bool]:
+            if val is None:
+                return 0.0, False
+            fval = float(val)
+            if not math.isfinite(fval):
+                return 0.0, False
+            if allow_pct and fval > 1.0:
+                fval = fval / 100.0
+            return max(0.0, min(1.0, fval)), True
+
         raw_geom = metrics.get("f_score_1mm")
         if raw_geom is None:
             raw_geom = metrics.get("f_score")
         if raw_geom is None:
-            raw_geom = metrics.get("watertight_pct", 80.0)
-        geom_val = float(raw_geom) if raw_geom is not None else 0.8
-        geom_score = max(0.0, min(1.0, geom_val if geom_val <= 1.0 else geom_val / 100.0))
+            raw_geom = metrics.get("watertight_pct")
+        geom_score, geom_present = _clamp_unit(raw_geom, allow_pct=True)
 
         raw_temp = metrics.get("temporal_consistency")
         if raw_temp is None:
             raw_temp = metrics.get("ssim")
-        temp_val = float(raw_temp) if raw_temp is not None else 0.85
-        temp_score = max(0.0, min(1.0, temp_val))
+        temp_score, temp_present = _clamp_unit(raw_temp)
 
         raw_style = metrics.get("style_consistency")
         if raw_style is None:
             raw_style = metrics.get("histogram_intersection")
-        style_val = float(raw_style) if raw_style is not None else 0.85
-        style_score = max(0.0, min(1.0, style_val))
+        style_score, style_present = _clamp_unit(raw_style)
 
         raw_fgpp = metrics.get("silhouette_iou")
         if raw_fgpp is None:
             raw_fgpp = metrics.get("fgpp_fidelity")
-        fgpp_val = float(raw_fgpp) if raw_fgpp is not None else 0.9
-        fgpp_score = max(0.0, min(1.0, fgpp_val))
+        fgpp_score, fgpp_present = _clamp_unit(raw_fgpp)
 
         if verdict is not None and hasattr(verdict, "overall_score"):
-            overall_score = float(verdict.overall_score)
+            v_overall = float(verdict.overall_score)
+            overall_score = max(0.0, min(1.0, v_overall)) if math.isfinite(v_overall) else 0.0
         elif "overall" in metrics:
-            overall_score = float(metrics["overall"])
+            m_overall = float(metrics["overall"])
+            overall_score = max(0.0, min(1.0, m_overall)) if math.isfinite(m_overall) else 0.0
         else:
-            overall_score = (geom_score + temp_score + style_score + fgpp_score) / 4.0
+            present_pillars = [
+                score
+                for score, ok in (
+                    (geom_score, geom_present),
+                    (temp_score, temp_present),
+                    (style_score, style_present),
+                    (fgpp_score, fgpp_present),
+                )
+                if ok
+            ]
+            overall_score = (
+                sum(present_pillars) / len(present_pillars) if present_pillars else 0.0
+            )
 
         scenario_scores.append(
             BenchScenarioScore(

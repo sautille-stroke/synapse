@@ -286,7 +286,12 @@ def _cmd_rsi_gate_promote(
         "candidate": candidate,
         "raise_on_reject": strict_mode,
     }
-    if not base_scenarios_raw and not cand_scenarios_raw:
+    if (
+        not baseline_report_raw
+        and not candidate_report_raw
+        and not base_scenarios_raw
+        and not cand_scenarios_raw
+    ):
         promote_kwargs["min_scenarios"] = 0
     epsilon_min = getattr(args, "epsilon_min", None)
     if epsilon_min is not None:

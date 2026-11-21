@@ -111,7 +111,7 @@ def light_dir_error_deg(
     p_norm = np.linalg.norm(p)
     g_norm = np.linalg.norm(g)
     if p_norm < 1e-12 or g_norm < 1e-12:
-        return 0.0
+        return float("nan")
 
     cos_angle = np.dot(p, g) / (p_norm * g_norm)
     cos_angle = np.clip(cos_angle, -1.0, 1.0)

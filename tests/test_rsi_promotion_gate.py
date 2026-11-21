@@ -635,3 +635,124 @@ class TestCurriculumManager:
             min_scenarios=1,
         )
         assert res.promoted is True
+
+
+class TestPR190BenchAndRsiIntegrity:
+    """PR-190 regression tests: NaN fail-closed, report min_scenarios=30, proxy FVD, 30 scenarios."""
+
+    def test_scenario_reports_to_bench_report_nan_and_missing_fail_closed(self) -> None:
+        from synapse.rsi.curriculum import scenario_reports_to_bench_report
+
+        rep = scenario_reports_to_bench_report(
+            [{"scenario_name": "s1", "metrics": {"f_score_1mm": float("nan")}}],
+            lora_sha256="x" * 64,
+        )
+        assert rep.overall_score == 0.0
+        assert rep.geom_score == 0.0
+        assert rep.temporal_score == 0.0
+        assert rep.style_score == 0.0
+        assert rep.fgpp_fidelity_score == 0.0
+
+    def test_cli_report_files_enforce_min_scenarios_30(self, tmp_path: Path) -> None:
+        from synapse.cli import main_synapse
+
+        base = BenchReport(
+            overall_score=0.7,
+            geom_score=0.7,
+            temporal_score=0.7,
+            scenarios=_make_scenario_scores(3, 0.7),
+        )
+        cand = BenchReport(
+            overall_score=0.8,
+            geom_score=0.8,
+            temporal_score=0.8,
+            scenarios=_make_scenario_scores(3, 0.8),
+        )
+        bp = tmp_path / "base.json"
+        cp = tmp_path / "cand.json"
+        bp.write_text(base.model_dump_json(), encoding="utf-8")
+        cp.write_text(cand.model_dump_json(), encoding="utf-8")
+
+        code = main_synapse(
+            [
+                "--json",
+                "rsi",
+                "gate-promote",
+                "--strict",
+                "--baseline-report",
+                str(bp),
+                "--candidate-report",
+                str(cp),
+            ]
+        )
+        assert code == 40
+
+    def test_aggregate_consistency_tolerance_1e_2(self) -> None:
+        base = BenchReport(
+            overall_score=0.75,  # diverges by 0.05 > 0.01 from mean 0.70
+            geom_score=0.7,
+            temporal_score=0.7,
+            scenarios=_make_scenario_scores(30, 0.7),
+        )
+        with pytest.raises(ContractValidationError, match="Inconsistent overall_score"):
+            evaluate_monotonic_promotion(baseline=base, candidate=base)
+
+    def test_zero_light_dir_returns_nan_and_proxy_fvd_fails_gate(self) -> None:
+        import math
+
+        import numpy as np
+        from synapse.metrics.profiles import evaluate_metrics_gate
+        from synapse.metrics.style_consistency import light_dir_error_deg
+        from synapse.metrics.temporal import FVDResult
+
+        err = light_dir_error_deg(np.zeros(3), np.array([0.0, 1.0, 0.0]))
+        assert math.isnan(err)
+
+        verdict = evaluate_metrics_gate(
+            measured={"fvd": FVDResult(value=5.0, is_proxy_metric=True)},  # type: ignore[dict-item]
+            profile="rsi_promotion",
+        )
+        assert not verdict.passed
+
+    def test_bench_runner_activates_t2_t3_t4_conditions(self) -> None:
+        import numpy as np
+        from synapse.bench.model_loader import load_mesh
+        from synapse.bench.scenario import load_scenario
+        from synapse.pipeline.bench_runner import (
+            _build_rasterizer_kwargs,
+            _build_scene_mesh,
+            _deform_vertices,
+        )
+
+        # T4 styles produce distinct lighting configs
+        kw_amb = _build_rasterizer_kwargs(
+            load_scenario("t4_ambient_only_soft").conditions, 64, 64
+        )
+        kw_back = _build_rasterizer_kwargs(
+            load_scenario("t4_backlit_silhouette").conditions, 64, 64
+        )
+        assert kw_amb["ambient"] == pytest.approx(1.0)
+        assert np.allclose(kw_amb["light_color"], 0.0)
+        assert kw_back["light_dir"][2] < -0.5
+
+        # T2 animations produce distinct trajectories (fall vs rotate_y vs pendulum)
+        cube = load_mesh("cube", normalize=True)
+        v_fall = _deform_vertices(
+            cube.vertices, 12, 24, "T2", conditions={"animation": "fall", "initial_height_m": 2.0}
+        )
+        v_rot = _deform_vertices(
+            cube.vertices,
+            12,
+            24,
+            "T2",
+            conditions={"animation": "rotate_y", "rotation_speed_deg_per_s": 90.0},
+        )
+        assert not np.allclose(v_fall, v_rot)
+
+        # T3 multi-object ring builds 8x vertices
+        ring_sc = load_scenario("t3_ring_of_cubes")
+        combined, slices = _build_scene_mesh(
+            ring_sc, cube, lambda aid: load_mesh(aid, normalize=True)
+        )
+        assert len(slices) == 8
+        assert len(combined.vertices) == 8 * len(cube.vertices)
