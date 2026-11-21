@@ -220,7 +220,7 @@ def evaluate_monotonic_promotion(
             return
         n = len(report.scenarios)
         mean_overall = sum(s.overall for s in report.scenarios) / n
-        if abs(report.overall_score - mean_overall) > 0.25:
+        if abs(report.overall_score - mean_overall) > 1e-2:
             raise ContractValidationError(
                 f"Inconsistent overall_score in {label} BenchReport: aggregate {report.overall_score:.4f} "
                 f"diverges from scenario mean {mean_overall:.4f}.",

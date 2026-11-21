@@ -264,7 +264,23 @@ def evaluate_metrics_gate(
             continue
         if name not in resolved_measured:
             continue
-        value = float(resolved_measured[name])
+        raw_val = resolved_measured[name]
+        # Reject 9D statistical proxy FVD on production I3D FVD gates
+        if canonical_name == "fvd" and (
+            getattr(raw_val, "is_proxy_metric", False)
+            or float(resolved_measured.get("fvd_is_proxy", 0.0)) > 0.5
+        ):
+            seen_canonical.add(canonical_name)
+            violations.append(
+                GateViolation(
+                    metric_name=name,
+                    measured=float("nan"),
+                    threshold=thresh,
+                    direction=_METRIC_DIRECTIONS.get(name, _LOWER),
+                )
+            )
+            continue
+        value = float(raw_val)
         direction = _METRIC_DIRECTIONS.get(name, _LOWER)
         violated = False
         if (
