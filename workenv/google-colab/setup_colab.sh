@@ -31,12 +31,19 @@ sudo apt-get install -y -qq \
 # libgl1 is the modern package name; fall back to libgl1-mesa-glx on older distros
 sudo apt-get install -y libgl1 2>/dev/null || sudo apt-get install -y libgl1-mesa-glx
 
-# Optional: shallow-clone aether for native geometry compilation
+# Optional: shallow-clone dervgen/aether for native geometry compilation
 SYNAPSE_ROOT="$(pwd)"
 if [ ! -d "${SYNAPSE_ROOT}/../aether" ]; then
-  echo "[setup_colab] Cloning aether (shallow) for native geometry build..."
-  git clone --depth 1 https://github.com/sautille-stroke/aether.git "${SYNAPSE_ROOT}/../aether" 2>/dev/null || \
-    echo "[setup_colab] WARNING: Could not clone aether. Native geometry build may not work."
+  echo "[setup_colab] Cloning dervgen/aether (shallow) for native geometry build..."
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    AUTH_B64="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')"
+    git -c "http.extraheader=Authorization: Basic ${AUTH_B64}" \
+      clone --depth 1 https://github.com/dervgen/aether.git "${SYNAPSE_ROOT}/../aether" || \
+      echo "[setup_colab] WARNING: Could not clone dervgen/aether. Operating in pure Python Oracle geometry mode."
+  else
+    git clone --depth 1 https://github.com/dervgen/aether.git "${SYNAPSE_ROOT}/../aether" || \
+      echo "[setup_colab] WARNING: Could not clone dervgen/aether (set GITHUB_TOKEN for private repo). Operating in pure Python Oracle geometry mode."
+  fi
 fi
 
 # Install Bazelisk if bazel/bazelisk not found (required for native kernel build)

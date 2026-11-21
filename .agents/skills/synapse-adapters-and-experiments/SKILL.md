@@ -71,12 +71,19 @@ chmod +x workenv/google-colab/setup_colab.sh
 # 2. 检查 Colab GPU 显存与推荐配置
 python scripts/colab_runner.py --check-env
 
-# 3. 解压数据包并带 Google Drive 断点续跑执行全部实验
+# 3. 运行全量单测回归 (1,510+ 项用例)
+pytest tests/ -v --durations=10
+
+# 4. 解压数据包并带 Google Drive 断点续跑执行全部实验 (E1-E4)
 python scripts/colab_runner.py \
   --bundle /content/synapse_colab_bundle_v1.tar.gz \
   --dataset-dir /content/datasets/synapse \
   --job-dir /content/drive/MyDrive/dervgen/work/$(whoami)/synapse/$(date +%F)/exp-all \
+  --mode auto \
   --exp all
+
+# 5. 任务完成必须主动释放实例停止计费 (Stop The Meter!)
+python3 -c "from google.colab import runtime; runtime.unassign()"
 ```
 
-> **说明**：`colab_runner.py --exp all` 支持 **E1、E2、E3、E4** 四个实验阶段（含 `--mode {auto,mock,real-gpu}` 自动降级与断点续跑），且每 48 帧强制标记物理锚点；E5（Synapse-Bench 30 场景基准）在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 验证。
+> **说明**：`colab_runner.py --exp all` 支持 **E1、E2、E3、E4** 四个实验阶段（含 `--mode {auto,mock,real-gpu}` 自动降级与断点续跑），且每 48 帧强制标记物理锚点；E5（Synapse-Bench 30 场景基准）在 `ubuntu24` 上通过 `scripts/run_cpu_verification.py` 验证。规范详见 [synapse-colab-testing](../synapse-colab-testing/SKILL.md)。
