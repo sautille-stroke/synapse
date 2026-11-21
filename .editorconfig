@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DervGen Ecosystem — Canonical .editorconfig
+# ─────────────────────────────────────────────────────────────────────────────
+# Enforces LF line endings, UTF-8 encoding, and consistent formatting across
+# all editors (VS Code, JetBrains, Visual Studio, Vim, Emacs).
+#
+# See: all-overview/architecture/line-ending-standards.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+root = true
+
+# ── Global defaults ──────────────────────────────────────────────────────────
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# ── C++ / CUDA / Shaders (Google C++ Style: 2-space indent) ─────────────────
+[*.{h,hh,hpp,hxx,c,cc,cpp,cxx,inl,mm,m,cu,cuh}]
+indent_size = 2
+
+[*.{hlsl,glsl,slang,wgsl}]
+indent_size = 2
+
+# ── Go (gofmt mandates tabs) ────────────────────────────────────────────────
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# ── Python ───────────────────────────────────────────────────────────────────
+[*.py]
+indent_size = 4
+
+# ── Rust ─────────────────────────────────────────────────────────────────────
+[*.rs]
+indent_size = 4
+
+# ── TypeScript / JavaScript / Web ────────────────────────────────────────────
+[*.{ts,tsx,js,jsx,mjs,mts,cjs,vue,svelte}]
+indent_size = 2
+
+[*.{css,scss,less,html,htm}]
+indent_size = 2
+
+# ── Build files (Bazel, Makefile) ────────────────────────────────────────────
+[*.{bzl,bazel}]
+indent_size = 4
+
+[BUILD]
+indent_size = 4
+
+[MODULE.bazel]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[*.mk]
+indent_style = tab
+
+# ── Config / Data ────────────────────────────────────────────────────────────
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{toml,cfg,ini}]
+indent_size = 2
+
+[*.sql]
+indent_size = 4
+
+# ── Markdown — preserve intentional trailing whitespace (line breaks) ────────
+[*.md]
+trim_trailing_whitespace = false
+
+# ── Windows batch — the ONLY files that must be CRLF ────────────────────────
+[*.{bat,cmd}]
+end_of_line = crlf

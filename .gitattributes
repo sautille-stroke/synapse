@@ -1,0 +1,245 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DervGen Ecosystem — Canonical .gitattributes Template
+# ─────────────────────────────────────────────────────────────────────────────
+# LF-Only Policy: all text files are stored with LF in the repository and
+# checked out as LF on every OS, including Windows. CRLF is NEVER used
+# except for Windows-native batch files (.bat/.cmd).
+#
+# This file is the SSOT for line-ending policy across the DervGen ecosystem.
+# See: all-overview/architecture/line-ending-standards.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  GLOBAL DEFAULT                                                          ║
+# ║  Auto-detect text files; force LF on checkout AND commit on every OS.   ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+* text=auto eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# C++ / CUDA / Objective-C++ source
+# ═══════════════════════════════════════════════════════════════════════════
+*.h      text eol=lf
+*.hh     text eol=lf
+*.hpp    text eol=lf
+*.hxx    text eol=lf
+*.c      text eol=lf
+*.cc     text eol=lf
+*.cpp    text eol=lf
+*.cxx    text eol=lf
+*.inl    text eol=lf
+*.mm     text eol=lf
+*.m      text eol=lf
+*.cu     text eol=lf
+*.cuh    text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Shader languages
+# ═══════════════════════════════════════════════════════════════════════════
+*.hlsl   text eol=lf
+*.glsl   text eol=lf
+*.slang  text eol=lf
+*.wgsl   text eol=lf
+*.vert   text eol=lf
+*.frag   text eol=lf
+*.comp   text eol=lf
+*.geom   text eol=lf
+*.tesc   text eol=lf
+*.tese   text eol=lf
+*.mesh   text eol=lf
+*.task   text eol=lf
+*.rgen   text eol=lf
+*.rint   text eol=lf
+*.rahit  text eol=lf
+*.rchit  text eol=lf
+*.rmiss  text eol=lf
+*.rcall  text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Go
+# ═══════════════════════════════════════════════════════════════════════════
+*.go     text eol=lf
+go.mod   text eol=lf
+go.sum   text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TypeScript / JavaScript / Web
+# ═══════════════════════════════════════════════════════════════════════════
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.mjs    text eol=lf
+*.mts    text eol=lf
+*.cjs    text eol=lf
+*.css    text eol=lf
+*.scss   text eol=lf
+*.less   text eol=lf
+*.html   text eol=lf
+*.htm    text eol=lf
+*.vue    text eol=lf
+*.svelte text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Python
+# ═══════════════════════════════════════════════════════════════════════════
+*.py     text eol=lf
+*.pyi    text eol=lf
+*.pyx    text eol=lf
+*.ipynb  text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Rust
+# ═══════════════════════════════════════════════════════════════════════════
+*.rs     text eol=lf
+Cargo.toml text eol=lf
+Cargo.lock text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Build system (Bazel / Make / CMake)
+# ═══════════════════════════════════════════════════════════════════════════
+*.bzl          text eol=lf
+*.bazel        text eol=lf
+BUILD          text eol=lf
+BUILD.bazel    text eol=lf
+WORKSPACE      text eol=lf
+WORKSPACE.bazel text eol=lf
+MODULE.bazel   text eol=lf
+MODULE.bazel.lock text eol=lf
+*.BUILD        text eol=lf
+Makefile       text eol=lf
+*.mk           text eol=lf
+CMakeLists.txt text eol=lf
+*.cmake        text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Shell & scripts — MUST be LF even on Windows (used in WSL / Docker / CI)
+# ═══════════════════════════════════════════════════════════════════════════
+*.sh     text eol=lf
+*.bash   text eol=lf
+*.zsh    text eol=lf
+*.fish   text eol=lf
+*.ps1    text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Windows batch — the ONLY files that must remain CRLF
+# ═══════════════════════════════════════════════════════════════════════════
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Configuration, data, documentation
+# ═══════════════════════════════════════════════════════════════════════════
+*.md     text eol=lf
+*.rst    text eol=lf
+*.txt    text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.json   text eol=lf
+*.jsonc  text eol=lf
+*.json5  text eol=lf
+*.toml   text eol=lf
+*.cfg    text eol=lf
+*.ini    text eol=lf
+*.xml    text eol=lf
+*.svg    text eol=lf
+*.csv    text eol=lf
+*.sql    text eol=lf
+*.proto  text eol=lf
+*.graphql text eol=lf
+
+# Dotfiles
+.bazelrc         text eol=lf
+.bazelversion    text eol=lf
+.clang-format    text eol=lf
+.clang-tidy      text eol=lf
+.editorconfig    text eol=lf
+.eslintrc*       text eol=lf
+.gitattributes   text eol=lf
+.gitignore       text eol=lf
+.prettierrc*     text eol=lf
+.stylelintrc*    text eol=lf
+Dockerfile       text eol=lf
+*.dockerfile     text eol=lf
+docker-compose*  text eol=lf
+
+# Lock files
+package-lock.json text eol=lf
+pnpm-lock.yaml   text eol=lf
+yarn.lock        text eol=lf
+uv.lock          text eol=lf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Binary files — NEVER touch line endings
+# ═══════════════════════════════════════════════════════════════════════════
+# Images
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.bmp    binary
+*.tga    binary
+*.webp   binary
+*.exr    binary
+*.hdr    binary
+
+# 3D assets & engine-specific
+*.fmesh  binary
+*.ftex   binary
+*.glb    binary
+*.gltf   binary
+*.fbx    binary
+*.obj    binary
+*.ply    binary
+*.stl    binary
+*.usd    binary
+*.usda   binary
+*.usdc   binary
+*.ktx2   binary
+*.vdb    binary
+*.bvh    binary
+
+# GPU / compiled
+*.spv    binary
+*.dxil   binary
+*.metallib binary
+*.cso    binary
+
+# Fonts
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+*.eot    binary
+
+# Archives & packages
+*.zip    binary
+*.tar    binary
+*.tar.gz binary
+*.tar.bz2 binary
+*.tar.xz binary
+*.gz     binary
+*.bz2    binary
+*.xz     binary
+*.zst    binary
+*.7z     binary
+*.rar    binary
+*.whl    binary
+
+# Data
+*.npy    binary
+*.npz    binary
+*.bin    binary
+*.onnx   binary
+*.pt     binary
+*.pth    binary
+*.safetensors binary
+*.pdf    binary
+
+# Native libraries
+*.so     binary
+*.dll    binary
+*.dylib  binary
+*.a      binary
+*.lib    binary
+*.exe    binary
