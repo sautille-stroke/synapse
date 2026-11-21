@@ -164,6 +164,11 @@ def _disable_lora_adapters(module: Any) -> Iterator[None]:
 def _temporal_compress_and_spatial_ds(x: Any, dev: Any) -> Any:
     """Compress temporal axis T → τ = (T-1)//4 + 1 and spatial 8× downsample.
 
+    Uses **causal first-frame isolation**: frame 0 is kept as its own
+    temporal bin (no averaging with subsequent frames), matching the
+    Wan 3D causal VAE's stride convention.  Remaining frames are
+    grouped into bins of 4.
+
     Args:
         x: Tensor of shape ``[B, (C,) T, H, W]``.  If ndim == 4 (no C),
            treated as ``[B, T, H, W]`` → output ``[B, 1, τ, H//8, W//8]``.
@@ -182,10 +187,10 @@ def _temporal_compress_and_spatial_ds(x: Any, dev: Any) -> Any:
     b, c, t, h, w = x.shape
     tau = (t - 1) // 4 + 1
 
-    # Temporal average pooling
-    chunks = []
-    for i in range(tau):
-        s = i * 4
+    # Causal first-frame isolation: frame 0 is its own bin
+    chunks = [x[:, :, 0:1]]  # first frame, no averaging
+    for i in range(1, tau):
+        s = 1 + (i - 1) * 4
         e = min(s + 4, t)
         chunks.append(x[:, :, s:e].mean(dim=2, keepdim=True))
     x_t = torch.cat(chunks, dim=2)  # [B, C, τ, H, W]
@@ -374,7 +379,11 @@ class StatelessLoRATrainer:
         return injected
 
     def _build_optimizer(self, module: Any) -> Any:
-        """Build AdamW optimizer with separate spatial and temporal parameter groups."""
+        """Build AdamW optimizer with separate spatial and temporal parameter groups.
+
+        If a ``LatentGeometryProbe`` is registered, its parameters are
+        included in the spatial group so they receive gradients.
+        """
         import torch
 
         spatial_params: list[Any] = []
@@ -386,6 +395,12 @@ class StatelessLoRATrainer:
                 temporal_params.append(param)
             else:
                 spatial_params.append(param)
+
+        # Include geometry probe parameters
+        if self._geometry_probe is not None and hasattr(self._geometry_probe, "parameters"):
+            for param in self._geometry_probe.parameters():
+                if param.requires_grad:
+                    spatial_params.append(param)
 
         if not spatial_params and not temporal_params:
             raise RuntimeError("No trainable parameters. Call inject_lora() first.")
@@ -442,7 +457,7 @@ class StatelessLoRATrainer:
         """
         import torch
 
-        state = torch.load(str(path), weights_only=False)
+        state = torch.load(str(path), weights_only=True)
         self._step_count = state.get("step_count", 0)
         self._micro_step = state.get("micro_step", 0)
         if "optimizer_state_dict" in state:
@@ -512,26 +527,27 @@ class StatelessLoRATrainer:
         # Apply cosine LR with warmup
         lr_mult = self._get_lr_multiplier(step)
         for pg in self._optimizer.param_groups:
-            pg["lr"] = pg.get("_base_lr", pg["lr"]) * lr_mult
             if "_base_lr" not in pg:
-                pg["_base_lr"] = pg["lr"] / max(lr_mult, 1e-8)
+                pg["_base_lr"] = pg["lr"]
+            pg["lr"] = pg["_base_lr"] * lr_mult
 
         module.train()
         accum = max(1, self._config.grad_accum_steps)
         if self._micro_step % accum == 0:
             self._optimizer.zero_grad()
 
-        # Mixed precision context
-        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        # Mixed precision context — select device_type from actual model device
+        model_device = next(module.parameters()).device
+        device_type = "cuda" if model_device.type == "cuda" else "cpu"
         autocast_enabled = (
             self._config.mixed_precision in ("fp16", "bf16") and device_type == "cuda"
         )
         amp_dtype = torch.float16 if self._config.mixed_precision == "fp16" else torch.bfloat16
 
-        # GradScaler for fp16 to prevent gradient underflow
+        # GradScaler for fp16 to prevent gradient underflow (device-aware)
         use_scaler = autocast_enabled and self._config.mixed_precision == "fp16"
         if use_scaler and not hasattr(self, "_grad_scaler"):
-            self._grad_scaler = torch.amp.GradScaler()  # type: ignore[attr-defined]
+            self._grad_scaler = torch.amp.GradScaler(device=device_type)  # type: ignore[attr-defined]
 
         # Move batch tensors to same device as module
         for k, v in batch.items():
@@ -620,7 +636,7 @@ class StatelessLoRATrainer:
         import torch
 
         if "t" in batch and batch["t"] is not None:
-            t = batch["t"].to(device=ref_tensor.device, dtype=ref_tensor.dtype)
+            t = batch["t"].clone().to(device=ref_tensor.device, dtype=ref_tensor.dtype)
         else:
             bsz = ref_tensor.shape[0] if ref_tensor.ndim >= 1 else 1
             shape = (bsz,) + (1,) * max(0, ref_tensor.ndim - 1)
@@ -697,7 +713,7 @@ class StatelessLoRATrainer:
         ):
             self._extract_auxiliary_from_fgpp(batch)
 
-        # Wire optional EdgePreservingLoss
+        # Wire optional EdgePreservingLoss (operates on log-depth for scale invariance)
         if self._config.edge_loss_weight > 0.0:
             depth_key = (
                 "depth_latent"
@@ -705,9 +721,14 @@ class StatelessLoRATrainer:
                 else ("depth" if "depth" in batch else None)
             )
             if depth_key is not None:
+                import torch as _torch
+
                 z_pred = x_t + v_pred * (1.0 - t)
+                depth_val = batch[depth_key]
+                # Log-depth for scale-invariant edge alignment
+                log_depth = _torch.log1p(depth_val.clamp(min=0.0))
                 loss = loss + self._config.edge_loss_weight * self._edge_preserving_loss(
-                    z_pred, batch[depth_key]
+                    z_pred, log_depth
                 )
 
         # Wire optional NormalReconstructionLoss via LatentGeometryProbe
@@ -720,7 +741,7 @@ class StatelessLoRATrainer:
                 # Use LatentGeometryProbe if available, otherwise skip
                 # (never directly slice 16ch latent as 3ch normal)
                 if hasattr(self, "_geometry_probe") and self._geometry_probe is not None:
-                    n_pred = self._geometry_probe(z_pred if "z_pred" not in dir() else v_pred)
+                    n_pred = self._geometry_probe(z_pred if "z_pred" in dir() else v_pred)
                 else:
                     n_pred = batch.get("normal_pred")
                 if n_pred is not None:

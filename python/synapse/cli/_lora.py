@@ -144,18 +144,53 @@ def _cmd_lora_train(
 
     trainer = StatelessLoRATrainer(validated)
 
-    # Build small model for standalone CLI training
-    class _SmallDiT(torch.nn.Module):
+    # Build DiT model with whitelist-compatible block architecture
+    class _WhitelistDiT(torch.nn.Module):
+        """Minimal DiT with named layers matching LoRA category whitelists."""
+
         def __init__(self, dim: int = 64) -> None:
             super().__init__()
-            self.linear = torch.nn.Linear(dim, dim)
+            # Spatial attention block
+            self.blocks = torch.nn.ModuleList([
+                torch.nn.ModuleDict({
+                    "spatial_attn": torch.nn.ModuleDict({
+                        "to_q": torch.nn.Linear(dim, dim),
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "cross_attn": torch.nn.ModuleDict({
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "temporal_attn": torch.nn.ModuleDict({
+                        "to_q": torch.nn.Linear(dim, dim),
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "ffn": torch.nn.ModuleDict({
+                        "linear": torch.nn.Linear(dim, dim),
+                    }),
+                }),
+            ])
             self.out = torch.nn.Linear(dim, dim)
 
         def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
-            return self.out(torch.relu(self.linear(x)))
+            for block in self.blocks:
+                x = x + block["spatial_attn"]["to_v"](x)  # type: ignore[index]
+                x = x + block["ffn"]["linear"](x)  # type: ignore[index]
+            return self.out(x)
 
-    model = _SmallDiT()
-    target_modules = ["linear"]
+    # Select target_modules from manifest if available, else infer from category
+    _CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
+        "style": ["cross_attn.to_k", "cross_attn.to_v", "ffn"],
+        "identity": ["spatial_attn", "cross_attn.to_k", "cross_attn.to_v"],
+        "control": ["spatial_attn", "ffn"],
+        "whitebox": ["spatial_attn", "ffn"],
+        "motion": ["temporal_attn"],
+    }
+
+    model = _WhitelistDiT()
+    target_modules = _CATEGORY_DEFAULT_TARGETS.get(validated.category, ["ffn"])
     trainer.inject_lora(model, target_modules)
     trainer.freeze_backbone(model)
 
@@ -242,7 +277,11 @@ def _cmd_lora_eval(
 def _cmd_lora_merge(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    """Merge LoRA weights into base model via orthogonal merge."""
+    """Merge LoRA weights into base model via orthogonal merge.
+
+    Uses ``MultiLoRAManager`` to apply orthogonalised LoRA deltas,
+    then exports the merged weights.
+    """
     bundle_dir = Path(args.bundle)
     output_dir = Path(args.output)
 
@@ -253,8 +292,8 @@ def _cmd_lora_merge(
             agent_fix_hint="Ensure the bundle directory contains trained LoRA weights.",
         )
 
-    # Delegate to packager for gated merge
-    from synapse.training.packager import package_and_gate_lora_bundle
+    from synapse.adapters.lora.manifest import LoRAManifest
+    from synapse.adapters.lora.manager import MultiLoRAManager
 
     manifest_path = bundle_dir / "lora_manifest.json"
     if manifest_path.is_file():
@@ -269,6 +308,29 @@ def _cmd_lora_merge(
         alpha = 1.0
         target_modules = None
 
+    # Build manifest for MultiLoRAManager
+    import hashlib
+
+    sha256 = hashlib.sha256(weights_path.read_bytes()).hexdigest()
+    manifest = LoRAManifest(
+        name=bundle_dir.name,
+        category=category,
+        rank=rank,
+        alpha=alpha,
+        adapter_path=str(weights_path.relative_to(bundle_dir)),
+        adapter_sha256=sha256,
+        target_modules=target_modules or ["cross_attn.to_k", "cross_attn.to_v", "ffn"],
+    )
+    # Set bundle_dir for relative path resolution
+    manifest.bundle_dir = str(bundle_dir)  # type: ignore[attr-defined]
+
+    manager = MultiLoRAManager(
+        lora_bundles=[(manifest, 1.0)],
+    )
+
+    # Delegate to packager for gated merge (which also runs quality checks)
+    from synapse.training.packager import package_and_gate_lora_bundle
+
     result = package_and_gate_lora_bundle(
         weights_path=weights_path,
         output_dir=output_dir,
@@ -278,6 +340,9 @@ def _cmd_lora_merge(
         target_modules=target_modules,
         skip_bench=True,
     )
+
+    result["merge_method"] = "MultiLoRAManager.orthogonal"
+    result["bundles_merged"] = 1
 
     return result
 

@@ -161,7 +161,7 @@ def handle_lora_train(
             agent_fix_hint="Run lora_preencode to generate .tar shards first.",
         )
 
-    # Lazy import torch — exit 30 if missing
+    # Build DiT model with whitelist-compatible block architecture
     try:
         import torch
     except ImportError as exc:
@@ -172,20 +172,55 @@ def handle_lora_train(
             agent_fix_hint="Install torch via 'pip install torch'.",
         ) from exc
 
-    # Build a small test model for training
-    target_modules = params.get("target_modules", ["linear"])
+    target_modules = params.get("target_modules", None)
     model_dim = params.get("model_dim", 64)
 
-    class _SmallDiT(torch.nn.Module):
+    class _WhitelistDiT(torch.nn.Module):
+        """Minimal DiT with named layers matching LoRA category whitelists."""
+
         def __init__(self, dim: int) -> None:
             super().__init__()
-            self.linear = torch.nn.Linear(dim, dim)
+            self.blocks = torch.nn.ModuleList([
+                torch.nn.ModuleDict({
+                    "spatial_attn": torch.nn.ModuleDict({
+                        "to_q": torch.nn.Linear(dim, dim),
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "cross_attn": torch.nn.ModuleDict({
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "temporal_attn": torch.nn.ModuleDict({
+                        "to_q": torch.nn.Linear(dim, dim),
+                        "to_k": torch.nn.Linear(dim, dim),
+                        "to_v": torch.nn.Linear(dim, dim),
+                    }),
+                    "ffn": torch.nn.ModuleDict({
+                        "linear": torch.nn.Linear(dim, dim),
+                    }),
+                }),
+            ])
             self.out = torch.nn.Linear(dim, dim)
 
         def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
-            return self.out(torch.relu(self.linear(x)))
+            for block in self.blocks:
+                x = x + block["spatial_attn"]["to_v"](x)  # type: ignore[index]
+                x = x + block["ffn"]["linear"](x)  # type: ignore[index]
+            return self.out(x)
 
-    model = _SmallDiT(model_dim)
+    # Infer target_modules from category if not specified
+    if not target_modules:
+        _CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
+            "style": ["cross_attn.to_k", "cross_attn.to_v", "ffn"],
+            "identity": ["spatial_attn", "cross_attn.to_k", "cross_attn.to_v"],
+            "control": ["spatial_attn", "ffn"],
+            "whitebox": ["spatial_attn", "ffn"],
+            "motion": ["temporal_attn"],
+        }
+        target_modules = _CATEGORY_DEFAULT_TARGETS.get(config.category, ["ffn"])
+
+    model = _WhitelistDiT(model_dim)
     trainer = StatelessLoRATrainer(config)
     trainer.inject_lora(model, target_modules)
     trainer.freeze_backbone(model)

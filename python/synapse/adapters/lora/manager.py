@@ -60,6 +60,9 @@ class MultiLoRAManager:
         SHA-256 against ``manifest.adapter_sha256``, and returns the
         state dict of tensors.
 
+        When ``adapter_path`` is relative, it is resolved against the
+        manifest's ``bundle_dir`` (if set) rather than CWD.
+
         Args:
             manifest: LoRA manifest specifying the adapter file and
                 expected SHA-256.
@@ -71,7 +74,18 @@ class MultiLoRAManager:
             AssetNotFoundError: If the file does not exist (exit 20).
             ContractValidationError: If SHA-256 mismatch (exit 10).
         """
-        path = manifest.adapter_path
+        raw_path = manifest.adapter_path
+
+        # Resolve relative paths against bundle_dir (if set), not CWD
+        if not os.path.isabs(raw_path):
+            bundle_dir = getattr(manifest, "bundle_dir", None)
+            if bundle_dir:
+                path = os.path.join(str(bundle_dir), raw_path)
+            else:
+                path = raw_path
+        else:
+            path = raw_path
+
         if path in self._loaded_state_dicts:
             return self._loaded_state_dicts[path]
 
@@ -552,11 +566,26 @@ def _extract_lora_ab(
     if module_name:
         matching = {k: v for k, v in state_dict.items() if module_name in k}
         if not matching:
-            # Try leaf component (e.g. "spatial_attn.to_q")
+            # Try leaf component (e.g. "spatial_attn.to_q") but only if
+            # no block index mismatch — prevents cross-block LoRA fallback
             parts = module_name.split(".")
             if len(parts) >= 2:
                 short_name = ".".join(parts[-2:])
-                matching = {k: v for k, v in state_dict.items() if short_name in k}
+                # Extract block index from module_name (e.g. "blocks.5.attn" -> "5")
+                block_idx = None
+                for i, p in enumerate(parts):
+                    if p == "blocks" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                        block_idx = parts[i + 1]
+                        break
+                candidates = {k: v for k, v in state_dict.items() if short_name in k}
+                if block_idx is not None:
+                    # Only accept candidates from the same block
+                    matching = {
+                        k: v for k, v in candidates.items()
+                        if f"blocks.{block_idx}." in k or f"block.{block_idx}." in k
+                    }
+                else:
+                    matching = candidates
         if matching:
             filtered_dict = matching
 
