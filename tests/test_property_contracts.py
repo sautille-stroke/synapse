@@ -430,6 +430,7 @@ class TestHypothesisJsonSchemaParity:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.external_data
 class TestHypothesisMeshValidationParity:
     """Property tests asserting topology equivalence between Python Oracle and C++ native backend."""
 

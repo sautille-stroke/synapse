@@ -424,6 +424,7 @@ class TestGeometryOracleExactness:
 # ===================================================================
 
 
+@pytest.mark.external_data
 @pytest.mark.skipif(
     not HAS_NATIVE_GEOMETRY,
     reason="aether_geo native extension not compiled in current Python path",

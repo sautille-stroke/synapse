@@ -83,9 +83,9 @@ jobs:
           RC=$?
           set -e
           echo "$OUTPUT"
-          CHECKED=$(echo "$OUTPUT" | grep -oP 'checked \K[0-9]+')
-          if [ -n "$CHECKED" ] && [ "$CHECKED" -lt 207 ]; then
-            echo "ERROR: Only checked $CHECKED files, expected >= 207"
+          CHECKED=$(echo "$OUTPUT" | grep -oP '(?:checked |in )\K[0-9]+(?= source files)' || true)
+          if [ -z "$CHECKED" ] || [ "$CHECKED" -lt 207 ]; then
+            echo "ERROR: Only checked ${CHECKED:-0} files, expected >= 207"
             exit 1
           fi
           test $RC -eq 0
