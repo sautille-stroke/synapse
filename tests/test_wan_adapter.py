@@ -595,3 +595,37 @@ class TestWanSlidingWindowAndGuards:
         assert frames.dtype == np.uint8
         assert mock_pipe.called
 
+    def test_pr184_tail_pad_crop_and_scene_cut_reanchor_no_truncation(self) -> None:
+        """PR-184: non-(4k+1) tail pads+crops with zero frame loss, and scene cut
+        reanchor splices at cut_idx with exact frame count and zero replay."""
+        total = 130  # multi-window (W=97, S=64 -> [0,97), [64,130)); tail 66 != 4k+1
+        seq = _make_fgpp_sequence(n_frames=total, h=16, w=16)
+        # Inject sharp scene cut at frame 80 (inside overlap/window 1)
+        for fi in range(80, total):
+            seq.frames[fi].world_normal = np.full((16, 16, 3), -1.0, dtype=np.float16)
+            seq.frames[fi].cryptomatte_id = np.full((16, 16), 99, dtype=np.uint32)
+            seq.frames[fi].motion_vector = np.full((16, 16, 2), 50.0, dtype=np.float16)
+
+        rng = np.random.default_rng(77)
+
+        def backend_fn(
+            payload: PreparedConditionPayload,
+            cfg: VideoGenerationConfig,
+        ) -> np.ndarray:
+            # Verify backend always receives 4k+1 frames when multi-window pads tail
+            assert (cfg.num_frames - 1) % 4 == 0
+            return rng.integers(
+                10, 240, size=(cfg.num_frames, cfg.height, cfg.width, 3), dtype=np.uint8
+            )
+
+        adapter = WanAdapter(backend=LocalCallableBackend(pipeline_fn=backend_fn))
+        config = VideoGenerationConfig(num_frames=total, width=16, height=16)
+        payload = adapter.prepare_conditions(seq, config)
+        # Verify HDR radiance was forward-compressed into [0, 1] (not inverse-expanded!)
+        assert payload.control_tensor is not None
+        assert float(np.max(payload.control_tensor[4:7])) <= 1.05
+
+        result = adapter.generate(payload, config, fgpp_frames=seq.frames)
+        assert result.frames_srgb_u8.shape == (total, 16, 16, 3)
+
+

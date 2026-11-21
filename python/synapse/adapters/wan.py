@@ -506,7 +506,7 @@ class WanAdapter(VideoModelAdapter):
             ``[C_cond, T, H, W]`` (C_cond = 7: 1 depth + 3 normal +
             3 radiance).
         """
-        from synapse.style.aces_color import soft_knee_inverse_tonemap
+        from synapse.style.aces_color import soft_knee_forward_tonemap
 
         n_frames = len(fgpp_sequence.frames)
         if n_frames == 0:
@@ -536,13 +536,13 @@ class WanAdapter(VideoModelAdapter):
                 frame.camera.view_matrix,
             )
 
-            # 3. Radiance — soft-knee inverse tonemap + normalise
+            # 3. Radiance — linear HDR forward soft-knee compression + normalise
             if frame.direct_radiance is not None:
                 rad = frame.direct_radiance.astype(np.float64)
             else:
                 rad = np.zeros((h, w, 3), dtype=np.float64)
-            rad_tonemapped = soft_knee_inverse_tonemap(rad)
-            # Normalise to [0, 1] (max output is < 12.0)
+            rad_tonemapped = soft_knee_forward_tonemap(rad)
+            # Normalise to [0, 1]
             rad_norm = np.clip(
                 rad_tonemapped / _RADIANCE_NORM_MAX,
                 0.0,
@@ -618,7 +618,7 @@ class WanAdapter(VideoModelAdapter):
         Returns:
             ``[7, H, W]`` float32 ControlNeXt condition tensor.
         """
-        from synapse.style.aces_color import soft_knee_inverse_tonemap
+        from synapse.style.aces_color import soft_knee_forward_tonemap
 
         h, w = frame.height, frame.width
 
@@ -636,12 +636,12 @@ class WanAdapter(VideoModelAdapter):
             wn = np.zeros((h, w, 3), dtype=np.float32)
         cam_normals = _world_normal_to_camera(wn, frame.camera.view_matrix)
 
-        # 3. Radiance
+        # 3. Radiance (linear HDR forward soft-knee compression)
         if frame.direct_radiance is not None:
             rad = frame.direct_radiance.astype(np.float64)
         else:
             rad = np.zeros((h, w, 3), dtype=np.float64)
-        rad_tonemapped = soft_knee_inverse_tonemap(rad)
+        rad_tonemapped = soft_knee_forward_tonemap(rad)
         rad_norm = np.clip(
             rad_tonemapped / _RADIANCE_NORM_MAX,
             0.0,
@@ -703,9 +703,17 @@ class WanAdapter(VideoModelAdapter):
             if backend_model is not None:
                 model = backend_model
 
-        # --- Enforce 16px resolution alignment ---
-        effective_height = config.height - (config.height % 16)
-        effective_width = config.width - (config.width % 16)
+        # --- Enforce 16px resolution alignment (never collapse < 16px toy grids to 0) ---
+        effective_height = (
+            max(16, config.height - (config.height % 16))
+            if config.height >= 16
+            else max(1, config.height)
+        )
+        effective_width = (
+            max(16, config.width - (config.width % 16))
+            if config.width >= 16
+            else max(1, config.width)
+        )
         if effective_height != config.height or effective_width != config.width:
             config = VideoGenerationConfig(
                 seed=config.seed,
@@ -722,6 +730,12 @@ class WanAdapter(VideoModelAdapter):
         working_control = conditions.control_tensor
         if working_control is not None:
             working_control = working_control.copy()
+            # Keep control spatial dimensions synchronized with aligned config
+            if working_control.ndim == 4 and (
+                working_control.shape[2] != config.height or working_control.shape[3] != config.width
+            ):
+                if working_control.shape[2] >= config.height and working_control.shape[3] >= config.width:
+                    working_control = working_control[:, :, : config.height, : config.width].copy()
 
         # Apply reanchoring for physical anchor frames
         if fgpp_frames and conditions.extra.get("physical_anchor_indices"):
@@ -732,6 +746,8 @@ class WanAdapter(VideoModelAdapter):
                         frame_index=anchor_idx,
                     )
                     if working_control is not None and anchor_idx < working_control.shape[1]:
+                        if reanchored.shape[1:] != working_control.shape[2:]:
+                            reanchored = reanchored[:, : working_control.shape[2], : working_control.shape[3]]
                         working_control[:, anchor_idx] = reanchored
 
         conditions_to_use = PreparedConditionPayload(
@@ -843,28 +859,43 @@ class WanAdapter(VideoModelAdapter):
 
                 for w_idx, sw in enumerate(scheduled_windows):
                     w = sw.window
-                    w_num_frames = w.end - w.start
+                    orig_w_num_frames = w.end - w.start
+                    w_num_frames = orig_w_num_frames
+                    pad_frames = 0
 
-                    # Align tail (last) window frame count to 4k+1 for
-                    # Wan 2.1 causal VAE compatibility (temporal compression
-                    # factor 4 requires (T-1) % 4 == 0).
+                    # Align tail (last) window frame count UP to 4k+1 via pad+crop
+                    # for Wan 2.1 causal VAE compatibility without dropping tail frames.
                     if w_idx == len(scheduled_windows) - 1 and w_num_frames > 1:
                         remainder = (w_num_frames - 1) % 4
                         if remainder != 0:
-                            w_num_frames = w_num_frames - remainder
-                            if w_num_frames < 1:
-                                w_num_frames = 1
+                            pad_frames = 4 - remainder
+                            w_num_frames = orig_w_num_frames + pad_frames
 
                     sub_control = (
-                        working_control[:, w.start : w.start + w_num_frames]
+                        working_control[:, w.start : w.start + orig_w_num_frames]
                         if working_control is not None
                         else None
                     )
+                    if sub_control is not None and pad_frames > 0 and sub_control.shape[1] > 0:
+                        pad_ctrl = np.repeat(sub_control[:, -1:], pad_frames, axis=1)
+                        sub_control = np.concatenate([sub_control, pad_ctrl], axis=1)
+
                     sub_crypt = (
-                        conditions_to_use.cryptomatte_id[w.start : w.start + w_num_frames]
+                        conditions_to_use.cryptomatte_id[w.start : w.start + orig_w_num_frames]
                         if conditions_to_use.cryptomatte_id is not None
                         else None
                     )
+                    if sub_crypt is not None and pad_frames > 0 and sub_crypt.shape[0] > 0:
+                        pad_c = np.repeat(sub_crypt[-1:], pad_frames, axis=0)
+                        sub_crypt = np.concatenate([sub_crypt, pad_c], axis=0)
+
+                    sub_fgpp = (
+                        list(fgpp_frames[w.start : w.start + orig_w_num_frames])
+                        if fgpp_frames
+                        else []
+                    )
+                    if sub_fgpp and pad_frames > 0:
+                        sub_fgpp.extend([sub_fgpp[-1]] * pad_frames)
 
                     sub_cfg = VideoGenerationConfig(
                         seed=config.seed + w_idx * 17,
@@ -882,10 +913,7 @@ class WanAdapter(VideoModelAdapter):
                     # truncate overlap blending and restart the anchor to
                     # prevent cross-cut ghosting artefacts.
                     if sw.needs_reanchor and w_idx > 0:
-                        # Truncate blending: do NOT carry warm-start context
-                        # across the scene cut boundary
                         warm_start = []
-                        # Also clear prev_window_tail to prevent blending
                         prev_window_tail = []
                     elif (
                         w_idx > 0
@@ -904,7 +932,7 @@ class WanAdapter(VideoModelAdapter):
                         text_prompt=conditions_to_use.text_prompt,
                         negative_prompt=conditions_to_use.negative_prompt,
                         cryptomatte_id=sub_crypt,
-                        fgpp_frames=fgpp_frames[w.start : w.start + w_num_frames] if fgpp_frames else [],
+                        fgpp_frames=sub_fgpp,
                         extra=dict(conditions_to_use.extra),
                     )
                     if warm_start:
@@ -923,14 +951,28 @@ class WanAdapter(VideoModelAdapter):
                     with sub_hook_ctx:
                         sub_result = self._backend.submit(sub_payload, sub_cfg)
 
+                    # Crop any 4k+1 tail padding back to exact original window length
+                    if pad_frames > 0 and len(sub_result) > orig_w_num_frames:
+                        sub_result = sub_result[:orig_w_num_frames]
+
                     prev_window_tail = [sub_result[idx] for idx in range(len(sub_result))]
 
                     if accumulated_frames is None:
                         accumulated_frames = sub_result
                     elif sw.needs_reanchor:
-                        # Scene cut: concatenate without overlap blending
+                        # Scene cut: splice cleanly at the exact cut_idx inside the overlap
+                        # without replaying overlap frames or truncating the video tail.
+                        prev_len = len(accumulated_frames)
+                        cut_candidates = [
+                            r.frame_index
+                            for r in sw.reanchor_requests
+                            if (not r.is_physical_anchor or r.kappa > 0.0)
+                            and w.start <= r.frame_index <= prev_len
+                        ]
+                        cut_idx = min(cut_candidates) if cut_candidates else min(w.start, prev_len)
+                        sub_offset = max(0, cut_idx - w.start)
                         accumulated_frames = np.concatenate(
-                            [accumulated_frames, sub_result],
+                            [accumulated_frames[:cut_idx], sub_result[sub_offset:]],
                             axis=0,
                         )
                     else:

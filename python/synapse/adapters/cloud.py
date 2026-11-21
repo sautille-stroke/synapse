@@ -88,6 +88,7 @@ class DegradedSegment:
     motion_intensity: float
     depth_guide: np.ndarray | None = None
     normal_edge_guide: np.ndarray | None = None
+    text_prompt: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -199,12 +200,15 @@ def _fit_camera_motion(
     displacement = float(total_displacement)
 
     # Heuristic thresholds
-    # If significant yaw rotation detected -> orbit
+    # If significant yaw rotation detected -> orbit.
+    # In right-handed Y-up coordinates, forward = -Z and atan2(fx, fz) increases
+    # under positive (+theta) rotation around +Y, which is counter-clockwise (CCW)
+    # when viewed from +Y looking down onto the XZ plane.
     if yaw_magnitude > 0.1:
         if total_yaw > 0:
-            motion = "orbit_cw"
-        else:
             motion = "orbit_ccw"
+        else:
+            motion = "orbit_cw"
         # Intensity from yaw magnitude
         raw_intensity = yaw_magnitude / np.pi * 10.0
     elif displacement > 0.01:
@@ -787,6 +791,8 @@ class _BaseCloudAdapter(VideoModelAdapter, ABC):
         idempotency_keys: list[str] = []
 
         for i, seg in enumerate(segments):
+            if conditions.text_prompt and not seg.text_prompt:
+                seg.text_prompt = conditions.text_prompt
             key = _compute_idempotency_key(
                 scene_id,
                 seg.start_frame,

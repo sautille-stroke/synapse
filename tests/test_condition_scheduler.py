@@ -634,3 +634,14 @@ class TestConditionScheduler:
         assert scheduled[0].needs_reanchor is True, (
             "Frame 48 is both a physical anchor and a scene cut — needs_reanchor must be True"
         )
+
+    def test_pr184_fuse_overlapping_latents_identical_and_constant_identity(self) -> None:
+        """PR-184: Identical or constant latents must fuse with exact identity (no blowup)."""
+        rng = np.random.default_rng(123)
+        z_same = rng.standard_normal((9, 4, 8, 8)).astype(np.float32) + 3.5
+        fused_same = fuse_overlapping_latents(z_same, z_same.copy())
+        np.testing.assert_allclose(fused_same, z_same, atol=1e-5)
+
+        z_const = np.full((9, 4, 8, 8), 2.25, dtype=np.float32)
+        fused_const = fuse_overlapping_latents(z_const, z_const.copy())
+        np.testing.assert_allclose(fused_const, z_const, atol=1e-6)

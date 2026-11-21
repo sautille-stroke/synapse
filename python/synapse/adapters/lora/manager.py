@@ -332,12 +332,19 @@ class MultiLoRAManager:
                         layer_deltas[name] = []
                     layer_deltas[name].append((manifest, delta_np, submodule))
 
-            # Orthogonalize deltas across conflicting pairs and attach hooks
+            # Orthogonalize deltas across conflicting pairs and attach hooks.
+            # Skip Gram-Schmidt between spatially disjoint identity (M_fg) and
+            # style (~M_fg) pairs when a Cryptomatte spatial mask is active,
+            # because their contributions never overlap in token space.
             for name, bundle_list in layer_deltas.items():
                 if len(bundle_list) >= 2:
                     deltas = [b[1] for b in bundle_list]
                     for i in range(len(deltas)):
+                        cat_i = bundle_list[i][0].category
                         for j in range(i + 1, len(deltas)):
+                            cat_j = bundle_list[j][0].category
+                            if m_fg is not None and {cat_i, cat_j} == {"identity", "style"}:
+                                continue
                             deltas[j] = self.orthogonalize_conflicting_loras(deltas[i], deltas[j])
                     bundle_list = [(b[0], deltas[idx], b[2]) for idx, b in enumerate(bundle_list)]
 
@@ -384,8 +391,11 @@ class MultiLoRAManager:
             ``style`` LoRAs activate in ``~M_fg``.
         """
         t, h, w = cryptomatte_ids.shape
-        h_ds = h // spatial_block
-        w_ds = w // spatial_block
+        eff_block = spatial_block
+        if h < spatial_block or w < spatial_block:
+            eff_block = max(1, min(spatial_block, h // 2 if h >= 2 else 1, w // 2 if w >= 2 else 1))
+        h_ds = h // eff_block
+        w_ds = w // eff_block
 
         if not target_entity_ids:
             return np.zeros((t, h_ds, w_ds), dtype=bool)
@@ -393,11 +403,11 @@ class MultiLoRAManager:
         try:
             from scipy import stats  # lazy
 
-            cropped = cryptomatte_ids[:, : h_ds * spatial_block, : w_ds * spatial_block]
+            cropped = cryptomatte_ids[:, : h_ds * eff_block, : w_ds * eff_block]
             blocks = (
-                cropped.reshape(t, h_ds, spatial_block, w_ds, spatial_block)
+                cropped.reshape(t, h_ds, eff_block, w_ds, eff_block)
                 .transpose(0, 1, 3, 2, 4)
-                .reshape(t, h_ds, w_ds, spatial_block * spatial_block)
+                .reshape(t, h_ds, w_ds, eff_block * eff_block)
             )
             dominant = np.asarray(stats.mode(blocks, axis=-1, keepdims=False).mode).reshape(
                 t, h_ds, w_ds
@@ -410,8 +420,8 @@ class MultiLoRAManager:
                     for xi in range(w_ds):
                         block = cryptomatte_ids[
                             ti,
-                            yi * spatial_block : (yi + 1) * spatial_block,
-                            xi * spatial_block : (xi + 1) * spatial_block,
+                            yi * eff_block : (yi + 1) * eff_block,
+                            xi * eff_block : (xi + 1) * eff_block,
                         ]
                         unique, counts = np.unique(
                             block.ravel(),
