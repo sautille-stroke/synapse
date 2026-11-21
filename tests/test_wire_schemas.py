@@ -342,14 +342,18 @@ class TestSchemaCatchesMismatches:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.external_data
 class TestCppHeaderExtendedValidation:
     """Test C++ header parsing and strict cross-language contract enforcement."""
 
     @pytest.fixture
     def aether_header_path(self) -> Path:
         for probe in wire_guard._DEFAULT_HEADER_PROBES:
-            if probe.exists():
-                return probe  # type: ignore[no-any-return]
+            try:
+                if probe.exists():
+                    return probe  # type: ignore[no-any-return]
+            except OSError:
+                continue
         pytest.skip("aether fgpp_types.h header not available")
 
     def test_parse_header_extracts_pixel_types_and_specs(self, aether_header_path: Path) -> None:
