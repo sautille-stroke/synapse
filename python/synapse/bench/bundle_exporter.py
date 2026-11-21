@@ -22,7 +22,7 @@ import json
 import re
 import shutil
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
@@ -416,7 +416,7 @@ def export_inspection_bundle(
         schema_version=INSPECTION_SCHEMA_VERSION,
         bundle_id=uuid4().hex,
         scenario_name=scenario_name,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
         sources=sources,
     )
 

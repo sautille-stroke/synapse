@@ -35,7 +35,6 @@ def handle_video_to_3d_invert(
     import time
 
     from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
-    from synapse.errors import evaluate_hitl_circuit_breaker
     from synapse.recon import ReconPipeline
     from synapse.recon.delight import delight_multiview_albedo
 

@@ -449,10 +449,10 @@ class LocalRefinementPipeline:
         for t in range(t_count):
             if refinements[t] and rois_per_frame[t]:
                 orig = rois_per_frame[t][0].crop_acescg
-                ref = refinements[t][0].refined_acescg
+                ref_patch = refinements[t][0].refined_acescg
                 # Pad both patches to the same canonical size
                 first_orig_patch = _pad_to_canonical(orig, self._lpips_patch_size)
-                first_ref_patch = _pad_to_canonical(ref, self._lpips_patch_size)
+                first_ref_patch = _pad_to_canonical(ref_patch, self._lpips_patch_size)
                 break
 
         # Compute real temporal warp error across frames

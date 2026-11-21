@@ -556,7 +556,7 @@ class VisualJevCritic:
             overall = max(0.0, 1.0 - max_sev)
 
             ts = datetime.datetime.now(
-                datetime.timezone.utc,
+                datetime.UTC,
             ).isoformat()
 
             return InspectionReport(

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import numpy as np
@@ -26,7 +26,7 @@ import numpy as np
 from synapse.fgpp.frame import CameraParams
 
 
-class CameraTrajectoryType(str, Enum):
+class CameraTrajectoryType(StrEnum):
     """Supported camera trajectory types."""
 
     ORBIT = "orbit"

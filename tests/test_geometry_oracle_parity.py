@@ -533,7 +533,7 @@ class TestNativeVsPythonOracleParity:
         assert cpp_oob.degenerate_face_indices == py_oob.degenerate_face_indices == [0]
 
     def test_split_vertex_uv_cube_not_false_self_intersecting(self) -> None:
-        from synapse.bench.procedural import (
+        from synapse.render_core.procedural import (
             ProceduralMeshType,
             generate_procedural_mesh,
         )

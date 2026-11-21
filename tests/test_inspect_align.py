@@ -6,10 +6,6 @@ import math
 
 import numpy as np
 import pytest
-from synapse.bench.procedural import (
-    generate_humanoid_proxy,
-    generate_procedural_mesh,
-)
 from synapse.errors import QualityGateError
 from synapse.inspect.align import (
     align_reference_image_to_mesh,
@@ -21,6 +17,10 @@ from synapse.inspect.schemas import (
     CameraPose,
     DefectAnnotation3D,
     InspectionReport,
+)
+from synapse.render_core.procedural import (
+    generate_humanoid_proxy,
+    generate_procedural_mesh,
 )
 
 # ===================================================================

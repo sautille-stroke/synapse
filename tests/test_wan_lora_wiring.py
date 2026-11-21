@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import contextlib
 from contextlib import AbstractContextManager
-from typing import Any
 from types import TracebackType
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -25,7 +25,6 @@ from synapse.adapters.base import (
 )
 from synapse.adapters.wan import LocalCallableBackend, WanAdapter
 from synapse.fgpp.frame import CameraParams, FGPPFrame
-
 
 # ---------------------------------------------------------------------------
 # Typed stub replacing MagicMock for MultiLoRAManager method tracking
@@ -39,7 +38,7 @@ class _SpatialHooksStub(AbstractContextManager["_SpatialHooksStub"]):
         self.entered: bool = False
         self.exited: bool = False
 
-    def __enter__(self) -> "_SpatialHooksStub":
+    def __enter__(self) -> _SpatialHooksStub:
         self.entered = True
         return self
 
@@ -48,9 +47,8 @@ class _SpatialHooksStub(AbstractContextManager["_SpatialHooksStub"]):
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> bool:
+    ) -> None:
         self.exited = True
-        return False
 
 
 class _LoRAManagerMethodTracker:
@@ -281,7 +279,7 @@ class TestWanAdapterLoRAGenerate:
         result = adapter.generate(
             payload,
             config,
-            model=mock_model,
+            model=cast(Any, mock_model),
             fgpp_frames=frames,
         )
 
@@ -323,7 +321,7 @@ class TestWanAdapterLoRAGenerate:
             adapter.generate(
                 payload,
                 config,
-                model=mock_model,
+                model=cast(Any, mock_model),
                 fgpp_frames=frames,
             )
 
@@ -355,7 +353,7 @@ class TestWanAdapterLoRAGenerate:
         result = adapter.generate(
             payload,
             config,
-            model=mock_model,
+            model=cast(Any, mock_model),
             fgpp_frames=frames,
         )
 

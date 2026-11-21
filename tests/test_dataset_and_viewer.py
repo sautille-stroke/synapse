@@ -65,7 +65,7 @@ class TestRasterizer:
 
     def test_rasterizer_channels(self) -> None:
         model = load_model("cube", normalize=True, target_radius=1.0)
-        from synapse.bench.camera import CameraTrajectoryType, generate_cameras
+        from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
 
         cameras = generate_cameras(
             CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128

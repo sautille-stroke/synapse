@@ -323,7 +323,7 @@ class ForwardGuide:
                 conditions = adapter.prepare_conditions(conditioning, config)
                 result = adapter.generate(conditions, config)
                 if hasattr(result, "frames_srgb_u8"):
-                    return result.frames_srgb_u8.astype(np.float32) / 255.0
+                    return np.asarray(result.frames_srgb_u8, dtype=np.float32) / 255.0
                 if isinstance(result, np.ndarray):
                     return result
                 if isinstance(result, dict) and "frames" in result:

@@ -238,7 +238,7 @@ class TestProfilesDocSync:
 
     def test_wire_contracts_15ch_table_matches_fgpp_schema(self) -> None:
         """Verify WIRE_CONTRACTS.md §1.1 channel table aligns with FGPP_CHANNEL_SPECS."""
-        from synapse.fgpp.schema import FGPP_CHANNEL_SPECS, get_channel_names
+        from synapse.fgpp.schema import get_channel_names
 
         repo_root = Path(__file__).resolve().parent.parent
         wire_path = repo_root / "docs" / "WIRE_CONTRACTS.md"

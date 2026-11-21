@@ -37,8 +37,6 @@ _DEPRECATION_MSG = (
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 
-warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
-
 
 @dataclass
 class RenderResult:

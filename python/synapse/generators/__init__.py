@@ -41,6 +41,8 @@ def __getattr__(name: str) -> Any:
     if name in ("RenderResult", "SoftwareRasterizer"):
         from synapse.generators.rasterizer import (
             RenderResult as _RenderResult,
+        )
+        from synapse.generators.rasterizer import (
             SoftwareRasterizer as _SoftwareRasterizer,
         )
 

@@ -9,8 +9,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
-from pathlib import Path
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -21,7 +20,7 @@ if TYPE_CHECKING:
 from synapse.render_core.mesh import MeshData
 
 
-class ProceduralMeshType(str, Enum):
+class ProceduralMeshType(StrEnum):
     """Available procedural mesh types."""
 
     CUBE = "cube"

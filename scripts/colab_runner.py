@@ -151,7 +151,7 @@ python scripts/colab_runner.py --job-dir={job_dir} --exp all
 
     job_json_path = job_dir / "job.json"
     if not job_json_path.exists():
-        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        now_iso = datetime.datetime.now(datetime.UTC).isoformat()
         job_info = {
             "version": "1.0.0",
             "job_id": job_id,
@@ -182,7 +182,7 @@ def finalize_job_workspace(
     status: str = "COMPLETED",
 ) -> None:
     """Finalize job.json and README.md with metrics and status."""
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_iso = datetime.datetime.now(datetime.UTC).isoformat()
     job_json_path = job_dir / "job.json"
     if job_json_path.exists():
         try:
@@ -279,20 +279,25 @@ def _verify_e1_real_gpu(
     assert payload_b.control_tensor is not None
     assert payload_a.control_tensor is not None
 
-    # Actually run inference via DiffusersWanBackend to verify real GPU pipeline
+    # Actually run inference via DiffusersWanBackend + WanAdapter to verify real GPU pipeline
     try:
+        import torch
+
         gpu_profile = detect_gpu_profile()
+        dtype_name = str(gpu_profile.get("dtype", "float16"))
+        torch_dtype = getattr(torch, dtype_name, torch.float16)
         backend = DiffusersWanBackend(
-            model_id=model_id,
-            dtype=gpu_profile.get("dtype", "float16"),
-            enable_model_cpu_offload=gpu_profile.get("enable_model_cpu_offload", True),
+            model_id_or_path=model_id,
+            torch_dtype=torch_dtype,
+            enable_cpu_offload=bool(gpu_profile.get("enable_model_cpu_offload", True)),
         )
-        result_b = backend.generate(payload_b, cfg)
-        assert result_b is not None, "DiffusersWanBackend.generate() returned None for Track-B"
+        gpu_adapter = WanAdapter(backend=backend)
+        result_b = gpu_adapter.generate(payload_b, cfg)
+        assert result_b is not None, "WanAdapter.generate() returned None for Track-B"
         result_shape = list(result_b.frames_srgb_u8.shape)
     except Exception as exc:
         raise BackendUnavailableError(
-            f"DiffusersWanBackend.generate() failed on real GPU: {exc}",
+            f"DiffusersWanBackend inference failed on real GPU: {exc}",
             agent_fix_hint="Verify CUDA drivers, model weights, and GPU memory.",
         ) from exc
 
@@ -665,7 +670,7 @@ def main() -> int:
             except ImportError:
                 pass
             try:
-                from google.colab import runtime as colab_runtime  # type: ignore[import-untyped]
+                from google.colab import runtime as colab_runtime  # type: ignore[import-not-found]
                 print("[auto-release] Disconnecting Colab runtime...")
                 colab_runtime.unassign()
             except (ImportError, Exception):

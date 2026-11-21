@@ -51,7 +51,7 @@ def _nearest_neighbor_distances(
 
     # Pure Python fallback: try scipy KDTree, else brute-force
     try:
-        from scipy.spatial import cKDTree  # type: ignore[import-untyped]
+        from scipy.spatial import cKDTree
 
         tree = cKDTree(tgt)
         dists, _ = tree.query(src, k=1)
