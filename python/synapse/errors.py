@@ -90,12 +90,15 @@ class SynapseError(Exception):
                 return None
             return obj
 
+        hint = self.agent_fix_hint or (
+            f"Inspect {type(self).__name__} (exit_code={int(self.exit_code)}) message and retry."
+        )
         return {
             "status": "error",
             "exit_code": int(self.exit_code),
             "error_type": type(self).__name__,
             "message": str(self),
-            "agent_fix_hint": self.agent_fix_hint,
+            "agent_fix_hint": hint,
             "trace_id": trace_id,
             "details": _sanitize(self.details),
         }
