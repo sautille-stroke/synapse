@@ -80,7 +80,7 @@ def _build_with_bazel(
     aether_root: Path, bazel_bin: str, quiet: bool = False, timeout: float = 300.0
 ) -> Path | None:
     """Build @aether//python:aether_geo using Bazel."""
-    cmd = [bazel_bin, "build", "//python:aether_geo"]
+    cmd = [bazel_bin, "build", "//python:aether_geo", "//python:aether_metrics"]
     if not quiet:
         print(f"[build_native] Running Bazel in {aether_root}: {' '.join(cmd)}")
 
@@ -257,7 +257,7 @@ def main() -> int:
         "--output-dir",
         type=Path,
         default=None,
-        help="Optional directory to copy built aether_geo shared library into.",
+        help="Directory to copy built extension shared libraries into (default: <repo>/python).",
     )
     parser.add_argument(
         "--json",
@@ -349,10 +349,10 @@ def main() -> int:
         return 30
 
     installed: list[Path] = [built_artifact]
-    if args.output_dir is not None:
-        installed = _install_extension(built_artifact, args.output_dir)
+    target_dir = args.output_dir if args.output_dir is not None else repo_root / "python"
+    installed = _install_extension(built_artifact, target_dir)
 
-    if _smoke_test(target_dir=args.output_dir or built_artifact.parent, repo_root=repo_root, quiet=quiet):
+    if _smoke_test(target_dir=target_dir, repo_root=repo_root, quiet=quiet):
         if args.json:
             print(
                 json.dumps(
