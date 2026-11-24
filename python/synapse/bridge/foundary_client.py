@@ -210,7 +210,7 @@ class MockFoundaryTransport(FoundaryTransport):
         return FoundaryResponse(
             status="ok",
             service=request.service,
-            outputs={"mock": True, "service": request.service},
+            outputs={"mock": True},
             elapsed_seconds=self._latency,
         )
 
