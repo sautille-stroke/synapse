@@ -23,9 +23,21 @@ from synapse.bridge.aether_bridge import (
     native_linear_to_srgb,
     native_srgb_to_linear,
 )
+from synapse.bridge.aether_geo_worker_client import (
+    FMESH_MAGIC,
+    FMESH_VERSION,
+    AetherGeoWorkerClient,
+    FMeshData,
+    read_fmesh_bin,
+    write_fmesh_bin,
+)
 from synapse.bridge.foundary_client import (
+    FOUNDARY_SERVICE_NAMES,
+    FoundaryClient,
+    FoundaryJobStatus,
     FoundaryRequest,
     FoundaryResponse,
+    FoundaryServiceName,
     FoundaryTransport,
     HttpFoundaryTransport,
     MockFoundaryTransport,
@@ -60,10 +72,18 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "AetherGeoWorkerClient",
     "CommandIRRecord",
+    "FMESH_MAGIC",
+    "FMESH_VERSION",
+    "FMeshData",
+    "FOUNDARY_SERVICE_NAMES",
     "FallbackAction",
+    "FoundaryClient",
+    "FoundaryJobStatus",
     "FoundaryRequest",
     "FoundaryResponse",
+    "FoundaryServiceName",
     "FoundaryTransport",
     "HttpFoundaryTransport",
     "MockFoundaryTransport",
@@ -85,5 +105,7 @@ __all__ = [
     "native_compute_ssim",
     "native_linear_to_srgb",
     "native_srgb_to_linear",
+    "read_fmesh_bin",
     "register_recon_backend",
+    "write_fmesh_bin",
 ]

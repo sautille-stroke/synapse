@@ -34,13 +34,24 @@ from synapse.recon.geometry import (
     surface_roughness_var,
     validate_recon_mesh_manifold,
 )
+from synapse.recon.io import (
+    VideoMetadata,
+    export_recon_fgpp_sequence,
+    load_video_frames,
+)
 from synapse.recon.kinematics import (
     solve_two_bone_ik,
     solve_zero_slip_ik,
 )
-from synapse.recon.multiview import MultiViewInitializer
+from synapse.recon.multiview import (
+    Hunyuan3DReconstructionAdapter,
+    MultiViewInitializer,
+    TrellisReconstructionAdapter,
+    select_adaptive_keyframes,
+)
 from synapse.recon.pipeline import ReconPipeline
 from synapse.recon.tracking import (
+    anchor_metric_scale,
     solve_camera_trajectory,
     solve_point_tracks,
 )
@@ -59,12 +70,16 @@ __all__ = [
     "CameraTrajectory",
     "DelightResult",
     "FootContactInterval",
+    "Hunyuan3DReconstructionAdapter",
     "MeshGeometry",
     "MocapKinematics",
     "MultiViewInitializer",
     "ReconPipeline",
     "ReconResult",
     "SynapseReconBackend",
+    "TrellisReconstructionAdapter",
+    "VideoMetadata",
+    "anchor_metric_scale",
     "get_recon_backend",
     "check_degenerate_faces",
     "check_manifold",
@@ -79,10 +94,13 @@ __all__ = [
     "delight",
     "delight_multiview_albedo",
     "evaluate_spherical_harmonics_basis",
+    "export_recon_fgpp_sequence",
     "find_connected_components",
+    "load_video_frames",
     "prune_floating_islands",
     "quad_remesh",
     "refine_pose_6dof",
+    "select_adaptive_keyframes",
     "surface_roughness_var",
     "solve_camera_trajectory",
     "solve_point_tracks",

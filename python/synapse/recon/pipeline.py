@@ -72,6 +72,8 @@ class ReconPipeline:
         depths: np.ndarray | None = None,
         masks: np.ndarray | None = None,
         cameras: list[CameraExtrinsics] | None = None,
+        require_character_floor: bool = False,
+        foundary_client: Any = None,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -104,7 +106,9 @@ class ReconPipeline:
         num_frames, height, width, _ = frames.shape
 
         # 1. 4D Point Tracking
-        tracks_2d, visibility = solve_point_tracks(frames, num_points=256)
+        tracks_2d, visibility = solve_point_tracks(
+            frames, num_points=256, foundary_client=foundary_client
+        )
 
         # 2. Camera Trajectory Recovery — derive intrinsics from frame size
         camera_traj = solve_camera_trajectory(
@@ -112,6 +116,7 @@ class ReconPipeline:
             frame_height=height,
             frame_width=width,
             visibility=visibility,
+            foundary_client=foundary_client,
         )
 
         # 3. Surface Geometry & Quad Remeshing
@@ -135,6 +140,18 @@ class ReconPipeline:
                 masks=masks,
                 depths=depths,
             )
+            if require_character_floor or (
+                track == "track_b_whitebox" and skeleton_template is not None and not has_gen3d_highpoly
+            ):
+                from synapse.bridge.vg_bridge import enforce_distillation_geometry_gate
+
+                enforce_distillation_geometry_gate(
+                    track=track,
+                    has_gen3d_highpoly=has_gen3d_highpoly,
+                    vertex_count=active_mesh.vertex_count,
+                    has_articulated_limbs=(skeleton_template is not None),
+                    is_character=(require_character_floor or skeleton_template is not None),
+                )
         else:
             # Enforce Track-B distillation geometry gate (Redline #3):
             # coarse whitebox proxies must pass through gen3d reconstruction
@@ -144,14 +161,14 @@ class ReconPipeline:
             # Redline #3 fail-closed: has_gen3d_highpoly must be
             # explicitly set True by the caller after verified Gen-3D
             # reconstruction.  Auto-inference from vertex_count is
-            # forbidden — it would let every ≥1500-vertex whitebox
+            # forbidden — it would let every >=1500-vertex whitebox
             # proxy silently bypass the Track-B gate.
             enforce_distillation_geometry_gate(
                 track=track,
                 has_gen3d_highpoly=has_gen3d_highpoly,
                 vertex_count=initial_mesh.vertex_count,
                 has_articulated_limbs=(skeleton_template is not None),
-                is_character=(skeleton_template is not None),
+                is_character=(require_character_floor or skeleton_template is not None),
             )
             active_mesh = initial_mesh
 
