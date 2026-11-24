@@ -254,6 +254,9 @@ synapse/
 | `albedo_delta_e00` | 去光照固有色 CIEDE2000 | $\le 5.0$ | $\le 2.5$ | $\le 2.5$ |
 | `border_ring_ciede2000` | 16px 合成环带边界色差 | $\le 3.0$ | $\le 2.5$ | $\le 2.0$ |
 | `non_manifold_edges` | 非流形边数量（3D 网格） | N/A | $\equiv 0$ | $\equiv 0$ |
+| `uv_area_distortion_ratio` | UV 面积伸展畸变比 ($\ge 1.0$) | N/A | $\le 1.5$ | $\le 1.4$ |
+| `seam_discontinuity_deg` | 跨 UV 接缝法线跳变角 | N/A | $\le 5.0^\circ$ | $\le 4.0^\circ$ |
+| `texel_density_variance` | 纹理像素密度变异系数 CV | N/A | $\le 0.30$ | $\le 0.25$ |
 
 ---
 

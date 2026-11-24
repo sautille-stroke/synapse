@@ -54,9 +54,17 @@ _METRIC_DIRECTIONS: dict[str, str] = {
     "watertight_pct": _HIGHER,
     "non_manifold_edges": _LOWER,
     "non_manifold_edges_count": _LOWER,
+    "non_manifold_vertices_count": _LOWER,
     "uv_area_distortion_ratio": _LOWER,
     "seam_discontinuity_deg": _LOWER,
     "texel_density_variance": _LOWER,
+    "discrete_mean_curvature_variance": _LOWER,
+    "surface_roughness_var": _LOWER,
+    "add_s_norm": _LOWER,
+    "reprojection_error_px": _LOWER,
+    "dino_cosine_sim": _HIGHER,
+    "lpips_vgg": _LOWER,
+    "patch_lpips": _LOWER,
     # Image quality & Synapse-Bench scenario aliases
     "psnr_db": _HIGHER,
     "ssim": _HIGHER,
@@ -116,6 +124,9 @@ TRACK_A_ASSET: dict[str, float] = {
     "non_manifold_edges": 0.0,
     "f_score_5mm": 0.85,
     "watertight_pct": 100.0,
+    "uv_area_distortion_ratio": 1.5,
+    "seam_discontinuity_deg": 5.0,
+    "texel_density_variance": 0.3,
 }
 
 RSI_PROMOTION: dict[str, float] = {
@@ -138,6 +149,9 @@ RSI_PROMOTION: dict[str, float] = {
     "non_manifold_edges": 0.0,
     "f_score_5mm": 0.95,
     "watertight_pct": 100.0,
+    "uv_area_distortion_ratio": 1.4,
+    "seam_discontinuity_deg": 4.0,
+    "texel_density_variance": 0.25,
 }
 
 RSI_PROMOTION_TARGET: dict[str, float] = {
@@ -160,6 +174,9 @@ RSI_PROMOTION_TARGET: dict[str, float] = {
     "non_manifold_edges": 0.0,
     "f_score_5mm": 0.98,
     "watertight_pct": 100.0,
+    "uv_area_distortion_ratio": 1.2,
+    "seam_discontinuity_deg": 2.0,
+    "texel_density_variance": 0.15,
 }
 
 _PROFILES: dict[GateProfileName, dict[str, float]] = {
