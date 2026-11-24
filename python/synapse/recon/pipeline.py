@@ -6,6 +6,8 @@ zero-slip foot kinematics distillation, and intrinsic material de-lighting.
 
 from __future__ import annotations
 
+import time
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -74,6 +76,12 @@ class ReconPipeline:
         cameras: list[CameraExtrinsics] | None = None,
         require_character_floor: bool = False,
         foundary_client: Any = None,
+        ik_backend: Literal["auto", "native", "python"] = "auto",
+        strict_slip_gate: bool = False,
+        enable_jev_gate: bool = False,
+        jev_critic: Any | None = None,
+        hitl_ledger_path: Path | None = None,
+        elapsed_seconds_override: float | None = None,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -100,6 +108,7 @@ class ReconPipeline:
             albedo delight result, and evaluation telemetry.
         """
         frames = np.asarray(video_frames)
+        t_pipeline_start = time.monotonic()
         if frames.ndim != 4:
             raise ValueError(f"Expected (T, H, W, 3) video frames, got {frames.shape}")
 
@@ -213,7 +222,13 @@ class ReconPipeline:
                 else:
                     contacts[t, 1] = 1.0  # Right foot stance
 
-            solved_skel = solve_zero_slip_ik(skeleton_template, contacts, fps=fps)
+            solved_skel = solve_zero_slip_ik(
+                skeleton_template,
+                contacts,
+                fps=fps,
+                backend=ik_backend,
+                strict_slip_gate=strict_slip_gate,
+            )
             skel_telemetry = solved_skel.get("telemetry", {})
 
             kinematics = MocapKinematics(
@@ -243,13 +258,65 @@ class ReconPipeline:
                 frames=frames,
                 cameras=active_cams,
                 mesh=final_mesh,
+                foundary_client=foundary_client,
             )
         else:
             keyframe_idx = num_frames // 2
             lit_keyframe = frames[keyframe_idx]
             delight_result = decompose_intrinsic(lit_keyframe)
 
-        # 6. Build consolidated result
+        # 6. Optional Visual-JEV defect probe & HITL 15-min circuit breaker
+        jev_summary: dict[str, Any] | None = None
+        if enable_jev_gate:
+            from synapse.bridge.hitl import CommandIRRecord, PersistentHitlLedger
+            from synapse.errors import QualityGateError
+
+            if jev_critic is not None:
+                report = jev_critic.evaluate(
+                    asset_id="recon_asset",
+                    asset_name="ReconAsset",
+                    image_uris=["view_0"],
+                    mesh_vertices=final_mesh.vertices,
+                )
+                jev_score = float(report.overall_quality_score)
+                jev_hitl = bool(report.requires_hitl)
+                jev_defects = len(report.defects)
+            else:
+                jev_score = 1.0 if is_manifold else 0.5
+                jev_hitl = not is_manifold
+                jev_defects = 0 if is_manifold else 1
+
+            jev_summary = {
+                "overall_quality_score": jev_score,
+                "requires_hitl": jev_hitl,
+                "defect_count": jev_defects,
+            }
+            if hitl_ledger_path is not None or elapsed_seconds_override is not None:
+                ledger = (
+                    PersistentHitlLedger(ledger_path=hitl_ledger_path)
+                    if hitl_ledger_path is not None
+                    else PersistentHitlLedger()
+                )
+                elapsed_s = (
+                    float(elapsed_seconds_override)
+                    if elapsed_seconds_override is not None
+                    else max(0.0, time.monotonic() - t_pipeline_start)
+                )
+                ledger.record_action(
+                    CommandIRRecord(
+                        intent_group_id="recon-jev-gate",
+                        intent="visual-jev-quality-inspection",
+                        elapsed_seconds=elapsed_s,
+                    ),
+                    domain="asset_3d",
+                )
+            if jev_score < 0.85 and jev_hitl:
+                raise QualityGateError(
+                    f"Visual-JEV quality gate failed (score={jev_score:.3f} < 0.85)",
+                    agent_fix_hint="Route asset to grand-studio L2 refinement or re-run with cleaner views.",
+                )
+
+        # 7. Build consolidated result
         telemetry: dict[str, Any] = {
             "num_frames": num_frames,
             "mesh_vertex_count": final_mesh.vertex_count,
@@ -263,6 +330,8 @@ class ReconPipeline:
             ),
             "albedo_delta_e_residual": delight_result.delta_e_residual,
         }
+        if jev_summary is not None:
+            telemetry["jev_inspection"] = jev_summary
 
         return ReconResult(
             mesh=final_mesh,

@@ -13,8 +13,12 @@ This package provides:
 from __future__ import annotations
 
 from synapse.bridge.aether_bridge import (
+    get_aether_animation,
+    get_aether_compress,
     get_aether_metrics,
+    has_aether_animation,
     has_aether_color,
+    has_aether_compress,
     has_aether_metrics,
     native_compute_ciede2000,
     native_compute_masked_psnr,
@@ -94,10 +98,14 @@ __all__ = [
     "VgBackend",
     "enforce_distillation_geometry_gate",
     "evaluate_hitl_circuit_breaker",
+    "get_aether_animation",
+    "get_aether_compress",
     "get_aether_metrics",
     "get_recon_backend",
     "get_vg_backend",
+    "has_aether_animation",
     "has_aether_color",
+    "has_aether_compress",
     "has_aether_metrics",
     "native_compute_ciede2000",
     "native_compute_masked_psnr",

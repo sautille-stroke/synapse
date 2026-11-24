@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 
@@ -112,10 +112,35 @@ def _cmd_recon_invert_video(
                 np.save(str(output_dir / "albedo.npy"), result.delight.albedo)
                 output_info["albedo_npy"] = str(output_dir / "albedo.npy")
 
-        # Write minimal USDA referencing OBJ + textures
-        usda_path = output_dir / "mesh.usda"
-        _write_minimal_usda(usda_path, obj_path.name)
+        # Write RFC 0058 OpenUSD + OpenPBR + UsdSkel package and validate
+        from synapse.recon.usd_packager import (
+            build_package_manifest_summary,
+            build_rfc0058_usda,
+            validate_usd_package,
+        )
+
+        tex_paths: dict[str, Path] = {}
+        tex_dir = output_dir / "textures"
+        for role, fname in (
+            ("albedo", "albedo.png"),
+            ("normal", "normal.png"),
+            ("roughness", "roughness.png"),
+            ("metallic", "metallic.png"),
+        ):
+            cand = tex_dir / fname
+            if cand.is_file():
+                tex_paths[role] = cand
+
+        usda_path = build_rfc0058_usda(
+            result.mesh,
+            output_dir,
+            kinematics=result.kinematics,
+            texture_paths=tex_paths or None,
+            filename="mesh.usda",
+        )
+        usd_val = validate_usd_package(usda_path, strict=True)
         output_info["mesh_usda"] = str(usda_path)
+        output_info["usd_validation"] = build_package_manifest_summary(usd_val)
 
         fgpp_out_raw = getattr(args, "fgpp_out", None)
         if fgpp_out_raw:
@@ -199,13 +224,64 @@ def _write_obj(
             f.write(f"f {face_str}\n")
 
 
-def _write_minimal_usda(path: Path, obj_filename: str) -> None:
-    """Write a minimal USD ASCII file referencing the OBJ mesh."""
-    path.write_text(
-        f'#usda 1.0\n(\n    defaultPrim = "Mesh"\n)\n\n'
-        f'def Xform "Mesh" (\n    prepend references = @./{obj_filename}@\n)\n{{\n}}\n',
-        encoding="utf-8",
-    )
+def _cmd_recon_compress_3dgs(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Compress a 3D Gaussian Splat cloud (.npz) into a .s3dgs container (PR-200)."""
+    from synapse.recon.gs_quantizer import GaussianSplatCloud, quantize_3dgs, save_s3dgs
+
+    inp_raw = getattr(args, "input", None)
+    if not inp_raw:
+        raise ContractValidationError(
+            "Missing required '--input' argument for compress-3dgs",
+            agent_fix_hint="Provide '--input <cloud.npz>' containing xyz, sh_dc, scales, rotations, opacities.",
+        )
+    inp_path = Path(inp_raw)
+    if not inp_path.is_file():
+        raise AssetNotFoundError(
+            f"Input 3DGS cloud file not found: {inp_path}",
+            agent_fix_hint="Check the path passed to '--input'.",
+        )
+
+    out_path = Path(getattr(args, "output", "./output/cloud.s3dgs"))
+    require_draco = bool(getattr(args, "require_draco", False))
+
+    if inp_path.suffix.lower() != ".npz":
+        raise ContractValidationError(
+            f"Unsupported 3DGS input extension '{inp_path.suffix}'; expected '.npz'.",
+            agent_fix_hint="Export 3DGS tensors using numpy.savez(..., xyz=..., sh_dc=..., scales=..., rotations=..., opacities=...).",
+        )
+
+    with np.load(inp_path, allow_pickle=False) as data:
+        for req_key in ("xyz", "sh_dc", "scales", "rotations", "opacities"):
+            if req_key not in data.files:
+                raise ContractValidationError(
+                    f"Missing required 3DGS array '{req_key}' in {inp_path}",
+                    agent_fix_hint="Ensure archive defines xyz, sh_dc, scales, rotations, opacities.",
+                )
+        sh_rest = data["sh_rest"] if "sh_rest" in data.files else None
+        cloud = GaussianSplatCloud(
+            xyz=np.asarray(data["xyz"], dtype=np.float32),
+            sh_dc=np.asarray(data["sh_dc"], dtype=np.float32),
+            sh_rest=np.asarray(sh_rest, dtype=np.float32) if sh_rest is not None else None,
+            scales=np.asarray(data["scales"], dtype=np.float32),
+            rotations=np.asarray(data["rotations"], dtype=np.float32),
+            opacities=np.asarray(data["opacities"], dtype=np.float32),
+        )
+    quantized = quantize_3dgs(cloud, require_draco=require_draco)
+    saved_path = save_s3dgs(quantized, out_path)
+    return {
+        "output_path": str(saved_path),
+        "num_gaussians": cloud.num_gaussians,
+        "sh_band_count": cloud.sh_band_count,
+        "raw_bytes": quantized.metrics.raw_bytes,
+        "compressed_bytes": quantized.metrics.compressed_bytes,
+        "compression_ratio": quantized.metrics.compression_ratio,
+        "xyz_rmse": quantized.metrics.xyz_rmse,
+        "psnr_delta_db": quantized.metrics.psnr_delta_db,
+        "recon_vs_orig_psnr_db": quantized.metrics.recon_vs_orig_psnr_db,
+        "draco_used": quantized.metrics.draco_used,
+    }
 
 
 def _cmd_recon_closed_loop(
@@ -224,6 +300,8 @@ def _cmd_recon_closed_loop(
     output_dir.mkdir(parents=True, exist_ok=True)
     max_iterations = int(getattr(args, "max_iterations", 5))
     n_preroll = int(getattr(args, "n_preroll", 0))
+    backend_choice = str(getattr(args, "backend", "auto"))
+    strict_backend = bool(getattr(args, "strict_backend", False))
 
     # Load frames — require real input (AUD-P0-01: no fake synthesis)
     video_path_raw = getattr(args, "video", None)
@@ -294,6 +372,11 @@ def _cmd_recon_closed_loop(
     )
     optim_config = InverseOptimConfig(
         max_iterations=max_iterations,
+        renderer_backend=cast(
+            Literal["auto", "mitsuba", "fulgur_slang_ad", "numpy_oracle"],
+            backend_choice,
+        ),
+        strict_backend=strict_backend,
     )
 
     runner = ClosedLoopRunner(
@@ -425,6 +508,42 @@ def register_recon_subparser(
         choices=[0, 4, 8],
         help="Number of preroll frames (default: 0)",
     )
+    recon_closed_loop.add_argument(
+        "--backend",
+        choices=["auto", "fulgur_slang_ad", "mitsuba", "numpy_oracle"],
+        default="auto",
+        help="Inverse rendering backend selector (default: auto)",
+    )
+    recon_closed_loop.add_argument(
+        "--strict-backend",
+        action="store_true",
+        default=False,
+        help="Fail closed with exit 30 if selected GPU/Slang backend is unavailable",
+    )
+
+    recon_compress = recon_sub.add_parser(
+        "compress-3dgs",
+        help="Quantize and compress 3DGS SH/covariance attributes into .s3dgs (PR-200)",
+        parents=parents,
+    )
+    recon_compress.add_argument(
+        "--input",
+        "-i",
+        default=None,
+        help="Input .npz containing 3DGS tensors (xyz, sh_dc, [sh_rest], scales, rotations, opacities)",
+    )
+    recon_compress.add_argument(
+        "--output",
+        "-o",
+        default="./output/cloud.s3dgs",
+        help="Output .s3dgs container path",
+    )
+    recon_compress.add_argument(
+        "--require-draco",
+        action="store_true",
+        default=False,
+        help="Require @aether//compress Draco encoder and exit 30 if unavailable",
+    )
     return cast(argparse.ArgumentParser, recon_parser)
 
 
@@ -450,12 +569,19 @@ def dispatch_recon(
             json_mode,
             trace_ctx,
         )
+    elif recon_cmd == "compress-3dgs":
+        return _run_with_json_mode(
+            _cmd_recon_compress_3dgs,
+            parsed,
+            json_mode,
+            trace_ctx,
+        )
     else:
         if json_mode:
             err = SynapseError(
-                "Missing recon sub-command (invert-video|closed-loop)",
+                "Missing recon sub-command (invert-video|closed-loop|compress-3dgs)",
                 ExitCode.CONTRACT_ERROR,
-                "Use 'synapse recon invert-video --help' or 'synapse recon closed-loop --help'.",
+                "Use 'synapse recon invert-video --help', 'closed-loop --help', or 'compress-3dgs --help'.",
             )
             json.dump(
                 err.to_json_dict(trace_ctx.trace_id),

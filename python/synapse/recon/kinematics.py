@@ -1,24 +1,56 @@
 """Kinematic distillation and zero-slip foot inverse kinematics.
 
 Enforces zero foot skating (<0.3 cm/s during stance phase), analytical Two-Bone
-leg IK, and hand-weapon / cloth-limb SDF penetration resolution.
+leg IK, and strict G100-11 / NEG-100-09 foot-sliding quality gates (>0.5 cm
+blocked with exit code 40).
 
-.. note:: **synapse-original implementation**
-
-    Despite being listed in the cross-repo dedup audit (Issue #34, area ⑤),
-    ``fulgur/engine/animator/`` does not yet exist on disk — the animator
-    module is architecturally planned but not implemented.  This Python IK
-    is currently the **only** working implementation in the DervGen ecosystem.
-    Once ``fulgur::animator`` ships its C++ IK solver, this module should
-    be bridged via pybind11 thin-wrap.
+Dual-track execution:
+- Production native path bridges ``@aether//animation`` (matching
+  ``fulgur/engine/animation/src/{foot_ik.cc,ik_solver.cc}`` and
+  ``aether/animation/include/aether/animation/ik/{two_bone_ik.h,fabrik.h}``).
+- Pure Python analytical ``solve_two_bone_ik`` serves as the dual-track
+  mathematical Oracle for CPU verification when ``backend="python"`` or
+  ``backend="auto"``. When ``backend="native"``, silent Python fallback is
+  strictly forbidden (``BackendUnavailableError``, exit 30).
 """
 
 from __future__ import annotations
 
 import copy
-from typing import Any
+import math
+from typing import Any, Literal
 
 import numpy as np
+
+
+def validate_foot_slide_gate(
+    foot_slide_cm: float,
+    *,
+    max_foot_slide_cm: float = 0.5,
+    context: str = "kinematic_distill",
+) -> None:
+    """Enforce RFC 0060 / G100-11 foot-sliding ceiling (exit 40 on failure).
+
+    Args:
+        foot_slide_cm: Peak measured stance foot slide displacement in cm.
+        max_foot_slide_cm: Maximum permitted foot slide in cm (default 0.5).
+        context: Diagnostic caller label.
+
+    Raises:
+        QualityGateError: If ``foot_slide_cm`` is non-finite or exceeds
+            ``max_foot_slide_cm`` (exit code 40).
+    """
+    from synapse.errors import QualityGateError
+
+    val = float(foot_slide_cm)
+    if not math.isfinite(val) or val > max_foot_slide_cm:
+        raise QualityGateError(
+            f"Foot-sliding quality gate failed ({context}): {val:.4f} cm > {max_foot_slide_cm:.4f} cm",
+            agent_fix_hint=(
+                "Re-run stance-phase solve_zero_slip_ik with tighter hip height bounds "
+                "or verify skeleton leg lengths match ankle targets."
+            ),
+        )
 
 
 def solve_two_bone_ik(
@@ -97,13 +129,18 @@ def solve_zero_slip_ik(
     foot_contacts: np.ndarray,
     fps: float = 30.0,
     slip_speed_threshold_cm_s: float = 0.3,
+    *,
+    backend: Literal["auto", "native", "python"] = "auto",
+    strict_slip_gate: bool = False,
+    max_foot_slide_cm: float = 0.5,
 ) -> dict[str, Any]:
     """Solve zero-slip foot contact inverse kinematics.
 
     During foot stance phase (foot_contacts >= 0.5), anchors the foot horizontal
     position to eliminate skating/sliding drift, constraining foot velocity
     below slip_speed_threshold_cm_s (< 0.3 cm/s = 0.003 m/s).
-    Adjusts knee and hip transforms via analytical Two-Bone IK.
+    Adjusts knee and hip transforms via Two-Bone IK (native ``@aether//animation``
+    or Python Oracle).
 
     Args:
         skeleton_data: Dictionary of skeleton data. Can contain:
@@ -114,26 +151,57 @@ def solve_zero_slip_ik(
             column 0 is Left Foot and column 1 is Right Foot.
         fps: Playback frame rate (default 30.0 fps).
         slip_speed_threshold_cm_s: Maximum permitted foot slip speed (default 0.3 cm/s).
+        backend: Execution backend selector (``"auto"``, ``"native"``, or ``"python"``).
+            When ``"native"`` and ``aether_animation`` is unavailable, raises
+            ``BackendUnavailableError`` (exit 30) rather than silently falling back.
+        strict_slip_gate: When ``True``, raises ``QualityGateError`` (exit 40) if
+            post-IK peak stance displacement exceeds ``max_foot_slide_cm``.
+        max_foot_slide_cm: Peak permitted stance foot slide in cm (default 0.5 cm).
 
     Returns:
         Updated deep-copy of skeleton_data with corrected joint positions and
         kinematic telemetry metadata.
     """
+    from synapse.bridge.aether_bridge import get_aether_animation
+    from synapse.errors import BackendUnavailableError
+
+    native_mod: Any = None
+    if backend in ("auto", "native"):
+        native_mod = get_aether_animation()
+        if native_mod is not None and not hasattr(native_mod, "solve_two_bone_ik"):
+            native_mod = None
+    if backend == "native" and native_mod is None:
+        raise BackendUnavailableError(
+            "Native @aether//animation IK extension unavailable; silent Python fallback is forbidden.",
+            agent_fix_hint="Build @aether//animation pybind11 bindings or pass backend='python' for Oracle tests.",
+        )
+
+    ik_backend = "aether_animation" if (backend != "python" and native_mod is not None) else "python_oracle"
     res = copy.deepcopy(skeleton_data)
     contacts = np.asarray(foot_contacts, dtype=np.float32)
 
     if "joint_positions" not in res:
-        # If positions not explicitly stored (e.g. pure hierarchy mock), return res with zero telemetry
-        res.setdefault(
+        # Check optional pre-supplied metric telemetry before returning empty mock
+        telemetry = res.setdefault(
             "telemetry",
             {
                 "raw_foot_sliding_cm_per_sec": 0.0,
                 "clamped_foot_sliding_cm_per_sec": 0.0,
                 "max_foot_slip_cm_per_sec": 0.0,
+                "max_foot_slide_cm": 0.0,
                 "stance_frames": 0,
+                "ik_backend": ik_backend,
                 "zero_slip_verified": True,
             },
         )
+        telemetry.setdefault("ik_backend", ik_backend)
+        telemetry.setdefault("max_foot_slide_cm", 0.0)
+        if strict_slip_gate:
+            validate_foot_slide_gate(
+                float(telemetry["max_foot_slide_cm"]),
+                max_foot_slide_cm=max_foot_slide_cm,
+                context="solve_zero_slip_ik",
+            )
         return res
 
     positions = np.array(res["joint_positions"], dtype=np.float64)
@@ -165,6 +233,7 @@ def solve_zero_slip_ik(
 
     raw_slips_cm_s: list[float] = []
     clamped_slips_cm_s: list[float] = []
+    post_ik_slide_cms: list[float] = []
     stance_frames_count = 0
 
     for foot_idx in range(min(2, contacts.shape[1] if contacts.ndim == 2 else 0)):
@@ -246,16 +315,31 @@ def solve_zero_slip_ik(
                     clamped_speed_cm_s = 0.0
                 clamped_slips_cm_s.append(float(clamped_speed_cm_s))
 
-                # Apply Two-Bone IK if distinct joints exist
+                # Apply Two-Bone IK if distinct joints exist (native or python oracle)
                 if j_knee != j_foot and j_hip != j_knee:
-                    new_knee, new_ankle = solve_two_bone_ik(
-                        positions[frame, j_hip],
-                        positions[frame, j_knee],
-                        positions[frame, j_foot],
-                        target_pos,
-                    )
+                    if native_mod is not None and backend != "python":
+                        new_knee_raw, new_ankle_raw = native_mod.solve_two_bone_ik(
+                            positions[frame, j_hip],
+                            positions[frame, j_knee],
+                            positions[frame, j_foot],
+                            target_pos,
+                        )
+                        new_knee = np.asarray(new_knee_raw, dtype=positions.dtype)
+                        new_ankle = np.asarray(new_ankle_raw, dtype=positions.dtype)
+                    else:
+                        new_knee, new_ankle = solve_two_bone_ik(
+                            positions[frame, j_hip],
+                            positions[frame, j_knee],
+                            positions[frame, j_foot],
+                            target_pos,
+                        )
                     positions[frame, j_knee] = new_knee
                     positions[frame, j_foot] = new_ankle
+
+                    anchor_drift_cm = float(
+                        np.linalg.norm(positions[frame, j_foot][[0, 2]] - anchor_pos[[0, 2]]) * 100.0
+                    )
+                    post_ik_slide_cms.append(anchor_drift_cm)
 
                     # Recalculate slip AFTER Two-Bone IK clamping
                     # (IK may adjust the ankle position from target_pos)
@@ -264,11 +348,16 @@ def solve_zero_slip_ik(
                         post_ik_dist = np.linalg.norm(
                             positions[frame, j_foot][[0, 2]] - prev_clamped[[0, 2]]
                         )
+                        post_ik_slide_cms.append(float(post_ik_dist * 100.0))
                         clamped_speed_cm_s = (post_ik_dist / dt) * 100.0
                         # Update the last recorded slip value
                         clamped_slips_cm_s[-1] = float(clamped_speed_cm_s)
                 else:
                     positions[frame, j_foot] = target_pos
+                    anchor_drift_cm = float(
+                        np.linalg.norm(positions[frame, j_foot][[0, 2]] - anchor_pos[[0, 2]]) * 100.0
+                    )
+                    post_ik_slide_cms.append(anchor_drift_cm)
 
                 # Anchor stays fixed for the entire stance interval
                 # (do NOT update anchor per frame — prevents cumulative drift)
@@ -279,13 +368,23 @@ def solve_zero_slip_ik(
     mean_raw = float(np.mean(raw_slips_cm_s)) if raw_slips_cm_s else 0.0
     mean_clamped = float(np.mean(clamped_slips_cm_s)) if clamped_slips_cm_s else 0.0
     max_clamped = float(np.max(clamped_slips_cm_s)) if clamped_slips_cm_s else 0.0
+    max_slide_cm = float(np.max(post_ik_slide_cms)) if post_ik_slide_cms else 0.0
 
     res["telemetry"] = {
         "raw_foot_sliding_cm_per_sec": round(mean_raw, 3),
         "clamped_foot_sliding_cm_per_sec": round(mean_clamped, 3),
         "max_foot_slip_cm_per_sec": round(max_clamped, 3),
+        "max_foot_slide_cm": round(max_slide_cm, 4),
         "stance_frames": stance_frames_count,
+        "ik_backend": ik_backend,
         "zero_slip_verified": mean_clamped < slip_speed_threshold_cm_s,
     }
+
+    if strict_slip_gate:
+        validate_foot_slide_gate(
+            max_slide_cm,
+            max_foot_slide_cm=max_foot_slide_cm,
+            context="solve_zero_slip_ik",
+        )
 
     return res
