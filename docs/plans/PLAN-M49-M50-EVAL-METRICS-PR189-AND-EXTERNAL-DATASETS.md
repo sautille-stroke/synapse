@@ -13,7 +13,7 @@ stale_after: 2027-11-19T00:00:00Z
 >   1. `sautille-stroke/synapse#189`（`45b8461`）源码级深度复核检出的 5 项实证实现缺口；
 >   2. [`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) §6.2（P0 感知骨干、P1 曲率与特写、P2 姿态对齐）、§7（外部 3D 数据集 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`）与 §8.1 剩余 Backlog。
 > - **规划模型**: `[gemini4]`
-> - **当前状态**: ✅ **已完成 (Horizon 13A · M49 PR #191 + M50 PR 已闭合)**
+> - **当前状态**: ✅ **已完成 (Horizon 13A · M49 PR #191 + M50 PR #192 全部合入闭合)**
 > - **目标周期**: 2 个里程碑（`M49` – `M50`）、2 个并发 Execution Waves（`Wave 48` – `Wave 49`）、**7 个原子 PR**（`PR-203` – `PR-209`）
 
 > [!IMPORTANT]
