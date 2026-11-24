@@ -53,6 +53,10 @@ _METRIC_DIRECTIONS: dict[str, str] = {
     "f_score_5mm": _HIGHER,
     "watertight_pct": _HIGHER,
     "non_manifold_edges": _LOWER,
+    "non_manifold_edges_count": _LOWER,
+    "uv_area_distortion_ratio": _LOWER,
+    "seam_discontinuity_deg": _LOWER,
+    "texel_density_variance": _LOWER,
     # Image quality & Synapse-Bench scenario aliases
     "psnr_db": _HIGHER,
     "ssim": _HIGHER,
@@ -68,6 +72,7 @@ METRIC_ALIASES: dict[str, str] = {
     "style_color_de": "border_ring_ciede2000",
     "style_light_error_deg": "light_dir_error_deg",
     "psnr": "psnr_db",
+    "non_manifold_edges_count": "non_manifold_edges",
 }
 
 # ── Profile threshold tables ────────────────────────────────────────

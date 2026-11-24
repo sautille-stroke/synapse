@@ -450,16 +450,16 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 | `floating_islands_ratio` | 浮空碎块面占比阈值判定 | ✅ `csrc/geometry` & `recon/geometry.py` (`detect_floating_islands`) | $< 0.005$ |
 | `degenerate_faces_count` | 面积 $< 10^{-8}$ 或高宽比 $> 100:1$ 的面数量 | ✅ `csrc/geometry` & `recon/geometry.py` (`check_degenerate_faces`) | $= 0$ |
 | `self_intersecting_pairs` | AABB 树 + 共面 2D SAT + Möller–Trumbore 非邻接穿插对 | ✅ `csrc/geometry` & `recon/geometry.py` (`check_self_intersections`) | $= 0$ |
-| `euler_characteristic` | $\chi = V - E + F$，验证 $\chi = 2(1-g)$ | 🟡 待扩展 (`recon/geometry.py`) | $= 2$ (genus-0 封闭网格) |
-| `non_manifold_edges_count` | 共享面 $> 2$ 或扇面非单伞的精确计数导出 | 🟡 待扩展（布尔判定 `check_manifold` 已实现） | $= 0$ |
+| `euler_characteristic` | $\chi = V - E + F$，验证 $\chi = 2(1-g)$ | ✅ `recon/geometry.py` (`compute_euler_characteristic`) | $= 2$ (genus-0 封闭网格) |
+| `non_manifold_edges_count` | 共享面 $> 2$ 或扇面非单伞的精确计数导出 | ✅ `recon/geometry.py` (`count_non_manifold_edges`) | $= 0$ |
 
 #### 6.2.3 P1 级：UV 与贴图质量指标
 
 | 指标 (Key) | 算法规格 | 目标位置 | 门禁阈值 |
 |:---|:---|:---|:---|
-| `uv_area_distortion_ratio` | UV 面积 vs 3D 面积的 $\max / \min$ 比率 | `recon/geometry.py` (扩展) | $\le 1.5$ |
-| `seam_discontinuity_deg` | UV 接缝两侧法线夹角跳跃均值 | `recon/geometry.py` (扩展) | $\le 5.0°$ |
-| `texel_density_variance` | 纹素密度 (px/m) 的全局变异系数 (CV) | `recon/geometry.py` (扩展) | $\le 0.3$ |
+| `uv_area_distortion_ratio` | UV 面积 vs 3D 面积的 $\max / \min$ 比率 | ✅ `recon/geometry.py` (`compute_uv_area_distortion_ratio`) | $\le 1.5$ |
+| `seam_discontinuity_deg` | UV 接缝两侧法线夹角跳跃均值 | ✅ `recon/geometry.py` (`compute_seam_discontinuity_deg`) | $\le 5.0°$ |
+| `texel_density_variance` | 纹素密度 (px/m) 的全局变异系数 (CV) | ✅ `recon/geometry.py` (`compute_texel_density_variance`) | $\le 0.3$ |
 
 #### 6.2.4 P1 级：微观曲面与表面质量指标
 
