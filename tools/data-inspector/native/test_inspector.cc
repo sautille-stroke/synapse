@@ -7,7 +7,6 @@
 #include <gtest/gtest.h>
 
 #include <aether/fs/file_utils.h>
-#include <aether/fs/file_utils.h>
 #include <aether/fs/filesystem.h>
 
 #include <chrono>
@@ -22,13 +21,12 @@ using namespace synapse::inspector;
 
 namespace {
 
-// Helper to construct a valid minimal binary GLB buffer containing 1 triangle (3 vertices, 3 indices).
+// Helper to construct a valid minimal binary GLB buffer containing 1 triangle (3 vertices, 3
+// indices).
 std::vector<uint8_t> createMinimalGlb() {
   // Triangle vertices: (0, 0, 0), (1, 0, 0), (0, 1, 0) -> 3 * 3 * 4 = 36 bytes
   const float verts[9] = {
-      0.0f, 0.0f, 0.0f,
-      1.0f, 0.0f, 0.0f,
-      0.0f, 1.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
   };
   // Indices: 0, 1, 2 (uint16) -> 3 * 2 = 6 bytes + 2 bytes padding = 8 bytes
   const uint16_t indices[3] = {0, 1, 2};
@@ -221,9 +219,8 @@ TEST(InspectorApp, LifecycleAndAovs) {
   app.handleCommand(R"({"type":"camera","action":"pan","dx":2.0,"dy":1.0})");
 
   // Test all 8 AOV debug views including Albedo and Motion
-  const char* views[] = {
-      "lit", "wireframe", "normal", "depth", "cryptomatte", "uv", "albedo", "motion"
-  };
+  const char* views[] = {"lit",         "wireframe", "normal", "depth",
+                         "cryptomatte", "uv",        "albedo", "motion"};
   for (const char* v : views) {
     std::string cmd = std::string(R"({"type":"set_debug_view","mode":")") + v + R"("})";
     app.handleCommand(cmd);
@@ -243,7 +240,8 @@ TEST(InspectorApp, LifecycleAndAovs) {
         break;
       }
     }
-    EXPECT_TRUE(hasNonZero) << "Rendered AOV frame must contain valid non-zero content for view: " << v;
+    EXPECT_TRUE(hasNonZero) << "Rendered AOV frame must contain valid non-zero content for view: "
+                            << v;
   }
 
   // Test screenshot export
@@ -309,10 +307,10 @@ TEST(InspectorApp, BundleManifestLoading) {
   // Create OBJ model
   (void)aether::fs::createDirectories(bundleDir + "/source");
   (void)aether::fs::writeAllText(bundleDir + "/source/test_cube.obj",
-      "v -0.5 -0.5 0.0\n"
-      "v  0.5 -0.5 0.0\n"
-      "v  0.0  0.5 0.0\n"
-      "f 1 2 3\n");
+                                 "v -0.5 -0.5 0.0\n"
+                                 "v  0.5 -0.5 0.0\n"
+                                 "v  0.0  0.5 0.0\n"
+                                 "f 1 2 3\n");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-bundle-load";
@@ -346,7 +344,8 @@ TEST(InspectorApp, GlbLoaderValidAndStub) {
   // 1. Create valid GLB
   const auto glbBytes = createMinimalGlb();
   std::ofstream ofs(bundleDir + "/source/model.glb", std::ios::binary);
-  ofs.write(reinterpret_cast<const char*>(glbBytes.data()), static_cast<std::streamsize>(glbBytes.size()));
+  ofs.write(reinterpret_cast<const char*>(glbBytes.data()),
+            static_cast<std::streamsize>(glbBytes.size()));
   ofs.close();
 
   const std::string manifestContent = R"({
@@ -433,17 +432,17 @@ TEST(InspectorApp, ObjLoaderOutOfBoundsIndices) {
   (void)aether::fs::createDirectories(bundleDir + "/source");
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":{"path":"source/bad.obj"}}})");
+                                 R"({"sources":{"model":{"path":"source/bad.obj"}}})");
 
   // OBJ with out-of-bounds positive index (9999) and negative relative index
   (void)aether::fs::writeAllText(bundleDir + "/source/bad.obj",
-      "v 0.0 0.0 0.0\n"
-      "v 1.0 0.0 0.0\n"
-      "v 0.5 1.0 0.0\n"
-      "v 0.5 0.5 1.0\n"
-      "f 1 2 9999\n"        // out-of-bounds: should be dropped
-      "f -4 -3 -2\n"        // negative relative: valid (resolves to 0 1 2)
-      "f 1 2 3 4\n");        // quad: should be fan-triangulated
+                                 "v 0.0 0.0 0.0\n"
+                                 "v 1.0 0.0 0.0\n"
+                                 "v 0.5 1.0 0.0\n"
+                                 "v 0.5 0.5 1.0\n"
+                                 "f 1 2 9999\n"   // out-of-bounds: should be dropped
+                                 "f -4 -3 -2\n"   // negative relative: valid (resolves to 0 1 2)
+                                 "f 1 2 3 4\n");  // quad: should be fan-triangulated
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-oob";
@@ -508,7 +507,8 @@ std::vector<uint8_t> createMaliciousGlb(const std::string& accessorJson) {
 
   std::string jsonStr = accessorJson;
   // Pad JSON to 4-byte alignment
-  while (jsonStr.size() % 4 != 0) jsonStr.push_back(' ');
+  while (jsonStr.size() % 4 != 0)
+    jsonStr.push_back(' ');
 
   const uint32_t jsonLen = static_cast<uint32_t>(jsonStr.size());
   const uint32_t binLen = static_cast<uint32_t>(binData.size());
@@ -569,7 +569,7 @@ TEST(InspectorApp, GlbOverflowIdxCount0x40000001) {
   ofs.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":"source/evil.glb"}})");
+                                 R"({"sources":{"model":"source/evil.glb"}})");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-overflow-idx";
@@ -618,7 +618,7 @@ TEST(InspectorApp, GlbOverflowByteOffsetWraparound) {
   ofs.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":"source/evil.glb"}})");
+                                 R"({"sources":{"model":"source/evil.glb"}})");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-offset-wrap";
@@ -663,7 +663,7 @@ TEST(InspectorApp, GlbNegativeByteStride) {
   ofs.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":"source/evil.glb"}})");
+                                 R"({"sources":{"model":"source/evil.glb"}})");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-neg-stride";
@@ -682,7 +682,6 @@ TEST(InspectorApp, GlbNegativeByteStride) {
 
   (void)aether::fs::removeAll(bundleDir);
 }
-
 
 // ---------------------------------------------------------------------------
 // PR-146: Multi-Entity, Tabs, Resize, Export ACK Tests
@@ -715,7 +714,7 @@ TEST(InspectorApp, MultiEntitySlots) {
   ofs.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"source_model":"source/model.glb"}})");
+                                 R"({"sources":{"source_model":"source/model.glb"}})");
 
   app.handleCommand(R"({"type":"load_bundle","path":")" + bundleDir + R"("})");
   EXPECT_GE(app.entityCount(), 1u);
@@ -876,7 +875,7 @@ TEST(InspectorApp, GlbFuzzTruncatedByteStreams) {
     out.close();
 
     (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-        R"({"sources":{"model":"source/model.glb"}})");
+                                   R"({"sources":{"model":"source/model.glb"}})");
 
     app.handleCommand(R"({"type":"load_bundle","path":")" + bundleDir + R"("})");
     EXPECT_FALSE(app.hasCustomMesh());
@@ -911,7 +910,7 @@ TEST(InspectorApp, GlbFuzzIntegerOverflowAccessors) {
   out.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":"source/evil.glb"}})");
+                                 R"({"sources":{"model":"source/evil.glb"}})");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-fuzz-overflow";
@@ -933,9 +932,15 @@ TEST(InspectorApp, DegeneratePolygonMeshes) {
   (void)aether::fs::createDirectories(bundleDir + "/source");
 
   const float verts[9] = {
-      std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f,
-      std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), 0.0f,
-      0.0f, 0.0f, 0.0f,
+      std::numeric_limits<float>::quiet_NaN(),
+      0.0f,
+      0.0f,
+      std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      0.0f,
+      0.0f,
+      0.0f,
+      0.0f,
   };
   const uint16_t indices[3] = {0, 0, 0};
 
@@ -957,7 +962,8 @@ TEST(InspectorApp, DegeneratePolygonMeshes) {
   "buffers": [{"byteLength": 44}]
 })";
 
-  while (jsonStr.size() % 4 != 0) jsonStr.push_back(' ');
+  while (jsonStr.size() % 4 != 0)
+    jsonStr.push_back(' ');
   const uint32_t jsonLen = static_cast<uint32_t>(jsonStr.size());
   const uint32_t binLen = static_cast<uint32_t>(binData.size());
   const uint32_t totalLen = 12u + (8u + jsonLen) + (8u + binLen);
@@ -988,7 +994,7 @@ TEST(InspectorApp, DegeneratePolygonMeshes) {
   out.close();
 
   (void)aether::fs::writeAllText(bundleDir + "/bundle.json",
-      R"({"sources":{"model":"source/degen.glb"}})");
+                                 R"({"sources":{"model":"source/degen.glb"}})");
 
   InspectorConfig cfg;
   cfg.shmName = "/test-insp-fuzz-degen";

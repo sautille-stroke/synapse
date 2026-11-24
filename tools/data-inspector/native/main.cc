@@ -69,11 +69,9 @@ int main(int argc, char** argv) {
 
   InspectorConfig config;
   config.rhiBackend = getArg(argc, argv, "rhi", "null");
-  config.headless = hasFlag(argc, argv, "headless") ||
-                    !hasFlag(argc, argv, "windowed");
+  config.headless = hasFlag(argc, argv, "headless") || !hasFlag(argc, argv, "windowed");
   config.keepShm = hasFlag(argc, argv, "keep-shm");
-  config.shmName =
-      getArg(argc, argv, "shm-name", std::string(kDefaultShmName));
+  config.shmName = getArg(argc, argv, "shm-name", std::string(kDefaultShmName));
   config.bundlePath = getArg(argc, argv, "bundle", "");
 
   // Parse --shm-file=<path> for file-backed shared memory (macOS / Windows).
@@ -88,8 +86,7 @@ int main(int argc, char** argv) {
   const std::string framesStr = getArg(argc, argv, "frames", "0");
 
   if (!parseUint32(wStr, config.width) || !parseUint32(hStr, config.height)) {
-    std::cerr << "[inspector] Invalid width/height: " << wStr << "x" << hStr
-              << "\n";
+    std::cerr << "[inspector] Invalid width/height: " << wStr << "x" << hStr << "\n";
     return 1;
   }
 
@@ -98,11 +95,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (config.width == 0 || config.height == 0 ||
-      config.width > synapse::inspector::kMaxDimension ||
+  if (config.width == 0 || config.height == 0 || config.width > synapse::inspector::kMaxDimension ||
       config.height > synapse::inspector::kMaxDimension) {
-    std::cerr << "[inspector] Resolution out of range: " << config.width << "x"
-              << config.height << "\n";
+    std::cerr << "[inspector] Resolution out of range: " << config.width << "x" << config.height
+              << "\n";
     return 1;
   }
 

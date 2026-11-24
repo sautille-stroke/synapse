@@ -21,15 +21,15 @@ namespace synapse::inspector {
 
 /// @brief Debug view modes supported by the inspector.
 enum class DebugViewMode : uint8_t {
-  kLit = 0,         ///< Diagnostic lit shading view (default).
-  kWireframe = 1,   ///< Wireframe mesh / grid overlay.
-  kNormal = 2,      ///< World-space normal visualisation.
-  kUv = 3,          ///< UV coordinate visualisation.
-  kDepth = 4,       ///< Camera linear depth visualisation.
-  kCryptomatte = 5, ///< Entity ID segmentation mask visualisation.
-  kAlbedo = 6,            ///< Base color / diffuse reflectance visualisation.
-  kMotion = 7,            ///< Screen-space velocity / motion flow visualisation.
-  kRoughnessMetallic = 8, ///< Roughness (R) / Metallic (G) PBR AOV visualisation.
+  kLit = 0,                ///< Diagnostic lit shading view (default).
+  kWireframe = 1,          ///< Wireframe mesh / grid overlay.
+  kNormal = 2,             ///< World-space normal visualisation.
+  kUv = 3,                 ///< UV coordinate visualisation.
+  kDepth = 4,              ///< Camera linear depth visualisation.
+  kCryptomatte = 5,        ///< Entity ID segmentation mask visualisation.
+  kAlbedo = 6,             ///< Base color / diffuse reflectance visualisation.
+  kMotion = 7,             ///< Screen-space velocity / motion flow visualisation.
+  kRoughnessMetallic = 8,  ///< Roughness (R) / Metallic (G) PBR AOV visualisation.
 };
 
 /// @brief Configuration for the inspector native process.
@@ -37,13 +37,13 @@ struct InspectorConfig {
   std::string bundlePath;           ///< Path to the InspectionBundle dir.
   std::string rhiBackend = "null";  ///< "vulkan", "metal", "d3d12", "null".
   std::string shmName = std::string(kDefaultShmName);
-  std::string shmFilePath;          ///< Path for file-backed SHM mapping.
+  std::string shmFilePath;  ///< Path for file-backed SHM mapping.
   uint32_t width = 1280;
   uint32_t height = 720;
-  uint32_t maxFrames = 0;           ///< 0 = continuous loop; >0 = exit after N frames.
-  bool headless = true;             ///< Run without a visible window.
-  bool keepShm = false;             ///< Keep SHM segment after exit (for CLI/test verification).
-  bool useShmFile = false;          ///< Use file-backed SHM instead of POSIX shm_open.
+  uint32_t maxFrames = 0;   ///< 0 = continuous loop; >0 = exit after N frames.
+  bool headless = true;     ///< Run without a visible window.
+  bool keepShm = false;     ///< Keep SHM segment after exit (for CLI/test verification).
+  bool useShmFile = false;  ///< Use file-backed SHM instead of POSIX shm_open.
 };
 
 struct StdinQueueState;
@@ -59,25 +59,25 @@ struct InspectorMesh {
 
 /// @brief Named mesh entity slot (e.g. source, animation, reconstructed).
 struct MeshEntity {
-  std::string name;                 ///< Entity identifier ("source", "animation", "reconstructed")
-  std::string filePath;             ///< Relative or resolved path to model asset
-  InspectorMesh mesh;               ///< Geometry container
-  bool visible = true;              ///< Independent visibility toggle
-  size_t submeshCount = 1;          ///< Submesh partition count
-  size_t materialCount = 1;         ///< Material slot count
+  std::string name;          ///< Entity identifier ("source", "animation", "reconstructed")
+  std::string filePath;      ///< Relative or resolved path to model asset
+  InspectorMesh mesh;        ///< Geometry container
+  bool visible = true;       ///< Independent visibility toggle
+  size_t submeshCount = 1;   ///< Submesh partition count
+  size_t materialCount = 1;  ///< Material slot count
 };
 
 /// @brief Decoded 15-channel FGPP OpenEXR AOV container.
 struct FgppAovData {
   uint32_t width = 0;
   uint32_t height = 0;
-  std::vector<float> radiance;          ///< 3 floats/px (DirectRadiance R, G, B)
-  std::vector<float> depth;             ///< 1 float/px (CameraLinearDepth Z in meters)
-  std::vector<float> normal;            ///< 3 floats/px (WorldNormal X, Y, Z)
-  std::vector<float> motion;            ///< 2 floats/px (MotionVector X, Y)
-  std::vector<float> baseColor;         ///< 3 floats/px (BaseColor R, G, B)
-  std::vector<float> roughnessMetallic; ///< 2 floats/px (Roughness, Metallic)
-  std::vector<uint32_t> cryptomatte;    ///< 1 u32/px (Cryptomatte ID)
+  std::vector<float> radiance;           ///< 3 floats/px (DirectRadiance R, G, B)
+  std::vector<float> depth;              ///< 1 float/px (CameraLinearDepth Z in meters)
+  std::vector<float> normal;             ///< 3 floats/px (WorldNormal X, Y, Z)
+  std::vector<float> motion;             ///< 2 floats/px (MotionVector X, Y)
+  std::vector<float> baseColor;          ///< 3 floats/px (BaseColor R, G, B)
+  std::vector<float> roughnessMetallic;  ///< 2 floats/px (Roughness, Metallic)
+  std::vector<uint32_t> cryptomatte;     ///< 1 u32/px (Cryptomatte ID)
   bool hasData = false;
 };
 
