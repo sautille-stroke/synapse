@@ -53,6 +53,7 @@ class ScenarioRunReport:
     resolution: tuple[int, int] = (0, 0)
     seed: int = 42
     error: str | None = None
+    external_dataset_meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the report to a JSON-friendly dict."""
@@ -72,6 +73,8 @@ class ScenarioRunReport:
             "seed": self.seed,
             "error": self.error,
         }
+        if self.external_dataset_meta:
+            d["external_dataset_meta"] = dict(self.external_dataset_meta)
         if self.gate_verdict is not None:
             d["gate_verdict"] = {
                 "passed": self.gate_verdict.passed,
@@ -207,16 +210,27 @@ class BenchPipelineRunner:
             height=height,
         )
 
-        from synapse.bench.registry import AssetRegistry
+        from synapse.bench.registry import AssetRegistry, filter_stage0_quality
 
-        def _load_asset_mesh(asset_id: str) -> Any:
+        registry = AssetRegistry()
+
+        def _load_asset_mesh(asset_obj: Any) -> Any:
+            if not isinstance(asset_obj, str):
+                ap, meta = registry.resolve_with_metadata(asset_obj)
+                report.external_dataset_meta = meta
+                loaded = load_mesh(str(ap), normalize=True)
+                ok_s0, reasons = filter_stage0_quality(loaded.vertices, loaded.faces)
+                report.external_dataset_meta["stage0_passed"] = ok_s0
+                if reasons:
+                    report.external_dataset_meta["stage0_reasons"] = reasons
+                return loaded
             try:
-                ap = AssetRegistry().resolve(asset_id)
+                ap = registry.resolve(asset_obj)
                 return load_mesh(str(ap), normalize=True)
             except Exception:
-                return load_mesh(asset_id, normalize=True)
+                return load_mesh(asset_obj, normalize=True)
 
-        mesh = _load_asset_mesh(scenario.asset.id)
+        mesh = _load_asset_mesh(scenario.asset)
         mesh, entity_slices = _build_scene_mesh(scenario, mesh, _load_asset_mesh)
 
         # Drive physical rasterizer params from scenario.conditions (T1/T4 lighting)

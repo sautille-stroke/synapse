@@ -1,0 +1,40 @@
+{
+  "id": "t2_ext_abo_metal_lamp",
+  "tier": "T2",
+  "description": "Amazon Berkeley Objects brushed metallic desk lamp. Tests specular roughness preservation.",
+  "tags": [
+    "external",
+    "abo",
+    "lighting",
+    "metallic"
+  ],
+  "asset": {
+    "source": "abo",
+    "id": "abo_metal_lamp",
+    "license": "CC-BY-4.0",
+    "dataset_category": "lighting",
+    "fallback_procedural": "cone",
+    "up_axis": "Y"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.2,
+    "elevation_deg": 15.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 24.5,
+    "ssim": 0.83
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

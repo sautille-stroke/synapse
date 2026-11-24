@@ -1,0 +1,41 @@
+{
+  "id": "t2_ext_gso_sneaker_orbit",
+  "tier": "T2",
+  "description": "GSO scanned athletic sneaker turntable. Tests fine tread normals, lace contours, and multi-material shading.",
+  "tags": [
+    "external",
+    "gso",
+    "footwear",
+    "scanned"
+  ],
+  "asset": {
+    "source": "gso",
+    "id": "gso_sneaker_scan",
+    "license": "CC-BY-4.0",
+    "dataset_category": "footwear",
+    "fallback_procedural": "cube",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 15.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.84,
+    "lpips_vgg": 0.15
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

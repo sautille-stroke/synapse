@@ -1,0 +1,40 @@
+{
+  "id": "t3_ext_abo_fabric_sofa",
+  "tier": "T3",
+  "description": "Amazon Berkeley Objects upholstered sofa with cushions. Tests soft woven micro-roughness and self-shadowing.",
+  "tags": [
+    "external",
+    "abo",
+    "furniture",
+    "fabric"
+  ],
+  "asset": {
+    "source": "abo",
+    "id": "abo_fabric_sofa",
+    "license": "CC-BY-4.0",
+    "dataset_category": "furniture",
+    "fallback_procedural": "cube",
+    "up_axis": "Y"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 4.0,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 23.0,
+    "ssim": 0.81
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

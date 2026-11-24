@@ -1,0 +1,40 @@
+{
+  "id": "t3_ext_omni_plush_bear",
+  "tier": "T3",
+  "description": "OmniObject3D high-roughness plush toy scan. Tests fuzzy silhouette edges and soft albedo recovery.",
+  "tags": [
+    "external",
+    "omniobject3d",
+    "plush",
+    "organic"
+  ],
+  "asset": {
+    "source": "omniobject3d",
+    "id": "omni_plush_bear",
+    "license": "CC-BY-4.0",
+    "dataset_category": "toys",
+    "fallback_procedural": "sphere",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.0,
+    "elevation_deg": 15.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 23.0,
+    "ssim": 0.81
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

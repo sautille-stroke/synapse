@@ -561,12 +561,12 @@ $$\text{DataPoint} = \left\langle \mathbf{x}, \mathbf{y}_{\text{rejected}}, \mat
 | 阶段 | 要做什么 | 状态 / 工时 | 产出 |
 |:---|:---|:---|:---|
 | **P0-Image & Alias** | 实现 `psnr_db` / `ssim` / `lpips` / `ciede2000` 计算函数（`metrics/image_quality.py`）；在 `metrics/profiles.py` 中增设 `METRIC_ALIASES`（`style_color_de`, `style_light_error_deg`）并接入 `bench_runner.py` 与 `model_evaluator.py` | **✅ 已完成** | 30 套基准场景的渲染画质指标与 T4 风格别名全部打通 |
-| **P0-Perceptual** | 实现预训练骨干感知语义指标 `dino_cosine_sim` / `lpips_vgg`（`metrics/perceptual.py`，可选依赖 `torch`/`timm`） | **📋 归口 [PLAN-M49-M50 (`PR-204`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-204)**（1~2 天） | 高层视觉语义嵌入距离对标行业论文 |
-| **P1-Topo** | 导出 `euler_characteristic` 与 `non_manifold_edges_count`；修复孤立顶点 $\chi$、补齐 bowtie 非单伞顶点、接通 `@aether//geo` 原生双轨与 HTML 报告渲染 | **🟡 基础实现已于 PR #189 合入；缺陷加固与原生双轨见 [PLAN-M49-M50 (`PR-203`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-203)** | 3D 网格入库门禁全部量化指标完备 |
-| **P1-UV** | 实现 `uv_area_distortion_ratio`、`seam_discontinuity_deg`、`texel_density_variance`；修复无 `uv_faces` 接缝零返回/端点误算、无 UV 网格假满分及 `profiles.py` 门禁接入 | **🟡 基础实现已于 PR #189 合入；缺陷加固与门禁接入见 [PLAN-M49-M50 (`PR-203`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-203)** | 材质贴图质量首次有自动化评测 |
-| **P1-Curvature** | 实现 `discrete_mean_curvature_variance`、`surface_roughness_var`、`patch_lpips` | **📋 归口 [PLAN-M49-M50 (`PR-205`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-205)**（2~3 天） | 微观表面缺陷检测（阶梯网格、凹坑、过平滑）可量化定位 |
-| **P1-Data** | 集成 GSO + Objaverse + ABO + OmniObject3D + Thingi10K 外部 3D 资产，新增 10 套 T1/T2 外部数据场景（30 → 40 套） | **📋 归口 [PLAN-M49-M50 (`PR-207`~`PR-209`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-207)**（3~5 天） | 评测从纯程序化几何扩展到真实长尾资产 |
-| **P2-Misc** | 补充 `histogram_intersection` 门禁阈值；实现 `add_s_norm`、`reprojection_error_px` | **📋 归口 [PLAN-M49-M50 (`PR-206`)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-206)**（1~2 天） | 消除姿态与直方图分布评估盲区 |
+| **P0-Perceptual** | 实现预训练骨干感知语义指标 `dino_cosine_sim` / `lpips_vgg`（`metrics/perceptual.py`，可选依赖 `torch`/`timm`） | **✅ 已完成** (`PR #191`, M49) | 高层视觉语义嵌入距离对标行业论文 |
+| **P1-Topo** | 导出 `euler_characteristic` 与 `non_manifold_edges_count`；修复孤立顶点 $\chi$、补齐 bowtie 非单伞顶点、接通 `@aether//geo` 原生双轨与 HTML 报告渲染 | **✅ 已完成** (`PR #189` + `PR #191`, M49) | 3D 网格入库门禁全部量化指标完备 |
+| **P1-UV** | 实现 `uv_area_distortion_ratio`、`seam_discontinuity_deg`、`texel_density_variance`；修复无 `uv_faces` 接缝零返回/端点误算、无 UV 网格假满分及 `profiles.py` 门禁接入 | **✅ 已完成** (`PR #189` + `PR #191`, M49) | 材质贴图质量首次有自动化评测 |
+| **P1-Curvature** | 实现 `discrete_mean_curvature_variance`、`surface_roughness_var`、`patch_lpips` | **✅ 已完成** (`PR #191`, M49) | 微观表面缺陷检测（阶梯网格、凹坑、过平滑）可量化定位 |
+| **P1-Data** | 集成 GSO + Objaverse + ABO + OmniObject3D + Thingi10K 外部 3D 资产，新增 10 套 T1–T4 外部数据场景（30 → 40 套） | **✅ 已完成** (M50) | 评测从纯程序化几何扩展到真实长尾资产 |
+| **P2-Misc** | 补充 `histogram_intersection` 门禁阈值；实现 `add_s_norm`、`reprojection_error_px` | **✅ 已完成** (`PR #191`, M49) | 消除姿态与直方图分布评估盲区 |
 
 ### 8.2 各阶段完成验收标准
 

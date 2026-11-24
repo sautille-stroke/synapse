@@ -1,0 +1,40 @@
+{
+  "id": "t2_ext_omni_scanned_fruit",
+  "tier": "T2",
+  "description": "OmniObject3D organic scanned fruit with subsurface albedo variation. Tests organic surface smoothness.",
+  "tags": [
+    "external",
+    "omniobject3d",
+    "organic",
+    "food"
+  ],
+  "asset": {
+    "source": "omniobject3d",
+    "id": "omni_scanned_fruit",
+    "license": "CC-BY-4.0",
+    "dataset_category": "food",
+    "fallback_procedural": "sphere",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 2.6,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 4.5,
+    "psnr_db": 25.0,
+    "ssim": 0.85
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

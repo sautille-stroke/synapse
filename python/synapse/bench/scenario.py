@@ -18,6 +18,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
+from synapse.errors import ContractValidationError
+
 
 class ScenarioTier(StrEnum):
     """Scenario complexity tier."""
@@ -35,8 +37,47 @@ class AssetSource(StrEnum):
     PROCEDURAL = "procedural"
     KHRONOS = "khronos"
     OBJAVERSE = "objaverse"
+    GSO = "gso"
+    ABO = "abo"
+    OMNIOBJECT3D = "omniobject3d"
+    THINGI10K = "thingi10k"
     LOCAL = "local"
     REGISTRY = "registry"
+
+
+EXTERNAL_ASSET_SOURCES: frozenset[AssetSource] = frozenset(
+    {
+        AssetSource.OBJAVERSE,
+        AssetSource.GSO,
+        AssetSource.ABO,
+        AssetSource.OMNIOBJECT3D,
+        AssetSource.THINGI10K,
+    }
+)
+
+ALLOWED_EXTERNAL_LICENSES: frozenset[str] = frozenset(
+    {
+        "CC-BY-4.0",
+        "CC0-1.0",
+        "CC0",
+        "MIT",
+        "Apache-2.0",
+        "BSD-3-Clause",
+    }
+)
+
+
+def validate_external_license(source: AssetSource, license_str: str) -> None:
+    """Enforce open-permissive license whitelist for external 3D datasets."""
+    if source in EXTERNAL_ASSET_SOURCES and license_str not in ALLOWED_EXTERNAL_LICENSES:
+        raise ContractValidationError(
+            f"Disallowed license {license_str!r} for external dataset source {source.value!r}. "
+            f"Allowed: {sorted(ALLOWED_EXTERNAL_LICENSES)}.",
+            agent_fix_hint=(
+                "Use an asset with an approved permissive license "
+                f"({', '.join(sorted(ALLOWED_EXTERNAL_LICENSES))})."
+            ),
+        )
 
 
 @dataclass
@@ -48,23 +89,58 @@ class Asset:
     url: str | None = None
     sha256: str | None = None
     license: str = "MIT"
+    dataset_category: str = ""
+    fallback_procedural: str = ""
+    up_axis: Literal["Y", "Z"] = "Y"
+    physical_scale_m: float | None = None
+
+    def __post_init__(self) -> None:
+        validate_external_license(self.source, self.license)
+        if self.up_axis not in ("Y", "Z"):
+            raise ContractValidationError(
+                f"Invalid up_axis {self.up_axis!r}; expected 'Y' or 'Z'.",
+                agent_fix_hint="Set asset.up_axis to 'Y' or 'Z'.",
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        d = {"source": self.source.value, "id": self.id, "license": self.license}
+        d: dict[str, Any] = {
+            "source": self.source.value,
+            "id": self.id,
+            "license": self.license,
+        }
         if self.url:
             d["url"] = self.url
         if self.sha256:
             d["sha256"] = self.sha256
+        if self.dataset_category:
+            d["dataset_category"] = self.dataset_category
+        if self.fallback_procedural:
+            d["fallback_procedural"] = self.fallback_procedural
+        if self.up_axis != "Y":
+            d["up_axis"] = self.up_axis
+        if self.physical_scale_m is not None:
+            d["physical_scale_m"] = self.physical_scale_m
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Asset:
+        up_raw = str(d.get("up_axis", "Y")).upper()
+        up_val: Literal["Y", "Z"] = "Z" if up_raw == "Z" else "Y"
+        if up_raw not in ("Y", "Z"):
+            raise ContractValidationError(
+                f"Invalid up_axis {d.get('up_axis')!r}; expected 'Y' or 'Z'.",
+                agent_fix_hint="Set asset.up_axis to 'Y' or 'Z'.",
+            )
         return cls(
             source=AssetSource(d["source"]),
             id=d["id"],
             url=d.get("url"),
             sha256=d.get("sha256"),
             license=d.get("license", "MIT"),
+            dataset_category=d.get("dataset_category", ""),
+            fallback_procedural=d.get("fallback_procedural", ""),
+            up_axis=up_val,
+            physical_scale_m=d.get("physical_scale_m"),
         )
 
 
@@ -78,6 +154,13 @@ class ExpectedMetrics:
     ssim: float | None = None
     lpips: float | None = None
     ciede2000: float | None = None
+    dino_cosine_sim: float | None = None
+    lpips_vgg: float | None = None
+    patch_lpips: float | None = None
+    discrete_mean_curvature_variance: float | None = None
+    surface_roughness_var: float | None = None
+    add_s_norm: float | None = None
+    reprojection_error_px: float | None = None
     temporal_warp_error: float | None = None
     flicker_score: float | None = None
     foot_sliding_cm: float | None = None

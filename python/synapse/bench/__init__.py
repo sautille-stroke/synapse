@@ -24,12 +24,16 @@ from synapse.bench.model_loader import (
 from synapse.bench.registry import (
     AssetEntry,
     AssetRegistry,
+    ExternalDatasetSpec,
     ScenarioRegistry,
+    filter_stage0_quality,
+    normalize_external_mesh,
 )
 from synapse.bench.report import (
     generate_html_report,
 )
 from synapse.bench.scenario import (
+    ALLOWED_EXTERNAL_LICENSES,
     Asset,
     AssetSource,
     ExpectedMetrics,
@@ -37,6 +41,7 @@ from synapse.bench.scenario import (
     ScenarioTier,
     list_scenarios,
     load_scenario,
+    validate_external_license,
 )
 from synapse.render_core.camera import (
     CameraTrajectoryType,
@@ -64,10 +69,12 @@ __all__ = [
     "CROSS_CONDITIONS",
     "RENDERING_CONDITION_FACTORS",
     "SINGLE_FACTOR_CONDITIONS",
+    "ALLOWED_EXTERNAL_LICENSES",
     "Asset",
     "AssetEntry",
     "AssetRegistry",
     "AssetSource",
+    "ExternalDatasetSpec",
     "CameraTrajectoryType",
     "ConditionLevel",
     "Conditions",
@@ -85,6 +92,7 @@ __all__ = [
     "SourceEntry",
     "entity_hash",
     "export_inspection_bundle",
+    "filter_stage0_quality",
     "generate_cameras",
     "generate_html_report",
     "generate_humanoid_proxy",
@@ -94,5 +102,7 @@ __all__ = [
     "load_obj",
     "load_procedural",
     "load_scenario",
+    "normalize_external_mesh",
+    "validate_external_license",
     "validate_inspection_bundle",
 ]
