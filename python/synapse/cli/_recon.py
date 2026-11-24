@@ -35,17 +35,18 @@ def _cmd_recon_invert_video(
     target_faces = int(getattr(args, "target_faces", 1500))
 
     video_path_raw = getattr(args, "video", None)
-    if not video_path_raw or not Path(video_path_raw).is_file():
+    if not video_path_raw or not Path(video_path_raw).exists():
         raise AssetNotFoundError(
             f"Video frames file not found: {video_path_raw!r}",
             agent_fix_hint=(
-                "Provide '--video <path>' pointing to a valid .npy file of shape (T, H, W, 3)."
+                "Provide '--video <path>' pointing to a valid .npy, image directory, "
+                "or .mp4/.mov/.mkv video file."
             ),
         )
 
-    import numpy as np
+    from synapse.recon.io import export_recon_fgpp_sequence, load_video_frames
 
-    frames = np.load(video_path_raw)
+    frames, video_meta = load_video_frames(video_path_raw)
 
     # FGPP re-ingestion: read EXR conditioning from --fgpp-dir
     fgpp_dir = getattr(args, "fgpp_dir", None)
@@ -71,11 +72,12 @@ def _cmd_recon_invert_video(
             skeleton_template = _json_skel.load(_f_skel)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    result = pipe.run(frames, skeleton_template=skeleton_template)
+    result = pipe.run(frames, skeleton_template=skeleton_template, fps=video_meta.fps)
 
     output_info: dict[str, Any] = {
         "output_dir": str(output_dir),
         "num_frames": len(frames),
+        "video_codec": video_meta.codec,
         "has_trajectory": result.camera_trajectory is not None,
         "has_geometry": result.mesh is not None,
     }
@@ -114,6 +116,18 @@ def _cmd_recon_invert_video(
         usda_path = output_dir / "mesh.usda"
         _write_minimal_usda(usda_path, obj_path.name)
         output_info["mesh_usda"] = str(usda_path)
+
+        fgpp_out_raw = getattr(args, "fgpp_out", None)
+        if fgpp_out_raw:
+            exr_paths = export_recon_fgpp_sequence(
+                frames=frames,
+                camera_trajectory=result.camera_trajectory,
+                mesh=result.mesh,
+                output_dir=Path(fgpp_out_raw),
+                fps=video_meta.fps,
+            )
+            output_info["fgpp_out"] = str(fgpp_out_raw)
+            output_info["fgpp_exr_count"] = len(exr_paths)
 
     if fgpp_conditioning:
         output_info["fgpp_dir"] = fgpp_dir
@@ -365,6 +379,11 @@ def register_recon_subparser(
         "--skeleton",
         default=None,
         help="Path to skeleton template JSON (Redline #3: fail-closed on missing)",
+    )
+    recon_invert.add_argument(
+        "--fgpp-out",
+        default=None,
+        help="Optional output directory to re-export 15-channel FGPP EXR sequence",
     )
 
     recon_closed_loop = recon_sub.add_parser(

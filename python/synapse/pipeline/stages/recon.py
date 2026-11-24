@@ -65,22 +65,24 @@ def handle_video_to_3d_invert(
     if skeleton_path_str and Path(skeleton_path_str).is_file():
         skeleton_template = json.loads(Path(skeleton_path_str).read_text(encoding="utf-8"))
 
-    # Load input frames — no synthetic fallback
+    # Load input frames via unified video I/O — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
-    if not video_path or not Path(video_path).is_file():
+    if not video_path or not Path(video_path).exists():
         from synapse.errors import AssetNotFoundError
 
         raise AssetNotFoundError(
             f"Video frames file not found: {video_path!r}",
             agent_fix_hint=(
                 "Provide manifest.inputs['video_frames'] pointing to "
-                "a valid .npy file of shape (T, H, W, 3)."
+                "a valid .npy/.npz, image directory, or .mp4/.mov video file."
             ),
         )
-    frames = np.load(video_path)
+    from synapse.recon.io import export_recon_fgpp_sequence, load_video_frames
+
+    frames, video_meta = load_video_frames(video_path)
 
     pipe = ReconPipeline(target_quad_faces=target_faces)
-    result = pipe.run(frames, skeleton_template=skeleton_template)
+    result = pipe.run(frames, skeleton_template=skeleton_template, fps=video_meta.fps)
 
     output_paths: dict[str, str] = {}
 
@@ -136,6 +138,18 @@ def handle_video_to_3d_invert(
         p_albedo.parent.mkdir(parents=True, exist_ok=True)
         np.save(str(p_albedo), albedo_res.albedo)
         output_paths["albedo"] = str(p_albedo)
+
+    fgpp_out_dir = params.get("fgpp_out", "") or manifest.outputs.get("fgpp_dir", "")
+    if fgpp_out_dir and result.mesh is not None:
+        exr_paths = export_recon_fgpp_sequence(
+            frames=frames,
+            camera_trajectory=result.camera_trajectory,
+            mesh=result.mesh,
+            output_dir=Path(fgpp_out_dir),
+            fps=video_meta.fps,
+        )
+        output_paths["fgpp_dir"] = str(fgpp_out_dir)
+        output_paths["fgpp_exr_count"] = str(len(exr_paths))
 
     # HITL circuit breaker — enforce 15-min ceiling via PersistentHitlLedger
     # (Redline #3: fail-closed persistent tracking across CLI invocations)
@@ -239,19 +253,22 @@ def handle_inverse_render_loop(
     max_iters = int(params.get("max_iterations", 5))
     n_preroll = int(params.get("n_preroll", 0))
 
-    # Load input frames — no synthetic fallback
+    # Load input frames via unified video I/O — no synthetic fallback
     video_path = manifest.inputs.get("video_frames", "")
-    if not video_path or not Path(video_path).is_file():
+    if not video_path or not Path(video_path).exists():
         from synapse.errors import AssetNotFoundError
 
         raise AssetNotFoundError(
             f"Video frames file not found: {video_path!r}",
             agent_fix_hint=(
                 "Provide manifest.inputs['video_frames'] pointing to "
-                "a valid .npy file of shape (T, H, W, 3) float32."
+                "a valid .npy/.npz, image directory, or .mp4/.mov video file."
             ),
         )
-    frames = np.load(video_path).astype(np.float32)
+    from synapse.recon.io import load_video_frames
+
+    raw_frames, _ = load_video_frames(video_path)
+    frames = raw_frames.astype(np.float32)
 
     # Load normals — no synthetic fallback
     normals_path = manifest.inputs.get("normals", "")

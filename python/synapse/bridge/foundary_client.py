@@ -23,6 +23,37 @@ from pydantic import BaseModel, Field
 # -----------------------------------------------------------------------
 
 
+FOUNDARY_SERVICE_NAMES: tuple[str, ...] = (
+    "cotracker",
+    "megasam",
+    "depth_anything",
+    "trellis",
+    "hunyuan3d",
+    "sam2",
+    "gvhmr",
+    "visual_jev",
+    "delight",
+    "wan",
+    "flux",
+    "sdxl",
+)
+
+FoundaryServiceName = Literal[
+    "cotracker",
+    "megasam",
+    "depth_anything",
+    "trellis",
+    "hunyuan3d",
+    "sam2",
+    "gvhmr",
+    "visual_jev",
+    "delight",
+    "wan",
+    "flux",
+    "sdxl",
+]
+
+
 class FoundaryRequest(BaseModel):
     """Base request model for foundary services.
 
@@ -33,7 +64,7 @@ class FoundaryRequest(BaseModel):
         params: Service-specific hyper-parameters.
     """
 
-    service: Literal["trellis", "hunyuan3d", "sam2", "gvhmr", "visual_jev"]
+    service: FoundaryServiceName
     job_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
@@ -57,6 +88,17 @@ class FoundaryResponse(BaseModel):
     elapsed_seconds: float = 0.0
 
 
+class FoundaryJobStatus(BaseModel):
+    """Async job status descriptor for foundary container inference."""
+
+    job_id: str
+    service: str
+    state: Literal["queued", "running", "succeeded", "failed"] = "queued"
+    progress: float = 0.0
+    outputs: dict[str, Any] = Field(default_factory=dict)
+    error_message: str = ""
+
+
 # -----------------------------------------------------------------------
 # Abstract transport
 # -----------------------------------------------------------------------
@@ -76,6 +118,75 @@ class FoundaryTransport(ABC):
             A :class:`FoundaryResponse` with status and outputs.
         """
 
+    def submit_job(self, request: FoundaryRequest) -> FoundaryJobStatus:
+        """Submit an asynchronous inference job (default wraps synchronous :meth:`submit`)."""
+        resp = self.submit(request)
+        jid = request.job_id or f"job_{request.service}"
+        if resp.status == "error":
+            return FoundaryJobStatus(
+                job_id=jid,
+                service=request.service,
+                state="failed",
+                progress=1.0,
+                outputs=resp.outputs,
+                error_message=resp.error_message,
+            )
+        return FoundaryJobStatus(
+            job_id=jid,
+            service=request.service,
+            state="succeeded",
+            progress=1.0,
+            outputs=resp.outputs,
+        )
+
+    def poll_job(self, job_id: str, service: str = "") -> FoundaryJobStatus:
+        """Query current state of an asynchronous inference job."""
+        return FoundaryJobStatus(
+            job_id=job_id,
+            service=service,
+            state="succeeded",
+            progress=1.0,
+            outputs={},
+        )
+
+    def wait_for_job(
+        self,
+        job_id: str,
+        service: str = "",
+        *,
+        timeout_seconds: float = 300.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> FoundaryResponse:
+        """Poll an async job until completion or raise ``BackendUnavailableError`` (exit 30)."""
+        import time
+
+        from synapse.errors import BackendUnavailableError
+
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        delay = max(0.01, poll_interval_seconds)
+        while True:
+            status = self.poll_job(job_id, service=service)
+            if status.state == "succeeded":
+                return FoundaryResponse(
+                    status="ok",
+                    service=status.service or service,
+                    outputs=status.outputs,
+                )
+            if status.state == "failed":
+                raise BackendUnavailableError(
+                    f"Foundary async job '{job_id}' ({service}) failed: "
+                    f"{status.error_message or 'unknown error'}",
+                    agent_fix_hint="Inspect foundary container job logs and GPU VRAM.",
+                )
+            if time.monotonic() >= deadline:
+                raise BackendUnavailableError(
+                    f"Timed out waiting for foundary job '{job_id}' ({service}) "
+                    f"after {timeout_seconds:.1f}s.",
+                    agent_fix_hint="Increase timeout_seconds or inspect foundary worker queue.",
+                )
+            time.sleep(min(delay, max(0.01, deadline - time.monotonic())))
+            delay = min(delay * 1.5, 5.0)
+
 
 # -----------------------------------------------------------------------
 # Mock transport — testing only
@@ -92,15 +203,37 @@ class MockFoundaryTransport(FoundaryTransport):
 
     def __init__(self, latency_seconds: float = 0.0) -> None:
         self._latency = latency_seconds
+        self._jobs: dict[str, FoundaryJobStatus] = {}
 
     def submit(self, request: FoundaryRequest) -> FoundaryResponse:
         """Return a synthetic ``ok`` response with ``{"mock": True}``."""
         return FoundaryResponse(
             status="ok",
             service=request.service,
-            outputs={"mock": True},
+            outputs={"mock": True, "service": request.service},
             elapsed_seconds=self._latency,
         )
+
+    def submit_job(self, request: FoundaryRequest) -> FoundaryJobStatus:
+        """Simulate async job submission and cache completion payload."""
+        resp = self.submit(request)
+        jid = request.job_id or f"mock_{request.service}_{len(self._jobs) + 1}"
+        st = FoundaryJobStatus(
+            job_id=jid,
+            service=request.service,
+            state="succeeded" if resp.status == "ok" else "failed",
+            progress=1.0,
+            outputs=resp.outputs,
+            error_message=resp.error_message,
+        )
+        self._jobs[jid] = st
+        return st
+
+    def poll_job(self, job_id: str, service: str = "") -> FoundaryJobStatus:
+        """Return cached mock job status."""
+        if job_id in self._jobs:
+            return self._jobs[job_id]
+        return super().poll_job(job_id, service=service)
 
 
 # -----------------------------------------------------------------------
@@ -267,3 +400,117 @@ class HttpFoundaryTransport(FoundaryTransport):
             f"Failed to submit to foundary after {self._max_retries} attempts: {last_error}",
             agent_fix_hint="Verify foundary endpoint availability and network connectivity.",
         )
+
+    def submit_job(self, request: FoundaryRequest) -> FoundaryJobStatus:
+        """Submit an async job to ``POST /v1/{service}/jobs``."""
+        import json
+        import urllib.request
+
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
+        from synapse.errors import BackendUnavailableError
+
+        if not self._base_url:
+            raise BackendUnavailableError(
+                "Foundary HTTP endpoint not configured",
+                agent_fix_hint="Set FOUNDARY_URL or use MockFoundaryTransport.",
+            )
+        if self._allow_loopback:
+            validate_safe_url(self._base_url, allow_loopback=True)
+        else:
+            validate_safe_url(self._base_url)
+
+        url = f"{self._base_url}/v1/{request.service}/jobs"
+        req = urllib.request.Request(
+            url,
+            data=request.model_dump_json().encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            open_ctx = (
+                safe_urlopen(req, timeout=self._timeout, allow_loopback=True)
+                if self._allow_loopback
+                else safe_urlopen(req, timeout=self._timeout)
+            )
+            with open_ctx as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return FoundaryJobStatus.model_validate(data)
+        except Exception as exc:
+            raise BackendUnavailableError(
+                f"Failed to submit async foundary job to {url}: {exc}",
+                agent_fix_hint="Verify foundary endpoint availability and async jobs route.",
+            ) from exc
+
+    def poll_job(self, job_id: str, service: str = "") -> FoundaryJobStatus:
+        """Query async job status from ``GET /v1/jobs/{job_id}``."""
+        import json
+        import urllib.request
+
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
+        from synapse.errors import BackendUnavailableError
+
+        if not self._base_url:
+            raise BackendUnavailableError(
+                "Foundary HTTP endpoint not configured",
+                agent_fix_hint="Set FOUNDARY_URL or use MockFoundaryTransport.",
+            )
+        if self._allow_loopback:
+            validate_safe_url(self._base_url, allow_loopback=True)
+        else:
+            validate_safe_url(self._base_url)
+
+        url = f"{self._base_url}/v1/jobs/{job_id}"
+        req = urllib.request.Request(url, method="GET")
+        try:
+            open_ctx = (
+                safe_urlopen(req, timeout=self._timeout, allow_loopback=True)
+                if self._allow_loopback
+                else safe_urlopen(req, timeout=self._timeout)
+            )
+            with open_ctx as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return FoundaryJobStatus.model_validate(data)
+        except Exception as exc:
+            raise BackendUnavailableError(
+                f"Failed to poll async foundary job '{job_id}': {exc}",
+                agent_fix_hint="Check foundary container health and network connectivity.",
+            ) from exc
+
+
+class FoundaryClient:
+    """High-level ergonomic client for all 12 foundary container inference services."""
+
+    def __init__(self, transport: FoundaryTransport | None = None) -> None:
+        self.transport: FoundaryTransport = transport or HttpFoundaryTransport()
+
+    def infer(
+        self,
+        service: FoundaryServiceName,
+        inputs: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        *,
+        job_id: str = "",
+        async_mode: bool = False,
+        timeout_seconds: float = 300.0,
+    ) -> FoundaryResponse:
+        """Execute synchronous or polled-async inference against *service*."""
+        req = FoundaryRequest(
+            service=service,
+            job_id=job_id,
+            inputs=inputs or {},
+            params=params or {},
+        )
+        if async_mode:
+            status = self.transport.submit_job(req)
+            if status.state == "succeeded":
+                return FoundaryResponse(
+                    status="ok",
+                    service=status.service or service,
+                    outputs=status.outputs,
+                )
+            return self.transport.wait_for_job(
+                status.job_id,
+                service=service,
+                timeout_seconds=timeout_seconds,
+            )
+        return self.transport.submit(req)

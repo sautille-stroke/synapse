@@ -19,6 +19,7 @@ The camera position in world space is ``position = -R^T @ t``.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -308,16 +309,19 @@ def _lucas_kanade_track(
 def solve_point_tracks(
     frames: np.ndarray | list[np.ndarray],
     num_points: int = 256,
+    *,
+    foundary_client: Any = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Track dense surface points across a video sequence.
 
-    Uses Harris corner detection to seed feature points in the first frame,
-    then tracks them across subsequent frames using pyramidal Lucas-Kanade
-    optical flow with local image patch cross-correlation.
+    When *foundary_client* is provided, dispatches CoTracker inference to the
+    foundary service first; otherwise uses Harris corner seeding and pyramidal
+    Lucas-Kanade optical flow.
 
     Args:
         frames: Sequence of video frames, shape (T, H, W, 3) or list of frames.
         num_points: Number of persistent surface points to track.
+        foundary_client: Optional :class:`~synapse.bridge.FoundaryClient` instance.
 
     Returns:
         Tuple of (tracks_2d, visibility):
@@ -329,6 +333,19 @@ def solve_point_tracks(
         raise ValueError(f"Expected 4D array of video frames, got {frames_arr.shape}")
 
     num_frames, height, width, _ = frames_arr.shape
+
+    if foundary_client is not None:
+        resp = foundary_client.infer(
+            "cotracker",
+            inputs={"num_frames": num_frames, "height": height, "width": width},
+            params={"num_points": num_points},
+        )
+        outputs = getattr(resp, "outputs", {})
+        if isinstance(outputs, dict) and "tracks_2d" in outputs and "visibility" in outputs:
+            return (
+                np.asarray(outputs["tracks_2d"], dtype=np.float32),
+                np.asarray(outputs["visibility"], dtype=bool),
+            )
 
     # Convert first frame to grayscale and detect corners
     gray_0 = _to_gray(frames_arr[0])
@@ -674,6 +691,7 @@ def solve_camera_trajectory(
     frame_height: int | None = None,
     frame_width: int | None = None,
     visibility: np.ndarray | None = None,
+    foundary_client: Any = None,
 ) -> CameraTrajectory:
     """Solve 6-DoF metric camera trajectory from tracked points.
 
@@ -904,6 +922,29 @@ def solve_camera_trajectory(
 
     avg_reproj = float(np.mean(reproj_errors)) if reproj_errors else 0.0
 
+    if foundary_client is not None:
+        resp = foundary_client.infer(
+            "megasam",
+            inputs={"num_frames": num_frames},
+            params={"intrinsics": intrinsics},
+        )
+        outputs = getattr(resp, "outputs", {})
+        if isinstance(outputs, dict) and "metric_scale" in outputs:
+            ext_scale = float(outputs["metric_scale"])
+            if ext_scale > 0.0:
+                for ext in extrinsics_list:
+                    ext.transform[:3, 3] *= ext_scale
+                    ext.position = ext.position * ext_scale
+                return CameraTrajectory(
+                    frame_count=num_frames,
+                    intrinsics=intrinsics,
+                    extrinsics=extrinsics_list,
+                    metric_scale=ext_scale,
+                    ground_plane_normal=np.array([0.0, 1.0, 0.0], dtype=np.float32),
+                    ground_height_m=0.0,
+                    reprojection_error_px=avg_reproj,
+                )
+
     return CameraTrajectory(
         frame_count=num_frames,
         intrinsics=intrinsics,
@@ -913,3 +954,58 @@ def solve_camera_trajectory(
         ground_height_m=0.0,
         reprojection_error_px=avg_reproj,
     )
+
+
+def anchor_metric_scale(
+    depths: np.ndarray,
+    camera_trajectory: CameraTrajectory,
+    *,
+    metric_depths: np.ndarray | None = None,
+    known_height_m: float | None = None,
+) -> tuple[CameraTrajectory, float]:
+    """Anchor affine relative trajectory translation scale to physical metres.
+
+    Computes a robust median scale ratio against reference *metric_depths*
+    (or *known_height_m* height span) and rescales all world-to-camera
+    translations and camera positions consistently.
+    """
+    d_rel = np.asarray(depths, dtype=np.float64)
+    scale = 1.0
+
+    if metric_depths is not None:
+        d_met = np.asarray(metric_depths, dtype=np.float64)
+        valid = np.isfinite(d_rel) & np.isfinite(d_met) & (d_rel > 1e-6) & (d_met > 1e-6)
+        if np.any(valid):
+            scale = float(np.median(d_met[valid] / d_rel[valid]))
+    elif known_height_m is not None and known_height_m > 0.0 and camera_trajectory.extrinsics:
+        ys = np.array([float(e.position[1]) for e in camera_trajectory.extrinsics], dtype=np.float64)
+        span = float(np.max(ys) - np.min(ys))
+        if span > 1e-6:
+            scale = float(known_height_m) / span
+
+    scale = float(np.clip(scale, 1e-4, 1e4))
+    scaled_exts: list[CameraExtrinsics] = []
+    for ext in camera_trajectory.extrinsics:
+        t_mat = ext.transform.copy()
+        t_mat[:3, 3] = t_mat[:3, 3] * scale
+        pos = ext.position.copy() * scale
+        scaled_exts.append(
+            CameraExtrinsics(
+                frame=ext.frame,
+                transform=t_mat,
+                position=pos,
+                rotation_matrix=ext.rotation_matrix.copy(),
+                yaw_rad=ext.yaw_rad,
+            )
+        )
+
+    scaled_traj = CameraTrajectory(
+        frame_count=camera_trajectory.frame_count,
+        intrinsics=dict(camera_trajectory.intrinsics),
+        extrinsics=scaled_exts,
+        metric_scale=float(camera_trajectory.metric_scale) * scale,
+        ground_plane_normal=camera_trajectory.ground_plane_normal.copy(),
+        ground_height_m=float(camera_trajectory.ground_height_m) * scale,
+        reprojection_error_px=camera_trajectory.reprojection_error_px,
+    )
+    return scaled_traj, scale

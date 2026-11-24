@@ -854,23 +854,28 @@ def quad_remesh(
     target_faces: int = 0,
     *,
     expand_uv_seams: bool = False,
+    worker_client: Any = None,
+    strict_native: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Remesh a triangle mesh into a quad-dominant or quad mesh.
 
-    Pairs adjacent coplanar triangles sharing an edge based on dihedral angle
-    and aspect ratio, removing interior diagonals to form quad faces.
-    After remeshing, generates UV coordinates via xatlas binding
-    (``synapse._c_geometry.unwrap_uv_atlas``) or projection unwrap fallback.
-
-    Args:
-        vertices: Vertex positions, shape (V, 3).
-        faces: Triangle indices, shape (F, 3).
-        target_faces: Optional target face count (0 = maximize quads).
-
-    Returns:
-        Tuple of (new_vertices, new_faces, uvs).
-        uvs is (V_new, 2) float32 or None if UV generation fails.
+    When *strict_native* is True (or *worker_client* is provided), delegates to
+    :class:`~synapse.bridge.aether_geo_worker_client.AetherGeoWorkerClient.quadriflow`,
+    which strictly raises :class:`~synapse.errors.NotImplementedStageError`
+    (exit code ``50``, ``NEG-100-08``) on upstream stub exit codes.  Otherwise
+    runs the Python coplanar-pairing + UV unwrap Oracle.
     """
+    if strict_native or worker_client is not None:
+        from synapse.bridge.aether_geo_worker_client import AetherGeoWorkerClient
+
+        client = worker_client or AetherGeoWorkerClient()
+        res = client.quadriflow(
+            vertices,
+            faces,
+            target_faces=target_faces or 1500,
+        )
+        return res.vertices, res.faces, res.uvs
+
     v = np.asarray(vertices, dtype=np.float32)
     f = np.asarray(faces, dtype=np.int32)
 
