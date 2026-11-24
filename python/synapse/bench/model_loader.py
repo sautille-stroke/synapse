@@ -12,12 +12,17 @@ from typing import Any
 
 import numpy as np
 
+from synapse.models.asset import ModelAsset
+from synapse.models.loader import list_builtin_models, load_model
 from synapse.render_core.mesh import MeshData, load_obj
 from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
 
 __all__ = [
     "MeshData",
+    "ModelAsset",
+    "list_builtin_models",
     "load_mesh",
+    "load_model",
     "load_obj",
     "load_procedural",
 ]

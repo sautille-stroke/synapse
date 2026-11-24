@@ -195,14 +195,14 @@ def _cmd_fgpp_inspect(args: argparse.Namespace) -> dict[str, Any]:
                 agent_fix_hint="Install OpenCV, OpenEXR, and Pillow via pip install 'synapse[image]'.",
             ) from exc
 
-        from synapse.fgpp.frame import FGPPSequence
-        from synapse.fgpp.io import import_fgpp
-        from synapse.generators.visualizer import (
+        from synapse.bench.dataset_visualizer import (
             colorize_depth,
             colorize_flow,
             colorize_mask,
             colorize_normal,
         )
+        from synapse.fgpp.frame import FGPPSequence
+        from synapse.fgpp.io import import_fgpp
 
         vis_dir = fgpp_dir / "visualizations"
         vis_dir.mkdir(parents=True, exist_ok=True)

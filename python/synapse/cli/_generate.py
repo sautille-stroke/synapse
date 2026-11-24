@@ -19,7 +19,7 @@ from synapse.cli.common import (
 
 def _cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
     """Execute dataset generation and return structured summary dict."""
-    from synapse.generators.dataset import DatasetConfig, DatasetGenerator
+    from synapse.bench.dataset_gen import DatasetConfig, DatasetGenerator
 
     json_mode = bool(getattr(args, "json", False))
     cfg = DatasetConfig(
@@ -89,8 +89,8 @@ def _get_dev_launch_viewer() -> Any:
 
 def main_data_gen(args: list[str] | None = None) -> int:
     """CLI tool: Generate multi-angle video & FGPP datasets."""
+    from synapse.bench.model_loader import list_builtin_models
     from synapse.cli.common import SynapseArgumentParser
-    from synapse.models.loader import list_builtin_models
     from synapse.telemetry import TraceContext
 
     parser = SynapseArgumentParser(

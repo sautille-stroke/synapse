@@ -11,13 +11,35 @@ from synapse.bench.bundle_exporter import (
     export_inspection_bundle,
     validate_inspection_bundle,
 )
+from synapse.bench.compare import (
+    TRACK_DEFINITIONS,
+    FourTrackComparisonReport,
+    ModelComparisonRow,
+    TrackScore,
+    aggregate_four_track_scores,
+    compare_runs,
+)
+from synapse.bench.dataset_gen import (
+    DatasetConfig,
+    DatasetGenerator,
+)
+from synapse.bench.dataset_visualizer import (
+    colorize_depth,
+    colorize_flow,
+    colorize_mask,
+    colorize_normal,
+    make_contact_sheet,
+)
 from synapse.bench.domain_randomizer import (
     DomainRandomizationConfig,
     DomainRandomizer,
 )
 from synapse.bench.model_loader import (
     MeshData,
+    ModelAsset,
+    list_builtin_models,
     load_mesh,
+    load_model,
     load_obj,
     load_procedural,
 )
@@ -31,6 +53,7 @@ from synapse.bench.registry import (
 )
 from synapse.bench.report import (
     generate_html_report,
+    render_comparison_html,
 )
 from synapse.bench.scenario import (
     ALLOWED_EXTERNAL_LICENSES,
@@ -78,11 +101,16 @@ __all__ = [
     "CameraTrajectoryType",
     "ConditionLevel",
     "Conditions",
+    "DatasetConfig",
+    "DatasetGenerator",
     "DomainRandomizationConfig",
     "DomainRandomizer",
     "ExpectedMetrics",
+    "FourTrackComparisonReport",
     "InspectionBundleManifest",
     "MeshData",
+    "ModelAsset",
+    "ModelComparisonRow",
     "ProceduralMesh",
     "ProceduralMeshType",
     "Scenario",
@@ -90,6 +118,14 @@ __all__ = [
     "ScenarioTier",
     "SoftwareRasterizer",
     "SourceEntry",
+    "TRACK_DEFINITIONS",
+    "TrackScore",
+    "aggregate_four_track_scores",
+    "colorize_depth",
+    "colorize_flow",
+    "colorize_mask",
+    "colorize_normal",
+    "compare_runs",
     "entity_hash",
     "export_inspection_bundle",
     "filter_stage0_quality",
@@ -97,12 +133,16 @@ __all__ = [
     "generate_html_report",
     "generate_humanoid_proxy",
     "generate_procedural_mesh",
+    "list_builtin_models",
     "list_scenarios",
     "load_mesh",
+    "load_model",
     "load_obj",
     "load_procedural",
     "load_scenario",
+    "make_contact_sheet",
     "normalize_external_mesh",
+    "render_comparison_html",
     "validate_external_license",
     "validate_inspection_bundle",
 ]

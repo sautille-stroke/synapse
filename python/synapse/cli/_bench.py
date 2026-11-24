@@ -202,6 +202,38 @@ def _cmd_bench_evaluate(args: argparse.Namespace) -> dict[str, Any]:
     return {"metrics": metrics, "bundle_dir": str(bundle_dir)}
 
 
+def _cmd_bench_compare(args: argparse.Namespace) -> dict[str, Any]:
+    """Compare >= 2 benchmark run JSON files across all 4 RFC 0063 tracks (PR-215)."""
+    import json
+
+    from synapse.bench.compare import compare_runs
+    from synapse.bench.report import render_comparison_html
+
+    input_paths = [Path(p) for p in (getattr(args, "inputs", None) or [])]
+    labels = getattr(args, "labels", None)
+    report = compare_runs(input_paths, labels=labels)
+    payload = report.to_dict()
+
+    out_html = getattr(args, "output_html", None)
+    if out_html:
+        html_path = Path(out_html)
+        render_comparison_html(report, output_path=html_path)
+        payload["output_html"] = str(html_path)
+
+    out_json = getattr(args, "output_json", None)
+    if out_json:
+        json_path = Path(out_json)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        payload["output_json"] = str(json_path)
+
+    if not getattr(args, "json", False):
+        print(f"[Synapse-Bench Compare] Winner: {report.overall_winner}")
+        for row in report.rows:
+            print(f"  - {row.model_name}: overall={row.overall_score:.3f}")
+    return payload
+
+
 def _cmd_bench_export_fgpp(args: argparse.Namespace) -> dict[str, Any]:
     """Export a scenario to FGPP output directory."""
     from synapse.bench.model_loader import load_mesh
@@ -382,6 +414,34 @@ def register_bench_subparsers(
         help="Fail closed with exit code 40 if quality gate fails",
     )
 
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="Compare >= 2 benchmark run JSONs across RFC 0063 4 tracks (PR-215)",
+        parents=parents,
+    )
+    compare_parser.add_argument(
+        "--inputs",
+        nargs="+",
+        required=True,
+        help="Paths to benchmark run JSON reports (>= 2 files)",
+    )
+    compare_parser.add_argument(
+        "--labels",
+        nargs="+",
+        default=None,
+        help="Optional model/adapter display labels corresponding to --inputs",
+    )
+    compare_parser.add_argument(
+        "--output-html",
+        default=None,
+        help="Optional output HTML path for leaderboard",
+    )
+    compare_parser.add_argument(
+        "--output-json",
+        default=None,
+        help="Optional output JSON path for leaderboard",
+    )
+
 
 def register_bench_subparser(
     subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
@@ -437,13 +497,21 @@ def dispatch_bench(
             json_mode,
             trace_ctx,
         )
+    elif cmd == "compare":
+        parsed.json = json_mode
+        return _run_with_json_mode(
+            _cmd_bench_compare,
+            parsed,
+            json_mode,
+            trace_ctx,
+        )
     else:
         from synapse.errors import ExitCode, SynapseError
 
         err = SynapseError(
-            "Missing bench sub-command (list|export-fgpp|run|evaluate)",
+            "Missing bench sub-command (list|export-fgpp|run|evaluate|compare)",
             ExitCode.CONTRACT_ERROR,
-            "Use 'synapse-bench list', 'synapse-bench export-fgpp', etc.",
+            "Use 'synapse-bench list', 'synapse-bench compare', etc.",
         )
         if json_mode:
             import json

@@ -74,6 +74,8 @@ class ClosedLoopResult:
     stitch_report: StitchReport
     border_ring_ciede2000: float = 0.0
     elapsed_seconds: float = 0.0
+    kappa_applied: float = 0.0
+    preroll_bleed_delta: float = 0.0
     step_timings: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -101,6 +103,8 @@ class ClosedLoopResult:
             ),
             "border_ring_ciede2000": self.border_ring_ciede2000,
             "elapsed_seconds": self.elapsed_seconds,
+            "kappa_applied": self.kappa_applied,
+            "preroll_bleed_delta": self.preroll_bleed_delta,
             "step_timings": self.step_timings,
         }
 
@@ -224,10 +228,22 @@ class ClosedLoopRunner:
         # Step 2: Target Video — extract production frames (trim preroll)
         # ---------------------------------------------------------------
         t1 = time.monotonic()
+        kappa_applied = 0.0
+        preroll_bleed_delta = 0.0
         if forward_result.preroll_count > 0:
             target_frames = extract_main_take(
                 forward_result.frames, n_preroll=forward_result.preroll_count
             )
+            kappa_applied = float(self._loop_config.kappa)
+            if (
+                forward_result.frames.shape[0] > forward_result.preroll_count
+                and target_frames.shape[0] > 0
+            ):
+                last_preroll = forward_result.frames[forward_result.preroll_count - 1].astype(
+                    np.float64
+                )
+                first_take = target_frames[0].astype(np.float64)
+                preroll_bleed_delta = float(np.mean(np.abs(first_take - last_preroll)))
         else:
             target_frames = forward_result.frames
         step_timings["step2_target_video"] = time.monotonic() - t1
@@ -309,6 +325,8 @@ class ClosedLoopRunner:
                 stitch_report.mean_border_ciede2000,
             ),
             elapsed_seconds=elapsed,
+            kappa_applied=round(kappa_applied, 6),
+            preroll_bleed_delta=round(preroll_bleed_delta, 6),
             step_timings=step_timings,
         )
 

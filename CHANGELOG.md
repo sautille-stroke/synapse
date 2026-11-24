@@ -12,6 +12,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] — 2026-11-24
+
+### Horizon 12–13B (M45–M52) — Video-to-3D Twin, 3D Evaluation, External Datasets & 4-Track Leaderboard
+
+Release completing `PLAN-0100 Wave 4` (`M45–M48`), `PR #189` evaluation hardening & external datasets (`M49–M50`), and `Post-H10` strategic governance & 4-track industry comparator (`M51–M52`):
+
+#### Horizon 13A · M49–M50 — 3D Evaluation Hardening, Perceptual Metrics & External Datasets (`PR-203 ~ PR-209`, GH `#191`, `#192`)
+- Fixed `PR #189` topology/UV defects (`euler_char` vertex isolation, bowtie non-manifold detection, seam normal jumps, fail-closed UV gates, HTML rendering, `profiles` sync).
+- Added perceptual & geometric metrics (`dino_cosine_sim`, `lpips_vgg`, `patch_lpips`, `discrete_mean_curvature_variance`, `surface_roughness_var`, `add_s_norm`, `reprojection_error_px`).
+- Integrated external 3D asset sources (`GSO`, `ABO`, `OmniObject3D`, `Thingi10K`, license & Stage-0 filtering), expanding `Synapse-Bench` from 30 to **40 scenarios**.
+
+#### Horizon 12 · M45–M48 — `PLAN-0100 Wave 4` Video-to-3D Twin & 3DGS Compression (`PR-193 ~ PR-202`, GH `#193`, `#194`)
+- Unified streaming video decoder/FGPP re-exporter (`recon/io.py`), 12-service async `FoundaryClient` + affine metric scale anchoring, adaptive keyframes & Redline #3 character floor gating, and 16B-aligned `.fmesh.bin` `AetherGeoWorkerClient` (with fail-closed exit `50` on unimplemented `quadriflow`).
+- Added dual-track `@aether//animation` IK bridge + fail-closed `backend="native"` (exit `30`) & `>0.5 cm` foot-sliding gate (exit `40`), `FulgurSlangADRendererAdapter`, DP Graph-Cut seam blending, RFC 0058 OpenUSD/OpenPBR/`UsdSkel` packager (`usd_packager.py`), 3DGS SH/Smallest-Three/Draco `.s3dgs` quantizer (`gs_quantizer.py` + `synapse recon compress-3dgs`), and Colab `E6` end-to-end twin benchmark.
+
+#### Horizon 13B · M51–M52 — Tooling Governance, Module Consolidation & `v5.0.0` (`PR-210 ~ PR-215`, GH `#196`)
+- Added weekly CUDA GPU smoke runner (`scripts/run_gpu_smoke.py` + `.github/workflows/gpu-smoke-weekly.yml`), `wire_guard.py --require-style`, and standalone-safe Ruff SSOT parity checker (`tools/sync_ruff_ssot.py`, superseding `#163`).
+- Consolidated `synapse.generators` into `synapse.bench.{dataset_gen,dataset_visualizer}` with zero-warning shims and unified `bench.model_loader`; hardened RFC-0061 Foundary K=2 candidate hook and RFC-0062 `kappa` lookdev metrics.
+- Added 4-track RFC-0063 industry leaderboard aggregator (`bench/compare.py`), HTML leaderboard (`render_comparison_html`), and `synapse bench compare` CLI.
+
 ## [4.2.0] — 2026-11-21
 
 ### Horizon 11 (M41–M44) — Full-Repository Hardening, Scientific Correctness & 16-Gate Closure

@@ -50,9 +50,9 @@ flowchart LR
 
 ## 3. 模块架构与当前就绪状态
 
-> 全系统权威架构设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，跨语言线格式与协议规约见 [docs/WIRE_CONTRACTS.md](docs/WIRE_CONTRACTS.md)，历史阶段审计见 [docs/archive/](docs/archive/README.md)，全景实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。在 **`Release v4.2.0`** 基线上，云端主力机 `ubuntu24` 独立实测 **`1,560+` 项 pytest 用例全通过**、**`mypy --strict` 零错误**、`ruff` 零报错、`wire_guard --require-aether` 与 `import_dag_guard` 全绿、全仓 Markdown 相对路径 **`0 broken links`**。
+> 全系统权威架构设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，跨语言线格式与协议规约见 [docs/WIRE_CONTRACTS.md](docs/WIRE_CONTRACTS.md)，历史阶段审计见 [docs/archive/](docs/archive/README.md)，全景实施总计划见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。在 **`Release v5.0.0`** 基线上，新增 Horizon 12–13B（40 套跨数据集评测场景、OpenUSD/OpenPBR/`UsdSkel` 资产导出、`.s3dgs` 压缩、4 轨道横向排行榜与每周 GPU 烟测闭环），全套 `pytest`、`mypy --strict`、`ruff`、`wire_guard`、`import_dag_guard` 与 Markdown 链接检查全绿。
 
-| 模块路径 | 核心职责 | 当前状态 (`Release v4.2.0`) | 交付与收口里程碑 |
+| 模块路径 | 核心职责 | 当前状态 (`Release v5.0.0`) | 交付与收口里程碑 |
 | :--- | :--- | :---: | :---: |
 | `python/synapse/bridge/aether_bridge.py` | Layer 0 `@aether//geo`、`@aether//metrics`、`@aether//color` C++20 原生扩展统一桥接（支持 `scripts/build_native.py` 自动编译与纯 Python Oracle 零依赖回退） | ✅ 全面就绪 | `RFC-0071`, `PR-153`, `PR-174`, `PR-192` |
 | `python/synapse/render_core/` | 无状态底层纯 CPU 软光栅化、相机投影模型与基础几何生成原语 | ✅ 全面就绪 | `PR-48..114`, `PR-138`, `PR-150` |
