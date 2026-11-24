@@ -9,8 +9,8 @@ description: >-
 # OKF 知识文档格式快速参考 (synapse)
 
 > 本仓库遵循 [Google Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/open-knowledge-format) 规范。
-> 完整规范定义：[all-overview OKF Skill](../../../all-overview/devenv-skills/skills/okf-knowledge-format/SKILL.md)
-> RFC：[RFC 0082](../../../all-overview/rfcs/0082-okf-knowledge-format-adoption.md)
+> 完整规范定义：`all-overview/devenv-skills/skills/okf-knowledge-format/SKILL.md`
+> RFC：`all-overview/rfcs/0082-okf-knowledge-format-adoption.md`
 
 ## 快速规则
 
