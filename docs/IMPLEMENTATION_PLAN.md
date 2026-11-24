@@ -1,9 +1,9 @@
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v3.9`（全量统合 **M1–M40** 共 40 大里程碑、**169 个原子 PR**（`PR-01` ~ `PR-172`, 含 `PR-14a/b`、`PR-92` 与 Post-H7/H8/H9 审计 PR），涵盖 Horizon 1–10 与 13 份精细化执行子计划）
-- **修订日期**: 2026-11-21
-- **操作模型标识**: `[gemini4]` / `[opus4.6]`
-- **发布状态**: ✅ **`v4.1.0` Horizon 10 封板完成。全部 20 个 PR（`PR-153` ~ `PR-172`）已合入 `main`，`ubuntu24` 与远端 GitHub Actions 14 项反作弊硬门禁双端全绿，综合健康度 `≥95/100` 达成。**
+- **计划版本**: `v4.0`（全量统合 **M1–M52** 共 52 大里程碑、**212 个原子 PR**（`PR-01` ~ `PR-215`, 含 `PR-14a/b`、`PR-92`、Horizon 11 `PR-173 ~ PR-192` + `#185–#189` 及 Horizon 12–13 `PR-193 ~ PR-215`），涵盖 Horizon 1–13B 与 16 份精细化执行子计划）
+- **修订日期**: 2026-11-24
+- **操作模型标识**: `[gemini4]` / `[gemini3.8]` / `[opus4.6]`
+- **发布状态**: ✅ **`v4.2.0`（Horizon 11 `M41–M44`）及 `PR #185–#189` 已全量合入 `main`；`ubuntu24` 与远端 GitHub Actions 16 项反作弊硬门禁双端全绿。🚀 Horizon 12–13B（`M45–M52`, `PR-193 ~ PR-215`, 共 23 个原子 PR）已规划就绪，承接 `all-overview#692`（`PLAN-0100 Wave 4`）、`synapse#189` 后评估体系剩余 Backlog 与 `Post-H10` 战略待办。**
 - **前置架构审查与跨文档对齐决议**:
   - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
   - **[docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)**（五条绝对负向红线 `NG-1~NG-5` 与跨仓边界定界）
@@ -14,6 +14,7 @@
   - **[docs/audits/AUDIT-POST-HORIZON7-2026-11.md](archive/audits/AUDIT-POST-HORIZON7-2026-11.md)**（`cf2a49f` Horizon-7 合入后全库五切片逐行审计、跨仓 `JobBundle`/`aether` 核验与 `ubuntu24` 十项门禁真值复核，`14×P0 + 18×P1 + 12×P2 + 5×P3 = 49` 项缺陷台账，综合评分 `68/100`）
   - **[docs/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md](archive/audits/AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11.md)**（`df93ac7` Horizon-8 后全库整体审查、七大战略级整体改进支柱、12 项反作弊硬门禁实测复核与 `18×P0 + 24×P1 + 12×P2 + 4×P3 = 58` 项缺陷台账，综合评分 `67/100`）
   - **[docs/audits/AUDIT-POST-HORIZON9-2026-11.md](audits/AUDIT-POST-HORIZON9-2026-11.md)**（`5c6e3e6` `v4.0.0` + `RFC-0071` 合流后全库五切片深度审计、远端 Actions 与 `ubuntu24` 14 项反作弊硬门禁实测真值复核及 `22×P0 + 18×P1 + 16×P2 = 56` 项缺陷台账，综合评分 `61/100`）
+  - **[docs/audits/REVIEW-POST-HORIZON10-2026-11.md](audits/REVIEW-POST-HORIZON10-2026-11.md)**（`6d50c17` `v4.1.0` Horizon-10 封板复审报告：14 门禁全绿、综合健康度 `≥95/100` 及 Post-H10 5 项战略行动建议）
 - **细分可执行子计划导航（Subdivided Actionable Sub-Plans）**:
   1. ↳ **[PLAN-M1-M2](archive/plans/PLAN-M1-M2-FOUNDATION-AND-ADAPTERS.md)**：地基清零、`@aether//fgpp` 线格式闭环、CLI 基座与双轨视频生成适配器（`PR-01` ~ `PR-08` ✅）
   2. ↳ **[PLAN-M3-M4](archive/plans/PLAN-M3-M4-STYLE-COMPOSITE-AND-BENCH.md)**：软肩 ACEScg 风格对齐、`3D ∪ SAM2` 手术刀合成、`vg-core` 桥接、`JobBundleWorker` 与 30 场景基准（`PR-09` ~ `PR-15` ✅）
@@ -28,6 +29,9 @@
   11. ↳ **[PLAN-M29-M32 (Horizon 8 生产级真闭环与跨仓契约合龙)](archive/plans/PLAN-M29-M32-POST-H7-PRODUCTION-CLOSURE.md)**：全仓 209 文件 `mypy --strict` 清零与 Ruff 解禁、EXR `UINT32` / 有理软肩 / CCW MC、Quad 邻边水密与 HDR 禁除 255、跨仓 `from_rfc0039_job_bundle` 兼容与 1,156 链接零断链（`PR-112` ~ `PR-129` ⚠️ 代码批次 `#112~#131` 已合入；经 `AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11` 实测检出 `.github/` 缺失、4 项 H8 回归、门禁超时与算法/算子待完善项，移交 Horizon 9）
   12. ↳ **[PLAN-M33-M36 (Horizon 9 全域复盘整改、原生扩围与真白盒演进)](plans/PLAN-M33-M36-HOLISTIC-REMEDIATION-AND-EVOLUTION.md)**：代码批次已合入于 `v4.0.0`（`713a4e3`）并与 `RFC-0071` 在 `aa84b5b` 合流；经 `AUDIT-POST-HORIZON9-2026-11` 在 `5c6e3e6` 实测复核检出合流断裂、5/5 CI 全红与核心算子/红线/检查器断点，移交 Horizon 10（`PR-133` ~ `PR-152` ⚠️ 已合流待收口）
   13. ↳ **[PLAN-M37-M40 (Horizon 10 合流止血、真接线闭环与 v4.1.0 演进)](plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md)**：修通远端 GitHub Actions 5/5 Jobs、双扩展自动装配与 216 文件 `mypy --strict` 清零，恢复纯 Python 回退与水密球锥、激活全图 SIMD 色彩，修复 FGPP `cy`/Vulkan/`NaN` 与 RFC 0039 沙箱/SSRF，重构真可运行 `DiffusersWanBackend` 与 PEFT，修复 `@aether//geo` MC 焊接/xatlas/水密 Quad、封堵红线 #3 自旁路、真 Mitsuba AD 与非退化精修融合，激活 30 场景真评测、世界尺度评估、真 4-Tab `Data Inspector`、双脚本零崩、单进程快测 `<= 20s`/慢测 `<= 40s` 与 14 项硬门禁双端全绿封板 `v4.1.0`（`PR-153` ~ `PR-172` ✅ 已完成，`Release v4.1.0` 封板）
+  14. ↳ **[PLAN-M45-M48 (Horizon 12 · `PLAN-0100 Wave 4` 视频逆向数字孪生与 3DGS 压缩)](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md)**：承接 `all-overview#692`（`PLAN-0100 Wave 4`: `PR-100-14 ~ PR-100-18`），落地 MP4 流式解封装与 FGPP 感知输出、`foundary` 六位一体容器扩展、TRELLIS/`aether_geo_worker` (`remediate` + `quadriflow` 门禁)、C++ IK 零 Python 切换、`fulgur` Slang `[Differentiable]` 可微光栅、C++ Graph-Cut 缝合 + RFC 0058 OpenUSD + 3DGS 球谐量化及 `colab-gpu` E6 端到端闭环（`PR-193` ~ `PR-202` 📋 规划就绪）
+  15. ↳ **[PLAN-M49-M50 (Horizon 13A · PR #189 加固、3D 评估全指标闭环与外部数据集)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md)**：加固 `synapse#189` 5 项拓扑/UV 实证缺陷（孤立顶点欧拉数、bowtie 非单伞、3D 接缝法线跳变、无 UV Fail-Closed、HTML 渲染与 `profiles` 门禁），补齐 `DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC` 剩余 `P0-Perceptual` (`dino_cosine_sim`/`lpips_vgg`)、`P1-Curvature` (`patch_lpips`/曲率方差)、`P2-Misc` (`add_s_norm`/`reprojection_error_px`/`histogram_intersection`) 及 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K` 外部资产接入（30 → 40 套场景，`PR-203` ~ `PR-209` 📋 规划就绪）
+  16. ↳ **[PLAN-M51-M52 (Horizon 13B · Post-H10 战略待办收口与 4 轨道行业横向评测)](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md)**：落实 `REVIEW-POST-HORIZON10` §7.1 5 项战略行动建议（每周真实 CUDA `Wan 2.1`/`LoRA` 烟测、协同 `@aether//style` 激活 `wire_guard --require-style`、`generators`/`models` 遗留包收编入 `bench/`、`SYN-RFC-0061/0062` GPU 生产硬化、4 轨道行业横向评测排行榜与 `Release v5.0.0`）及安全替代 Open PR `#163` 的 Ruff SSOT 同步校验器（`PR-210` ~ `PR-215` 📋 规划就绪）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -50,6 +54,9 @@
    - **Horizon 7（Post-Horizon-6 基础设施与局部收口，`M25–M28`，18 个 PR）**：合入 `#93~#110` 完成移除常驻 `ViewerServer`、256-entry Marching Cubes、EXR `UINT32`、4D 齐次裁剪、Bazel `[opt]` 去重与 `SYN-RFC` 去撞，但经 `AUDIT-POST-HORIZON7-2026-11` 实测复核仍存单进程 `73.97s`、29 条 Ruff 未解禁、全仓 207 文件 `mypy` 20 错、`.github/workflows/` 缺失、RFC 0039 `JobBundle` 不兼容、`p02` 主点反转、`WanAdapter` 未接线与 `prepare_datasets` `SIGSEGV` 等 49 项缺陷，转入 Horizon 8；
    - **Horizon 8（Post-Horizon-7 代码批次与局部硬化，`M29–M32`，18 个 PR）**：合入 `#112~#131` 实现 `209` 文件 `mypy --strict` 零错、8 条 Ruff 规则解禁、$C^1$ 有理软肩、CCW 256-entry MC 与 Quad 邻边水密等重要底座，但经 `AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11` 实测复核检出 `.github/workflows/` 仍为空、`cli/_rsi.py`/`bench_runner`/`model_evaluator`/`data-inspector`/`colab_runner` 等 H8 回归与跨仓/算法/SLA 缺口，移交 Horizon 9；
    - **Horizon 9（Post-Horizon-8 全域复盘整改、原生扩围与真白盒演进，`M33–M36`，20 个 PR）**：落实 `AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11` 全部 `18×P0 + 24×P1 + 12×P2 + 4×P3` 修复及七大战略级整体改进支柱（`PR-133 ~ PR-152`），实现真 GitHub Actions CI、Go `render-farm` 1:1 `JobBundle` 与 `p02` 真实闭环、三端 `--shm-file` 与 `.glb` 防溢越界、流式 `< 1.5 GB` 内存、`DiffusersWanBackend` 与真实 PEFT 训练、`@aether//geo` C++20 核扩围、`Mitsuba` 可微优化与红线 #3、`Synapse-Bench` 全场景真值与 RSI 飞轮桥、反恒等/`hypothesis` 测试、单进程快测 `<= 20s` / 慢测 `<= 40s`、文档三层收敛与 14 项反作弊硬门禁全绿封板 `v4.0.0`；
+   - **Horizon 10 & 11（合流止血、科学正确性与 16 门禁全绿封板，`M37–M44`，`v4.1.0` + `v4.2.0` + `PR #185–#189` ✅）**：先通过 Horizon 10（`PR-153 ~ PR-172`）解决 `v4.0.0 + RFC-0071` 三方强合流断裂并封板 `v4.1.0`；再通过 Horizon 11（`M41–M44`, `PR-173 ~ PR-192` / GH `#165–#184` 及 `#185–#189`）完成 C++/NumPy `camera_math`  parity、C1 有理软肩、15× QEM 标量提速、13.5× OpenEXR 单次批量读、30 场景全参数激活、4-Tab `Data Inspector`、LF 行尾统一及欧拉/非流形/UV 质量指标基础落地，封板 **`Release v4.2.0`**（16 项反作弊硬门禁全绿）；
+   - **Horizon 12（`PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩，`M45–M48`，`PR-193 ~ PR-202` 📋）**：承接 `all-overview#692` 跨仓计划，打通 MP4 流式解封装、`foundary` 六位一体容器对齐、`aether_geo_worker`（`remediate` + `quadriflow` 严格 `NEG-100-08` 门禁）、`@aether//animation` / `fulgur::animation` C++ IK（零 Python 生产）、`fulgur` Slang `[Differentiable]` 可微光栅、C++ Graph-Cut 缝合 + RFC 0058 OpenUSD + 3DGS SH 量化压缩及 `colab-gpu` `E6` 真实端到端闭环；
+   - **Horizon 13A & 13B（PR #189 加固、评估体系全指标/外部数据集 & Post-H10 战略收口，`M49–M52`，`PR-203 ~ PR-215` 📋）**：加固 PR #189 5 项实现缺陷并补全 `dino_cosine_sim`/`lpips_vgg`/曲率/`patch_lpips`/`add_s_norm`/`reprojection_error_px` 与 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`（30 → 40 场景）；同步落地每周 GPU 烟测、`@aether//style` 校验激活、Ruff SSOT 校验（替代 `#163`）、`generators`/`models` 收编、`SYN-RFC-0061/0062` GPU 硬化与 4 轨道行业横向评测封板 **`Release v5.0.0`**；
    - 每个原子 PR 净增代码严格控制在 **`300 ~ 750` 行**，必须使用 `/tmp/synapse-wt-<branch>` 独立 Git Worktree 走 PR Squash Merge 流程。
 2. **零 GPU 阻塞日常回归（`ubuntu24` P0 主力机优先）**：
    - 依托纯 NumPy 向量化软光栅（`PR-01`）与确定性 `MockVideoAdapter`（`PR-05`）及 Mock Transport/推理桩，**100% 的协议、调度、融合、质检编排、RSI 门禁单测均可在云端 CPU 主力机 `ubuntu24` 上秒级全量回归**；真实大模型权重与 CUDA 算子仅在 `win-dev` 或 `foundary` 容器做专项集成验收。
@@ -58,7 +65,7 @@
 
 ---
 
-## 2. 全局 36 阶段 149-PR 依赖拓扑图 (Global Dependency DAG)
+## 2. 全局 52 阶段 212-PR 依赖拓扑图 (Global Dependency DAG)
 
 ```mermaid
 flowchart LR
@@ -408,6 +415,67 @@ flowchart LR
     PR141 & PR144 & PR145 & PR147 --> PR150
     PR147 & PR148 --> PR151
     PR146 & PR148 & PR149 & PR150 & PR151 --> PR152
+
+    subgraph H10 ["Horizon 10-11: 合流止血, 16门禁全绿与几何质量指标 (M37-M44 ✅ v4.2.0 + PR #189)"]
+        PR172["PR-153..172: H10止血与v4.1.0 14门禁封板 ✅"]
+        PR192["PR-173..192 + #185..189: H11 16门禁封板v4.2.0与欧拉/UV指标 ✅"]
+    end
+
+    subgraph H12 ["Horizon 12: PLAN-0100 Wave 4 视频逆向数字孪生与 3DGS 压缩 (M45-M48 📋)"]
+        subgraph M45 ["M45: 视频解码与 foundary 重底模"]
+            PR193["PR-193: MP4流式解封装与FGPP感知输出"]
+            PR194["PR-194: foundary扩展与WHAM/Metric3D尺度锚定"]
+        end
+        subgraph M46 ["M46: TRELLIS与worker重拓扑"]
+            PR195["PR-195: 自适应关键帧与TRELLIS/Hunyuan3D"]
+            PR196["PR-196: aether_geo_worker桥接与NEG-100-08"]
+        end
+        subgraph M47 ["M47: 原生IK/Slang/GraphCut/USD/3DGS"]
+            PR197["PR-197: kinematics桥接C++ IK (零Python)"]
+            PR198["PR-198: recon.loop对接fulgur Slang AD"]
+            PR199["PR-199: Graph-Cut/去光照/OpenUSD/JEV+HITL"]
+            PR200["PR-200: 3DGS SH量化与Draco点云"]
+        end
+        subgraph M48 ["M48: Colab闭环与签收"]
+            PR201["PR-201: colab_runner E6真实视频孪生基准"]
+            PR202["PR-202: NEG-100-08/09单测与PLAN-0100签收"]
+        end
+    end
+
+    subgraph H13A ["Horizon 13A: PR #189 加固, 3D评估补全与外部数据集 (M49-M50 📋)"]
+        subgraph M49 ["M49: PR #189加固与P0-P2指标"]
+            PR203["PR-203: PR #189 5项缺陷加固/HTML/Profiles"]
+            PR204["PR-204: P0 dino_cosine_sim与lpips_vgg"]
+            PR205["PR-205: P1曲率方差,粗糙度与patch_lpips"]
+            PR206["PR-206: P2 add_s_norm,重投影与直方图门禁"]
+        end
+        subgraph M50 ["M50: 外部3D数据集 30->40"]
+            PR207["PR-207: 外部资产契约,许可证与离线降级"]
+            PR208["PR-208: 接入GSO + Objaverse-XL (+6套)"]
+            PR209["PR-209: 接入ABO/Omni3D/Thingi10K (40套)与验收"]
+        end
+    end
+
+    subgraph H13B ["Horizon 13B: Post-H10 战略收口与 4 轨道横向评测 (M51-M52 📋)"]
+        subgraph M51 ["M51: GPU烟测与SSOT治理"]
+            PR210["PR-210: 每周Colab/GPU真实Wan2.1与LoRA烟测"]
+            PR211["PR-211: 协同aether//style激活wire_guard"]
+            PR212["PR-212: 安全替代PR #163 Ruff SSOT校验"]
+        end
+        subgraph M52 ["M52: 遗留收编与4轨道基准"]
+            PR213["PR-213: generators与models收编入bench/"]
+            PR214["PR-214: SYN-RFC-0061/0062 GPU生产硬化"]
+            PR215["PR-215: 4轨道横向评测排行榜与v5.0.0封板"]
+        end
+    end
+
+    PR152 --> PR172 --> PR192
+    PR192 --> PR193 --> PR194 --> PR195 --> PR196 --> PR197 --> PR198 --> PR199 --> PR201 --> PR202
+    PR196 --> PR200 --> PR201
+    PR192 --> PR203 --> PR204 & PR205 & PR206 --> PR209
+    PR203 --> PR207 --> PR208 --> PR209
+    PR192 --> PR210 --> PR214 --> PR215
+    PR192 --> PR211 & PR212 & PR213 --> PR215
 ```
 
 ---
@@ -453,10 +521,20 @@ flowchart LR
 | **Wave 33** | (`PR-138` → `PR-139` → `PR-140`) ∥ (`PR-141` → `PR-142`) | **M34 收官**：网格合并与流式 `< 1.5 GB` 架构、`WanAdapter` 去重 Hook + `DiffusersWanBackend`、CUDA+探针 PEFT 训练、`@aether//geo` C++20 核大扩围、真 TSDF/一致 Quad+UV/`Delight`/`Mitsuba` 与红线 #3 |
 | **Wave 34** | `PR-143` ∥ `PR-144` → (`PR-145` ∥ `PR-146` ∥ `PR-147`) | **M35 收官** ✅：`Refine` 旁路/EMA/多候选/HITL 写盘、30 场景真实评测与 GSO 资产、无参考/世界尺度评估与 RSI 自动桥、多源/真 EXR Inspector、Colab/Datasets 零崩真跑 |
 | **Wave 35** | (`PR-148` ∥ `PR-149` ∥ `PR-150` ∥ `PR-151`) → `PR-152` | **Horizon 9 终局封板 (`Release v4.0.0`)**：反恒等跨仓/往返重构、`hypothesis`/ASan Fuzz、单进程快测 `<= 20s`/慢测 `<= 40s`、文档三层收敛、14 项反作弊硬门禁双端绿灯 |
+| **Wave 36–39** | `PR-153` ~ `PR-172` (详见 [`PLAN-M37-M40`](plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md)) | **Horizon 10 封板 (`Release v4.1.0`)** ✅：`v4.0.0 + RFC-0071` 三方合流止血、远端 CI 5/5 绿、14 项硬门禁双端全绿、健康度 `61 → >=95` |
+| **Wave 40–43** | `PR-173` ~ `PR-192` + `PR #185–#189` (详见 [`CHANGELOG.md`](../CHANGELOG.md)) | **Horizon 11 封板 (`Release v4.2.0`)** ✅：C++/NumPy `camera_math` parity、C1 有理软肩、15× QEM & 13.5× EXR 读提速、16 项门禁封板、LF 统一与欧拉/非流形/UV 指标基础落地 |
+| **Wave 44** | `PR-193` (`cli/_recon.py`) → `PR-194` (`foundary_client.py`, `tracking.py`) | **M45 (`PLAN-0100 PR-100-14`)**：MP4 流式解封装、FGPP 15ch 输出、`foundary` 重底模容器对接与尺度锚定 |
+| **Wave 45** | `PR-195` (`multiview.py`) → `PR-196` (`bridge/aether_geo_worker_client.py`) | **M46 (`PLAN-0100 PR-100-15`)**：自适应关键帧 + TRELLIS、`.fmesh.bin` `remediate` 与 `quadriflow` `NEG-100-08` 门禁 |
+| **Wave 46** | (`PR-197` → `PR-198` → `PR-199`) ∥ `PR-200` | **M47 (`PLAN-0100 PR-100-16/17`)**：C++ IK 零 Python、`fulgur` Slang `[Differentiable]`、Graph-Cut/OpenUSD/JEV+HITL 与 3DGS SH 量化 |
+| **Wave 47** | `PR-201` (`colab_runner.py` E6) → `PR-202` (`NEG-100-08/09` & 回填) | **Horizon 12 结项 (`PLAN-0100 Wave 4`)**：`colab-gpu` 野生视频孪生闭环、负向变异锁定与 `all-overview` 签收 |
+| **Wave 48** | `PR-203` (PR #189 加固) → [`PR-204` (`perceptual`) ∥ `PR-205` (曲率/`patch_lpips`) ∥ `PR-206` (对齐/直方图)] | **M49 收官**：修复 PR #189 5 项缺陷并补齐全部 P0/P1/P2 评估指标与门禁 |
+| **Wave 49** | `PR-207` (外部数据集契约) → `PR-208` (`GSO`/`Objaverse` +6) → `PR-209` (`ABO`/`Thingi10K` 40套) | **Horizon 13A 结项**：Synapse-Bench 扩展至 40 套真实扫描/PBR/高亏格场景且门禁全维度覆盖 |
+| **Wave 50** | `PR-210` (每周 GPU 烟测) ∥ `PR-211` (`@aether//style`) ∥ `PR-212` (Ruff SSOT 替代 `#163`) | **M51 收官**：消除纯 Mock CI 盲区、激活 `--require-style` 与安全落地 Ruff SSOT 校验 |
+| **Wave 51** | `PR-213` (遗留模块收编) ∥ `PR-214` (`RFC 0061/0062` GPU 硬化) → `PR-215` (4 轨道横向基准 & `v5.0.0`) | **Horizon 13B 结项 (`Release v5.0.0`)**：Post-H10 战略行动全部闭合，4 轨道行业排行榜落地 |
 
 > [!NOTE]
 > **波次排程与依赖管理说明**：
-> 1. **波次与 PR 编号说明**：Wave 24–27 对应 Horizon 7（M25–M28，涵盖 PR-93 ~ PR-110；PR-92 与 PR-111 分别在 Horizon 6 与 Horizon 7 规划中吸收合并至相邻 PR，无逻辑遗漏）；Wave 28–31 对应 Horizon 8（M29–M32，涵盖 PR-112 ~ PR-129）；Wave 32–35 对应 Horizon 9（M33–M36，涵盖 PR-133 ~ PR-152，紧接 Post-H8 整体审查与规划 PR `#132`）。
+> 1. **波次与 PR 编号说明**：Wave 24–27 对应 Horizon 7（M25–M28，涵盖 PR-93 ~ PR-110；PR-92 与 PR-111 分别在 Horizon 6 与 Horizon 7 规划中吸收合并至相邻 PR，无逻辑遗漏）；Wave 28–31 对应 Horizon 8（M29–M32，涵盖 PR-112 ~ PR-129）；Wave 32–35 对应 Horizon 9（M33–M36，涵盖 PR-133 ~ PR-152，紧接 Post-H8 整体审查与规划 PR `#132`）；Wave 36–39 对应 Horizon 10（M37–M40，涵盖 PR-153 ~ PR-172，`Release v4.1.0`）；Wave 40–43 对应 Horizon 11（M41–M44，内部编号 PR-173 ~ PR-192 / GH `#165–#184` 及随后 `#185–#189`，`Release v4.2.0`）；Wave 44–51 对应 Horizon 12–13B（M45–M52，涵盖 PR-193 ~ PR-215）。
 > 2. **`uv.lock` 纳管策略**：本仓依赖版本统一由 `pyproject.toml` 标准声明，保持跨平台（Linux x86_64 / ARM64, macOS, Windows）灵活性；本地开发若使用 `uv` 产生的 `uv.lock` 属于本地临时文件，不纳入 Git 强锁版本追踪，以避免与下游生态（`foundary` 容器、Colab 预装环境）产生版本锁定冲突。
 
 ---
@@ -687,6 +765,54 @@ flowchart LR
 | **[PR-171](plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md#pr-171)** | M40 | 清零 `bench`/`generators` 自身 4 条 `DeprecationWarning`、分层重型 `test_recon` 与 `xdist_group` 共享往返建图，达成单进程快测 **`<= 20s`** / 慢测 **`<= 40s`** | PR-166, 167, 169 | ~300 行 | 1.0d | `time pytest -m 'not slow' -W error::DeprecationWarning <= 20s` + `-m slow -n auto <= 40s` | ✅ 已合入 |
 | **[PR-172](plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md#pr-172)** | M40 | `ubuntu24` 与远端 GitHub Actions 双端实测全部 **14 项反作弊硬门禁全绿**，封板发布 **`Release v4.1.0`** | PR-168, 170, 171 | ~160 行 | 0.5d | Horizon 10 全部 **14 项反作弊硬门禁** + GitHub Actions 5/5 绿灯 | ✅ 已合入 |
 
+### 4.11 Horizon 11：全库硬化、科学正确性与 16 门禁封板 `v4.2.0` + 几何质量指标（M41–M44，详见 [`CHANGELOG.md`](../CHANGELOG.md#L8-L41)） ✅ 已完成
+
+| 阶段 / PR | 里程碑 | 核心交付摘要（对应 GH `#165 ~ #189`） | 前置依赖 | 验收状态 |
+| :---: | :---: | :--- | :---: | :---: |
+| **`PR-173 ~ PR-177`** | M41 | Colab 看门狗/TLS 加固、GitHub Actions 5/5 Jobs 修通、`mypy --strict`/Ruff 零告警、`safe_urlopen` SSRF 防护与原子 `PersistentHitlLedger` | PR-172 | ✅ 已合入 (`v4.2.0`) |
+| **`PR-178 ~ PR-182`** | M42 | C++/NumPy `camera_math` parity、`MeshData` 保拓扑、FGPP Vulkan/Reversed-Z 加固、1:1 Go `JobBundle`、15ch 软光栅回退与双向 `wire_guard` | PR-177 | ✅ 已合入 (`v4.2.0`) |
+| **`PR-183 ~ PR-187`** | M43 | C1 二次有理软肩、16px 环带 LAB、`WanAdapter` 切镜重锚定与 `ControlNeXtPatchifyStem`、流式因果 `FeatureStore` 与真多包正交 `lora merge` | PR-182 | ✅ 已合入 (`v4.2.0`) |
+| **`PR-188 ~ PR-192` + `#185–#188`** | M44 | 无旋转视差 6-DoF + QEM Link Condition、精确 DST-I Poisson 融合、激活全 30 场景、4-Tab `Data Inspector`、15× QEM & 13.5× EXR 读提速、LF 行尾规范与 16 项硬门禁封板 **`v4.2.0`** | PR-187 | ✅ 已合入 (`v4.2.0`) |
+| **`GH #189`** | Post-H11 | 在 `recon/geometry.py` 落地 `compute_euler_characteristic`、`count_non_manifold_edges`、`compute_uv_area_distortion_ratio`、`compute_seam_discontinuity_deg`、`compute_texel_density_variance` 并接入 `model_evaluator.py`（其余缺陷加固见 `PR-203`） | `v4.2.0` | ✅ 已合入 (`45b8461`) |
+
+### 4.12 Horizon 12：`PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩（M45–M48，共 10 PRs，详见 [PLAN-M45-M48](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md)） 📋 规划就绪
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M45-M48](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md) 查看详情） | 跨仓源编号 | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-193](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-193)** | M45 | `cli/_recon.py` 支持 MP4/MOV/MKV 流式解封装并输出 `@aether//fgpp` 15ch EXR 序列 | `PR-100-14` | `45b8461` | ~420 行 | `test_recon_invert_cli.py`, `test_fgpp_io.py` | 📋 待启动 |
+| **[PR-194](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-194)** | M45 | `foundary_client.py` 扩齐 `dust3r`/`metric3d`/`cotracker3`/`wham`/`delight` + `tracking.py` 仿射尺度锚定（`<= 3%`） | `PR-100-14` | PR-193 | ~480 行 | `G100-10`（SAM2 `>= 98%`, 重投影 `<= 1.2 px`） | 📋 待启动 |
+| **[PR-195](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-195)** | M46 | 自适应视点覆盖关键帧挑选 + `foundary` TRELLIS/Hunyuan3D 生成接入与严格红线 #3 | `PR-100-15` | PR-193, 194 | ~440 行 | `test_recon_multiview.py`, `test_recon_closed_loop_e2e.py` | 📋 待启动 |
+| **[PR-196](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-196)** | M46 | 封装 `aether_geo_worker`（消费 `aether#477` `remediate` 与 `quadriflow` 契约，桩/缺件按 `NEG-100-08` 严格退 `50`/`10`） | `PR-100-15` | PR-195 | ~460 行 | `G100-10`, `NEG-100-08` | 📋 待启动 |
+| **[PR-197](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-197)** | M47 | `kinematics.py` 清除过时注释，生产路径强制桥接 `@aether//animation` / `fulgur::animation` C++ IK（Python 仅留 Oracle） | `PR-100-16` | PR-194, 196 | ~420 行 | `G100-11`（足滑 `<= 0.2 cm`）, `NEG-100-08/09` | 📋 待启动 |
+| **[PR-198](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-198)** | M47 | `recon.loop` 对接 `fulgur` Slang `[Differentiable]` 无头可微光栅残差 Pass（保留 Mitsuba/CPU 对照） | `PR-100-16` | PR-197 | ~460 行 | `G100-11`（IoU `>= 0.90`, Depth RMSE `<= 0.03 m`） | 📋 待启动 |
+| **[PR-199](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-199)** | M47 | `delight.py` 接入 C++ Graph-Cut 缝合与扩散去光照；替换 `_write_minimal_usda` 为 RFC 0058 OpenUSD/OpenPBR + Visual-JEV/HITL | `PR-100-17` | PR-198 | ~520 行 | `G100-11`（缝 `ΔE00 <= 2.0`, Jev `>= 0.85`） | 📋 待启动 |
+| **[PR-200](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-200)** | M47 | `RFC 0061 Phase 4`：3DGS 球谐/方差分级量化 + `@aether//compress` 点云 Draco 桥接（协同 `PR-98-07`） | `PR-100-17` | PR-196 | ~420 行 | `G100-12`（压缩比 `>= 70%`, `ΔPSNR <= 0.5 dB`） | 📋 待启动 |
+| **[PR-201](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-201)** | M48 | `colab_runner.py` 新增 `E6` 野生真实视频数字孪生与 3DGS 压缩端到端基准（Drive SSOT V2.0 + `runtime.unassign`） | `PR-100-18` | PR-199, 200 | ~380 行 | `colab-gpu` 实跑 E6 + `test_colab_runner.py` | 📋 待启动 |
+| **[PR-202](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md#pr-202)** | M48 | 固化 `NEG-100-08/09` 负向变异测试、同步文档并生成回填 `all-overview` `IMPL-0060/0061/0063/0065` 签收证据 | `PR-100-18/19` | PR-201 | ~320 行 | 16 项硬门禁 + `NEG-100-08/09` 全绿 | 📋 待启动 |
+
+### 4.13 Horizon 13A：PR #189 缺陷加固、3D 评估全指标闭环与外部基准数据集（M49–M50，共 7 PRs，详见 [PLAN-M49-M50](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md)） 📋 规划就绪
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M49-M50](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md) 查看详情） | 对应 Backlog | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-203](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-203)** | M49 | 加固 PR #189 5 项实现缺陷（孤立顶点 $\chi$、bowtie 顶点、3D 焊接接缝法线跳变、无 UV Fail-Closed、HTML 渲染与 `profiles` 门禁） | `#189` 复核 | `45b8461` | ~420 行 | `test_geometry_advanced_metrics.py`, `test_eval_report.py` | 📋 待启动 |
+| **[PR-204](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-204)** | M49 | 实现 `metrics/perceptual.py` 懒加载 `dino_cosine_sim` (`>= 0.85`) 与 `lpips_vgg` (`<= 0.15`) 并挂载 `model_evaluator` | `P0-Perceptual` | PR-203 | ~380 行 | `test_metrics_perceptual.py`（快测 0 torch import） | 📋 待启动 |
+| **[PR-205](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-205)** | M49 | 实现 `discrete_mean_curvature_variance`、`surface_roughness_var` (`<= 0.08`) 与 `macro.py` `patch_lpips` (`<= 0.12`) | `P1-Curvature` | PR-203 | ~420 行 | `test_geometry_advanced_metrics.py`, `test_inspect_macro.py` | 📋 待启动 |
+| **[PR-206](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-206)** | M49 | 实现 `align.py` `add_s_norm` (`<= 0.05`) 与 `reprojection_error_px` (`<= 4.0 px`)；补齐 `histogram_intersection` 门禁 | `P2-Misc` | PR-203 | ~340 行 | `test_inspect_align.py`, `test_profiles_doc_sync.py` | 📋 待启动 |
+| **[PR-207](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-207)** | M50 | 扩展 `AssetSource`（`GSO`/`ABO`/`OMNIOBJECT3D`/`THINGI10K`）、许可证/拓扑入库预检与离线 `fallback_procedural` | `P1-Data` | PR-203 | ~420 行 | `test_bench.py`, `wire_guard.py --check` | 📋 待启动 |
+| **[PR-208](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-208)** | M50 | 接入 P0 外部扫描/长尾资产（GSO + Objaverse-XL，+6 套 T1/T2 场景，场景总数 `30 → 36`） | `P1-Data` | PR-207 | ~380 行 | `test_bench_runner.py`, `prepare_benchmark_assets.py` | 📋 待启动 |
+| **[PR-209](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md#pr-209)** | M50 | 接入 ABO/OmniObject3D/Thingi10K（+4 套至 **40 套**）并校验 `evaluate_metrics_gate(..., "rsi_promotion")` 全指标覆盖 | `P1-Data` | PR-204..206, 208 | ~360 行 | `test_rfc0063_metrics.py`, `check_doc_links.py` | 📋 待启动 |
+
+### 4.14 Horizon 13B：Post-H10 战略待办收口与 4 轨道行业横向评测（M51–M52，共 6 PRs，详见 [PLAN-M51-M52](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md)） 📋 规划就绪
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M51-M52](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) 查看详情） | 对应行动项 | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[PR-210](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-210)** | M51 | 新增 `run_gpu_smoke.py` 建立每周 Colab/CUDA 真实 `Wan 2.1 + ControlNeXt + LoRA` 自动化烟测闭环 | Post-H10 `P0` | `45b8461` | ~380 行 | `test_gpu_smoke_cli.py` + `colab-gpu` 实跑 JSON | 📋 待启动 |
+| **[PR-211](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-211)** | M51 | 协同上游 `@aether//style` `style_types.h` 落地后激活 `wire_guard --require-style` 双向硬校验 | Post-H10 `P1` | `45b8461` | ~320 行 | `wire_guard.py --check --require-aether --require-style` | 📋 待启动 |
+| **[PR-212](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-212)** | M51 | 新增 `tools/sync_ruff_ssot.py` 安全校验 `rules_dervgen_env` Ruff SSOT 一致性并关闭挂起 Open PR `#163` | Open PR `#163` | `45b8461` | ~220 行 | `ruff check` + `sync_ruff_ssot.py --check` | 📋 待启动 |
+| **[PR-213](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-213)** | M52 | 将 `synapse.generators` 与 `synapse.models` 遗留模块收编入 `synapse.bench`（保留零警告兼容 shim） | Post-H10 `P2` | `45b8461` | ~420 行 | `test_dataset_and_viewer.py`, `import_dag_guard.py` | 📋 待启动 |
+| **[PR-214](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-214)** | M52 | 在 `colab-gpu` 用真实非 Mock 大模型权重验证 `SYN-RFC-0061` 解剖修补融合与 `SYN-RFC-0062` LookDev 可微闭环 | Post-H10 `P1` | PR-210 | ~440 行 | `test_refine_fusion.py`, `test_recon_closed_loop_e2e.py` | 📋 待启动 |
+| **[PR-215](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-215)** | M52 | 落地 `Synapse-Bench` 4 轨道行业横向评测排行榜与 `synapse-bench compare`，全 16 门禁全绿封板 **`Release v5.0.0`** | Post-H10 `P2` | PR-211..214 | ~480 行 | `test_bench_runner.py`, `test_rfc0063_metrics.py`, 16 门禁 | 📋 待启动 |
+
 ---
 
 ## 5. 全局关键风险与防御机制矩阵 (Master Risk Register)
@@ -728,6 +854,11 @@ flowchart LR
 | **RK-33** | 红线 #3 因 `vertex_count>=1500` 自旁路、`TiledBypassExecutor` 把检测置信度 `0.9` 当健康分全旁路及 `rsi/curriculum` 将 `0.0`/崩溃洗白为 `0.85` | M39 / M40 (`PR-164`, `PR-165`, `PR-167`) | `has_gen3d_highpoly` 默认严格 `False`；分离 `detection_confidence` 与 `anatomical_quality_score`；RSI 显式判 `is not None` 与 `rep.error -> 0.0` |
 | **RK-34** | `DiffusersWanBackend` 错参空壳、`Mitsuba` `np.array` 截断 AD 梯度、`MultiModelRefineFusion` 3 核代数退化及 `Data Inspector` 死状态未进 `renderFrame()` | M39 / M40 (`PR-161`, `PR-164`, `PR-165`, `PR-168`) | 真 `Wan2.1-Diffusers` 签名+潜空间融合；DrJit 原生 AD 连通图；分频/梯度域真融合算子；`Data Inspector` `renderFrame()` 真实消费 15ch EXR/多实体/4-Tab 并根治 `resize` 冻屏 |
 | **RK-35** | `bundle_worker` 沙箱前 SHA256 Oracle、`http_security` DNS Rebinding、`trainer` `weights_only=False` RCE、`viewer` 占位符 XSS 与 `vscode_tunnel.sh` `curl -k` | M37 / M38 / M39 / M40 (`PR-155`, `PR-159`, `PR-162`, `PR-167`) | 沙箱前置校验、DNS IP 强绑定禁代理、强制 `weights_only=True`、单次 `re.sub` 防 XSS 与全脚本开启 TLS 证书校验 |
+| **RK-36** | `@aether//tools:aether_geo_worker --algorithm quadriflow` 当前仍为退码 `1` 契约桩，若静默回退 Python 将违反 `NEG-100-08` | M46 (`PR-196`) | 生产路径调用 `aether_geo_worker` 失败/返回桩退出码时严格抛 `ExitCode.NOT_IMPLEMENTED=50` 或 `10`，严禁悄悄降级 Python Oracle |
+| **RK-37** | `synapse.recon.kinematics` 保留过时注释与纯 Python IK 主路径违反「零 Python 生产几何/运动学」铁律 | M47 (`PR-197`) | 强制生产默认 `backend="native"` 桥接 `@aether//animation` / `fulgur::animation` C++ IK，Python 仅留 `tests/` Oracle；足滑 `> 0.5 cm` 退码 `40`（`NEG-100-09`） |
+| **RK-38** | PR #189 欧拉数计入孤立顶点、接缝法线未跨 UV 接缝计算（OBJ 拆点时恒返回 `0.0°`）及无 UV 网格伪造满分 | M49 (`PR-203`) | 仅统计 `np.unique(faces)` 引用顶点、按 3D 空间位置焊接识别 UV 接缝边并测两侧面/分裂顶点法线跳变、无 UV 网格 Fail-Closed 且完善 HTML 报告与 `profiles` 门禁 |
+| **RK-39** | 外部 3D 数据集（`GSO`/`Objaverse`/`ABO`/`Thingi10K`）在离线或公网 CI 无缓存环境中触发下载失败或拖垮 20s 快测 SLA | M50 (`PR-207`, `208`) | 强制所有外部场景配置 `fallback_procedural` 降级与 SHA-256/许可证白名单，`external_data` 标记重资源拉取，确保离线 CI `0 skipped` 与快测 `<= 20s` |
+| **RK-40** | Open PR `#163` 直接在 `pyproject.toml` 写相对路径 `extend = "../rules_dervgen_env/..."` 导致无父仓 CI 环境 `ruff check` 崩溃 | M51 (`PR-212`) | 维持单仓自包含 `pyproject.toml`，通过独立校验脚本 `tools/sync_ruff_ssot.py --check` 在父仓存在时校验一致性，缺失时安全跳过 |
 
 ---
 
