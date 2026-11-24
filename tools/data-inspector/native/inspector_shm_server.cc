@@ -33,21 +33,22 @@ namespace {
 
 }  // namespace
 
-InspectorShmServer::~InspectorShmServer() { close(); }
+InspectorShmServer::~InspectorShmServer() {
+  close();
+}
 
-bool InspectorShmServer::open(std::string_view name, uint32_t width,
-                              uint32_t height, bool unlinkOnClose) {
+bool InspectorShmServer::open(std::string_view name, uint32_t width, uint32_t height,
+                              bool unlinkOnClose) {
   close();
 
-  if (width == 0 || height == 0 || width > kMaxDimension ||
-      height > kMaxDimension || name.empty()) {
+  if (width == 0 || height == 0 || width > kMaxDimension || height > kMaxDimension ||
+      name.empty()) {
     return false;
   }
 
   const size_t requiredSize = computeTotalSize(width, height);
   auto shmResult = aether::pal::SharedMemory::create(
-      name, requiredSize, aether::pal::ShmCreate::CreateNew,
-      aether::pal::ShmAccess::ReadWrite);
+      name, requiredSize, aether::pal::ShmCreate::CreateNew, aether::pal::ShmAccess::ReadWrite);
   if (!shmResult.isOk()) {
     return false;
   }
@@ -105,12 +106,12 @@ void InspectorShmServer::close() noexcept {
   m_stagingIdx = 0;
 }
 
-bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
-                                  uint32_t height, bool unlinkOnClose) {
+bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width, uint32_t height,
+                                  bool unlinkOnClose) {
   close();
 
-  if (width == 0 || height == 0 || width > kMaxDimension ||
-      height > kMaxDimension || filePath.empty()) {
+  if (width == 0 || height == 0 || width > kMaxDimension || height > kMaxDimension ||
+      filePath.empty()) {
     return false;
   }
 
@@ -118,10 +119,9 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
   const std::string pathStr(filePath);
 
 #if defined(_WIN32)
-  HANDLE hFile = ::CreateFileA(
-      pathStr.c_str(), GENERIC_READ | GENERIC_WRITE,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
-      FILE_ATTRIBUTE_NORMAL, nullptr);
+  HANDLE hFile = ::CreateFileA(pathStr.c_str(), GENERIC_READ | GENERIC_WRITE,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL, nullptr);
   if (hFile == INVALID_HANDLE_VALUE) {
     return false;
   }
@@ -131,15 +131,15 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
     ::CloseHandle(hFile);
     return false;
   }
-  HANDLE hMapping = ::CreateFileMappingA(
-      hFile, nullptr, PAGE_READWRITE, li.HighPart, li.LowPart, nullptr);
+  HANDLE hMapping =
+      ::CreateFileMappingA(hFile, nullptr, PAGE_READWRITE, li.HighPart, li.LowPart, nullptr);
   ::CloseHandle(hFile);
   if (!hMapping) {
     return false;
   }
   auto shmResult = aether::pal::SharedMemory::fromHandle(
-      aether::pal::PlatformHandle(hMapping, aether::pal::HandleType::SharedMemory),
-      requiredSize, aether::pal::ShmAccess::ReadWrite);
+      aether::pal::PlatformHandle(hMapping, aether::pal::HandleType::SharedMemory), requiredSize,
+      aether::pal::ShmAccess::ReadWrite);
 #else
   int fd = ::open(pathStr.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW, 0600);
   if (fd < 0) {
@@ -150,8 +150,8 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width,
     return false;
   }
   auto shmResult = aether::pal::SharedMemory::fromHandle(
-      aether::pal::PlatformHandle(fd, aether::pal::HandleType::File),
-      requiredSize, aether::pal::ShmAccess::ReadWrite);
+      aether::pal::PlatformHandle(fd, aether::pal::HandleType::File), requiredSize,
+      aether::pal::ShmAccess::ReadWrite);
 #endif
 
   if (!shmResult.isOk()) {
@@ -208,21 +208,18 @@ uint8_t* InspectorShmServer::frontBuffer() noexcept {
   // No longer calls beginFrame() here — the Seqlock odd transition is deferred
   // to publishFrame() to avoid blocking the CPU rasterizer under the lock.
   const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
-  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) +
-                           frameBytes * m_stagingIdx);
+  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * m_stagingIdx);
 }
 
 const uint8_t* InspectorShmServer::publishedBuffer() const noexcept {
   if (!m_shm.isValid()) return nullptr;
   const auto* hdr = m_shm.as<InspectorShmHeader>(0);
-  const uint32_t pubIdx =
-      hdr->writeIdx.load(std::memory_order_acquire) % kShmBufferCount;
+  const uint32_t pubIdx = hdr->writeIdx.load(std::memory_order_acquire) % kShmBufferCount;
   const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
   return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * pubIdx);
 }
 
-uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime,
-                                          uint8_t debugView) noexcept {
+uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime, uint8_t debugView) noexcept {
   if (!m_shm.isValid()) return 0;
   auto* hdr = m_shm.as<InspectorShmHeader>(0);
 

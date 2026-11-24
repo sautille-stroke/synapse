@@ -38,47 +38,35 @@ inline constexpr std::string_view kDefaultShmName = "/inspector-frame";
 
 /// @brief 64-byte cache-line-aligned header at the start of the SHM region.
 struct InspectorShmHeader {
-  uint32_t magic;                     ///< Must be kInspectorShmMagic (offset 0).
-  uint32_t version;                   ///< Protocol version (offset 4).
-  uint32_t width;                     ///< Frame width in pixels (offset 8).
-  uint32_t height;                    ///< Frame height in pixels (offset 12).
-  std::atomic<uint32_t> writeIdx;     ///< Buffer index (0..2) of latest completed frame (offset 16).
-  uint32_t bufferCount;               ///< Number of frame buffers (offset 20).
-  std::atomic<uint64_t> frameReady;   ///< Seqlock sequence: even=stable, odd=writing (offset 24).
-  std::atomic<float> fps;             ///< Measured FPS (offset 32).
-  std::atomic<float> deltaTime;       ///< Last frame delta in seconds (offset 36).
-  std::atomic<uint8_t> debugView;     ///< Active debug view mode (offset 40).
-  uint8_t _pad0[3];                   ///< Alignment padding (offset 41..43).
-  std::atomic<uint32_t> generation;   ///< Resize generation counter (offset 44). Bumped on resizeViewport.
-  uint8_t reserved[16];              ///< Pad to 64 bytes (offset 48..63).
+  uint32_t magic;                    ///< Must be kInspectorShmMagic (offset 0).
+  uint32_t version;                  ///< Protocol version (offset 4).
+  uint32_t width;                    ///< Frame width in pixels (offset 8).
+  uint32_t height;                   ///< Frame height in pixels (offset 12).
+  std::atomic<uint32_t> writeIdx;    ///< Buffer index (0..2) of latest completed frame (offset 16).
+  uint32_t bufferCount;              ///< Number of frame buffers (offset 20).
+  std::atomic<uint64_t> frameReady;  ///< Seqlock sequence: even=stable, odd=writing (offset 24).
+  std::atomic<float> fps;            ///< Measured FPS (offset 32).
+  std::atomic<float> deltaTime;      ///< Last frame delta in seconds (offset 36).
+  std::atomic<uint8_t> debugView;    ///< Active debug view mode (offset 40).
+  uint8_t _pad0[3];                  ///< Alignment padding (offset 41..43).
+  std::atomic<uint32_t>
+      generation;        ///< Resize generation counter (offset 44). Bumped on resizeViewport.
+  uint8_t reserved[16];  ///< Pad to 64 bytes (offset 48..63).
 };
 
-static_assert(sizeof(InspectorShmHeader) == 64,
-              "InspectorShmHeader must be exactly 64 bytes");
-static_assert(offsetof(InspectorShmHeader, magic) == 0,
-              "magic offset must be 0");
-static_assert(offsetof(InspectorShmHeader, version) == 4,
-              "version offset must be 4");
-static_assert(offsetof(InspectorShmHeader, width) == 8,
-              "width offset must be 8");
-static_assert(offsetof(InspectorShmHeader, height) == 12,
-              "height offset must be 12");
-static_assert(offsetof(InspectorShmHeader, writeIdx) == 16,
-              "writeIdx offset must be 16");
-static_assert(offsetof(InspectorShmHeader, bufferCount) == 20,
-              "bufferCount offset must be 20");
-static_assert(offsetof(InspectorShmHeader, frameReady) == 24,
-              "frameReady offset must be 24");
-static_assert(offsetof(InspectorShmHeader, fps) == 32,
-              "fps offset must be 32");
-static_assert(offsetof(InspectorShmHeader, deltaTime) == 36,
-              "deltaTime offset must be 36");
-static_assert(offsetof(InspectorShmHeader, debugView) == 40,
-              "debugView offset must be 40");
-static_assert(offsetof(InspectorShmHeader, generation) == 44,
-              "generation offset must be 44");
-static_assert(offsetof(InspectorShmHeader, reserved) == 48,
-              "reserved offset must be 48");
+static_assert(sizeof(InspectorShmHeader) == 64, "InspectorShmHeader must be exactly 64 bytes");
+static_assert(offsetof(InspectorShmHeader, magic) == 0, "magic offset must be 0");
+static_assert(offsetof(InspectorShmHeader, version) == 4, "version offset must be 4");
+static_assert(offsetof(InspectorShmHeader, width) == 8, "width offset must be 8");
+static_assert(offsetof(InspectorShmHeader, height) == 12, "height offset must be 12");
+static_assert(offsetof(InspectorShmHeader, writeIdx) == 16, "writeIdx offset must be 16");
+static_assert(offsetof(InspectorShmHeader, bufferCount) == 20, "bufferCount offset must be 20");
+static_assert(offsetof(InspectorShmHeader, frameReady) == 24, "frameReady offset must be 24");
+static_assert(offsetof(InspectorShmHeader, fps) == 32, "fps offset must be 32");
+static_assert(offsetof(InspectorShmHeader, deltaTime) == 36, "deltaTime offset must be 36");
+static_assert(offsetof(InspectorShmHeader, debugView) == 40, "debugView offset must be 40");
+static_assert(offsetof(InspectorShmHeader, generation) == 44, "generation offset must be 44");
+static_assert(offsetof(InspectorShmHeader, reserved) == 48, "reserved offset must be 48");
 
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "std::atomic<uint32_t> must be lock-free for cross-process SHM");
@@ -102,8 +90,8 @@ class InspectorShmServer {
   /// @param height        Frame height in pixels (1..kMaxDimension).
   /// @param unlinkOnClose Whether to unlink the SHM object from the OS namespace on close().
   /// @return true on success.
-  [[nodiscard]] bool open(std::string_view name, uint32_t width,
-                          uint32_t height, bool unlinkOnClose = true);
+  [[nodiscard]] bool open(std::string_view name, uint32_t width, uint32_t height,
+                          bool unlinkOnClose = true);
 
   /// @brief Open a file-backed shared memory region for the given resolution.
   /// @param filePath      Filesystem path to use for the memory-mapped file.
@@ -111,8 +99,8 @@ class InspectorShmServer {
   /// @param height        Frame height in pixels (1..kMaxDimension).
   /// @param unlinkOnClose Whether to unlink/delete the file on close.
   /// @return true on success.
-  [[nodiscard]] bool openFile(std::string_view filePath, uint32_t width,
-                              uint32_t height, bool unlinkOnClose = true);
+  [[nodiscard]] bool openFile(std::string_view filePath, uint32_t width, uint32_t height,
+                              bool unlinkOnClose = true);
 
   /// @brief Close and optionally unlink the shared memory region.
   void close() noexcept;

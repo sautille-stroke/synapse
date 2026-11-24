@@ -68,8 +68,7 @@ struct StdinQueueState {
 };
 
 InspectorApp::InspectorApp(InspectorConfig config)
-    : m_config(std::move(config)),
-      m_stdinState(std::make_shared<StdinQueueState>()) {
+    : m_config(std::move(config)), m_stdinState(std::make_shared<StdinQueueState>()) {
   initDefaultMesh();
 }
 
@@ -87,16 +86,16 @@ InspectorApp::~InspectorApp() {
 void InspectorApp::initDefaultMesh() {
   // Canonical 3D cube (8 vertices, 12 triangles)
   m_mesh.vertices = {
-      -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
-      -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,
+      -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
+      -1.0f, -1.0f, 1.0f,  1.0f, -1.0f, 1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 1.0f,
   };
   m_mesh.faces = {
-      0, 2, 1,  0, 3, 2,  // Front (-Z)
-      4, 5, 6,  4, 6, 7,  // Back (+Z)
-      0, 1, 5,  0, 5, 4,  // Bottom (-Y)
-      3, 6, 2,  3, 7, 6,  // Top (+Y)
-      0, 4, 7,  0, 7, 3,  // Left (-X)
-      1, 2, 6,  1, 6, 5,  // Right (+X)
+      0, 2, 1, 0, 3, 2,  // Front (-Z)
+      4, 5, 6, 4, 6, 7,  // Back (+Z)
+      0, 1, 5, 0, 5, 4,  // Bottom (-Y)
+      3, 6, 2, 3, 7, 6,  // Top (+Y)
+      0, 4, 7, 0, 7, 3,  // Left (-X)
+      1, 2, 6, 1, 6, 5,  // Right (+X)
   };
   m_mesh.faceNormals.clear();
   for (size_t f = 0; f < m_mesh.faces.size(); f += 3) {
@@ -138,8 +137,8 @@ bool InspectorApp::loadObjMesh(std::string_view objPath, InspectorMesh& outMesh)
   std::error_code ec;
   const auto fileSize = std::filesystem::file_size(std::filesystem::path(pathStr), ec);
   if (ec || fileSize > kMaxObjSize) {
-    std::cerr << "[inspector] OBJ file rejected (size=" << fileSize
-              << ", limit=" << kMaxObjSize << "): " << pathStr << "\n";
+    std::cerr << "[inspector] OBJ file rejected (size=" << fileSize << ", limit=" << kMaxObjSize
+              << "): " << pathStr << "\n";
     return false;
   }
 
@@ -239,9 +238,7 @@ bool InspectorApp::loadObjMesh(std::string_view objPath, InspectorMesh& outMesh)
     const uint32_t i0 = outMesh.faces[f + 0];
     const uint32_t i1 = outMesh.faces[f + 1];
     const uint32_t i2 = outMesh.faces[f + 2];
-    if (i0 * 3 + 2 >= vertexCount ||
-        i1 * 3 + 2 >= vertexCount ||
-        i2 * 3 + 2 >= vertexCount) {
+    if (i0 * 3 + 2 >= vertexCount || i1 * 3 + 2 >= vertexCount || i2 * 3 + 2 >= vertexCount) {
       outMesh.faceNormals.push_back(0.0f);
       outMesh.faceNormals.push_back(1.0f);
       outMesh.faceNormals.push_back(0.0f);
@@ -386,7 +383,8 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
       const int64_t rawPosViewIdx = posAcc["bufferView"].getIntOr(-1);
       const int64_t rawPosAccOffset = posAcc["byteOffset"].getIntOr(0);
 
-      if (rawPosCount <= 0 || rawPosCompType < 0 || rawPosViewIdx < 0 || rawPosAccOffset < 0) continue;
+      if (rawPosCount <= 0 || rawPosCompType < 0 || rawPosViewIdx < 0 || rawPosAccOffset < 0)
+        continue;
 
       // Overflow-safe upper bound check (per-primitive AND cumulative across meshes).
       const size_t currentVerts = loadedVerts.size() / 3u;
@@ -414,7 +412,8 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
       const size_t posViewOffset = static_cast<size_t>(rawPosViewOffset);
       const size_t posViewByteLength = static_cast<size_t>(rawPosViewByteLength);
 
-      // Enforce bufferView bounds against binChunk AND accessor bounds against bufferView.byteLength
+      // Enforce bufferView bounds against binChunk AND accessor bounds against
+      // bufferView.byteLength
       if (posViewOffset > binChunk.size() || posViewByteLength > binChunk.size() - posViewOffset) {
         continue;
       }
@@ -424,11 +423,13 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
       // Parse byteStride for interleaved vertex buffers (0 means tightly packed).
       const int64_t rawByteStride = posView["byteStride"].getIntOr(0);
       if (rawByteStride < 0) continue;  // Reject negative byteStride
-      const size_t byteStride = (rawByteStride > 0) ? static_cast<size_t>(rawByteStride) : (3u * sizeof(float));
+      const size_t byteStride =
+          (rawByteStride > 0) ? static_cast<size_t>(rawByteStride) : (3u * sizeof(float));
       if (byteStride < 3u * sizeof(float)) continue;  // stride too small for VEC3
 
       // Enforce full strided extent stays within bufferView.byteLength
-      const size_t lastStrideBytes = (posCount > 1u) ? (static_cast<size_t>(posCount - 1u) * byteStride) : 0u;
+      const size_t lastStrideBytes =
+          (posCount > 1u) ? (static_cast<size_t>(posCount - 1u) * byteStride) : 0u;
       if (lastStrideBytes > posViewByteLength - posAccOffset ||
           (3u * sizeof(float)) > (posViewByteLength - posAccOffset - lastStrideBytes)) {
         continue;
@@ -487,7 +488,8 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
           const int64_t rawIdxViewIdx = idxAcc["bufferView"].getIntOr(-1);
           const int64_t rawIdxAccOffset = idxAcc["byteOffset"].getIntOr(0);
 
-          if (rawIdxCount <= 0 || rawIdxCompType < 0 || rawIdxViewIdx < 0 || rawIdxAccOffset < 0) continue;
+          if (rawIdxCount <= 0 || rawIdxCompType < 0 || rawIdxViewIdx < 0 || rawIdxAccOffset < 0)
+            continue;
 
           // Overflow-safe upper bound check (per-primitive AND cumulative).
           if (static_cast<uint64_t>(rawIdxCount) > kMaxMeshIndices ||
@@ -510,7 +512,8 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
             const size_t idxViewByteLength = static_cast<size_t>(rawIdxViewByteLength);
 
             // Enforce bufferView bounds against binChunk and accessor offset within bufferView
-            if (idxViewOffset > binChunk.size() || idxViewByteLength > binChunk.size() - idxViewOffset) {
+            if (idxViewOffset > binChunk.size() ||
+                idxViewByteLength > binChunk.size() - idxViewOffset) {
               continue;
             }
             if (idxAccOffset > idxViewByteLength) continue;
@@ -525,7 +528,8 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
               if (totalIdxBytes > idxViewRemaining) continue;
               const uint8_t* idxData = binChunk.data() + idxByteOffset;
               for (size_t i = 0; i + 2 < idxCount; i += 3) {
-                if (idxData[i] < posCount && idxData[i + 1] < posCount && idxData[i + 2] < posCount) {
+                if (idxData[i] < posCount && idxData[i + 1] < posCount &&
+                    idxData[i + 2] < posCount) {
                   loadedFaces.push_back(baseVertex + idxData[i]);
                   loadedFaces.push_back(baseVertex + idxData[i + 1]);
                   loadedFaces.push_back(baseVertex + idxData[i + 2]);
@@ -609,9 +613,7 @@ bool InspectorApp::loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh)
     const uint32_t i0 = outMesh.faces[f + 0];
     const uint32_t i1 = outMesh.faces[f + 1];
     const uint32_t i2 = outMesh.faces[f + 2];
-    if (i0 * 3 + 2 >= vertexCount ||
-        i1 * 3 + 2 >= vertexCount ||
-        i2 * 3 + 2 >= vertexCount) {
+    if (i0 * 3 + 2 >= vertexCount || i1 * 3 + 2 >= vertexCount || i2 * 3 + 2 >= vertexCount) {
       outMesh.faceNormals.push_back(0.0f);
       outMesh.faceNormals.push_back(1.0f);
       outMesh.faceNormals.push_back(0.0f);
@@ -773,8 +775,7 @@ bool InspectorApp::loadExrAov(const std::string& path) {
     m_hasExrAov = true;
   }
 
-  std::cerr << "[inspector] Loaded EXR AOV: " << path
-            << " (" << img.width << "x" << img.height
+  std::cerr << "[inspector] Loaded EXR AOV: " << path << " (" << img.width << "x" << img.height
             << ", " << img.channels.size() << " channels)\n";
   return true;
 }
@@ -806,8 +807,8 @@ bool InspectorApp::isEntityVisible(std::string_view name) const noexcept {
 }
 
 void InspectorApp::setActiveTab(std::string_view tab) noexcept {
-  static const std::array<std::string_view, 4> kValidTabs = {
-      "source", "animation", "video", "comparison"};
+  static const std::array<std::string_view, 4> kValidTabs = {"source", "animation", "video",
+                                                             "comparison"};
   for (const auto& t : kValidTabs) {
     if (t == tab) {
       m_activeTab = std::string(tab);
@@ -875,7 +876,8 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
       return;
     }
 
-    std::filesystem::path resolved = std::filesystem::weakly_canonical(bundleRoot / candidatePath, ec);
+    std::filesystem::path resolved =
+        std::filesystem::weakly_canonical(bundleRoot / candidatePath, ec);
     if (ec) return;
 
     // Path traversal check: must resolve inside bundleRoot
@@ -909,9 +911,8 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
         loaded = loadObjMesh(resolvedStr, entity.mesh);
       }
       if (loaded) {
-        std::cerr << "[inspector] Loaded " << ext.substr(1)
-                  << " mesh entity '" << entityName << "': "
-                  << resolvedStr << "\n";
+        std::cerr << "[inspector] Loaded " << ext.substr(1) << " mesh entity '" << entityName
+                  << "': " << resolvedStr << "\n";
         m_entities.push_back(std::move(entity));
         // Set primary mesh from first loaded entity (backward compat).
         if (m_entities.size() == 1) {
@@ -929,8 +930,7 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
         for (const auto& entry : std::filesystem::directory_iterator(resolved, dirEc)) {
           if (dirEc) break;
           std::error_code entryEc;
-          if (entry.is_regular_file(entryEc) && !entryEc &&
-              entry.path().extension() == ".exr") {
+          if (entry.is_regular_file(entryEc) && !entryEc && entry.path().extension() == ".exr") {
             // Load the first EXR in the sequence as the representative frame
             if (loadExrAov(entry.path().string())) {
               std::cerr << "[inspector] Loaded EXR AOV from dir: " << entry.path().string() << "\n";
@@ -961,8 +961,8 @@ bool InspectorApp::validateAndLoadBundle(std::string_view bundlePath) {
   }
 
   std::cerr << "[inspector] Loaded bundle: " << m_config.bundlePath
-            << " (verts=" << (m_mesh.vertices.size() / 3)
-            << ", faces=" << (m_mesh.faces.size() / 3) << ")\n";
+            << " (verts=" << (m_mesh.vertices.size() / 3) << ", faces=" << (m_mesh.faces.size() / 3)
+            << ")\n";
   return true;
 }
 
@@ -976,30 +976,27 @@ bool InspectorApp::init() {
   // Open SHM: file-backed or POSIX shm_open depending on config.
   bool shmOk = false;
   if (m_config.useShmFile && !m_config.shmFilePath.empty()) {
-    shmOk = m_shm.openFile(m_config.shmFilePath, m_config.width, m_config.height,
-                            !m_config.keepShm);
+    shmOk =
+        m_shm.openFile(m_config.shmFilePath, m_config.width, m_config.height, !m_config.keepShm);
     if (!shmOk) {
       std::cerr << "[inspector] Failed to open file-backed SHM: " << m_config.shmFilePath << "\n";
       return false;
     }
     std::cerr << "[inspector] File-backed SHM opened: " << m_config.shmFilePath << " ("
-              << m_config.width << "x" << m_config.height << ", "
-              << m_shm.totalSize() << " bytes)\n";
+              << m_config.width << "x" << m_config.height << ", " << m_shm.totalSize()
+              << " bytes)\n";
   } else {
-    shmOk = m_shm.open(m_config.shmName, m_config.width, m_config.height,
-                        !m_config.keepShm);
+    shmOk = m_shm.open(m_config.shmName, m_config.width, m_config.height, !m_config.keepShm);
     if (!shmOk) {
       std::cerr << "[inspector] Failed to open SHM region: " << m_config.shmName << "\n";
       return false;
     }
-    std::cerr << "[inspector] SHM opened: " << m_config.shmName << " ("
-              << m_config.width << "x" << m_config.height << ", "
-              << m_shm.totalSize() << " bytes)\n";
+    std::cerr << "[inspector] SHM opened: " << m_config.shmName << " (" << m_config.width << "x"
+              << m_config.height << ", " << m_shm.totalSize() << " bytes)\n";
   }
   std::cerr << "[inspector] RHI backend: " << m_config.rhiBackend
             << " (diagnostic SHM rasterizer)\n";
-  std::cerr << "[inspector] Headless: "
-            << (m_config.headless ? "true" : "false") << "\n";
+  std::cerr << "[inspector] Headless: " << (m_config.headless ? "true" : "false") << "\n";
 
   // Prevent double thread spawn on repeated init()
   if (m_stdinThread.joinable()) {
@@ -1083,8 +1080,7 @@ void InspectorApp::run() {
 
   while (m_running.load(std::memory_order_acquire)) {
     const auto now = Clock::now();
-    const float deltaTime =
-        std::chrono::duration<float>(now - lastTime).count();
+    const float deltaTime = std::chrono::duration<float>(now - lastTime).count();
     lastTime = now;
 
     accumulatedTime += deltaTime;
@@ -1114,8 +1110,7 @@ void InspectorApp::run() {
 
     totalFrames++;
     if (m_config.maxFrames > 0 && totalFrames >= m_config.maxFrames) {
-      std::cerr << "[inspector] Reached maxFrames (" << m_config.maxFrames
-                << "), exiting\n";
+      std::cerr << "[inspector] Reached maxFrames (" << m_config.maxFrames << "), exiting\n";
       requestQuit();
       break;
     }
@@ -1133,8 +1128,7 @@ void InspectorApp::run() {
     }
 
     const auto frameEnd = Clock::now();
-    const float elapsed =
-        std::chrono::duration<float>(frameEnd - now).count();
+    const float elapsed = std::chrono::duration<float>(frameEnd - now).count();
     const float sleepTime = (1.0f / 60.0f) - elapsed;
     if (sleepTime > 0.001f) {
       std::this_thread::sleep_for(std::chrono::duration<float>(sleepTime));
@@ -1188,32 +1182,42 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
             }
             case DebugViewMode::kNormal: {
               if (srcIdx * 3 + 2 < m_fgppAov.normal.size()) {
-                cr = static_cast<uint8_t>(std::clamp((m_fgppAov.normal[srcIdx * 3 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-                cg = static_cast<uint8_t>(std::clamp((m_fgppAov.normal[srcIdx * 3 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-                cb = static_cast<uint8_t>(std::clamp((m_fgppAov.normal[srcIdx * 3 + 2] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                cr = static_cast<uint8_t>(std::clamp(
+                    (m_fgppAov.normal[srcIdx * 3 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                cg = static_cast<uint8_t>(std::clamp(
+                    (m_fgppAov.normal[srcIdx * 3 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                cb = static_cast<uint8_t>(std::clamp(
+                    (m_fgppAov.normal[srcIdx * 3 + 2] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
               }
               break;
             }
             case DebugViewMode::kAlbedo: {
               if (srcIdx * 3 + 2 < m_fgppAov.baseColor.size()) {
-                cr = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 0] * 255.0f, 0.0f, 255.0f));
-                cg = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 1] * 255.0f, 0.0f, 255.0f));
-                cb = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 2] * 255.0f, 0.0f, 255.0f));
+                cr = static_cast<uint8_t>(
+                    std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 0] * 255.0f, 0.0f, 255.0f));
+                cg = static_cast<uint8_t>(
+                    std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 1] * 255.0f, 0.0f, 255.0f));
+                cb = static_cast<uint8_t>(
+                    std::clamp(m_fgppAov.baseColor[srcIdx * 3 + 2] * 255.0f, 0.0f, 255.0f));
               }
               break;
             }
             case DebugViewMode::kMotion: {
               if (srcIdx * 2 + 1 < m_fgppAov.motion.size()) {
-                cr = static_cast<uint8_t>(std::clamp((m_fgppAov.motion[srcIdx * 2 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-                cg = static_cast<uint8_t>(std::clamp((m_fgppAov.motion[srcIdx * 2 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                cr = static_cast<uint8_t>(std::clamp(
+                    (m_fgppAov.motion[srcIdx * 2 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+                cg = static_cast<uint8_t>(std::clamp(
+                    (m_fgppAov.motion[srcIdx * 2 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
                 cb = 128;
               }
               break;
             }
             case DebugViewMode::kRoughnessMetallic: {
               if (srcIdx * 2 + 1 < m_fgppAov.roughnessMetallic.size()) {
-                cr = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
-                cg = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
+                cr = static_cast<uint8_t>(
+                    std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
+                cg = static_cast<uint8_t>(
+                    std::clamp(m_fgppAov.roughnessMetallic[srcIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
                 cb = 0;
               }
               break;
@@ -1278,7 +1282,8 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
   const float cy_screen = h * 0.5f;
 
   // Transform 3D points to screen space
-  auto projectPoint = [&](float x, float y, float z, float& outSx, float& outSy, float& outCamZ) -> bool {
+  auto projectPoint = [&](float x, float y, float z, float& outSx, float& outSy,
+                          float& outCamZ) -> bool {
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return false;
 
     // Rotate Y (yaw)
@@ -1299,7 +1304,8 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
 
     outSx = cx + (xc / zc) * fovScale;
     outSy = cy_screen - (yc / zc) * fovScale;
-    return std::isfinite(outSx) && std::isfinite(outSy);  // Let the rasterizer AABB clipping handle culling
+    return std::isfinite(outSx) &&
+           std::isfinite(outSy);  // Let the rasterizer AABB clipping handle culling
   };
 
   // Bresenham's 2D line drawer with viewport clipping guard.
@@ -1342,8 +1348,14 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       }
       if (x0 == x1 && y0 == y1) break;
       const int e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += syy; }
+      if (e2 >= dy) {
+        err += dy;
+        x0 += sx;
+      }
+      if (e2 <= dx) {
+        err += dx;
+        y0 += syy;
+      }
     }
   };
 
@@ -1353,14 +1365,14 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     float gx = static_cast<float>(g);
     float p0x, p0y, p0z, p1x, p1y, p1z;
     if (projectPoint(gx, gridY, -2.0f, p0x, p0y, p0z) &&
-        projectPoint(gx, gridY,  2.0f, p1x, p1y, p1z)) {
-      drawLine(static_cast<int>(p0x), static_cast<int>(p0y),
-               static_cast<int>(p1x), static_cast<int>(p1y), 32, 40, 56);
+        projectPoint(gx, gridY, 2.0f, p1x, p1y, p1z)) {
+      drawLine(static_cast<int>(p0x), static_cast<int>(p0y), static_cast<int>(p1x),
+               static_cast<int>(p1y), 32, 40, 56);
     }
     if (projectPoint(-2.0f, gridY, gx, p0x, p0y, p0z) &&
-        projectPoint( 2.0f, gridY, gx, p1x, p1y, p1z)) {
-      drawLine(static_cast<int>(p0x), static_cast<int>(p0y),
-               static_cast<int>(p1x), static_cast<int>(p1y), 32, 40, 56);
+        projectPoint(2.0f, gridY, gx, p1x, p1y, p1z)) {
+      drawLine(static_cast<int>(p0x), static_cast<int>(p0y), static_cast<int>(p1x),
+               static_cast<int>(p1y), 32, 40, 56);
     }
   }
 
@@ -1385,7 +1397,10 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
     const auto* srcEntity = findEntity("source");
     const MeshEntity* reconEntity = nullptr;
     for (auto it = m_entities.rbegin(); it != m_entities.rend(); ++it) {
-      if (it->name != "source") { reconEntity = &(*it); break; }
+      if (it->name != "source") {
+        reconEntity = &(*it);
+        break;
+      }
     }
     if (srcEntity && srcEntity->visible) {
       targets.push_back({&srcEntity->mesh, 0, w / 2});
@@ -1419,233 +1434,263 @@ void InspectorApp::renderFrame(float /*deltaTime*/) {
       const uint32_t i1 = renderMesh.faces[f * 3 + 1];
       const uint32_t i2 = renderMesh.faces[f * 3 + 2];
 
-    // Bounds check face indices against vertex array (size_t overflow safe)
-    if (static_cast<size_t>(i0) * 3 + 2 >= vertexCount ||
-        static_cast<size_t>(i1) * 3 + 2 >= vertexCount ||
-        static_cast<size_t>(i2) * 3 + 2 >= vertexCount) {
-      continue;
-    }
-
-    float sx0, sy0, sz0;
-    float sx1, sy1, sz1;
-    float sx2, sy2, sz2;
-
-    const bool p0_ok = projectPoint(renderMesh.vertices[i0 * 3 + 0],
-                                    renderMesh.vertices[i0 * 3 + 1],
-                                    renderMesh.vertices[i0 * 3 + 2], sx0, sy0, sz0);
-    const bool p1_ok = projectPoint(renderMesh.vertices[i1 * 3 + 0],
-                                    renderMesh.vertices[i1 * 3 + 1],
-                                    renderMesh.vertices[i1 * 3 + 2], sx1, sy1, sz1);
-    const bool p2_ok = projectPoint(renderMesh.vertices[i2 * 3 + 0],
-                                    renderMesh.vertices[i2 * 3 + 1],
-                                    renderMesh.vertices[i2 * 3 + 2], sx2, sy2, sz2);
-
-    if (!p0_ok || !p1_ok || !p2_ok) continue;
-
-    // Normal
-    float nx = 0.0f, ny = 1.0f, nz = 0.0f;
-    if (f * 3 + 2 < renderMesh.faceNormals.size()) {
-      nx = renderMesh.faceNormals[f * 3 + 0];
-      ny = renderMesh.faceNormals[f * 3 + 1];
-      nz = renderMesh.faceNormals[f * 3 + 2];
-    }
-
-    uint8_t cr = 200, cg = 210, cb = 225;
-
-    switch (m_debugView) {
-      case DebugViewMode::kLit: {
-        const float ndotl = std::max(0.0f, nx * lx + ny * ly + nz * lz);
-        const float intensity = 0.25f + 0.75f * ndotl;
-        cr = static_cast<uint8_t>(std::clamp(intensity * 210.0f, 0.0f, 255.0f));
-        cg = static_cast<uint8_t>(std::clamp(intensity * 225.0f, 0.0f, 255.0f));
-        cb = static_cast<uint8_t>(std::clamp(intensity * 245.0f, 0.0f, 255.0f));
-        break;
+      // Bounds check face indices against vertex array (size_t overflow safe)
+      if (static_cast<size_t>(i0) * 3 + 2 >= vertexCount ||
+          static_cast<size_t>(i1) * 3 + 2 >= vertexCount ||
+          static_cast<size_t>(i2) * 3 + 2 >= vertexCount) {
+        continue;
       }
-      case DebugViewMode::kNormal: {
-        cr = static_cast<uint8_t>(std::clamp((nx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-        cg = static_cast<uint8_t>(std::clamp((ny * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-        cb = static_cast<uint8_t>(std::clamp((nz * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-        break;
+
+      float sx0, sy0, sz0;
+      float sx1, sy1, sz1;
+      float sx2, sy2, sz2;
+
+      const bool p0_ok =
+          projectPoint(renderMesh.vertices[i0 * 3 + 0], renderMesh.vertices[i0 * 3 + 1],
+                       renderMesh.vertices[i0 * 3 + 2], sx0, sy0, sz0);
+      const bool p1_ok =
+          projectPoint(renderMesh.vertices[i1 * 3 + 0], renderMesh.vertices[i1 * 3 + 1],
+                       renderMesh.vertices[i1 * 3 + 2], sx1, sy1, sz1);
+      const bool p2_ok =
+          projectPoint(renderMesh.vertices[i2 * 3 + 0], renderMesh.vertices[i2 * 3 + 1],
+                       renderMesh.vertices[i2 * 3 + 2], sx2, sy2, sz2);
+
+      if (!p0_ok || !p1_ok || !p2_ok) continue;
+
+      // Normal
+      float nx = 0.0f, ny = 1.0f, nz = 0.0f;
+      if (f * 3 + 2 < renderMesh.faceNormals.size()) {
+        nx = renderMesh.faceNormals[f * 3 + 0];
+        ny = renderMesh.faceNormals[f * 3 + 1];
+        nz = renderMesh.faceNormals[f * 3 + 2];
       }
-      case DebugViewMode::kDepth: {
-        // Real FGPP depth if available, else perspective-derived depth
-        if (m_fgppAov.hasData && !m_fgppAov.depth.empty() &&
-            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
-          const float centX = (sx0 + sx1 + sx2) / 3.0f;
-          const float centY = (sy0 + sy1 + sy2) / 3.0f;
-          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
-          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
-          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
-          if (aovIdx < m_fgppAov.depth.size()) {
-            const float d = std::clamp(m_fgppAov.depth[aovIdx] / 20.0f, 0.0f, 1.0f);
-            const uint8_t depthByte = static_cast<uint8_t>((1.0f - d) * 255.0f);
-            cr = cg = cb = depthByte;
-          }
-        } else {
-          const float avgZ = (sz0 + sz1 + sz2) / 3.0f;
-          const float normZ = std::clamp((avgZ - 1.5f) / 4.0f, 0.0f, 1.0f);
-          const uint8_t depthByte = static_cast<uint8_t>((1.0f - normZ) * 255.0f);
-          cr = depthByte;
-          cg = depthByte;
-          cb = depthByte;
+
+      uint8_t cr = 200, cg = 210, cb = 225;
+
+      switch (m_debugView) {
+        case DebugViewMode::kLit: {
+          const float ndotl = std::max(0.0f, nx * lx + ny * ly + nz * lz);
+          const float intensity = 0.25f + 0.75f * ndotl;
+          cr = static_cast<uint8_t>(std::clamp(intensity * 210.0f, 0.0f, 255.0f));
+          cg = static_cast<uint8_t>(std::clamp(intensity * 225.0f, 0.0f, 255.0f));
+          cb = static_cast<uint8_t>(std::clamp(intensity * 245.0f, 0.0f, 255.0f));
+          break;
         }
-        break;
-      }
-      case DebugViewMode::kCryptomatte: {
-        // Real FGPP Cryptomatte.ID if available, else face-index hash
-        if (m_fgppAov.hasData && !m_fgppAov.cryptomatte.empty() &&
-            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
-          const float centX = (sx0 + sx1 + sx2) / 3.0f;
-          const float centY = (sy0 + sy1 + sy2) / 3.0f;
-          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
-          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
-          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
-          if (aovIdx < m_fgppAov.cryptomatte.size()) {
-            const uint32_t entityId = m_fgppAov.cryptomatte[aovIdx];
+        case DebugViewMode::kNormal: {
+          cr = static_cast<uint8_t>(std::clamp((nx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+          cg = static_cast<uint8_t>(std::clamp((ny * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+          cb = static_cast<uint8_t>(std::clamp((nz * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+          break;
+        }
+        case DebugViewMode::kDepth: {
+          // Real FGPP depth if available, else perspective-derived depth
+          if (m_fgppAov.hasData && !m_fgppAov.depth.empty() && m_fgppAov.width > 0 &&
+              m_fgppAov.height > 0) {
+            const float centX = (sx0 + sx1 + sx2) / 3.0f;
+            const float centY = (sy0 + sy1 + sy2) / 3.0f;
+            const uint32_t aovX = static_cast<uint32_t>(
+                std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w),
+                           0.0f, static_cast<float>(m_fgppAov.width - 1)));
+            const uint32_t aovY = static_cast<uint32_t>(
+                std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h),
+                           0.0f, static_cast<float>(m_fgppAov.height - 1)));
+            const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+            if (aovIdx < m_fgppAov.depth.size()) {
+              const float d = std::clamp(m_fgppAov.depth[aovIdx] / 20.0f, 0.0f, 1.0f);
+              const uint8_t depthByte = static_cast<uint8_t>((1.0f - d) * 255.0f);
+              cr = cg = cb = depthByte;
+            }
+          } else {
+            const float avgZ = (sz0 + sz1 + sz2) / 3.0f;
+            const float normZ = std::clamp((avgZ - 1.5f) / 4.0f, 0.0f, 1.0f);
+            const uint8_t depthByte = static_cast<uint8_t>((1.0f - normZ) * 255.0f);
+            cr = depthByte;
+            cg = depthByte;
+            cb = depthByte;
+          }
+          break;
+        }
+        case DebugViewMode::kCryptomatte: {
+          // Real FGPP Cryptomatte.ID if available, else face-index hash
+          if (m_fgppAov.hasData && !m_fgppAov.cryptomatte.empty() && m_fgppAov.width > 0 &&
+              m_fgppAov.height > 0) {
+            const float centX = (sx0 + sx1 + sx2) / 3.0f;
+            const float centY = (sy0 + sy1 + sy2) / 3.0f;
+            const uint32_t aovX = static_cast<uint32_t>(
+                std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w),
+                           0.0f, static_cast<float>(m_fgppAov.width - 1)));
+            const uint32_t aovY = static_cast<uint32_t>(
+                std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h),
+                           0.0f, static_cast<float>(m_fgppAov.height - 1)));
+            const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+            if (aovIdx < m_fgppAov.cryptomatte.size()) {
+              const uint32_t entityId = m_fgppAov.cryptomatte[aovIdx];
+              cr = static_cast<uint8_t>((entityId * 73u) & 0xFFu);
+              cg = static_cast<uint8_t>((entityId * 151u) & 0xFFu);
+              cb = static_cast<uint8_t>((entityId * 223u) & 0xFFu);
+            }
+          } else {
+            const uint32_t entityId = static_cast<uint32_t>((f * 37u) % 256u);
             cr = static_cast<uint8_t>((entityId * 73u) & 0xFFu);
             cg = static_cast<uint8_t>((entityId * 151u) & 0xFFu);
             cb = static_cast<uint8_t>((entityId * 223u) & 0xFFu);
           }
-        } else {
-          const uint32_t entityId = static_cast<uint32_t>((f * 37u) % 256u);
-          cr = static_cast<uint8_t>((entityId * 73u) & 0xFFu);
-          cg = static_cast<uint8_t>((entityId * 151u) & 0xFFu);
-          cb = static_cast<uint8_t>((entityId * 223u) & 0xFFu);
+          break;
         }
-        break;
-      }
-      case DebugViewMode::kUv: {
-        cr = static_cast<uint8_t>((f * 20u) % 255u);
-        cg = static_cast<uint8_t>((255u - (f * 20u) % 255u));
-        cb = 128u;
-        break;
-      }
-      case DebugViewMode::kAlbedo: {
-        // Real FGPP baseColor if available, else warm neutral placeholder
-        if (m_fgppAov.hasData && !m_fgppAov.baseColor.empty() &&
-            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
-          // Sample FGPP baseColor at projected screen-space centroid
-          const float centX = (sx0 + sx1 + sx2) / 3.0f;
-          const float centY = (sy0 + sy1 + sy2) / 3.0f;
-          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
-          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
-          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
-          if (aovIdx * 3 + 2 < m_fgppAov.baseColor.size()) {
-            cr = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 0] * 255.0f, 0.0f, 255.0f));
-            cg = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 1] * 255.0f, 0.0f, 255.0f));
-            cb = static_cast<uint8_t>(std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 2] * 255.0f, 0.0f, 255.0f));
+        case DebugViewMode::kUv: {
+          cr = static_cast<uint8_t>((f * 20u) % 255u);
+          cg = static_cast<uint8_t>((255u - (f * 20u) % 255u));
+          cb = 128u;
+          break;
+        }
+        case DebugViewMode::kAlbedo: {
+          // Real FGPP baseColor if available, else warm neutral placeholder
+          if (m_fgppAov.hasData && !m_fgppAov.baseColor.empty() && m_fgppAov.width > 0 &&
+              m_fgppAov.height > 0) {
+            // Sample FGPP baseColor at projected screen-space centroid
+            const float centX = (sx0 + sx1 + sx2) / 3.0f;
+            const float centY = (sy0 + sy1 + sy2) / 3.0f;
+            const uint32_t aovX = static_cast<uint32_t>(
+                std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w),
+                           0.0f, static_cast<float>(m_fgppAov.width - 1)));
+            const uint32_t aovY = static_cast<uint32_t>(
+                std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h),
+                           0.0f, static_cast<float>(m_fgppAov.height - 1)));
+            const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+            if (aovIdx * 3 + 2 < m_fgppAov.baseColor.size()) {
+              cr = static_cast<uint8_t>(
+                  std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 0] * 255.0f, 0.0f, 255.0f));
+              cg = static_cast<uint8_t>(
+                  std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 1] * 255.0f, 0.0f, 255.0f));
+              cb = static_cast<uint8_t>(
+                  std::clamp(m_fgppAov.baseColor[aovIdx * 3 + 2] * 255.0f, 0.0f, 255.0f));
+            }
+          } else {
+            const uint32_t fmod = static_cast<uint32_t>(f % 7u);
+            cr = static_cast<uint8_t>(200u + fmod * 5u);
+            cg = static_cast<uint8_t>(180u + fmod * 7u);
+            cb = static_cast<uint8_t>(150u + fmod * 9u);
           }
-        } else {
-          const uint32_t fmod = static_cast<uint32_t>(f % 7u);
-          cr = static_cast<uint8_t>(200u + fmod * 5u);
-          cg = static_cast<uint8_t>(180u + fmod * 7u);
-          cb = static_cast<uint8_t>(150u + fmod * 9u);
+          break;
         }
-        break;
-      }
-      case DebugViewMode::kMotion: {
-        // Real FGPP motion vector if available, else derived from normals
-        if (m_fgppAov.hasData && !m_fgppAov.motion.empty() &&
-            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
-          const float centX = (sx0 + sx1 + sx2) / 3.0f;
-          const float centY = (sy0 + sy1 + sy2) / 3.0f;
-          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
-          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
-          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
-          if (aovIdx * 2 + 1 < m_fgppAov.motion.size()) {
-            cr = static_cast<uint8_t>(std::clamp((m_fgppAov.motion[aovIdx * 2 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-            cg = static_cast<uint8_t>(std::clamp((m_fgppAov.motion[aovIdx * 2 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+        case DebugViewMode::kMotion: {
+          // Real FGPP motion vector if available, else derived from normals
+          if (m_fgppAov.hasData && !m_fgppAov.motion.empty() && m_fgppAov.width > 0 &&
+              m_fgppAov.height > 0) {
+            const float centX = (sx0 + sx1 + sx2) / 3.0f;
+            const float centY = (sy0 + sy1 + sy2) / 3.0f;
+            const uint32_t aovX = static_cast<uint32_t>(
+                std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w),
+                           0.0f, static_cast<float>(m_fgppAov.width - 1)));
+            const uint32_t aovY = static_cast<uint32_t>(
+                std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h),
+                           0.0f, static_cast<float>(m_fgppAov.height - 1)));
+            const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+            if (aovIdx * 2 + 1 < m_fgppAov.motion.size()) {
+              cr = static_cast<uint8_t>(std::clamp(
+                  (m_fgppAov.motion[aovIdx * 2 + 0] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+              cg = static_cast<uint8_t>(std::clamp(
+                  (m_fgppAov.motion[aovIdx * 2 + 1] * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+              cb = 128u;
+            }
+          } else {
+            const float vx = std::clamp((nx * 0.7f - ny * 0.3f), -1.0f, 1.0f);
+            const float vy = std::clamp((ny * 0.7f + nz * 0.3f), -1.0f, 1.0f);
+            cr = static_cast<uint8_t>(std::clamp((vx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
+            cg = static_cast<uint8_t>(std::clamp((vy * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
             cb = 128u;
           }
-        } else {
-          const float vx = std::clamp((nx * 0.7f - ny * 0.3f), -1.0f, 1.0f);
-          const float vy = std::clamp((ny * 0.7f + nz * 0.3f), -1.0f, 1.0f);
-          cr = static_cast<uint8_t>(std::clamp((vx * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-          cg = static_cast<uint8_t>(std::clamp((vy * 0.5f + 0.5f) * 255.0f, 0.0f, 255.0f));
-          cb = 128u;
+          break;
         }
-        break;
-      }
-      case DebugViewMode::kRoughnessMetallic: {
-        if (m_fgppAov.hasData && !m_fgppAov.roughnessMetallic.empty() &&
-            m_fgppAov.width > 0 && m_fgppAov.height > 0) {
-          const float centX = (sx0 + sx1 + sx2) / 3.0f;
-          const float centY = (sy0 + sy1 + sy2) / 3.0f;
-          const uint32_t aovX = static_cast<uint32_t>(std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w), 0.0f, static_cast<float>(m_fgppAov.width - 1)));
-          const uint32_t aovY = static_cast<uint32_t>(std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h), 0.0f, static_cast<float>(m_fgppAov.height - 1)));
-          const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
-          if (aovIdx * 2 + 1 < m_fgppAov.roughnessMetallic.size()) {
-            cr = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
-            cg = static_cast<uint8_t>(std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
+        case DebugViewMode::kRoughnessMetallic: {
+          if (m_fgppAov.hasData && !m_fgppAov.roughnessMetallic.empty() && m_fgppAov.width > 0 &&
+              m_fgppAov.height > 0) {
+            const float centX = (sx0 + sx1 + sx2) / 3.0f;
+            const float centY = (sy0 + sy1 + sy2) / 3.0f;
+            const uint32_t aovX = static_cast<uint32_t>(
+                std::clamp(centX * static_cast<float>(m_fgppAov.width) / static_cast<float>(w),
+                           0.0f, static_cast<float>(m_fgppAov.width - 1)));
+            const uint32_t aovY = static_cast<uint32_t>(
+                std::clamp(centY * static_cast<float>(m_fgppAov.height) / static_cast<float>(h),
+                           0.0f, static_cast<float>(m_fgppAov.height - 1)));
+            const size_t aovIdx = static_cast<size_t>(aovY) * m_fgppAov.width + aovX;
+            if (aovIdx * 2 + 1 < m_fgppAov.roughnessMetallic.size()) {
+              cr = static_cast<uint8_t>(
+                  std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 0] * 255.0f, 0.0f, 255.0f));
+              cg = static_cast<uint8_t>(
+                  std::clamp(m_fgppAov.roughnessMetallic[aovIdx * 2 + 1] * 255.0f, 0.0f, 255.0f));
+              cb = 0u;
+            }
+          } else {
+            cr = 128u;
+            cg = 32u;
             cb = 0u;
           }
-        } else {
-          cr = 128u;
-          cg = 32u;
-          cb = 0u;
+          break;
         }
-        break;
+        case DebugViewMode::kWireframe:
+        default:
+          break;
       }
-      case DebugViewMode::kWireframe:
-      default:
-        break;
-    }
 
-    if (m_debugView == DebugViewMode::kWireframe) {
-      drawLine(static_cast<int>(sx0), static_cast<int>(sy0),
-               static_cast<int>(sx1), static_cast<int>(sy1), 70, 200, 235);
-      drawLine(static_cast<int>(sx1), static_cast<int>(sy1),
-               static_cast<int>(sx2), static_cast<int>(sy2), 70, 200, 235);
-      drawLine(static_cast<int>(sx2), static_cast<int>(sy2),
-               static_cast<int>(sx0), static_cast<int>(sy0), 70, 200, 235);
-    } else {
-      // Screen edge bounds clamping (entity-aware clip region for comparison mode)
-      const int minX = std::max(static_cast<int>(entityClipMinX), static_cast<int>(std::floor(std::min({sx0, sx1, sx2}))));
-      const int maxX = std::min(static_cast<int>(entityClipMaxX) - 1, static_cast<int>(std::ceil(std::max({sx0, sx1, sx2}))));
-      const int minY = std::max(0, static_cast<int>(std::floor(std::min({sy0, sy1, sy2}))));
-      const int maxY = std::min(static_cast<int>(h) - 1, static_cast<int>(std::ceil(std::max({sy0, sy1, sy2}))));
-      if (minX > maxX || minY > maxY) continue;
+      if (m_debugView == DebugViewMode::kWireframe) {
+        drawLine(static_cast<int>(sx0), static_cast<int>(sy0), static_cast<int>(sx1),
+                 static_cast<int>(sy1), 70, 200, 235);
+        drawLine(static_cast<int>(sx1), static_cast<int>(sy1), static_cast<int>(sx2),
+                 static_cast<int>(sy2), 70, 200, 235);
+        drawLine(static_cast<int>(sx2), static_cast<int>(sy2), static_cast<int>(sx0),
+                 static_cast<int>(sy0), 70, 200, 235);
+      } else {
+        // Screen edge bounds clamping (entity-aware clip region for comparison mode)
+        const int minX = std::max(static_cast<int>(entityClipMinX),
+                                  static_cast<int>(std::floor(std::min({sx0, sx1, sx2}))));
+        const int maxX = std::min(static_cast<int>(entityClipMaxX) - 1,
+                                  static_cast<int>(std::ceil(std::max({sx0, sx1, sx2}))));
+        const int minY = std::max(0, static_cast<int>(std::floor(std::min({sy0, sy1, sy2}))));
+        const int maxY = std::min(static_cast<int>(h) - 1,
+                                  static_cast<int>(std::ceil(std::max({sy0, sy1, sy2}))));
+        if (minX > maxX || minY > maxY) continue;
 
-      auto edgeFunc = [](float ax, float ay, float bx, float by, float px, float py) -> float {
-        return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
-      };
-      const float area = edgeFunc(sx0, sy0, sx1, sy1, sx2, sy2);
-      if (std::abs(area) > 1e-4f) {
-        const float invArea = 1.0f / area;
-        for (int y = minY; y <= maxY; ++y) {
-          for (int x = minX; x <= maxX; ++x) {
-            const float px = static_cast<float>(x) + 0.5f;
-            const float py = static_cast<float>(y) + 0.5f;
-            const float w0 = edgeFunc(sx1, sy1, sx2, sy2, px, py);
-            const float w1 = edgeFunc(sx2, sy2, sx0, sy0, px, py);
-            const float w2 = edgeFunc(sx0, sy0, sx1, sy1, px, py);
+        auto edgeFunc = [](float ax, float ay, float bx, float by, float px, float py) -> float {
+          return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+        };
+        const float area = edgeFunc(sx0, sy0, sx1, sy1, sx2, sy2);
+        if (std::abs(area) > 1e-4f) {
+          const float invArea = 1.0f / area;
+          for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+              const float px = static_cast<float>(x) + 0.5f;
+              const float py = static_cast<float>(y) + 0.5f;
+              const float w0 = edgeFunc(sx1, sy1, sx2, sy2, px, py);
+              const float w1 = edgeFunc(sx2, sy2, sx0, sy0, px, py);
+              const float w2 = edgeFunc(sx0, sy0, sx1, sy1, px, py);
 
-            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-              const float bary0 = w0 * invArea;
-              const float bary1 = w1 * invArea;
-              const float bary2 = w2 * invArea;
-              // Perspective-correct depth interpolation using 1/z
-              const float invZ0 = 1.0f / sz0;
-              const float invZ1 = 1.0f / sz1;
-              const float invZ2 = 1.0f / sz2;
-              const float interpInvZ = bary0 * invZ0 + bary1 * invZ1 + bary2 * invZ2;
-              const float fragZ = (interpInvZ > 1e-7f) ? (1.0f / interpInvZ) : sz0;
+              if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+                const float bary0 = w0 * invArea;
+                const float bary1 = w1 * invArea;
+                const float bary2 = w2 * invArea;
+                // Perspective-correct depth interpolation using 1/z
+                const float invZ0 = 1.0f / sz0;
+                const float invZ1 = 1.0f / sz1;
+                const float invZ2 = 1.0f / sz2;
+                const float interpInvZ = bary0 * invZ0 + bary1 * invZ1 + bary2 * invZ2;
+                const float fragZ = (interpInvZ > 1e-7f) ? (1.0f / interpInvZ) : sz0;
 
-              const size_t pixIdx = static_cast<size_t>(y) * w + static_cast<size_t>(x);
-              if (fragZ < m_zBuffer[pixIdx]) {
-                m_zBuffer[pixIdx] = fragZ;
-                const size_t off = pixIdx * 4u;
-                buf[off + 0] = cr;
-                buf[off + 1] = cg;
-                buf[off + 2] = cb;
-                buf[off + 3] = 255;
+                const size_t pixIdx = static_cast<size_t>(y) * w + static_cast<size_t>(x);
+                if (fragZ < m_zBuffer[pixIdx]) {
+                  m_zBuffer[pixIdx] = fragZ;
+                  const size_t off = pixIdx * 4u;
+                  buf[off + 0] = cr;
+                  buf[off + 1] = cg;
+                  buf[off + 2] = cb;
+                  buf[off + 3] = 255;
+                }
               }
             }
           }
         }
       }
     }
-  }
   }  // end for (target : targets) — multi-entity rendering
 }
 
@@ -1677,7 +1722,8 @@ bool InspectorApp::exportScreenshotPpm(std::string_view outputPath) const {
 }
 
 void InspectorApp::handleCommand(std::string_view jsonStr) {
-  while (!jsonStr.empty() && (jsonStr.back() == '\r' || jsonStr.back() == '\n' || jsonStr.back() == ' ')) {
+  while (!jsonStr.empty() &&
+         (jsonStr.back() == '\r' || jsonStr.back() == '\n' || jsonStr.back() == ' ')) {
     jsonStr.remove_suffix(1);
   }
   while (!jsonStr.empty() && (jsonStr.front() == ' ' || jsonStr.front() == '\t')) {
@@ -1768,8 +1814,8 @@ void InspectorApp::handleCommand(std::string_view jsonStr) {
       }
       m_entityVisible = anyVisible;
     }
-    std::cerr << "[inspector] Entity '" << name
-              << "' visible=" << (visible ? "true" : "false") << "\n";
+    std::cerr << "[inspector] Entity '" << name << "' visible=" << (visible ? "true" : "false")
+              << "\n";
   } else if (type == "select_tab") {
     const std::string tab = std::string(jsonStringOr(j, "tab", ""));
     setActiveTab(tab);
@@ -1860,7 +1906,8 @@ bool InspectorApp::pollStdinCommands() {
   const size_t cameraToSkip = skipOldCamera ? (cameraCount - kMaxCameraQueueSize) : 0;
 
   for (const auto& line : joined) {
-    if (skipOldCamera && line.find("\"camera\"") != std::string::npos && cameraSkipped < cameraToSkip) {
+    if (skipOldCamera && line.find("\"camera\"") != std::string::npos &&
+        cameraSkipped < cameraToSkip) {
       ++cameraSkipped;
       continue;
     }

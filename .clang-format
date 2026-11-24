@@ -1,0 +1,113 @@
+---
+# ==============================================================================
+# DervGen Unified C/C++/CUDA/ObjC++ Clang-Format Configuration
+# Based on Google C++ Style Guide (2-space indent, 100-column limit, C++20)
+# SSOT: rules_dervgen_env/config/clang-format
+# ==============================================================================
+Language: Cpp
+BasedOnStyle: Google
+Standard: c++20
+
+# Indentation & Whitespace
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -1
+IndentCaseLabels: true
+IndentPPDirectives: None
+NamespaceIndentation: None
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros: None
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+# Line Breaks & Bracing
+BreakBeforeBraces: Attach
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+AlwaysBreakTemplateDeclarations: Yes
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+
+# Pointer and Reference Alignment
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# Spaces & Padding
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyBlock: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: Never
+SpacesInConditionalStatement: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParens: Never
+SpacesInSquareBrackets: false
+
+# Modern C++ & Hygiene
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ReflowComments: true
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+
+# Statement & Attribute Macros (Engine Export & CUDA Host/Device Qualifiers)
+StatementAttributeLikeMacros:
+  - AETHER_API
+  - AETHER_C_API
+  - AETHER_HD
+  - AETHER_D
+  - FULGUR_API
+  - FULGUR_C_API
+  - ANIMA_API
+  - CAELUM_API
+  - CAELUM_HD
+  - CAELUM_D
+  - FLUXUS_API
+  - FLUXUS_HD
+  - FLUXUS_D
+  - COGITO_API
+  - WGP_API
+  - RENDERDOC_API
+  - VK_API
+---
+Language: ObjC
+BasedOnStyle: Google
+Standard: c++20
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -1
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+...
