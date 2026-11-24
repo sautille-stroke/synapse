@@ -185,7 +185,8 @@ python3 -c "from google.colab import runtime; runtime.unassign()"
 | :--- | :--- | :--- |
 | [`scripts/prepare_datasets.py`](../../scripts/prepare_datasets.py) | `ubuntu24` | 驱动 `fulgur` 与 `caelum-core` 无头导出 15 通道 FGPP 数据集，计算 SHA256 并生成 `synapse_colab_bundle_v1.tar.gz` |
 | [`scripts/run_cpu_verification.py`](../../scripts/run_cpu_verification.py) | `ubuntu24` / 本地 | 在无 GPU 环境下预先校验 E1–E5 全流程（张量形状、色差收敛、97 帧滑窗切镜检测、特征分片打通） |
-| [`scripts/colab_runner.py`](../../scripts/colab_runner.py) | Google Colab | Colab 主控运行器：GPU 显存自动侦测、数据包解压、分步调用实验并向 Google Drive 实时保存 Checkpoint |
+| [`scripts/colab_runner.py`](../../scripts/colab_runner.py) | Google Colab | Colab 主控运行器：GPU 显存自动侦测、数据包解压、分步调用实验并向 Google Drive 实时保存 Checkpoint（含 E6 数字孪生） |
+| [`scripts/run_gpu_smoke.py`](../../scripts/run_gpu_smoke.py) | Google Colab / `win-dev` | 每周自动化 GPU 真实推理烟测闭环（Wan 2.1 + LoRA 梯度步 + 看门狗 + `runtime.unassign` 自动释放） |
 | [`workenv/google-colab/setup_colab.sh`](setup_colab.sh) | Google Colab | 自动化安装系统库、Python 扩展、验证 OpenEXR 及 CUDA 环境 |
 | [`workenv/google-colab/synapse_colab_workflow.ipynb`](synapse_colab_workflow.ipynb) | Google Colab | 交互式标准 Jupyter Notebook 工作流 |
 

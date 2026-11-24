@@ -190,7 +190,11 @@ _STYLE_PROFILE_V2_EXPECTED_FIELDS: dict[str, str] = {
 }
 
 
-def _check_style_profile() -> list[str]:
+def _check_style_profile(
+    *,
+    require_style: bool = False,
+    style_header: Path | None = None,
+) -> list[str]:
     """Validate StyleDescriptor fields match v2.0.0 contract."""
     errors: list[str] = []
 
@@ -211,7 +215,6 @@ def _check_style_profile() -> list[str]:
             f"StyleProfile v2.0.0: missing fields in Python model: {sorted(missing)}"
         )
     if extra:
-        # Extra fields are a warning, not an error — we only fail on missing
         pass
 
     # Validate default colorspace
@@ -225,41 +228,59 @@ def _check_style_profile() -> list[str]:
     except Exception as e:
         errors.append(f"StyleProfile v2.0.0: cannot instantiate default: {e}")
 
-    # Cross-repo aether style header validation (gracefully skip if unavailable)
+    # Cross-repo aether style header validation
     _aether_style_probes: list[Path] = []
-    if os.environ.get("AETHER_ROOT"):
-        _aether_style_probes.append(
-            Path(os.environ["AETHER_ROOT"]) / "style" / "include" / "aether" / "style" / "style_types.h"
-        )
-    _aether_style_probes.extend([
-        _REPO_ROOT.parent / "aether" / "style" / "include" / "aether" / "style" / "style_types.h",
-        Path("../aether/style/include/aether/style/style_types.h"),
-    ])
+    if style_header is not None:
+        _aether_style_probes.append(style_header)
+    else:
+        if os.environ.get("AETHER_ROOT"):
+            _aether_style_probes.append(
+                Path(os.environ["AETHER_ROOT"])
+                / "style"
+                / "include"
+                / "aether"
+                / "style"
+                / "style_types.h"
+            )
+        _aether_style_probes.extend([
+            _REPO_ROOT.parent / "aether" / "style" / "include" / "aether" / "style" / "style_types.h",
+            Path("../aether/style/include/aether/style/style_types.h"),
+        ])
+
     aether_style_path = None
     for probe in _aether_style_probes:
-        if probe.exists():
+        if probe.is_file():
             aether_style_path = probe
             break
 
     if aether_style_path is not None:
         try:
             header_text = aether_style_path.read_text(encoding="utf-8")
-            # Check that Python StyleDescriptor field names appear in the C++ header
-            # (as struct member names or enum values)
-            for field_name in expected_fields:
-                # Convert Python snake_case to potential C++ camelCase/snake_case variants
-                if field_name not in header_text and field_name.replace("_", "") not in header_text.lower():
-                    # Relaxed check: just look for the base concept name
-                    base_name = field_name.split("_")[0]
-                    if base_name not in header_text.lower():
-                        errors.append(
-                            f"StyleProfile v2.0.0: field '{field_name}' "
-                            f"not found in aether style header"
-                        )
-        except OSError:
-            pass  # Cannot read header — skip silently
+            header_lower = header_text.lower()
+            for field_name in sorted(expected_fields):
+                snake_pat = re.compile(rf"\b{re.escape(field_name)}\b")
+                camel = re.sub(r"_([a-z0-9])", lambda m: m.group(1).upper(), field_name)
+                camel_pat = re.compile(rf"\b{re.escape(camel)}\b")
+                compact = field_name.replace("_", "")
+                if not (
+                    snake_pat.search(header_text)
+                    or camel_pat.search(header_text)
+                    or compact in header_lower
+                ):
+                    errors.append(
+                        f"StyleProfile v2.0.0: field '{field_name}' "
+                        f"not found in aether style header ({aether_style_path})"
+                    )
+        except OSError as exc:
+            if require_style:
+                errors.append(f"StyleProfile v2.0.0: failed reading {aether_style_path}: {exc}")
     else:
-        print("  SKIPPED (upstream @aether//style not present)")
+        if require_style:
+            errors.append(
+                "Fail-Closed: @aether//style C++ header (style_types.h) not found and --require-style is set."
+            )
+        else:
+            print("  SKIPPED (upstream @aether//style not present)")
 
     return errors
 
@@ -757,6 +778,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail-closed: exit 1 if aether fgpp_types.h is not found",
     )
+    parser.add_argument(
+        "--aether-style-header",
+        type=Path,
+        default=None,
+        help="Path to aether style_types.h (default: auto-probe)",
+    )
+    parser.add_argument(
+        "--require-style",
+        action="store_true",
+        help="Fail-closed: exit 1 if @aether//style style_types.h is missing or mismatched",
+    )
     args = parser.parse_args(argv)
 
     all_errors: list[str] = []
@@ -789,7 +821,10 @@ def main(argv: list[str] | None = None) -> int:
     # --- Section 3: StyleProfile v2.0.0 alignment ---
     print()
     print("=== StyleProfile v2.0.0 alignment check ===")
-    style_errors = _check_style_profile()
+    style_errors = _check_style_profile(
+        require_style=bool(args.require_style),
+        style_header=args.aether_style_header,
+    )
     all_errors.extend(style_errors)
     if style_errors:
         for e in style_errors:
