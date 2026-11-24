@@ -15,7 +15,6 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from synapse.inspect.model_evaluator import evaluate_single_model
 from synapse.recon.geometry import (
@@ -25,7 +24,6 @@ from synapse.recon.geometry import (
     compute_uv_area_distortion_ratio,
     count_non_manifold_edges,
 )
-from synapse.render_core.mesh import MeshData
 
 
 def test_euler_characteristic_tetrahedron_and_cube() -> None:

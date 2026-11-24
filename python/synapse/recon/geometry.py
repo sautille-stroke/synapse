@@ -1663,7 +1663,7 @@ def compute_euler_characteristic(vertices: np.ndarray, faces: np.ndarray) -> int
         v_next = f[:, next_i]
         u = np.minimum(v_curr, v_next)
         w = np.maximum(v_curr, v_next)
-        for u_val, w_val in zip(u, w):
+        for u_val, w_val in zip(u, w, strict=True):
             if u_val != w_val:
                 edge_set.add((int(u_val), int(w_val)))
 
@@ -1698,7 +1698,7 @@ def count_non_manifold_edges(vertices: np.ndarray, faces: np.ndarray) -> int:
     num_verts_per_face = f.shape[1]
     for i in range(num_verts_per_face):
         next_i = (i + 1) % num_verts_per_face
-        for u_raw, v_raw in zip(f[:, i], f[:, next_i]):
+        for u_raw, v_raw in zip(f[:, i], f[:, next_i], strict=True):
             u, v = int(u_raw), int(v_raw)
             if u == v:
                 continue
