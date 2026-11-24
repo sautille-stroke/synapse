@@ -41,6 +41,7 @@ from synapse.metrics.profiles import (
     TRACK_B_VIDEO,
 )
 from synapse.metrics.roundtrip import (
+    add_s_norm,
     compute_chamfer_distance_mm,
     sample_mesh_surface,
 )
@@ -50,6 +51,9 @@ from synapse.recon.geometry import (
     compute_texel_density_variance,
     compute_uv_area_distortion_ratio,
     count_non_manifold_edges,
+    count_non_manifold_vertices,
+    discrete_mean_curvature_variance,
+    surface_roughness_var,
 )
 from synapse.render_core.mesh import MeshData, load_obj
 
@@ -167,6 +171,7 @@ def evaluate_profile_gates(
     profile_name: str,
     required_keys: set[str] | list[str] | tuple[str, ...] | None = None,
     require_reference: bool = True,
+    require_uv: bool = False,
 ) -> dict[str, bool]:
     """Evaluate gate thresholds from *profile_name* against *metrics* (fail-closed)."""
     canonical = normalize_eval_profile(profile_name)
@@ -178,6 +183,10 @@ def evaluate_profile_gates(
         base_required.add("chamfer_mm")
     if canonical != "TRACK_B_VIDEO":
         base_required.update({"is_watertight", "num_degenerate_faces", "self_intersecting_pairs"})
+    if require_uv:
+        base_required.update(
+            {"uv_area_distortion_ratio", "seam_discontinuity_deg", "texel_density_variance"}
+        )
     if required_keys is not None:
         base_required.update(required_keys)
 
@@ -188,6 +197,12 @@ def evaluate_profile_gates(
             if metric_name in base_required:
                 if metric_name == "chamfer_mm":
                     results["reference_required_not_evaluated"] = False
+                if metric_name in (
+                    "uv_area_distortion_ratio",
+                    "seam_discontinuity_deg",
+                    "texel_density_variance",
+                ):
+                    results["uv_required_not_evaluated"] = False
                 results[metric_name] = False
             continue
         if not np.isfinite(value):
@@ -321,20 +336,24 @@ def evaluate_single_model(
     geometry_backend: Literal["native", "python"] = "native",
     mesh_loader_fn: Callable[[str], Any] | None = None,
     require_reference: bool = True,
+    require_uv: bool = False,
 ) -> ModelEvalResult:
     """Evaluate a single 3D model file against *profile_name*.
 
     Args:
         mesh_loader_fn: Optional callable ``(path_str) -> MeshData``.
             If not provided, uses registered default or native OBJ loader.
+        require_reference: Require reference mesh metrics (``chamfer_mm``) to pass.
+        require_uv: If True, fail closed when UV coordinates are absent instead of
+            skipping UV gates.
     """
     if mesh_loader_fn is None:
         mesh_loader_fn = _default_load_mesh
 
     from synapse.metrics.image_quality import ciede2000, lpips, psnr_db, ssim
-    from synapse.metrics.roundtrip import (
-        f_score_1mm,
-    )
+    from synapse.metrics.perceptual import dino_cosine_sim, lpips_vgg, patch_lpips
+    from synapse.metrics.roundtrip import f_score_1mm
+    from synapse.metrics.style_consistency import histogram_intersection
 
     canonical_profile = normalize_eval_profile(profile_name)
     effective_name = model_name if model_name is not None else model_path.name
@@ -384,8 +403,11 @@ def evaluate_single_model(
     n_degenerate = len(geo_res.degenerate_face_indices)
     n_self_intersections = len(geo_res.self_intersecting_pairs)
     n_boundary = count_boundary_edges(topo_faces)
-    euler_chi = compute_euler_characteristic(verts, topo_faces)
-    non_manifold_count = count_non_manifold_edges(verts, topo_faces)
+    euler_chi = compute_euler_characteristic(topo_verts, topo_faces)
+    non_manifold_count = count_non_manifold_edges(topo_verts, topo_faces)
+    non_manifold_vert_count = count_non_manifold_vertices(topo_verts, topo_faces)
+    mesh_uvs = getattr(mesh, "uvs", None)
+    has_uvs = bool(mesh_uvs is not None and len(mesh_uvs) > 0)
 
     topology = TopologyResult(
         is_manifold=geo_res.is_manifold,
@@ -397,6 +419,8 @@ def evaluate_single_model(
         num_boundary_edges=n_boundary,
         euler_characteristic=euler_chi,
         num_non_manifold_edges=non_manifold_count,
+        num_non_manifold_vertices=non_manifold_vert_count,
+        uv_available=has_uvs,
     )
 
     floating_island_faces = 0
@@ -419,23 +443,26 @@ def evaluate_single_model(
         "boundary_edges": float(n_boundary),
         "floating_island_faces": float(floating_island_faces),
         "euler_characteristic": float(euler_chi),
+        "non_manifold_edges": float(non_manifold_count),
         "non_manifold_edges_count": float(non_manifold_count),
+        "non_manifold_vertices_count": float(non_manifold_vert_count),
+        "discrete_mean_curvature_variance": discrete_mean_curvature_variance(verts, faces_arr),
+        "surface_roughness_var": surface_roughness_var(verts, faces_arr),
     }
 
-    if hasattr(mesh, "uvs") and mesh.uvs is not None and len(mesh.uvs) > 0:
+    if has_uvs and mesh_uvs is not None:
+        uv_faces = getattr(mesh, "uv_faces", None)
         metrics["uv_area_distortion_ratio"] = compute_uv_area_distortion_ratio(
-            verts, faces_arr, mesh.uvs
+            verts, faces_arr, mesh_uvs, uv_faces=uv_faces
         )
         metrics["seam_discontinuity_deg"] = compute_seam_discontinuity_deg(
-            verts, faces_arr, mesh.uvs, norms
+            verts, faces_arr, mesh_uvs, normals=norms, uv_faces=uv_faces
         )
         metrics["texel_density_variance"] = compute_texel_density_variance(
-            verts, faces_arr, mesh.uvs
+            verts, faces_arr, mesh_uvs, uv_faces=uv_faces
         )
-    else:
-        metrics["uv_area_distortion_ratio"] = 1.0
-        metrics["seam_discontinuity_deg"] = 0.0
-        metrics["texel_density_variance"] = 0.0
+    elif log_fn:
+        log_fn(f"  UVs absent; omitting fabricated UV metrics (require_uv={require_uv}).")
 
     if log_fn:
         log_fn(f"  Rendering {num_views} views at {resolution}x{resolution}...")
@@ -486,6 +513,7 @@ def evaluate_single_model(
         # Compute in world scale (not normalized screenshot space)
         metrics["chamfer_mm"] = compute_chamfer_distance_mm(src_pts, tgt_pts)
         metrics["f_score_1mm"] = f_score_1mm(src_pts, tgt_pts)
+        metrics["add_s_norm"] = add_s_norm(src_pts, tgt_pts)
 
         if len(pred_rgb) > 0:
             try:
@@ -507,6 +535,16 @@ def evaluate_single_model(
                     metrics["ssim"] = ssim(pred_rgb, ref_rgb)
                     metrics["ciede2000"] = ciede2000(pred_rgb, ref_rgb)
                     metrics["lpips"] = lpips(pred_rgb, ref_rgb)
+                    metrics["dino_cosine_sim"] = dino_cosine_sim(pred_rgb, ref_rgb)
+                    metrics["lpips_vgg"] = lpips_vgg(pred_rgb, ref_rgb)
+                    metrics["patch_lpips"] = patch_lpips(pred_rgb, ref_rgb)
+                    hist_pred = np.concatenate(
+                        [np.histogram(pred_rgb[..., c], bins=64, range=(0, 256))[0] for c in range(3)]
+                    )
+                    hist_ref = np.concatenate(
+                        [np.histogram(ref_rgb[..., c], bins=64, range=(0, 256))[0] for c in range(3)]
+                    )
+                    metrics["histogram_intersection"] = histogram_intersection(hist_ref, hist_pred)
             except Exception as exc:
                 if log_fn:
                     log_fn(
@@ -523,6 +561,7 @@ def evaluate_single_model(
         metrics,
         canonical_profile,
         require_reference=req_ref,
+        require_uv=require_uv,
     )
     overall_passed = bool(gate_results) and all(gate_results.values())
 
@@ -680,6 +719,10 @@ def evaluate_3d_models_directory(
                     "num_connected_components": (r.topology.num_connected_components),
                     "has_degenerate_faces": r.topology.has_degenerate_faces,
                     "num_boundary_edges": r.topology.num_boundary_edges,
+                    "euler_characteristic": r.topology.euler_characteristic,
+                    "num_non_manifold_edges": r.topology.num_non_manifold_edges,
+                    "num_non_manifold_vertices": r.topology.num_non_manifold_vertices,
+                    "uv_available": r.topology.uv_available,
                 },
                 "metrics": r.metrics,
                 "gate_results": r.gate_results,

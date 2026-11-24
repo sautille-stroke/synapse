@@ -29,6 +29,11 @@ from synapse.metrics.image_quality import (
     ssim,
     validate_output_non_degenerate,
 )
+from synapse.metrics.perceptual import (
+    dino_cosine_sim,
+    lpips_vgg,
+    patch_lpips,
+)
 from synapse.metrics.profiles import (
     METRIC_ALIASES,
     RSI_PROMOTION,
@@ -43,12 +48,14 @@ from synapse.metrics.profiles import (
     get_profile_thresholds,
 )
 from synapse.metrics.roundtrip import (
+    add_s_norm,
     albedo_delta_e00,
     bone_length_drift_pct,
     chamfer_mm,
     f_score_1mm,
     f_score_5mm,
     foot_sliding_cm,
+    reprojection_error_px,
     volume_breathing_pct,
     watertight_pct,
 )
@@ -98,6 +105,7 @@ __all__ = [
     "lpips",
     "validate_output_non_degenerate",
     # roundtrip
+    "add_s_norm",
     "chamfer_mm",
     "f_score_1mm",
     "f_score_5mm",
@@ -106,6 +114,11 @@ __all__ = [
     "foot_sliding_cm",
     "bone_length_drift_pct",
     "albedo_delta_e00",
+    "reprojection_error_px",
+    # perceptual
+    "dino_cosine_sim",
+    "lpips_vgg",
+    "patch_lpips",
     # style_consistency
     "border_ring_ciede2000",
     "histogram_intersection",

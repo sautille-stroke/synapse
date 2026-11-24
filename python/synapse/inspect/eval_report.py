@@ -34,6 +34,8 @@ class TopologyResult:
     num_boundary_edges: int
     euler_characteristic: int | None = None
     num_non_manifold_edges: int | None = None
+    num_non_manifold_vertices: int | None = None
+    uv_available: bool | None = None
 
 
 @dataclass
@@ -73,6 +75,7 @@ _NON_QUALITY_METRIC_KEYS: frozenset[str] = frozenset(
         "face_count",
         "num_vertices",
         "num_faces",
+        "euler_characteristic",
     }
 )
 
@@ -128,9 +131,20 @@ def _normalize_metric(name: str, value: float) -> float:
         "self_intersecting_pairs",
         "floating_island_faces",
         "non_manifold_edges",
+        "non_manifold_edges_count",
+        "non_manifold_vertices_count",
     ):
         # 0 defects = 1.0; monotonically decays toward 0 as defects grow
         return 1.0 / (1.0 + max(0.0, value))
+    if name == "uv_area_distortion_ratio":
+        # 1.0 = isometric best
+        return 1.0 / (1.0 + max(0.0, value - 1.0))
+    if name == "seam_discontinuity_deg":
+        return 1.0 / (1.0 + max(0.0, value) / 10.0)
+    if name in ("lpips_vgg", "patch_lpips"):
+        return max(0.0, 1.0 - min(max(value, 0.0), 1.0))
+    if name in ("dino_cosine_sim", "histogram_intersection"):
+        return max(0.0, min(value, 1.0))
     if name in ("connected_components", "num_connected_components"):
         if value <= 0.0:
             return 0.0
@@ -423,6 +437,20 @@ def _append_model_card(parts: list[str], m: ModelEvalResult) -> None:
         f"<tr><td>Degenerate Faces</td><td>{_check_icon(not t.has_degenerate_faces)}</td></tr>"
     )
     parts.append(f"<tr><td>Boundary Edges</td><td>{t.num_boundary_edges}</td></tr>")
+    euler_str = str(t.euler_characteristic) if t.euler_characteristic is not None else "N/A"
+    nm_edges_str = (
+        str(t.num_non_manifold_edges) if t.num_non_manifold_edges is not None else "N/A"
+    )
+    nm_verts_str = (
+        str(t.num_non_manifold_vertices) if t.num_non_manifold_vertices is not None else "N/A"
+    )
+    parts.append(f"<tr><td>Euler Characteristic (χ)</td><td>{euler_str}</td></tr>")
+    parts.append(f"<tr><td>Non-Manifold Edges</td><td>{nm_edges_str}</td></tr>")
+    parts.append(f"<tr><td>Non-Manifold Vertices</td><td>{nm_verts_str}</td></tr>")
+    if t.uv_available is False:
+        parts.append("<tr><td>UV Mapping</td><td>N/A (No UVs)</td></tr>")
+    elif t.uv_available is True:
+        parts.append("<tr><td>UV Mapping</td><td>Present</td></tr>")
     parts.append("</tbody></table>")
 
     # Metrics table with gate results

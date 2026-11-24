@@ -22,6 +22,8 @@ __all__ = [
     "foot_sliding_cm",
     "bone_length_drift_pct",
     "albedo_delta_e00",
+    "add_s_norm",
+    "reprojection_error_px",
 ]
 
 # ── Geometry metrics ─────────────────────────────────────────────────
@@ -716,3 +718,127 @@ def albedo_delta_e00(
         return 0.0
 
     return float(np.mean(de))
+
+
+def _estimate_object_diameter(points: np.ndarray) -> float:
+    """Estimate orientation-invariant 3D object diameter for ADD-S normalization."""
+    pts = np.asarray(points, dtype=np.float64)
+    if len(pts) < 2:
+        return 0.0
+    if len(pts) > 512:
+        idx = np.linspace(0, len(pts) - 1, 512, dtype=np.int64)
+        sample = pts[idx]
+    else:
+        sample = pts
+    diff = sample[:, np.newaxis, :] - sample[np.newaxis, :, :]
+    max_sq = float(np.max(np.sum(diff * diff, axis=-1)))
+    return float(np.sqrt(max(max_sq, 0.0)))
+
+
+def add_s_norm(
+    pred_points: Any,
+    gt_points: Any,
+    *,
+    diameter: float | None = None,
+    num_samples: int = 10000,
+    seed: int = 42,
+) -> float:
+    """Symmetric Average Distance of Model Points normalised by object diameter (ADD-S).
+
+    Follows the BOP / NOCS pose-and-geometry metric definition:
+        ``ADD-S_norm = 0.5 * (mean_i min_j ||p_i - g_j|| + mean_j min_i ||g_j - p_i||) / D``
+    where ``D`` is the 3D ground-truth object diameter (or explicit *diameter*).
+
+    Args:
+        pred_points: Predicted ``[N, 3]`` point cloud or mesh object.
+        gt_points: Ground-truth ``[M, 3]`` point cloud or mesh object.
+        diameter: Optional explicit object diameter in the same units as input points.
+            When omitted, estimated from *gt_points*.
+        num_samples: Surface sample count when mesh objects with faces are supplied.
+        seed: Reproducible sampling seed.
+
+    Returns:
+        Dimensionless normalised symmetric point-set distance (>= 0.0; ``nan`` if empty).
+    """
+    p = _extract_or_sample_points(pred_points, num_samples=num_samples, seed=seed)
+    g = _extract_or_sample_points(gt_points, num_samples=num_samples, seed=seed)
+    if len(p) == 0 or len(g) == 0:
+        return float("nan")
+
+    eff_diam = float(diameter) if diameter is not None else _estimate_object_diameter(g)
+    if eff_diam <= 1e-8:
+        eff_diam = 1.0
+
+    d_p2g = _nearest_neighbor_distances(p, g)
+    d_g2p = _nearest_neighbor_distances(g, p)
+    add_s = 0.5 * (float(np.mean(d_p2g)) + float(np.mean(d_g2p)))
+    return float(add_s / eff_diam)
+
+
+def reprojection_error_px(
+    points_3d: np.ndarray,
+    observed_2d: np.ndarray,
+    K: np.ndarray,
+    R: np.ndarray | None = None,
+    t: np.ndarray | None = None,
+) -> float:
+    """Mean Euclidean 2D pixel reprojection error under pinhole camera ``(K, R, t)``.
+
+    Transforms world 3D points ``p_cam = R @ p_world + t`` (or identity if ``R``/``t``
+    are omitted), projects valid front-facing points (``Z > 1e-8``) through
+    intrinsics ``K``, and returns mean pixel L2 error against *observed_2d*.
+
+    Args:
+        points_3d: World coordinates, shape ``[N, 3]`` (or ``[T, N, 3]``).
+        observed_2d: Observed image pixel coordinates ``(u, v)``, shape ``[N, 2]``
+            (or ``[T, N, 2]``).
+        K: Intrinsics matrix ``[3, 3]``.
+        R: Optional rotation matrix ``[3, 3]`` (world-to-camera) or ``[4, 4]``
+            extrinsic matrix. Defaults to identity.
+        t: Optional translation vector ``[3]`` or ``[3, 1]``. Defaults to zero.
+
+    Returns:
+        Mean 2D Euclidean reprojection error in pixels (>= 0.0).
+    """
+    pts = np.asarray(points_3d, dtype=np.float64)
+    obs = np.asarray(observed_2d, dtype=np.float64)
+    k_mat = np.asarray(K, dtype=np.float64)
+
+    if pts.size == 0 or obs.size == 0:
+        return 0.0
+
+    pts_flat = pts.reshape(-1, 3)
+    obs_flat = obs.reshape(-1, 2)
+    if pts_flat.shape[0] != obs_flat.shape[0]:
+        raise ValueError(
+            f"Point count mismatch: points_3d={pts_flat.shape[0]} vs observed_2d={obs_flat.shape[0]}"
+        )
+    if k_mat.shape != (3, 3):
+        raise ValueError(f"Expected 3x3 intrinsics K, got shape {k_mat.shape}.")
+
+    if R is None:
+        r_mat = np.eye(3, dtype=np.float64)
+        t_vec = np.zeros(3, dtype=np.float64) if t is None else np.asarray(t, dtype=np.float64).reshape(3)
+    else:
+        r_arr = np.asarray(R, dtype=np.float64)
+        if r_arr.shape == (4, 4):
+            r_mat = r_arr[:3, :3]
+            t_vec = r_arr[:3, 3] if t is None else np.asarray(t, dtype=np.float64).reshape(3)
+        elif r_arr.shape == (3, 3):
+            r_mat = r_arr
+            t_vec = np.zeros(3, dtype=np.float64) if t is None else np.asarray(t, dtype=np.float64).reshape(3)
+        else:
+            raise ValueError(f"Expected 3x3 or 4x4 matrix R, got shape {r_arr.shape}.")
+
+    p_cam = (pts_flat @ r_mat.T) + t_vec[np.newaxis, :]
+    z = p_cam[:, 2]
+    valid = z > 1e-8
+    if not np.any(valid):
+        return float("inf")
+
+    p_valid = p_cam[valid]
+    proj_h = p_valid @ k_mat.T
+    uv = proj_h[:, :2] / p_valid[:, 2:3]
+    err = np.linalg.norm(uv - obs_flat[valid], axis=1)
+    return float(np.mean(err))
+
