@@ -293,7 +293,8 @@ def test_pr200_3dgs_quantizer_draco_and_cli(tmp_path: Path, capsys: pytest.Captu
     rc = cli_main(["recon", "compress-3dgs", "--input", str(npz_path), "--output", str(out_s3dgs), "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["data"]["compression_ratio"] >= 0.70
+    assert payload["status"] == "ok"
+    assert payload["compression_ratio"] >= 0.70
     assert out_s3dgs.is_file()
 
     rc_draco = cli_main(

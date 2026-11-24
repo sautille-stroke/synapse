@@ -463,8 +463,21 @@ def _verify_e6_real_video_twin(
         frames, meta = load_video_frames(video_path)
         fps = meta.fps
     else:
-        rng = np.random.default_rng(201)
-        frames = (rng.uniform(0.2, 0.8, size=(4, 48, 48, 3))).astype(np.float32)
+        # Smooth spatially correlated multi-view frames (no unphysical white noise)
+        y_grid = np.linspace(0.25, 0.75, 48, dtype=np.float32)[:, None]
+        x_grid = np.linspace(0.25, 0.75, 48, dtype=np.float32)[None, :]
+        base = np.stack(
+            [
+                np.broadcast_to(x_grid, (48, 48)),
+                np.broadcast_to(y_grid, (48, 48)),
+                np.full((48, 48), 0.5, dtype=np.float32),
+            ],
+            axis=-1,
+        )
+        frames = np.stack(
+            [np.clip(base + 0.015 * np.sin(0.5 * i + x_grid[..., None]), 0.0, 1.0) for i in range(4)],
+            axis=0,
+        ).astype(np.float32)
         fps = 24.0
 
     sphere = generate_procedural_mesh(ProceduralMeshType.SPHERE)
