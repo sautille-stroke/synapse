@@ -738,6 +738,22 @@ def main() -> int:
         help="Force re-staging even if files exist with matching size",
     )
     parser.add_argument(
+        "--dataset",
+        choices=["gso", "abo", "omniobject3d", "thingi10k", "all"],
+        default="all",
+        help="Filter external dataset preparation to a specific collection (default: all)",
+    )
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Emit offline external dataset manifest from built-in scenario catalogue without downloads",
+    )
+    parser.add_argument(
+        "--offline-fallback",
+        action="store_true",
+        help="Resolve external dataset scenarios cleanly using offline procedural fallbacks",
+    )
+    parser.add_argument(
         "--allow-synthetic-smoke",
         action="store_true",
         help="Allow procedural smoke models when local/remote assets are absent",
@@ -752,6 +768,56 @@ def main() -> int:
     tier_canonical = TIER_ALIASES.get(args.tier, "starter_dev")
     target_dir = args.target_dir.resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Fast deterministic path for external dataset manifest inspection or offline fallback
+    if getattr(args, "manifest_only", False) or getattr(args, "offline_fallback", False):
+        from synapse.bench.registry import AssetRegistry
+        from synapse.bench.scenario import EXTERNAL_ASSET_SOURCES, list_scenarios
+
+        ext_scenarios = [
+            s
+            for s in list_scenarios()
+            if s.asset.source in EXTERNAL_ASSET_SOURCES
+            and (args.dataset == "all" or s.asset.source.value == args.dataset)
+        ]
+        registry = AssetRegistry()
+        ext_records: List[Dict[str, Any]] = []
+        for s in ext_scenarios:
+            rec: Dict[str, Any] = {
+                "scenario_id": s.id,
+                "source": s.asset.source.value,
+                "asset_id": s.asset.id,
+                "license": s.asset.license,
+                "dataset_category": s.asset.dataset_category,
+                "fallback_procedural": s.asset.fallback_procedural,
+                "up_axis": s.asset.up_axis,
+            }
+            if getattr(args, "offline_fallback", False):
+                resolved_path, meta = registry.resolve_with_metadata(s.asset)
+                rec["resolved_path"] = str(resolved_path)
+                rec["fallback_used"] = bool(meta.get("fallback_used", False))
+            ext_records.append(rec)
+
+        manifest_path = (
+            args.manifest_out.resolve()
+            if args.manifest_out
+            else target_dir / "external_datasets_manifest.json"
+        )
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        payload: Dict[str, Any] = {
+            "version": "1.0.0",
+            "rfc": "RFC-0063",
+            "dataset_filter": args.dataset,
+            "mode": "offline_fallback" if getattr(args, "offline_fallback", False) else "manifest_only",
+            "count": len(ext_records),
+            "scenarios": ext_records,
+        }
+        manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if args.json:
+            print(json.dumps({"status": "ok", "manifest": str(manifest_path), **payload}, indent=2))
+        else:
+            print(f"[prepare_benchmark_assets] Wrote {len(ext_records)} external scenarios to {manifest_path}")
+        return 0
 
     source_root = args.source_root.resolve() if args.source_root else DEFAULT_LOCAL_OPEN_DATA
 

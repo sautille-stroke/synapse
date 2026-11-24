@@ -1,0 +1,41 @@
+{
+  "id": "t1_ext_gso_ceramic_mug",
+  "tier": "T1",
+  "description": "GSO scanned ceramic mug under studio orbit. Tests curved specular glaze and handle silhouettes.",
+  "tags": [
+    "external",
+    "gso",
+    "rigid",
+    "ceramic"
+  ],
+  "asset": {
+    "source": "gso",
+    "id": "gso_ceramic_mug",
+    "license": "CC-BY-4.0",
+    "dataset_category": "household",
+    "fallback_procedural": "cylinder",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 2.8,
+    "elevation_deg": 20.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 4.0,
+    "psnr_db": 26.0,
+    "ssim": 0.86,
+    "dino_cosine_sim": 0.85
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}

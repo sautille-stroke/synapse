@@ -1,0 +1,46 @@
+{
+  "id": "t4_ext_thingi10k_lattice_stress",
+  "tier": "T4",
+  "description": "Thingi10K high-genus perforated lattice topology stress test under crisp rim lighting.",
+  "tags": [
+    "external",
+    "thingi10k",
+    "high_genus",
+    "stress"
+  ],
+  "asset": {
+    "source": "thingi10k",
+    "id": "thingi10k_lattice",
+    "license": "MIT",
+    "dataset_category": "lattice",
+    "fallback_procedural": "torus",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.2,
+    "elevation_deg": 18.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 180
+  },
+  "conditions": {
+    "style": "three_point_studio",
+    "color_temperature_k": 5500,
+    "key_light_elevation_deg": 25.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "psnr_db": 23.0,
+    "ssim": 0.80,
+    "style_color_de": 8.0,
+    "style_light_error_deg": 15.0
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

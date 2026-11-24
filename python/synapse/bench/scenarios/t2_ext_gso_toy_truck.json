@@ -1,0 +1,40 @@
+{
+  "id": "t2_ext_gso_toy_truck",
+  "tier": "T2",
+  "description": "GSO scanned rigid-axle toy truck. Tests multi-part occlusion and crisp specular paint highlights.",
+  "tags": [
+    "external",
+    "gso",
+    "toys",
+    "scanned"
+  ],
+  "asset": {
+    "source": "gso",
+    "id": "gso_toy_truck",
+    "license": "CC-BY-4.0",
+    "dataset_category": "toys",
+    "fallback_procedural": "cube",
+    "up_axis": "Z"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.2,
+    "elevation_deg": 18.0,
+    "num_frames": 49,
+    "fps": 24,
+    "azimuth_range_deg": 360
+  },
+  "conditions": {},
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 25.0,
+    "ssim": 0.84
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}
