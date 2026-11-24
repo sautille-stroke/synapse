@@ -1,0 +1,42 @@
+# Synapse Weekly GPU Smoke Contract Validation (PR-210)
+# Validates the GPU smoke CLI contract on CPU runners and archives the dry-run
+# summary JSON. Real CUDA kernel checks execute on Colab T4/L4/A100 via
+# scripts/run_gpu_smoke.py --json --auto-release.
+name: GPU Smoke Weekly Contract
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpu-smoke-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install core dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,image,metrics]"
+
+      - name: Validate GPU smoke CLI dry-run contract
+        run: |
+          python scripts/run_gpu_smoke.py --dry-run --json --output-json gpu_smoke_dryrun.json
+          pytest tests/test_m51_governance.py -v
+
+      - name: Archive weekly smoke dry-run report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-smoke-dryrun-report
+          path: gpu_smoke_dryrun.json
