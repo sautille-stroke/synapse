@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分执行计划 5：Phase M8 `InspectionBundle` 契约与 Electron + `fulgur` 原生可视化检查器 (`PR-26` ~ `PR-29`)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划 5：Phase M8 `InspectionBundle` 契约与 Electron + `fulgur` 原生可视化检查器 (`PR-26` ~ `PR-29`)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M8，真视口收口见 M16 PR-55)

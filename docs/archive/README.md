@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 文档归档中枢 (Documentation Archive)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 文档归档中枢 (Documentation Archive)
 
 本目录（`docs/archive/`）用于归档已完成历史使命、已被主干规范完全吸收、或属于特定历史会话阶段性交付评审的文档。

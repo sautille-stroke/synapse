@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "SYN-RFC-0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # SYN-RFC-0060: 真实视频逆向 3D 动态数字孪生与联合反演架构规范
 
 > **Namespace Alias**: `SYN-RFC-0060` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0060`.

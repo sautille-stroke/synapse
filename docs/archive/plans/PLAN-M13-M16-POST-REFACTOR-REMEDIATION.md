@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分实施计划：Horizon-4 重构后架构解耦、防静默失败清零与工程硬化 (M13–M16: PR-44 ~ PR-57)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分实施计划：Horizon-4 重构后架构解耦、防静默失败清零与工程硬化 (M13–M16: PR-44 ~ PR-57)
 
 - **计划版本**: `Active Remediation Blueprint (v1.0)`

@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M49–M50 PR #189 缺陷加固、3D 评估全指标闭环与外部基准数据集落地计划 (Actionable Horizon-13A Blueprint)"
+description: "- 计划版本: `v1.0`（对应主总纲 `IMPLEMENTATION_PLAN.md` `v4.0`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M49–M50 PR #189 缺陷加固、3D 评估全指标闭环与外部基准数据集落地计划 (Actionable Horizon-13A Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）

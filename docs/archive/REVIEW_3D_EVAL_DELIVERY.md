@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "3D 模型评估体系 — 完整交付清单与 Review 指南"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 3D 模型评估体系 — 完整交付清单与 Review 指南
 
 > **会话时间**: 2026-11-12 18:30 ~ 21:25 (UTC+8)

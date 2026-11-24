@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范 (Recursive Self-Improvement & Physics-Driven Evolution Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 递归自我提升 (RSI) 与物理驱动自演进飞轮设计规范 (Recursive Self-Improvement & Physics-Driven Evolution Specification)
 
 - **文档状态**: `Approved Specification v1.0`

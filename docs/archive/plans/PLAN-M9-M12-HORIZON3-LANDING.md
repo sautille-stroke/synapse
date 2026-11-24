@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分实施计划：Horizon-3 闭环反演、局部解剖精修与全域契约收口 (M9–M12: PR-30 ~ PR-43)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分实施计划：Horizon-3 闭环反演、局部解剖精修与全域契约收口 (M9–M12: PR-30 ~ PR-43)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 3 / Waves 8–11: M9–M12)

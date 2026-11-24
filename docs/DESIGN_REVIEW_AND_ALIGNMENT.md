@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 整体架构设计深度评审与跨文档对齐决议 (Design Review & Cross-Spec Alignment)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 整体架构设计深度评审与跨文档对齐决议 (Design Review & Cross-Spec Alignment)
 
 - **文档状态**: `Approved Review & Alignment Baseline (v3.1 — Horizon-3 & Horizon-4 Aligned)`

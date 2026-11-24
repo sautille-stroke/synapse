@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse Horizon-8 后全库整体审查、改进战略与真值复核报告（2026-11）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Horizon-8 后全库整体审查、改进战略与真值复核报告（2026-11）
 
 - **文档状态**: `Accepted Holistic Review & Audit Report (v1.0)`

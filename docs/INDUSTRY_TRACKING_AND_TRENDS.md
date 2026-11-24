@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Synapse 行业前沿追踪、趋势演进与架构启示录 (Industry Technology Radar, Trends & Architectural Insights)"
+description: "- docs/AUDIT_AND_ARCHITECTURE.md (整体目标审查与生态架构定界)"
+tags: [synapse]
+status: deprecated
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 行业前沿追踪、趋势演进与架构启示录 (Industry Technology Radar, Trends & Architectural Insights)
 
 > **文档定位**：Layer 2 算法 SDK、推理容器核与评测基准的行业坐标雷达与演进指南  

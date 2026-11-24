@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "PR #17 / PR #18 联合评审与改进计划"
+description: "- PR #17 `feat(pipeline): add training, RSI flywheel, data inspector, and assault plan [gemini3.8]` → squash 合入 `8df7424`（52 个文件，+8824 / −74）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # PR #17 / PR #18 联合评审与改进计划
 
 > **评审对象**

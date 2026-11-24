@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "3D 生成模型质量提升方法论与高质量训练数据工程规范"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 3D 生成模型质量提升方法论与高质量训练数据工程规范
 ## 3D Model Quality Enhancement & Training Data Specification Guide
 

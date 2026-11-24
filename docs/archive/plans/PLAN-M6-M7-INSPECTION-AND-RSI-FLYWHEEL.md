@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分执行计划 4：Phase M6–M7 3D 智能微距质检、Visual Jev 判别与物理驱动 RSI 自演进飞轮 (`PR-20` ~ `PR-25`)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划 4：Phase M6–M7 3D 智能微距质检、Visual Jev 判别与物理驱动 RSI 自演进飞轮 (`PR-20` ~ `PR-25`)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M6–M7)
