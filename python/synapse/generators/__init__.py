@@ -1,18 +1,17 @@
-"""synapse.generators — Multi-channel dataset generation engine.
+"""Zero-warning compatibility shim (PR-213) consolidated into :mod:`synapse.bench`.
 
-.. deprecated:: ``SoftwareRasterizer`` and ``RenderResult``
-    The ``synapse.generators.rasterizer`` module is now a compatibility shim
-    delegating to ``synapse.render_core.rasterizer``.  New code should import
-    from ``synapse.render_core`` directly.
-    See https://github.com/sautille-stroke/synapse/issues/34
+Direct consumers should import ``DatasetConfig`` and ``DatasetGenerator`` from
+``synapse.bench.dataset_gen``, colorizers from ``synapse.bench.dataset_visualizer``,
+and ``SoftwareRasterizer`` from ``synapse.render_core``. Planned for formal removal
+in ``v6.0.0``.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from synapse.generators.dataset import DatasetConfig, DatasetGenerator
-from synapse.generators.visualizer import (
+from synapse.bench.dataset_gen import DatasetConfig, DatasetGenerator
+from synapse.bench.dataset_visualizer import (
     colorize_depth,
     colorize_flow,
     colorize_mask,

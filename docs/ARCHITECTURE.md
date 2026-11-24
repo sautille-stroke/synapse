@@ -7,7 +7,7 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # Synapse 整体目标审查、系统架构与跨文档对齐总纲 (Architecture & System Design SSOT)
 
-- **文档状态**: `Approved Architecture Baseline (v4.0.0 — Horizon-9 Sealed)`
+- **文档状态**: `Approved Architecture Baseline (v5.0.0 — Horizon-12/13B Sealed)`
 - **操作模型标识**: `[opus4.6]`
 - **权威范围**:
   - `synapse` 仓库整体目标、系统分层架构、代码基线命名与跨仓定界；

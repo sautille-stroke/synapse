@@ -14,7 +14,7 @@ stale_after: 2027-11-19T00:00:00Z
 >   2. 长期挂起的 Open PR `sautille-stroke/synapse#163`（`pyproject.toml` Ruff 扩展全生态 SSOT）；
 >   3. [SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) §5 四轨道行业横向对标协议与 [DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](../DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)。
 > - **规划模型**: `[gemini4]`
-> - **当前状态**: 📋 **规划就绪 (Horizon 13B · 可与 Horizon 12/13A 平行调度)**
+> - **当前状态**: ✅ **已完成 (Horizon 13B · M51 PR #196 合入 & M52 `Release v5.0.0` 封板)**
 > - **目标周期**: 2 个里程碑（`M51` – `M52`）、2 个 Execution Waves（`Wave 50` – `Wave 51`）、**6 个原子 PR**（`PR-210` – `PR-215`）
 
 > [!IMPORTANT]

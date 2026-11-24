@@ -481,3 +481,84 @@ footer {
 }
 section { margin-bottom: 24px; }
 """
+
+
+def render_comparison_html(
+    comparison: Any,
+    output_path: Path | None = None,
+) -> str:
+    """Render a self-contained HTML 4-track cross-model comparison leaderboard (PR-215)."""
+    from synapse.bench.compare import TRACK_DEFINITIONS
+
+    data = comparison.to_dict() if hasattr(comparison, "to_dict") else dict(comparison)
+    rows = data.get("rows", [])
+    track_winners = data.get("track_winners", {})
+    overall_winner = str(data.get("overall_winner", ""))
+
+    bar_data = {
+        str(r.get("model_name", "")): round(float(r.get("overall_score", 0.0)) * 100.0, 2)
+        for r in rows
+    }
+    svg_chart = (
+        _svg_bar_chart(bar_data, title="Overall 4-Track Score (0-100)")
+        if bar_data
+        else ""
+    )
+
+    row_html: list[str] = []
+    for rank, r in enumerate(rows, start=1):
+        name = html.escape(str(r.get("model_name", "")))
+        overall = float(r.get("overall_score", 0.0)) * 100.0
+        ts = r.get("track_scores", {})
+        t_cells = "".join(
+            f"<td>{float(ts.get(tid, {}).get('score', 0.0)) * 100.0:.1f}</td>"
+            for tid in TRACK_DEFINITIONS
+        )
+        row_html.append(f"<tr><td>#{rank}</td><td><strong>{name}</strong></td><td>{overall:.1f}</td>{t_cells}</tr>")
+
+    winner_items = "".join(
+        f"<li><strong>{html.escape(str(TRACK_DEFINITIONS[tid]['title']))}</strong>: "
+        f"{html.escape(str(track_winners.get(tid, 'N/A')))}</li>"
+        for tid in TRACK_DEFINITIONS
+    )
+
+    doc = "\n".join(
+        [
+            "<!DOCTYPE html>",
+            '<html lang="en">',
+            "<head>",
+            '<meta charset="utf-8">',
+            "<title>Synapse-Bench 4-Track Leaderboard</title>",
+            f"<style>{_CSS}</style>",
+            "</head>",
+            "<body>",
+            "<header>",
+            "<h1>Synapse-Bench 4-Track Comparison Leaderboard</h1>",
+            f'<p class="subtitle">Overall Winner: <strong>{html.escape(overall_winner)}</strong></p>',
+            "</header>",
+            f'<div class="chart-container">{svg_chart}</div>',
+            "<section>",
+            "<h2>Leaderboard Ranking</h2>",
+            '<table class="summary-table">',
+            "<thead><tr><th>Rank</th><th>Model</th><th>Overall</th>"
+            + "".join(f"<th>{html.escape(tid)}</th>" for tid in TRACK_DEFINITIONS)
+            + "</tr></thead>",
+            "<tbody>",
+            *row_html,
+            "</tbody>",
+            "</table>",
+            "</section>",
+            "<section>",
+            "<h2>Per-Track Winners</h2>",
+            f"<ul>{winner_items}</ul>",
+            "</section>",
+            "</body>",
+            "</html>",
+        ]
+    )
+
+    if output_path is not None:
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(doc, encoding="utf-8")
+    return doc

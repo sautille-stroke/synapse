@@ -234,6 +234,7 @@ class LocalRefinementPipeline:
         elapsed_seconds_override: float | None = None,
         motion_vectors: np.ndarray | None = None,
         model_ensemble: Any | None = None,
+        foundary_client: Any | None = None,
     ) -> RefinePipelineResult:
         """Run the full refinement pipeline.
 
@@ -399,12 +400,35 @@ class LocalRefinementPipeline:
                         else:
                             cands = [smoothed_crop]
 
-                        # Multi-candidate ensemble support
+                        # Multi-candidate ensemble / Foundary K=2 support
                         active_ensemble = model_ensemble or getattr(self, "model_ensemble", None)
                         if active_ensemble is not None:
                             ens_cands = active_ensemble.generate_candidates(roi_smoothed)
                             if len(ens_cands) > 1:
                                 cands = ens_cands
+                        elif foundary_client is not None:
+                            remote_cands: list[np.ndarray] = []
+                            for svc in ("flux", "sdxl"):
+                                try:
+                                    resp = foundary_client.infer(
+                                        svc,
+                                        inputs={
+                                            "region": roi.region.name,
+                                            "frame_index": t,
+                                            "shape": list(roi_smoothed.crop_acescg.shape),
+                                        },
+                                    )
+                                    outs = getattr(resp, "outputs", {})
+                                    if isinstance(outs, dict) and "refined_patch" in outs:
+                                        patch = np.asarray(outs["refined_patch"], dtype=np.float32)
+                                        if patch.shape == roi_smoothed.crop_acescg.shape:
+                                            remote_cands.append(patch)
+                                except Exception:
+                                    continue
+                            if len(remote_cands) >= 2:
+                                cands = remote_cands
+                            elif len(remote_cands) == 1:
+                                cands = [cands[0], remote_cands[0]]
 
                 # Fuse candidates
                 fused = self.fusion.fuse(
