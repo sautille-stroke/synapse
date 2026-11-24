@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M25–M28 Post-Horizon-6 真实闭环与全仓治理可执行计划 (Actionable Horizon-7 Blueprint)"
+description: "- 计划版本: `v1.1`（对应主总纲 `IMPLEMENTATION_PLAN.md` `v3.5`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M25–M28 Post-Horizon-6 真实闭环与全仓治理可执行计划 (Actionable Horizon-7 Blueprint)
 
 > - **计划版本**: `v1.1`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v3.5`**）

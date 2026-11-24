@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "细分执行计划：3D 模型多视角生成与逆向重建闭环验证计划"
+description: "当前 `python/synapse/recon/pipeline.py` 中 `ReconPipeline.run()` 在 `initial_mesh=None` 时会直接生成硬编码 8 顶点默认立方体并忽略输入帧像素！因此阶段二与阶段三严禁跳过 `PR-30`——必须先落地 `synapse.recon.multiview.MultiViewInitializer` 真实从多视角深度/轮廓反"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划：3D 模型多视角生成与逆向重建闭环验证计划
 ## (3D Round-Trip Reconstruction & Differential Verification Plan)
 

@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "SYN-RFC-0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # SYN-RFC-0061: 局部解剖智能修正、多模型协同融合与工业级手术刀缝合规范与规划
 # (Local Anatomical Refinement, Multi-Model Fusion & Industrial Scalpel Stitching Specification & Plan)
 

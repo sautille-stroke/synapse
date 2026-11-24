@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M51–M52 Post-H10 战略待办收口与 4 轨道行业横向评测计划 (Actionable Horizon-13B Blueprint)"
+description: "- 计划版本: `v1.0`（对应主总纲 `IMPLEMENTATION_PLAN.md` `v4.0`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M51–M52 Post-H10 战略待办收口与 4 轨道行业横向评测计划 (Actionable Horizon-13B Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）

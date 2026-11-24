@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Synapse (神经突触)"
+description: "Interoperability SDK, Stateless GPU Worker Runtime & Benchmark Suite between 3D CG Rendering and Generative Video Models."
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse (神经突触)
 
 > **3D CG 渲染与神经视频生成互操作算法 SDK、无状态推理容器 Worker 与跨模态评测基准 (`Synapse-Bench`)**  

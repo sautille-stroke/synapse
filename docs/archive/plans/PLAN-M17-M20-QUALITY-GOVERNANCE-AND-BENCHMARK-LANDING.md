@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分实施计划：Horizon-5 质量治理、架构收口与 RFC-0063 基准落地 (M17–M20: PR-58 ~ PR-73)"
+tags: [benchmark, synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分实施计划：Horizon-5 质量治理、架构收口与 RFC-0063 基准落地 (M17–M20: PR-58 ~ PR-73)
 
 - **计划版本**: `Completed Horizon-5 Landing Blueprint (v1.1) - 100% Merged & Verified`

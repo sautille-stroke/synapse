@@ -1,3 +1,11 @@
+---
+type: Governance
+title: "Synapse Agent 指引与开发者规范"
+description: "本文件为 AI Agent 及开发者在 `synapse` 仓库中进行规划、开发、测试与代码审查时的最高优先级行为准则。"
+tags: [synapse]
+status: active
+stale_after: 2028-11-13T00:00:00Z
+---
 # Synapse Agent 指引与开发者规范
 
 > 本文件为 AI Agent 及开发者在 `synapse` 仓库中进行规划、开发、测试与代码审查时的最高优先级行为准则。

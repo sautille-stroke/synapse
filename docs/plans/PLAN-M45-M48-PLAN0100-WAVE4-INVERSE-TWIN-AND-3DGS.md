@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M45–M48 `PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩落地计划 (Actionable Horizon-12 Blueprint)"
+description: "- 计划版本: `v1.0`（对应主总纲 `IMPLEMENTATION_PLAN.md` `v4.0`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M45–M48 `PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩落地计划 (Actionable Horizon-12 Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）

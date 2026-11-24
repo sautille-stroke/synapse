@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M29–M32 Post-Horizon-7 生产级真闭环与跨仓契约合龙计划 (Actionable Horizon-8 Blueprint)"
+description: "- 计划版本: `v1.0`（对应主总纲 `IMPLEMENTATION_PLAN.md` `v3.6` / `v3.7`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M29–M32 Post-Horizon-7 生产级真闭环与跨仓契约合龙计划 (Actionable Horizon-8 Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v3.6` / `v3.7`**）

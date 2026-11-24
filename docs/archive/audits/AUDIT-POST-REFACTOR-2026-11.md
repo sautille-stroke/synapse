@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 大规模重构后全库架构、工程实现与技术债务深度审计报告"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 大规模重构后全库架构、工程实现与技术债务深度审计报告
 
 - **文档状态**: `Accepted Audit Report (v1.0)`

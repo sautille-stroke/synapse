@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 真实视频逆向 3D 动态数字孪生与联合反演设计规范 (Real-World Video-to-3D Dynamic Digital Twin & Joint Inverse Rendering Specification)"
+tags: [rendering, synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 真实视频逆向 3D 动态数字孪生与联合反演设计规范 (Real-World Video-to-3D Dynamic Digital Twin & Joint Inverse Rendering Specification)
 
 - **文档状态**: `Approved Design Spec (v1.1)`

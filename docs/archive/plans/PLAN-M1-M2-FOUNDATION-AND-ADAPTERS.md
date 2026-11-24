@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分执行计划 1：Phase M1–M2 地基归正、FGPP 跨语言契约闭环与双轨视频生成适配 (`PR-01` ~ `PR-08`)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划 1：Phase M1–M2 地基归正、FGPP 跨语言契约闭环与双轨视频生成适配 (`PR-01` ~ `PR-08`)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 1: M1–M2)

@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 行业成熟流水线对比差距与当前范围代偿性系统设计规范 (Industry Pipeline Gap Analysis & Architectural Compensation Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 行业成熟流水线对比差距与当前范围代偿性系统设计规范 (Industry Pipeline Gap Analysis & Architectural Compensation Specification)
 
 - **文档状态**: `Approved Specification (v1.0)`

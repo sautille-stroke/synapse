@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 整体目标审查、系统架构与跨文档对齐总纲 (Architecture & System Design SSOT)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 整体目标审查、系统架构与跨文档对齐总纲 (Architecture & System Design SSOT)
 
 - **文档状态**: `Approved Architecture Baseline (v4.0.0 — Horizon-9 Sealed)`

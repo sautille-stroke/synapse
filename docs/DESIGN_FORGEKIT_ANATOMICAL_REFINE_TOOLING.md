@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse × ForgeKit 局部解剖智能修正工具链设计规范"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse × ForgeKit 局部解剖智能修正工具链设计规范
 # (Anatomical Refinement Tooling Specification: Unreal Engine & Blender Benchmarks in ForgeKit)
 

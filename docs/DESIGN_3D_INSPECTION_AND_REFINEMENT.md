@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 3D 建模智能质检、多尺度对齐与精修数据飞轮设计规范 (3D Quality Inspection, Multi-scale Alignment & Refinement Flywheel Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 3D 建模智能质检、多尺度对齐与精修数据飞轮设计规范 (3D Quality Inspection, Multi-scale Alignment & Refinement Flywheel Specification)
 
 - **文档状态**: `Approved Technical Spec v1.2`
