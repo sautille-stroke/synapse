@@ -1635,3 +1635,253 @@ def validate_recon_mesh_manifold(
             )
             return bool(res["is_manifold"])
     return bool(check_manifold(vertices, faces))
+
+
+def compute_euler_characteristic(vertices: np.ndarray, faces: np.ndarray) -> int:
+    """Compute Euler characteristic chi = V - E + F of the mesh.
+
+    For closed 2-manifold surfaces of genus g, chi = 2 - 2g.
+    For a genus-0 sphere-like watertight mesh, chi = 2.
+
+    Args:
+        vertices: Vertex positions, shape (V, 3).
+        faces: Triangle or quad indices, shape (F, 3) or (F, 4).
+
+    Returns:
+        Integer Euler characteristic chi.
+    """
+    v = np.asarray(vertices)
+    f = np.asarray(faces, dtype=np.int64)
+    if len(v) == 0 or len(f) == 0:
+        return 0
+
+    edge_set: set[tuple[int, int]] = set()
+    num_verts_per_face = f.shape[1]
+    for i in range(num_verts_per_face):
+        next_i = (i + 1) % num_verts_per_face
+        v_curr = f[:, i]
+        v_next = f[:, next_i]
+        u = np.minimum(v_curr, v_next)
+        w = np.maximum(v_curr, v_next)
+        for u_val, w_val in zip(u, w, strict=True):
+            if u_val != w_val:
+                edge_set.add((int(u_val), int(w_val)))
+
+    num_v = len(v)
+    num_e = len(edge_set)
+    num_f = len(f)
+    return int(num_v - num_e + num_f)
+
+
+def count_non_manifold_edges(vertices: np.ndarray, faces: np.ndarray) -> int:
+    """Count the exact number of non-manifold edges in a polygon mesh.
+
+    An edge is non-manifold if:
+    1. It is shared by more than 2 faces (branching edge).
+    2. It has conflicting orientation (traversed in the same direction by >= 2 faces).
+
+    Args:
+        vertices: Vertex positions, shape (V, 3).
+        faces: Triangle or quad indices, shape (F, 3) or (F, 4).
+
+    Returns:
+        Count of non-manifold undirected edges (>= 0).
+    """
+    f = np.asarray(faces, dtype=np.int64)
+    if len(f) == 0:
+        return 0
+
+    edge_face_count: dict[tuple[int, int], int] = defaultdict(int)
+    directed_half_edges: set[tuple[int, int]] = set()
+    orientation_conflict_edges: set[tuple[int, int]] = set()
+
+    num_verts_per_face = f.shape[1]
+    for i in range(num_verts_per_face):
+        next_i = (i + 1) % num_verts_per_face
+        for u_raw, v_raw in zip(f[:, i], f[:, next_i], strict=True):
+            u, v = int(u_raw), int(v_raw)
+            if u == v:
+                continue
+            undirected = (min(u, v), max(u, v))
+            edge_face_count[undirected] += 1
+            if (u, v) in directed_half_edges:
+                orientation_conflict_edges.add(undirected)
+            else:
+                directed_half_edges.add((u, v))
+
+    non_manifold_count = 0
+    for edge, count in edge_face_count.items():
+        if count > 2 or edge in orientation_conflict_edges:
+            non_manifold_count += 1
+
+    return non_manifold_count
+
+
+def compute_uv_area_distortion_ratio(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray,
+    uv_faces: np.ndarray | None = None,
+) -> float:
+    """Compute the UV area distortion ratio (max/min normalised face area ratio).
+
+    Measures conformal stretching between 3D surface triangles and 2D UV charts.
+    A perfectly isometric or equiareal parameterisation has ratio 1.0.
+
+    Args:
+        vertices: 3D vertex positions, shape (V, 3).
+        faces: Face vertex indices, shape (F, 3).
+        uvs: UV coordinates in [0, 1], shape (U, 2).
+        uv_faces: Optional UV face indices, shape (F, 3). Defaults to faces.
+
+    Returns:
+        Area distortion ratio >= 1.0. Returns 1.0 if mesh has no faces or zero area.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    uv = np.asarray(uvs, dtype=np.float64)
+    uf = f if uv_faces is None else np.asarray(uv_faces, dtype=np.int64)
+
+    if len(f) == 0 or len(uv) == 0 or len(uf) == 0:
+        return 1.0
+
+    v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    cross_3d = np.cross(v1 - v0, v2 - v0)
+    area_3d = 0.5 * np.linalg.norm(cross_3d, axis=-1)
+
+    u0, u1, u2 = uv[uf[:, 0]], uv[uf[:, 1]], uv[uf[:, 2]]
+    cross_2d = (u1[:, 0] - u0[:, 0]) * (u2[:, 1] - u0[:, 1]) - (u1[:, 1] - u0[:, 1]) * (u2[:, 0] - u0[:, 0])
+    area_uv = 0.5 * np.abs(cross_2d)
+
+    total_3d = float(np.sum(area_3d))
+    total_uv = float(np.sum(area_uv))
+    if total_3d <= 1e-12 or total_uv <= 1e-12:
+        return 1.0
+
+    p_3d = area_3d / total_3d
+    p_uv = area_uv / total_uv
+
+    valid_mask = p_3d > 1e-7
+    if not np.any(valid_mask):
+        return 1.0
+
+    ratios = p_uv[valid_mask] / np.maximum(p_3d[valid_mask], 1e-12)
+    ratios = ratios[np.isfinite(ratios) & (ratios > 1e-12)]
+    if len(ratios) == 0:
+        return 1.0
+
+    min_r = float(np.min(ratios))
+    max_r = float(np.max(ratios))
+    if min_r <= 1e-12:
+        return 1.0
+    return float(max(1.0, max_r / min_r))
+
+
+def compute_seam_discontinuity_deg(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray,
+    normals: np.ndarray | None = None,
+    uv_faces: np.ndarray | None = None,
+) -> float:
+    """Compute mean normal angular discontinuity (in degrees) across UV seams.
+
+    UV seams divide 3D surface charts. Along seam edges, normals should remain
+    continuous (small angular jump). Large jumps indicate shading tears.
+
+    Args:
+        vertices: 3D vertex positions, shape (V, 3).
+        faces: Triangle indices, shape (F, 3).
+        uvs: UV coordinates, shape (U, 2).
+        normals: Optional vertex or face normals. If None, computes vertex normals.
+        uv_faces: Optional UV face indices, shape (F, 3). Defaults to faces.
+
+    Returns:
+        Mean angular jump in degrees [0, 180]. 0.0 if no seams exist.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    uv = np.asarray(uvs, dtype=np.float64)
+    uf = f if uv_faces is None else np.asarray(uv_faces, dtype=np.int64)
+
+    if len(f) == 0 or len(uv) == 0:
+        return 0.0
+
+    edge_to_uv_edges: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    for face_idx in range(len(f)):
+        tri = f[face_idx]
+        uv_tri = uf[face_idx]
+        for i in range(3):
+            next_i = (i + 1) % 3
+            v_edge = (min(int(tri[i]), int(tri[next_i])), max(int(tri[i]), int(tri[next_i])))
+            uv_edge = (min(int(uv_tri[i]), int(uv_tri[next_i])), max(int(uv_tri[i]), int(uv_tri[next_i])))
+            edge_to_uv_edges[v_edge].append(uv_edge)
+
+    seam_edges = [edge for edge, uv_list in edge_to_uv_edges.items() if len(set(uv_list)) > 1]
+    if not seam_edges:
+        return 0.0
+
+    norms = compute_normals(v, f) if normals is None else np.asarray(normals, dtype=np.float64)
+    if len(norms) == 0:
+        return 0.0
+
+    angles = []
+    for u, w in seam_edges:
+        if u < len(norms) and w < len(norms):
+            nu = norms[u] / max(np.linalg.norm(norms[u]), 1e-12)
+            nw = norms[w] / max(np.linalg.norm(norms[w]), 1e-12)
+            cos_theta = np.clip(np.dot(nu, nw), -1.0, 1.0)
+            angles.append(float(np.degrees(np.arccos(cos_theta))))
+
+    return float(np.mean(angles)) if angles else 0.0
+
+
+def compute_texel_density_variance(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    uvs: np.ndarray,
+    uv_faces: np.ndarray | None = None,
+    texture_resolution: int = 1024,
+) -> float:
+    """Compute the Coefficient of Variation (CV = sigma / mu) of texel density.
+
+    Texel density measures the ratio of texture pixels to 3D world surface area.
+    Lower variance indicates more uniform texture resolution allocation.
+
+    Args:
+        vertices: 3D vertex positions, shape (V, 3).
+        faces: Face indices, shape (F, 3).
+        uvs: UV coordinates, shape (U, 2).
+        uv_faces: Optional UV face indices, shape (F, 3). Defaults to faces.
+        texture_resolution: Target texture map resolution (e.g. 1024, 2048).
+
+    Returns:
+        Coefficient of variation >= 0.0. 0.0 indicates completely uniform texel density.
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    uv = np.asarray(uvs, dtype=np.float64)
+    uf = f if uv_faces is None else np.asarray(uv_faces, dtype=np.int64)
+
+    if len(f) == 0 or len(uv) == 0 or len(uf) == 0:
+        return 0.0
+
+    v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    area_3d = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=-1)
+
+    u0, u1, u2 = uv[uf[:, 0]], uv[uf[:, 1]], uv[uf[:, 2]]
+    cross_2d = (u1[:, 0] - u0[:, 0]) * (u2[:, 1] - u0[:, 1]) - (u1[:, 1] - u0[:, 1]) * (u2[:, 0] - u0[:, 0])
+    area_uv_norm = 0.5 * np.abs(cross_2d)
+    area_uv_pixels = area_uv_norm * (texture_resolution**2)
+
+    valid = area_3d > 1e-8
+    if not np.any(valid):
+        return 0.0
+
+    densities = np.sqrt(np.maximum(area_uv_pixels[valid], 0.0)) / np.sqrt(np.maximum(area_3d[valid], 1e-12))
+    mu = float(np.mean(densities))
+    if mu <= 1e-12:
+        return 0.0
+    sigma = float(np.std(densities))
+    return float(sigma / mu)
+

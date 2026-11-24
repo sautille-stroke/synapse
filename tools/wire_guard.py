@@ -568,7 +568,7 @@ def _check_json_schemas() -> list[str]:
 
 _RE_CHANNEL_NAME = re.compile(r'"([A-Za-z]+\.[A-Z]+)"')
 _RE_EXR_SPECS_BODY = re.compile(
-    r"getAlphabeticalEXRChannelSpecs\b.*?\{\{\s*(.*?)\s*\}\}\s*;\s*\}",
+    r"getAlphabeticalEXRChannelSpecs\b.*?\{\s*\{\s*(.*?)\s*\}\s*\}\s*;\s*\}",
     re.DOTALL,
 )
 _RE_CHANNEL_SPEC_ENTRY = re.compile(

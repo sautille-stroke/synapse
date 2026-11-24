@@ -32,6 +32,8 @@ class TopologyResult:
     num_connected_components: int
     has_degenerate_faces: bool
     num_boundary_edges: int
+    euler_characteristic: int | None = None
+    num_non_manifold_edges: int | None = None
 
 
 @dataclass

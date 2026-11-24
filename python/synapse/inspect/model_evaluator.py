@@ -44,6 +44,13 @@ from synapse.metrics.roundtrip import (
     compute_chamfer_distance_mm,
     sample_mesh_surface,
 )
+from synapse.recon.geometry import (
+    compute_euler_characteristic,
+    compute_seam_discontinuity_deg,
+    compute_texel_density_variance,
+    compute_uv_area_distortion_ratio,
+    count_non_manifold_edges,
+)
 from synapse.render_core.mesh import MeshData, load_obj
 
 
@@ -377,6 +384,8 @@ def evaluate_single_model(
     n_degenerate = len(geo_res.degenerate_face_indices)
     n_self_intersections = len(geo_res.self_intersecting_pairs)
     n_boundary = count_boundary_edges(topo_faces)
+    euler_chi = compute_euler_characteristic(verts, topo_faces)
+    non_manifold_count = count_non_manifold_edges(verts, topo_faces)
 
     topology = TopologyResult(
         is_manifold=geo_res.is_manifold,
@@ -386,6 +395,8 @@ def evaluate_single_model(
         num_connected_components=geo_res.num_connected_components,
         has_degenerate_faces=n_degenerate > 0,
         num_boundary_edges=n_boundary,
+        euler_characteristic=euler_chi,
+        num_non_manifold_edges=non_manifold_count,
     )
 
     floating_island_faces = 0
@@ -407,7 +418,24 @@ def evaluate_single_model(
         "connected_components": float(geo_res.num_connected_components),
         "boundary_edges": float(n_boundary),
         "floating_island_faces": float(floating_island_faces),
+        "euler_characteristic": float(euler_chi),
+        "non_manifold_edges_count": float(non_manifold_count),
     }
+
+    if hasattr(mesh, "uvs") and mesh.uvs is not None and len(mesh.uvs) > 0:
+        metrics["uv_area_distortion_ratio"] = compute_uv_area_distortion_ratio(
+            verts, faces_arr, mesh.uvs
+        )
+        metrics["seam_discontinuity_deg"] = compute_seam_discontinuity_deg(
+            verts, faces_arr, mesh.uvs, norms
+        )
+        metrics["texel_density_variance"] = compute_texel_density_variance(
+            verts, faces_arr, mesh.uvs
+        )
+    else:
+        metrics["uv_area_distortion_ratio"] = 1.0
+        metrics["seam_discontinuity_deg"] = 0.0
+        metrics["texel_density_variance"] = 0.0
 
     if log_fn:
         log_fn(f"  Rendering {num_views} views at {resolution}x{resolution}...")
