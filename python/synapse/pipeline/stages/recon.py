@@ -207,7 +207,16 @@ def handle_kinematic_distill(
             else:
                 contacts[t, 1] = 1.0
 
-    solved = solve_zero_slip_ik(skeleton_data, contacts, fps=fps)
+    ik_backend_raw = str(params.get("ik_backend", "auto"))
+    ik_backend: Any = ik_backend_raw if ik_backend_raw in ("auto", "native", "python") else "auto"
+    strict_slip_gate = bool(params.get("strict_slip_gate", False))
+    solved = solve_zero_slip_ik(
+        skeleton_data,
+        contacts,
+        fps=fps,
+        backend=ik_backend,
+        strict_slip_gate=strict_slip_gate,
+    )
 
     output_paths: dict[str, str] = {}
     out_path = manifest.outputs.get(

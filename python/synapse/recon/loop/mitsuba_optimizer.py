@@ -17,7 +17,7 @@ Provides two optimisation backends:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -38,6 +38,10 @@ class InverseOptimConfig:
         tv_weight: Total-variation regularisation weight.
         convergence_threshold: Early-stop L2 residual threshold.
         texture_resolution: UV texture map resolution (width = height).
+        renderer_backend: Differentiable rendering backend selector
+            (``"auto"``, ``"mitsuba"``, ``"fulgur_slang_ad"``, or ``"numpy_oracle"``).
+        strict_backend: When ``True``, fail closed with exit code 30 if the
+            requested hardware backend is unavailable.
     """
 
     max_iterations: int = 100
@@ -45,6 +49,8 @@ class InverseOptimConfig:
     tv_weight: float = 0.001
     convergence_threshold: float = 1e-4
     texture_resolution: int = 256
+    renderer_backend: Literal["auto", "mitsuba", "fulgur_slang_ad", "numpy_oracle"] = "auto"
+    strict_backend: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +71,7 @@ class InverseOptimResult:
         iterations_run: Actual number of iterations before convergence
             or limit.
         converged: ``True`` if converged within the threshold.
+        backend_used: Identifier of the optimization backend executed.
     """
 
     albedo_map: np.ndarray  # (R, R, 3) float32
@@ -73,6 +80,7 @@ class InverseOptimResult:
     ciede2000_after: float = 0.0
     iterations_run: int = 0
     converged: bool = False
+    backend_used: str = "analytic_cpu"
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +364,8 @@ class MitsubaInverseOptimizer:
     if mitsuba is not installed.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: InverseOptimConfig | None = None) -> None:
+        self.config = config or InverseOptimConfig()
         self._mi = None
         try:
             import mitsuba
@@ -400,7 +409,7 @@ class MitsubaInverseOptimizer:
             BackendUnavailableError: If mitsuba is not installed (exit 30).
             NotImplementedStageError: If the variant is unavailable (exit 50).
         """
-        cfg = config or InverseOptimConfig()
+        cfg = config or self.config
 
         if self._mi is None:
             from synapse.errors import BackendUnavailableError
@@ -553,6 +562,7 @@ class MitsubaInverseOptimizer:
             ciede2000_after=ciede_after,
             iterations_run=iters_run,
             converged=converged,
+            backend_used="mitsuba_ad",
         )
 
     def optimize(self, **kwargs: Any) -> InverseOptimResult:
@@ -567,6 +577,171 @@ class MitsubaInverseOptimizer:
             light_dirs=kwargs.get("light_dirs"),
             config=kwargs.get("config"),
         )
+
+
+# ---------------------------------------------------------------------------
+# FulgurSlangADRendererAdapter (PR-198: headless Slang [Differentiable] pass)
+# ---------------------------------------------------------------------------
+
+
+def _probe_fulgur_slang_module() -> Any:
+    """Attempt lazy import of an installed ``fulgur_slang`` headless module."""
+    import importlib
+
+    try:
+        return importlib.import_module("fulgur_slang")
+    except ImportError:
+        return None
+
+
+class FulgurSlangADRendererAdapter:
+    """Inverse material optimizer backed by ``fulgur`` Slang ``[Differentiable]`` AD pass.
+
+    Bridges ``fulgur/engine/shader/include/fulgur/shader/slang_compiler.h``
+    headless differentiable residual optimization.  Fails closed with
+    :class:`~synapse.errors.BackendUnavailableError` (exit 30) when the Slang AD
+    backend is unavailable so silent CPU fallback cannot occur in production.
+    """
+
+    def __init__(
+        self,
+        config: InverseOptimConfig | None = None,
+        *,
+        slang_backend: Any = None,
+    ) -> None:
+        self.config = config or InverseOptimConfig(renderer_backend="fulgur_slang_ad")
+        self._slang = slang_backend if slang_backend is not None else _probe_fulgur_slang_module()
+
+    def is_available(self) -> bool:
+        """Return True when a live or injected Slang AD backend is available."""
+        return self._slang is not None
+
+    def optimize_material_from_video(
+        self,
+        frames: np.ndarray,
+        normals: np.ndarray,
+        uv_maps: np.ndarray,
+        light_dirs: np.ndarray | None = None,
+        config: InverseOptimConfig | None = None,
+    ) -> InverseOptimResult:
+        """Run Slang differentiable rasterization residual optimization.
+
+        Raises:
+            BackendUnavailableError: If the ``fulgur_slang`` backend is unavailable (exit 30).
+        """
+        from synapse.errors import BackendUnavailableError
+
+        if self._slang is None:
+            raise BackendUnavailableError(
+                "fulgur Slang [Differentiable] AD renderer backend is not available; "
+                "silent fallback to CPU optimizer is forbidden.",
+                agent_fix_hint=(
+                    "Build fulgur headless Slang AD module or inject a validated backend; "
+                    "for CPU Oracle verification set renderer_backend='numpy_oracle'."
+                ),
+            )
+
+        cfg = config or self.config
+        res = cfg.texture_resolution
+        n_views = frames.shape[0]
+        l_dirs = (
+            np.asarray(light_dirs, dtype=np.float32)
+            if light_dirs is not None
+            else np.tile(np.array([0.0, 0.0, 1.0], dtype=np.float32), (n_views, 1))
+        )
+
+        albedo = np.full((res, res, 3), 0.5, dtype=np.float32)
+        analytic_eval = AnalyticUVInverseOptimizer(cfg)
+        initial_render = analytic_eval._render(albedo, normals, uv_maps, l_dirs)
+
+        converged = False
+        iters_run = 0
+        for it in range(cfg.max_iterations):
+            iters_run = it + 1
+            if hasattr(self._slang, "render_and_grad"):
+                grad = np.asarray(
+                    self._slang.render_and_grad(albedo, frames, normals, uv_maps, l_dirs),
+                    dtype=np.float32,
+                )
+            elif callable(self._slang):
+                grad = np.asarray(
+                    self._slang(albedo, frames, normals, uv_maps, l_dirs),
+                    dtype=np.float32,
+                )
+            else:
+                raise BackendUnavailableError(
+                    "Injected slang_backend does not expose callable or render_and_grad().",
+                    agent_fix_hint="Provide callable or object implementing render_and_grad().",
+                )
+
+            if cfg.tv_weight > 0.0:
+                grad = grad + cfg.tv_weight * compute_tv_gradient(albedo)
+            albedo = np.clip(albedo - cfg.learning_rate * grad, 0.0, 1.0).astype(np.float32)
+            grad_norm = float(np.sqrt(np.mean(grad * grad)))
+            if grad_norm < cfg.convergence_threshold:
+                converged = True
+                break
+
+        from synapse.metrics.image_quality import ciede2000 as _ciede2000
+        from synapse.metrics.image_quality import psnr_db as _psnr_db
+
+        final_render = analytic_eval._render(albedo, normals, uv_maps, l_dirs)
+        return InverseOptimResult(
+            albedo_map=albedo,
+            psnr_before_db=_psnr_db(initial_render, frames),
+            psnr_after_db=_psnr_db(final_render, frames),
+            ciede2000_after=_ciede2000(final_render, frames),
+            iterations_run=iters_run,
+            converged=converged,
+            backend_used="fulgur_slang_ad",
+        )
+
+
+def create_inverse_optimizer(
+    config: InverseOptimConfig | None = None,
+    *,
+    slang_backend: Any = None,
+) -> AnalyticUVInverseOptimizer | MitsubaInverseOptimizer | FulgurSlangADRendererAdapter:
+    """Instantiate the configured inverse material optimizer with fail-closed guards."""
+    from synapse.errors import BackendUnavailableError
+
+    cfg = config or InverseOptimConfig()
+    choice = cfg.renderer_backend
+
+    if choice == "numpy_oracle":
+        return AnalyticUVInverseOptimizer(cfg)
+
+    if choice == "fulgur_slang_ad":
+        slang_opt = FulgurSlangADRendererAdapter(cfg, slang_backend=slang_backend)
+        if cfg.strict_backend and not slang_opt.is_available():
+            raise BackendUnavailableError(
+                "strict_backend=True requested for fulgur_slang_ad, but backend is unavailable.",
+                agent_fix_hint="Provide fulgur Slang AD runtime or use renderer_backend='numpy_oracle'.",
+            )
+        return slang_opt
+
+    if choice == "mitsuba":
+        mi_opt = MitsubaInverseOptimizer(cfg)
+        if cfg.strict_backend and mi_opt._mi is None:
+            raise BackendUnavailableError(
+                "strict_backend=True requested for mitsuba, but Mitsuba 3 is unavailable.",
+                agent_fix_hint="Install synapse[invrender] or use renderer_backend='numpy_oracle'.",
+            )
+        return mi_opt
+
+    # "auto": prefer Slang AD -> Mitsuba AD -> CPU analytic Oracle (unless strict)
+    slang_opt = FulgurSlangADRendererAdapter(cfg, slang_backend=slang_backend)
+    if slang_opt.is_available():
+        return slang_opt
+    mi_opt = MitsubaInverseOptimizer(cfg)
+    if mi_opt._mi is not None:
+        return mi_opt
+    if cfg.strict_backend:
+        raise BackendUnavailableError(
+            "strict_backend=True requested in 'auto' mode, but neither fulgur_slang_ad nor mitsuba is available.",
+            agent_fix_hint="Build fulgur_slang / install mitsuba or disable strict_backend.",
+        )
+    return AnalyticUVInverseOptimizer(cfg)
 
 
 # ---------------------------------------------------------------------------

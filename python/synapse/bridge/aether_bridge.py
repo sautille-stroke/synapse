@@ -22,6 +22,10 @@ import numpy as np
 
 _aether_geo_mod: Any = None
 _GEO_PROBED = False
+_aether_animation_mod: Any = None
+_ANIM_PROBED = False
+_aether_compress_mod: Any = None
+_COMPRESS_PROBED = False
 _aether_metrics_mod: Any = None
 _aether_color_mod: Any = None
 _PROBED = False
@@ -29,9 +33,16 @@ _PROBED = False
 
 def reset_aether_cache() -> None:
     """Reset cached native module probes (for test isolation)."""
-    global _GEO_PROBED, _aether_geo_mod, _PROBED, _aether_metrics_mod, _aether_color_mod
+    global _GEO_PROBED, _aether_geo_mod
+    global _ANIM_PROBED, _aether_animation_mod
+    global _COMPRESS_PROBED, _aether_compress_mod
+    global _PROBED, _aether_metrics_mod, _aether_color_mod
     _GEO_PROBED = False
     _aether_geo_mod = None
+    _ANIM_PROBED = False
+    _aether_animation_mod = None
+    _COMPRESS_PROBED = False
+    _aether_compress_mod = None
     _PROBED = False
     _aether_metrics_mod = None
     _aether_color_mod = None
@@ -41,6 +52,8 @@ _AETHER_PY_SUBMODULES: dict[str, str] = {
     "aether_metrics": "metrics",
     "aether_spectra": "spectra",
     "aether_scene": "scene",
+    "aether_animation": "animation",
+    "aether_compress": "compress",
 }
 
 
@@ -135,6 +148,40 @@ def require_aether_geo() -> Any:
             agent_fix_hint="Install aether_geo or run: python scripts/build_native.py",
         )
     return mod
+
+
+def get_aether_animation() -> Any:
+    """Return the loaded ``aether_animation`` extension module or None (cached)."""
+    global _ANIM_PROBED, _aether_animation_mod
+    if "aether_animation" in sys.modules:
+        return sys.modules["aether_animation"]
+    if _ANIM_PROBED:
+        return _aether_animation_mod
+    _ANIM_PROBED = True
+    _aether_animation_mod = _import_aether_extension("aether_animation")
+    return _aether_animation_mod
+
+
+def has_aether_animation() -> bool:
+    """Return True if the ``aether_animation`` native IK module is accessible."""
+    return get_aether_animation() is not None
+
+
+def get_aether_compress() -> Any:
+    """Return the loaded ``aether_compress`` (Draco) extension module or None (cached)."""
+    global _COMPRESS_PROBED, _aether_compress_mod
+    if "aether_compress" in sys.modules:
+        return sys.modules["aether_compress"]
+    if _COMPRESS_PROBED:
+        return _aether_compress_mod
+    _COMPRESS_PROBED = True
+    _aether_compress_mod = _import_aether_extension("aether_compress")
+    return _aether_compress_mod
+
+
+def has_aether_compress() -> bool:
+    """Return True if the ``aether_compress`` Draco module is accessible."""
+    return get_aether_compress() is not None
 
 
 def get_aether_metrics() -> Any:

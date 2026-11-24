@@ -435,11 +435,109 @@ def _verify_e4_real_gpu(
     }
 
 
+def _verify_e6_real_video_twin(
+    checkpoint_dir: Path,
+    video_path: Path | None = None,
+    mode: str = "mock",
+) -> dict[str, Any]:
+    """PR-201 E6: Video-to-3D Digital Twin, RFC 0058 OpenUSD & 3DGS quantization."""
+    import numpy as np
+    from synapse.recon import (
+        GaussianSplatCloud,
+        MeshGeometry,
+        ReconPipeline,
+        blend_multiview_seams,
+        build_rfc0058_usda,
+        dequantize_3dgs,
+        quantize_3dgs,
+        validate_usd_package,
+    )
+    from synapse.recon.io import load_video_frames
+    from synapse.render_core.procedural import ProceduralMeshType, generate_procedural_mesh
+
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    twin_dir = checkpoint_dir / "e6_twin"
+    twin_dir.mkdir(parents=True, exist_ok=True)
+
+    if video_path is not None:
+        frames, meta = load_video_frames(video_path)
+        fps = meta.fps
+    else:
+        rng = np.random.default_rng(201)
+        frames = (rng.uniform(0.2, 0.8, size=(4, 48, 48, 3))).astype(np.float32)
+        fps = 24.0
+
+    sphere = generate_procedural_mesh(ProceduralMeshType.SPHERE)
+    seed_mesh = MeshGeometry(
+        vertices=sphere.vertices.astype(np.float32),
+        faces=sphere.faces.astype(np.int32),
+        normals=sphere.normals.astype(np.float32) if sphere.normals is not None else None,
+        uvs=sphere.uvs.astype(np.float32) if sphere.uvs is not None else None,
+    )
+    pipe = ReconPipeline(target_quad_faces=120, geometry_backend="python")
+    recon_res = pipe.run(
+        frames,
+        initial_mesh=seed_mesh,
+        fps=fps,
+        track="track_b_whitebox",
+        has_gen3d_highpoly=True,
+    )
+
+    assert recon_res.mesh is not None
+    usda_path = build_rfc0058_usda(recon_res.mesh, twin_dir)
+    usd_val = validate_usd_package(usda_path, strict=True)
+
+    blended_view, seam_de00 = blend_multiview_seams(frames[:2].astype(np.float32))
+
+    # Build synthetic 3DGS cloud from mesh vertices with SH degree 3 (K=15 bands)
+    n_splats = max(recon_res.mesh.vertex_count, 512)
+    rng_gs = np.random.default_rng(7)
+    base_xyz = recon_res.mesh.vertices.astype(np.float32)
+    if base_xyz.shape[0] < n_splats:
+        idx = rng_gs.integers(0, base_xyz.shape[0], size=n_splats)
+        xyz = base_xyz[idx] + rng_gs.normal(0.0, 0.01, size=(n_splats, 3)).astype(np.float32)
+    else:
+        xyz = base_xyz[:n_splats]
+    rots = rng_gs.normal(size=(n_splats, 4)).astype(np.float32)
+    rots /= np.maximum(np.linalg.norm(rots, axis=-1, keepdims=True), 1e-6)
+    cloud = GaussianSplatCloud(
+        xyz=xyz,
+        sh_dc=rng_gs.uniform(-0.8, 0.8, size=(n_splats, 3)).astype(np.float32),
+        sh_rest=rng_gs.normal(0.0, 0.05, size=(n_splats, 15, 3)).astype(np.float32),
+        scales=rng_gs.uniform(0.01, 0.05, size=(n_splats, 3)).astype(np.float32),
+        rotations=rots,
+        opacities=rng_gs.uniform(0.2, 0.95, size=(n_splats,)).astype(np.float32),
+    )
+    q_3dgs = quantize_3dgs(cloud, require_draco=False)
+    decoded = dequantize_3dgs(q_3dgs.blob)
+    assert decoded.num_gaussians == n_splats
+
+    metrics: dict[str, Any] = {
+        "status": "PASS",
+        "mode": mode,
+        "num_frames": int(frames.shape[0]),
+        "blended_shape": list(blended_view.shape),
+        "seam_delta_e00": round(float(seam_de00), 6),
+        "usd_valid": bool(usd_val.valid),
+        "usda_path": str(usda_path),
+        "mesh_vertex_count": recon_res.mesh.vertex_count,
+        "compression_ratio": q_3dgs.metrics.compression_ratio,
+        "psnr_delta_db": q_3dgs.metrics.psnr_delta_db,
+        "xyz_rmse": q_3dgs.metrics.xyz_rmse,
+    }
+    (checkpoint_dir / "e6_metrics.json").write_text(
+        json.dumps(metrics, indent=2),
+        encoding="utf-8",
+    )
+    return metrics
+
+
 def run_colab_suite(
     dataset_dir: Path,
     checkpoint_dir: Path,
     experiments: list[str],
     mode: str = "auto",
+    video_path: Path | None = None,
 ) -> dict[str, Any]:
     """Run selected experiments with per-stage Google Drive checkpointing.
 
@@ -522,33 +620,41 @@ def run_colab_suite(
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    # --- Load datasets ---
-    seq_b = import_fgpp(dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False)
-    seq_a = import_fgpp(dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False)
-    assert isinstance(seq_b, FGPPSequence)
-    assert isinstance(seq_a, FGPPSequence)
+    # --- Load datasets when legacy E1-E4 experiments are requested ---
+    need_fgpp = any(exp in ("e1", "e2", "e3", "e4") for exp in experiments)
+    seq_b: FGPPSequence | None = None
+    seq_a: FGPPSequence | None = None
+    seq_b_97f: FGPPSequence | None = None
+    if need_fgpp:
+        seq_b_raw = import_fgpp(dataset_dir / "track_b_fulgur" / "course_102_pbr_17f", lazy=False)
+        seq_a_raw = import_fgpp(dataset_dir / "track_a_caelum" / "cornell_spheres_17f", lazy=False)
+        assert isinstance(seq_b_raw, FGPPSequence)
+        assert isinstance(seq_a_raw, FGPPSequence)
+        seq_b = seq_b_raw
+        seq_a = seq_a_raw
 
-    dir_b_97f = dataset_dir / "track_b_fulgur" / "course_102_pbr_97f"
-    if dir_b_97f.exists():
-        seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
-    else:
-        seq_b_97f = seq_b
-    assert isinstance(seq_b_97f, FGPPSequence)
+        dir_b_97f = dataset_dir / "track_b_fulgur" / "course_102_pbr_97f"
+        if dir_b_97f.exists():
+            seq_b_97f_raw = import_fgpp(dir_b_97f, lazy=False)
+            assert isinstance(seq_b_97f_raw, FGPPSequence)
+            seq_b_97f = seq_b_97f_raw
+        else:
+            seq_b_97f = seq_b
 
-    # Contract guard: E3 requires >= 97 frames. If fallback (17f) was used,
-    # emit an explicit contract error instead of a late IndexError at frames[64].
-    if "e3" in experiments and seq_b_97f.num_frames < MIN_E3_FRAMES:
-        raise ContractValidationError(
-            f"E3 long-horizon scheduler requires a sequence with at least "
-            f"{MIN_E3_FRAMES} frames, but the loaded sequence "
-            f"'{seq_b_97f.scene_id}' has only {seq_b_97f.num_frames} frames. "
-            f"Ensure prepare_datasets.py bundle includes "
-            f"'track_b_fulgur/course_102_pbr_97f' (97-frame sequence).",
-            agent_fix_hint=(
-                "Re-run `python scripts/prepare_datasets.py` on ubuntu24 "
-                "and verify the Colab bundle contains the 97f directory."
-            ),
-        )
+        # Contract guard: E3 requires >= 97 frames. If fallback (17f) was used,
+        # emit an explicit contract error instead of a late IndexError at frames[64].
+        if "e3" in experiments and seq_b_97f.num_frames < MIN_E3_FRAMES:
+            raise ContractValidationError(
+                f"E3 long-horizon scheduler requires a sequence with at least "
+                f"{MIN_E3_FRAMES} frames, but the loaded sequence "
+                f"'{seq_b_97f.scene_id}' has only {seq_b_97f.num_frames} frames. "
+                f"Ensure prepare_datasets.py bundle includes "
+                f"'track_b_fulgur/course_102_pbr_97f' (97-frame sequence).",
+                agent_fix_hint=(
+                    "Re-run `python scripts/prepare_datasets.py` on ubuntu24 "
+                    "and verify the Colab bundle contains the 97f directory."
+                ),
+            )
 
     try:
         for exp in experiments:
@@ -559,24 +665,42 @@ def run_colab_suite(
             t0 = time.time()
             if use_real_gpu:
                 if exp == "e1":
+                    assert seq_b is not None
+                    assert seq_a is not None
                     res = _verify_e1_real_gpu(seq_b, seq_a, checkpoint_dir)
                 elif exp == "e2":
+                    assert seq_a is not None
                     res = _verify_e2_style_and_composite(seq_a)
                 elif exp == "e3":
+                    assert seq_b_97f is not None
                     res = _verify_e3_long_horizon_scheduler(seq_b_97f)
                 elif exp == "e4":
+                    assert seq_a is not None
                     res = _verify_e4_real_gpu(seq_a, checkpoint_dir)
+                elif exp == "e6":
+                    res = _verify_e6_real_video_twin(
+                        checkpoint_dir, video_path=video_path, mode="real-gpu"
+                    )
                 else:
                     res = {"status": "PASS", "note": f"Stage {exp} completed"}
             else:
                 if exp == "e1":
+                    assert seq_b is not None
+                    assert seq_a is not None
                     res = _verify_e1_conditioning_ablation(seq_b, seq_a)
                 elif exp == "e2":
+                    assert seq_a is not None
                     res = _verify_e2_style_and_composite(seq_a)
                 elif exp == "e3":
+                    assert seq_b_97f is not None
                     res = _verify_e3_long_horizon_scheduler(seq_b_97f)
                 elif exp == "e4":
+                    assert seq_a is not None
                     res = _verify_e4_feature_store_and_multi_lora(seq_a)
+                elif exp == "e6":
+                    res = _verify_e6_real_video_twin(
+                        checkpoint_dir, video_path=video_path, mode="mock"
+                    )
                 else:
                     res = {"status": "PASS", "note": f"Stage {exp} completed"}
 
@@ -640,9 +764,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--exp",
-        choices=["e1", "e2", "e3", "e4", "all"],
+        choices=["e1", "e2", "e3", "e4", "e6", "all"],
         default="all",
         help="Which experiment stage(s) to execute.",
+    )
+    parser.add_argument(
+        "--video",
+        type=Path,
+        default=None,
+        help="Optional video/array path for E6 real-video-to-3D twin experiment.",
     )
     parser.add_argument(
         "--mode",
@@ -695,7 +825,13 @@ def main() -> int:
                 agent_fix_hint="Ensure NVIDIA drivers/CUDA are active or specify --mode=mock.",
             )
 
-        state = run_colab_suite(args.dataset_dir, checkpoint_dir, exps, mode=args.mode)
+        state = run_colab_suite(
+            args.dataset_dir,
+            checkpoint_dir,
+            exps,
+            mode=args.mode,
+            video_path=args.video,
+        )
         t_duration = time.time() - t_start
         if is_cloud_job:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")

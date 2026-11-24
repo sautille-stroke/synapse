@@ -30,9 +30,9 @@ import numpy as np
 
 from synapse.recon.loop.forward_guide import ForwardGuide, extract_main_take
 from synapse.recon.loop.mitsuba_optimizer import (
-    AnalyticUVInverseOptimizer,
     InverseOptimConfig,
     InverseOptimResult,
+    create_inverse_optimizer,
 )
 from synapse.recon.loop.texture_extractor import (
     PBRTextureSet,
@@ -91,6 +91,7 @@ class ClosedLoopResult:
             "inverse_ciede2000": float(self.inverse_result.ciede2000_after),
             "inverse_converged": self.inverse_result.converged,
             "inverse_iterations": self.inverse_result.iterations_run,
+            "inverse_backend": self.inverse_result.backend_used,
             "pbr_albedo_shape": list(self.pbr_textures.albedo.shape),
             "stitch_mean_border_psnr_db": float(
                 self.stitch_report.mean_border_psnr_db,
@@ -159,6 +160,7 @@ class ClosedLoopRunner:
         mesh_vertex_count: int = 0,
         has_articulated_limbs: bool = False,
         is_character: bool = False,
+        slang_backend: Any = None,
     ) -> ClosedLoopResult:
         """Execute all 5 closed-loop steps.
 
@@ -234,7 +236,7 @@ class ClosedLoopRunner:
         # Step 3: Inverse Optimisation — extract material from target
         # ---------------------------------------------------------------
         t2 = time.monotonic()
-        optimizer = AnalyticUVInverseOptimizer(self._optim_config)
+        optimizer = create_inverse_optimizer(self._optim_config, slang_backend=slang_backend)
 
         # Trim normals and uv_maps to match target frame count (safe for
         # non-4k+1 padded frame counts where arrays may be shorter than target).

@@ -20,8 +20,10 @@ from synapse.recon.loop.closed_loop_runner import ClosedLoopResult, ClosedLoopRu
 from synapse.recon.loop.forward_guide import ForwardGuide, extract_main_take
 from synapse.recon.loop.mitsuba_optimizer import (
     AnalyticUVInverseOptimizer,
+    FulgurSlangADRendererAdapter,
     InverseOptimConfig,
     InverseOptimResult,
+    create_inverse_optimizer,
 )
 from synapse.recon.loop.radiometric import (
     acescg_to_linear,
@@ -44,6 +46,7 @@ __all__ = [
     "ClosedLoopRunner",
     "ForwardGuide",
     "ForwardGuideResult",
+    "FulgurSlangADRendererAdapter",
     "InverseOptimConfig",
     "InverseOptimResult",
     "LoopConfig",
@@ -52,6 +55,7 @@ __all__ = [
     "apply_kappa_reanchor",
     "bake_uv_normal_map",
     "compute_tv_gradient",
+    "create_inverse_optimizer",
     "enforce_phase_lock",
     "extract_and_pack_pbr_textures",
     "extract_main_take",

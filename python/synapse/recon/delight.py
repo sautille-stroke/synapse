@@ -17,6 +17,8 @@ and edge-preserving Retinex reflectance recovery.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from synapse.recon.types import CameraExtrinsics, DelightResult, MeshGeometry
@@ -806,6 +808,8 @@ def delight_multiview_albedo(
     mesh: MeshGeometry,
     shading_model: str = "sh2",
     texture_resolution: int | None = None,
+    *,
+    foundary_client: Any = None,
 ) -> DelightResult:
     """Multi-view albedo de-lighting via UV texel-space inverse rendering.
 
@@ -825,11 +829,45 @@ def delight_multiview_albedo(
             :class:`~synapse.recon.types.CameraExtrinsics`).
         mesh: A :class:`~synapse.recon.types.MeshGeometry` instance.
         shading_model: ``"sh2"`` for 2nd-order (9-term) SH.
+        texture_resolution: Optional square UV texture resolution ``(R, R)``.
+        foundary_client: Optional Foundary client delegating diffusion de-lighting
+            to the remote ``delight`` service when available.
 
     Returns:
         :class:`DelightResult` with aggregated albedo, shading, specular,
         ambient SH coefficients, and ``delta_e_residual``.
     """
+    if foundary_client is not None:
+        resp = foundary_client.infer(
+            "delight",
+            inputs={
+                "num_views": int(np.asarray(frames).shape[0]),
+                "shading_model": shading_model,
+            },
+            params={"texture_resolution": texture_resolution},
+        )
+        outputs = getattr(resp, "outputs", {})
+        if isinstance(outputs, dict) and "albedo" in outputs:
+            albedo_out = np.asarray(outputs["albedo"], dtype=np.float32)
+            shading_out = np.asarray(
+                outputs.get("shading", np.ones_like(albedo_out)),
+                dtype=np.float32,
+            )
+            specular_out = np.asarray(
+                outputs.get("specular", np.zeros_like(albedo_out)),
+                dtype=np.float32,
+            )
+            sh_out = np.asarray(
+                outputs.get("ambient_sh", np.zeros((9, 3), dtype=np.float64)),
+                dtype=np.float64,
+            )
+            return DelightResult(
+                albedo=albedo_out,
+                shading=shading_out,
+                specular=specular_out,
+                ambient_sh=sh_out,
+                delta_e_residual=float(outputs.get("delta_e_residual", 0.0)),
+            )
     is_uint8 = np.asarray(frames).dtype == np.uint8
     frames_arr = np.asarray(frames, dtype=np.float64)
     if is_uint8:
@@ -1222,3 +1260,106 @@ def _rasterize_uv_map(
             has_uv = new_has
 
     return uv_map
+
+
+def blend_multiview_seams(
+    views: list[np.ndarray] | np.ndarray,
+    masks: list[np.ndarray] | np.ndarray | None = None,
+    *,
+    foundary_client: Any = None,
+    feather_width: int = 8,
+) -> tuple[np.ndarray, float]:
+    """Graph-Cut minimum-cost view seam stitching and feather blending (PR-199).
+
+    Finds a minimum color-difference seam cut between overlapping texture views
+    (delegating to ``@aether//geo`` or Foundary ``delight`` when available), applies
+    cosine feathering within ``feather_width`` pixels across the seam boundary,
+    and returns ``(blended_image, seam_border_delta_e00)``.
+    """
+    arr = np.asarray(views, dtype=np.float32)
+    if arr.ndim != 4 or arr.shape[0] == 0:
+        raise ValueError(f"Expected (N, H, W, 3) views array, got {arr.shape}")
+
+    n_views, h, w, _ = arr.shape
+    if n_views == 1:
+        return arr[0].copy(), 0.0
+
+    if foundary_client is not None:
+        resp = foundary_client.infer(
+            "delight",
+            inputs={"operation": "graph_cut_seam_blend", "num_views": n_views},
+            params={"feather_width": feather_width},
+        )
+        outputs = getattr(resp, "outputs", {})
+        if isinstance(outputs, dict) and "blended" in outputs:
+            blended_remote = np.asarray(outputs["blended"], dtype=np.float32)
+            return blended_remote, float(outputs.get("seam_delta_e00", 0.0))
+
+    from synapse.bridge.aether_bridge import get_aether_geo
+
+    geo_mod = get_aether_geo()
+    if geo_mod is not None and hasattr(geo_mod, "graph_cut_seam_blend"):
+        native_out = geo_mod.graph_cut_seam_blend(arr, int(feather_width))
+        blended_native = np.asarray(native_out[0], dtype=np.float32)
+        seam_de = float(native_out[1]) if len(native_out) > 1 else 0.0
+        return blended_native, seam_de
+
+    # Pairwise DP minimum-energy vertical seam cut + narrow boundary feathering
+    canvas = arr[0].astype(np.float64).copy()
+    seam_delta_es: list[float] = []
+    half_band = max(1, feather_width // 2)
+
+    for v_idx in range(1, n_views):
+        next_view = arr[v_idx].astype(np.float64)
+        mask_next = (
+            np.asarray(masks[v_idx], dtype=bool)
+            if masks is not None and v_idx < len(masks)
+            else np.ones((h, w), dtype=bool)
+        )
+
+        # Energy cost along overlap: squared RGB difference
+        energy = np.sum((canvas - next_view) ** 2, axis=-1)
+        energy = np.where(mask_next, energy, 1e6)
+
+        dp = np.empty((h, w), dtype=np.float64)
+        back = np.zeros((h, w), dtype=np.int32)
+        dp[0] = energy[0]
+        for y in range(1, h):
+            prev_row = dp[y - 1]
+            for x in range(w):
+                x0 = max(0, x - 1)
+                x1 = min(w - 1, x + 1)
+                best_offset = int(np.argmin(prev_row[x0 : x1 + 1]))
+                bx = x0 + best_offset
+                dp[y, x] = energy[y, x] + prev_row[bx]
+                back[y, x] = bx
+
+        seam_x = np.zeros(h, dtype=np.int32)
+        seam_x[-1] = int(np.argmin(dp[-1]))
+        for y in range(h - 2, -1, -1):
+            seam_x[y] = back[y + 1, seam_x[y + 1]]
+
+        # Smooth cosine transition centered along optimal seam
+        xs = np.arange(w, dtype=np.float64)[np.newaxis, :]
+        dist_to_seam = (xs - seam_x[:, np.newaxis]) / float(half_band)
+        alpha = 0.5 * (1.0 - np.cos(np.pi * np.clip((dist_to_seam + 1.0) * 0.5, 0.0, 1.0)))
+        alpha = np.where(mask_next, alpha, 0.0)
+
+        blended_pair = (1.0 - alpha[..., np.newaxis]) * canvas + alpha[..., np.newaxis] * next_view
+
+        # Measure CIEDE2000 seam smoothness between blended seam strip and canvas/next_view
+        seam_band = (np.abs(xs - seam_x[:, np.newaxis]) <= max(1, min(half_band, 2))) & mask_next
+        if np.any(seam_band):
+            ref_strip = np.where(
+                alpha[..., np.newaxis] < 0.5,
+                np.clip(canvas, 0.0, 1.0),
+                np.clip(next_view, 0.0, 1.0),
+            )
+            lab_b = _rgb_to_lab(np.clip(blended_pair[seam_band], 0.0, 1.0), is_linear=True)
+            lab_r = _rgb_to_lab(ref_strip[seam_band], is_linear=True)
+            seam_delta_es.append(float(np.mean(_delta_e_00(lab_b, lab_r))))
+
+        canvas = blended_pair
+
+    mean_seam_de = float(np.mean(seam_delta_es)) if seam_delta_es else 0.0
+    return np.clip(canvas, 0.0, None).astype(np.float32), mean_seam_de
