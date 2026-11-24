@@ -16,7 +16,7 @@ stale_after: 2027-11-19T00:00:00Z
 >   - `RFC 0063 (v2.0 Implementing)` `TASK-0063-09`（`synapse` 逆渲染几何/UV 自愈闭环）
 >   - `RFC 0065 (v2.0 Implementing)` Wave 4（消费 `QuadriFlow`、原生 C++ IK 与 Slang 可微光栅）
 > - **规划模型**: `[gemini4]`
-> - **当前状态**: ✅ **M45–M48 核心代码、RFC 0058/0060/0061/0062 契约、3DGS 压缩与 E6 闭环已完成（`PR-193` 已合入，M47–M48 合龙中）**
+> - **当前状态**: ✅ **已完成 (Horizon 12 · M45–M46 PR #193 + M47–M48 PR #194 全部合入闭合)**
 > - **目标周期**: 4 个里程碑（`M45` – `M48`）、4 个 Execution Waves（`Wave 44` – `Wave 47`）、**10 个原子 PR**（`PR-193` – `PR-202`）
 
 > [!IMPORTANT]
