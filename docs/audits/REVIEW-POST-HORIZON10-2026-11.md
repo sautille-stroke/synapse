@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse Horizon-10 (v4.1.0) 封板后整体复审报告（2026-11）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Horizon-10 (v4.1.0) 封板后整体复审报告（2026-11）
 
 - **文档状态**: `Accepted Post-Horizon-10 Review Report (v1.0)`

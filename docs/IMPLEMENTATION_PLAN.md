@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
 - **计划版本**: `v4.0`（全量统合 **M1–M52** 共 52 大里程碑、**212 个原子 PR**（`PR-01` ~ `PR-215`, 含 `PR-14a/b`、`PR-92`、Horizon 11 `PR-173 ~ PR-192` + `#185–#189` 及 Horizon 12–13 `PR-193 ~ PR-215`），涵盖 Horizon 1–13B 与 16 份精细化执行子计划）

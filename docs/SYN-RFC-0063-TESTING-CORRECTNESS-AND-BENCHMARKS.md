@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "SYN-RFC-0063: Synapse 质量保障、测试验证机制与行业横向评测基准规范"
+tags: [synapse, testing]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # SYN-RFC-0063: Synapse 质量保障、测试验证机制与行业横向评测基准规范
 
 > **Namespace Alias**: `SYN-RFC-0063` (repo-local design RFC). Not to be confused with ecosystem-canonical `all-overview/rfcs/0063`.

@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "SYN-RFC-0062 详细设计规范：3D 引导生成、可微逆向渲染与局部修补双向闭环"
+tags: [rendering, synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # SYN-RFC-0062 详细设计规范：3D 引导生成、可微逆向渲染与局部修补双向闭环
 
 - **文档状态**: `Approved Technical Spec (v1.0)`

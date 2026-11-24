@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 2.0 工业级混合渲染与神经互操作系统设计增强规范 (System Architecture Enhancement & Robustness Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 2.0 工业级混合渲染与神经互操作系统设计增强规范 (System Architecture Enhancement & Robustness Specification)
 
 - **文档状态**: Approved Specification (`v2.0`)

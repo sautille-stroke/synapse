@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse Data Inspector — 训练数据可视化工具设计方案"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Data Inspector — 训练数据可视化工具设计方案
 
 - **文档状态**: `Approved Design Specification (v1.1)`

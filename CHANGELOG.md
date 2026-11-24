@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Changelog"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Changelog
 
 All notable changes to this project will be documented in this file.

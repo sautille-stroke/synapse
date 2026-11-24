@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "细分实施计划：Horizon-6 生产硬化、算子真值化与自动化 CI 封板 (M21–M24: PR-74 ~ PR-91)"
+description: "`PR #90` (`46b3bda`) 此前在本文档头部错配并提前标注 `✅ 100%`。经逐条比对 `git log` 与 `ubuntu24` 全量实跑，真实映射与移交清单如下（完整三问核验见 AUDIT-POST-HORIZON6-2026-11.md §2）："
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分实施计划：Horizon-6 生产硬化、算子真值化与自动化 CI 封板 (M21–M24: PR-74 ~ PR-91)
 
 - **计划版本**: `Actionable Horizon-6 Blueprint (v1.0)`

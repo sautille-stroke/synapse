@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "M37–M40 Post-Horizon-9 合流止血、真接线闭环与 v4.1.0 演进计划 (Actionable Horizon-10 Blueprint)"
+description: "- 计划版本: `v1.0`（对应主总纲 IMPLEMENTATION_PLAN.md `v3.8`）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # M37–M40 Post-Horizon-9 合流止血、真接线闭环与 v4.1.0 演进计划 (Actionable Horizon-10 Blueprint)
 
 > - **计划版本**: `v1.0`（对应主总纲 [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) **`v3.8`**）

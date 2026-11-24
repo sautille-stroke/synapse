@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Synapse RFC-0063 与全库架构及工程质量深度审计报告（2026-11）"
+description: "说明：以下实测均在云端主力机 `ubuntu24`（`~/work/dervgen/synapse`，`/root/venv-synapse`）执行；`#49/#50/#51`（至 `b98c6e5`）在 `python/`、`tests/`、`csrc/` 与 `tools/` 源码上仅修改 `scripts/prepare_benchmark_assets.py` 一行 f-string，`d"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse RFC-0063 与全库架构及工程质量深度审计报告（2026-11）
 
 - **审计基线**: `b98c6e5` (`PR #51` / `main` @ `2026-11-14`)

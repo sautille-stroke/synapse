@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse LoRA & PEFT 微调流水线设计规范 (LoRA & PEFT Pipeline Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse LoRA & PEFT 微调流水线设计规范 (LoRA & PEFT Pipeline Specification)
 
 - **文档状态**: `Approved Technical Spec (v1.1)`

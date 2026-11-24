@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 局部解剖智能修正与多模型融合设计规范 (Local Anatomical Refinement & Multi-Model Fusion Specification)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 局部解剖智能修正与多模型融合设计规范 (Local Anatomical Refinement & Multi-Model Fusion Specification)
 
 - **文档状态**: `Approved Technical Spec v1.1`

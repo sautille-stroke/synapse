@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse Horizon-5 收官后全库深度复审报告（2026-11）"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Horizon-5 收官后全库深度复审报告（2026-11）
 
 - **文档状态**: `Accepted Audit Report (v1.0)`

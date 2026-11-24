@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "Synapse 整体目标审查与生态架构定界报告 (Architecture & Goal Audit)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse 整体目标审查与生态架构定界报告 (Architecture & Goal Audit)
 
 - **文档状态**: Accepted Baseline (`v1.2 — Horizon-8 Release v3.6.0 Sealed`)

@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分执行计划 2：Phase M3–M4 风格对齐、局部手术刀合成、`vg-core` 桥接与 30 场景基准 (`PR-09` ~ `PR-15`)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划 2：Phase M3–M4 风格对齐、局部手术刀合成、`vg-core` 桥接与 30 场景基准 (`PR-09` ~ `PR-15`)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 1: M3–M4)

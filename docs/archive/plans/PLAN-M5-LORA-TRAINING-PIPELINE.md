@@ -1,3 +1,10 @@
+---
+type: Guide
+title: "细分执行计划 3：Phase M5 合成数据潜空间缓存与五维正交解耦 LoRA 微调流水线 (`PR-16` ~ `PR-19`)"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 细分执行计划 3：Phase M5 合成数据潜空间缓存与五维正交解耦 LoRA 微调流水线 (`PR-16` ~ `PR-19`)
 
 - **所属总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) (`v3.1` Master Plan, Horizon 2: M5)

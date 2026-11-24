@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "算法、训练与数据流水线攻坚执行计划 (Algorithm, Training & Data Pipeline Assault Plan)"
+description: "本章节记录对原始三战役攻坚计划的自审结论——发现 5 项需纠正的参数错误 与 3 项跨文档未收敛的指标矛盾，以及 4 项需要补充锁定的缺失超参数。所有纠偏已在后续正文中同步修正。"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # 算法、训练与数据流水线攻坚执行计划 (Algorithm, Training & Data Pipeline Assault Plan)
 
 - **文档状态**: `Active Plan v2.0 (Aligned with M12: PR-41 ~ PR-43)`

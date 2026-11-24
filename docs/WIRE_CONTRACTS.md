@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Synapse Wire Contracts & Interop Specifications (SSOT)"
+description: "本文件为 Synapse 与上游渲染引擎（`fulgur`, `caelum-core`）、下游调度农场（`render-farm`, `narrative-rail`）及基础库（`@aether`）交互的跨语言唯一事实源（Canonical Wire SSOT）。"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Wire Contracts & Interop Specifications (SSOT)
 
 > 本文件为 Synapse 与上游渲染引擎（`fulgur`, `caelum-core`）、下游调度农场（`render-farm`, `narrative-rail`）及基础库（`@aether`）交互的**跨语言唯一事实源（Canonical Wire SSOT）**。

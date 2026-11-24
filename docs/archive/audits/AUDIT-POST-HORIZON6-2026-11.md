@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Synapse Horizon-6 收官后全库深度复审报告（2026-11）"
+description: "1. `tests/test_domain_randomizer_and_gate.py::TestIngestionGates::test_ingestion_gate_rejects_bad_rotation`：`assert not True`（FeatureStoreBuilder 对单独传入的非正交/坏旋转 `camera_matrices` 未拒收）；"
+tags: [synapse]
+status: active
+stale_after: 2027-11-19T00:00:00Z
+---
 # Synapse Horizon-6 收官后全库深度复审报告（2026-11）
 
 - **文档状态**: `Accepted Audit Report (v1.0)`
