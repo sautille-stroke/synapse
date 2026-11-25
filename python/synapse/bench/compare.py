@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from synapse.errors import AssetNotFoundError, ContractValidationError
+from synapse.observability import get_probe, traceboard_stage
 
 Direction = Literal["lower_is_better", "higher_is_better"]
 
@@ -212,33 +213,53 @@ def compare_runs(
             agent_fix_hint="Pass --inputs <run_a.json> <run_b.json> [...].",
         )
 
-    payloads: dict[str, dict[str, Any]] = {}
-    for idx, p in enumerate(run_paths):
-        path = Path(p)
-        if not path.is_file():
-            raise AssetNotFoundError(
-                f"Benchmark run file not found: {path}",
-                agent_fix_hint="Verify all paths passed to synapse bench compare --inputs.",
+    with traceboard_stage(
+        "bench/compare",
+        num_runs=str(len(run_paths)),
+    ):
+        payloads: dict[str, dict[str, Any]] = {}
+        for idx, p in enumerate(run_paths):
+            path = Path(p)
+            if not path.is_file():
+                raise AssetNotFoundError(
+                    f"Benchmark run file not found: {path}",
+                    agent_fix_hint="Verify all paths passed to synapse bench compare --inputs.",
+                )
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise ContractValidationError(
+                    f"Invalid JSON in benchmark run file {path}: {exc}",
+                    agent_fix_hint="Ensure input files are valid Synapse-Bench JSON reports.",
+                ) from exc
+            if not isinstance(data, dict):
+                raise ContractValidationError(
+                    f"Expected JSON object in {path}, got {type(data).__name__}.",
+                    agent_fix_hint="Provide valid benchmark report dicts.",
+                )
+            label = (
+                labels[idx]
+                if labels is not None and idx < len(labels) and labels[idx]
+                else str(data.get("adapter_id") or path.stem)
             )
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ContractValidationError(
-                f"Invalid JSON in benchmark run file {path}: {exc}",
-                agent_fix_hint="Ensure input files are valid Synapse-Bench JSON reports.",
-            ) from exc
-        if not isinstance(data, dict):
-            raise ContractValidationError(
-                f"Expected JSON object in {path}, got {type(data).__name__}.",
-                agent_fix_hint="Provide valid benchmark report dicts.",
-            )
-        label = (
-            labels[idx]
-            if labels is not None and idx < len(labels) and labels[idx]
-            else str(data.get("adapter_id") or path.stem)
-        )
-        if label in payloads:
-            label = f"{label}_{idx}"
-        payloads[label] = data
+            if label in payloads:
+                label = f"{label}_{idx}"
+            payloads[label] = data
 
-    return aggregate_four_track_scores(payloads)
+        report = aggregate_four_track_scores(payloads)
+
+        # Log leaderboard table to Traceboard
+        probe = get_probe()
+        if probe is not None and probe.active:
+            table_rows: list[dict[str, Any]] = []
+            for row in report.rows:
+                table_row: dict[str, Any] = {
+                    "model": row.model_name,
+                    "overall_score": row.overall_score,
+                }
+                for tid, ts in row.track_scores.items():
+                    table_row[tid] = ts.score
+                table_rows.append(table_row)
+            probe.log_table("bench/compare/leaderboard", table_rows)
+
+    return report

@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from synapse.observability import get_probe, traceboard_stage
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,18 +161,50 @@ class BenchPipelineRunner:
         )
 
         t_total_start = time.perf_counter()
-        try:
-            report = self._run_scenario_inner(
-                scenario_name,
-                seed,
-                resolution,
-                report,
-                t_total_start,
-                num_frames=num_frames,
-            )
-        except Exception as exc:
-            report.error = str(exc)
-            report.timings["total_ms"] = _elapsed_ms(t_total_start)
+        with traceboard_stage(
+            f"bench/{scenario_name}",
+            adapter=self._adapter.adapter_id,
+            seed=str(seed),
+            resolution=f"{resolution[0]}x{resolution[1]}",
+        ) as stage:
+            try:
+                report = self._run_scenario_inner(
+                    scenario_name,
+                    seed,
+                    resolution,
+                    report,
+                    t_total_start,
+                    num_frames=num_frames,
+                )
+            except Exception as exc:
+                report.error = str(exc)
+                report.timings["total_ms"] = _elapsed_ms(t_total_start)
+
+            # Log metrics and timings to Traceboard
+            probe = get_probe()
+            if probe is not None and probe.active:
+                for k, v in report.metrics.items():
+                    probe.log_scalar(f"bench/{scenario_name}/{k}", v)
+                for k, v in report.timings.items():
+                    probe.log_scalar(f"bench/{scenario_name}/{k}", v)
+                if report.num_frames > 0:
+                    probe.log_scalar(
+                        f"bench/{scenario_name}/num_frames",
+                        float(report.num_frames),
+                    )
+
+            # Set stage verdict
+            if stage is not None:
+                if report.error is not None:
+                    stage.set_fail(report.error)
+                elif (
+                    report.gate_verdict is not None
+                    and not report.gate_verdict.passed
+                ):
+                    stage.set_fail("gate_failed")
+                else:
+                    stage.set_pass()
+
         return report
 
     def _run_scenario_inner(
@@ -445,14 +479,18 @@ class BenchPipelineRunner:
             scenarios = [s.id for s in all_scenarios]
 
         reports: list[ScenarioRunReport] = []
-        for name in scenarios:
-            report = self.run_scenario(
-                scenario_name=name,
-                seed=seed,
-                resolution=resolution,
-                num_frames=num_frames,
-            )
-            reports.append(report)
+        with traceboard_stage(
+            "bench/run_all",
+            count=str(len(scenarios)),
+        ):
+            for name in scenarios:
+                report = self.run_scenario(
+                    scenario_name=name,
+                    seed=seed,
+                    resolution=resolution,
+                    num_frames=num_frames,
+                )
+                reports.append(report)
 
         return reports
 
