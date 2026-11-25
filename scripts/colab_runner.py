@@ -803,6 +803,16 @@ def main() -> int:
             "batch runs to free GPU quota."
         ),
     )
+    parser.add_argument(
+        "--traceboard",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable Traceboard observability telemetry. Logs scalar metrics, "
+            "GPU profile, and experiment results to {job_dir}/traceboard/ "
+            "as .tbevt files. Requires aether-traceboard>=0.1.0."
+        ),
+    )
     args = parser.parse_args()
 
     profile = detect_gpu_profile()
@@ -827,6 +837,25 @@ def main() -> int:
     is_cloud_job = "/drive/" in str(job_dir) or drive_root.exists() or args.job_dir is not None
     if is_cloud_job:
         init_job_workspace(job_dir, args.user, args.job_id, today)
+
+    # --- Traceboard initialization (opt-in via --traceboard) ---
+    if args.traceboard:
+        try:
+            from synapse.observability import init_traceboard
+
+            tb_log_dir = job_dir / "traceboard"
+            tb_log_dir.mkdir(parents=True, exist_ok=True)
+            init_traceboard(
+                log_dir=str(tb_log_dir),
+                run_name=args.job_id,
+                engine="synapse-colab",
+            )
+            print(f"[traceboard] Telemetry enabled → {tb_log_dir}")
+        except Exception as tb_err:
+            print(
+                f"[traceboard] WARNING: init failed ({tb_err}); continuing without telemetry.",
+                file=sys.stderr,
+            )
 
     t_start = time.time()
     exps = EXPERIMENTS if args.exp == "all" else [args.exp]
@@ -890,6 +919,16 @@ def main() -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
+        # Flush and shut down Traceboard probe if it was initialized
+        if args.traceboard:
+            try:
+                from synapse.observability import shutdown_traceboard
+
+                shutdown_traceboard()
+                print("[traceboard] Telemetry flushed and shut down.")
+            except Exception:
+                pass  # Best-effort cleanup
+
         # Always honor --auto-release even when experiments fail to avoid idle GPU billing
         if args.auto_release:
             try:

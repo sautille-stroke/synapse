@@ -467,12 +467,40 @@ def main() -> int:
         dest="report_out",
         help="Path to write JSON verification report.",
     )
+    parser.add_argument(
+        "--traceboard",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable Traceboard observability telemetry. Logs per-experiment "
+            "pass/fail status and timing to a .tbevt file alongside the report."
+        ),
+    )
     args = parser.parse_args()
 
     # Auto-resolve directory path to default report filename
     report_out: Path = args.report_out
     if report_out.is_dir():
         report_out = report_out / "cpu_verification_report.json"
+
+    # --- Traceboard initialization (opt-in via --traceboard) ---
+    if args.traceboard:
+        try:
+            from synapse.observability import init_traceboard
+
+            tb_log_dir = report_out.parent / "traceboard"
+            tb_log_dir.mkdir(parents=True, exist_ok=True)
+            init_traceboard(
+                log_dir=str(tb_log_dir),
+                run_name="cpu-verification",
+                engine="synapse-cpu-verify",
+            )
+            print(f"[traceboard] Telemetry enabled → {tb_log_dir}")
+        except Exception as tb_err:
+            print(
+                f"[traceboard] WARNING: init failed ({tb_err}); continuing without telemetry.",
+                file=sys.stderr,
+            )
 
     t0 = time.time()
     dir_b_17f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_17f"
@@ -561,6 +589,33 @@ def main() -> int:
 
     report_out.parent.mkdir(parents=True, exist_ok=True)
     report_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    # --- Log per-experiment pass/fail to Traceboard ---
+    if args.traceboard:
+        try:
+            from synapse.observability import get_probe
+
+            probe = get_probe()
+            if probe is not None and probe.active:
+                for exp_name, exp_res in report["experiments"].items():
+                    probe.log_scalar(
+                        f"cpu_verify/{exp_name}/passed",
+                        1.0 if exp_res.get("status") == "PASS" else 0.0,
+                    )
+                probe.log_scalar("cpu_verify/elapsed_sec", report["elapsed_sec"])
+                probe.log_scalar("cpu_verify/all_passed", 1.0)
+        except Exception:
+            pass  # Best-effort telemetry
+
+    # --- Traceboard shutdown ---
+    if args.traceboard:
+        try:
+            from synapse.observability import shutdown_traceboard
+
+            shutdown_traceboard()
+        except Exception:
+            pass
+
     print(f"ALL E1-E5 CPU BASELINE VERIFICATIONS PASSED! Report -> {report_out}")
     return 0
 
