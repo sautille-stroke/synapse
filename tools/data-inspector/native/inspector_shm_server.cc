@@ -53,14 +53,14 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width, uint32_t he
     return false;
   }
 
-  m_shm = std::move(shmResult.value());
-  m_width = width;
-  m_height = height;
-  m_stagingIdx = 0;
-  m_unlinkOnClose = unlinkOnClose;
+  shm_ = std::move(shmResult.value());
+  width_ = width;
+  height_ = height;
+  staging_idx_ = 0;
+  unlink_on_close_ = unlinkOnClose;
 
-  void* base = m_shm.data();
-  if (!base || m_shm.size() < requiredSize) {
+  void* base = shm_.data();
+  if (!base || shm_.size() < requiredSize) {
     close();
     return false;
   }
@@ -77,33 +77,33 @@ bool InspectorShmServer::open(std::string_view name, uint32_t width, uint32_t he
   hdr->fps.store(0.0f, std::memory_order_relaxed);
   hdr->deltaTime.store(0.0f, std::memory_order_relaxed);
   hdr->debugView.store(0u, std::memory_order_relaxed);
-  hdr->generation.store(m_generation, std::memory_order_release);
+  hdr->generation.store(generation_, std::memory_order_release);
 
   return true;
 }
 
 void InspectorShmServer::close() noexcept {
-  if (!m_shm.isValid()) return;
+  if (!shm_.isValid()) return;
 
-  const std::string shmName(m_shm.name());
-  m_shm.close();
-  if (m_unlinkOnClose) {
+  const std::string shmName(shm_.name());
+  shm_.close();
+  if (unlink_on_close_) {
     if (!shmName.empty()) {
       (void)aether::pal::SharedMemory::unlink(shmName);
     }
     // Clean up file-backed SHM temporary file on exit.
-    if (!m_shmFilePath.empty()) {
+    if (!shm_file_path_.empty()) {
 #if defined(_WIN32)
-      (void)::DeleteFileA(m_shmFilePath.c_str());
+      (void)::DeleteFileA(shm_file_path_.c_str());
 #else
-      (void)::unlink(m_shmFilePath.c_str());
+      (void)::unlink(shm_file_path_.c_str());
 #endif
     }
   }
-  m_shmFilePath.clear();
-  m_width = 0;
-  m_height = 0;
-  m_stagingIdx = 0;
+  shm_file_path_.clear();
+  width_ = 0;
+  height_ = 0;
+  staging_idx_ = 0;
 }
 
 bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width, uint32_t height,
@@ -158,15 +158,15 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width, uin
     return false;
   }
 
-  m_shm = std::move(shmResult.value());
-  m_width = width;
-  m_height = height;
-  m_stagingIdx = 0;
-  m_unlinkOnClose = unlinkOnClose;
-  m_shmFilePath = pathStr;  // Store path for cleanup on close/destructor
+  shm_ = std::move(shmResult.value());
+  width_ = width;
+  height_ = height;
+  staging_idx_ = 0;
+  unlink_on_close_ = unlinkOnClose;
+  shm_file_path_ = pathStr;  // Store path for cleanup on close/destructor
 
-  void* base = m_shm.data();
-  if (!base || m_shm.size() < requiredSize) {
+  void* base = shm_.data();
+  if (!base || shm_.size() < requiredSize) {
     close();
     return false;
   }
@@ -183,14 +183,14 @@ bool InspectorShmServer::openFile(std::string_view filePath, uint32_t width, uin
   hdr->fps.store(0.0f, std::memory_order_relaxed);
   hdr->deltaTime.store(0.0f, std::memory_order_relaxed);
   hdr->debugView.store(0u, std::memory_order_relaxed);
-  hdr->generation.store(m_generation, std::memory_order_release);
+  hdr->generation.store(generation_, std::memory_order_release);
 
   return true;
 }
 
 void InspectorShmServer::beginFrame() noexcept {
-  if (!m_shm.isValid()) return;
-  auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  if (!shm_.isValid()) return;
+  auto* hdr = shm_.as<InspectorShmHeader>(0);
   // Triple-buffer isolation: the staging buffer (m_stagingIdx) is always
   // distinct from the most recently published buffer (writeIdx), so the
   // writer can fill it without racing readers. We still set the odd-lock
@@ -204,24 +204,24 @@ void InspectorShmServer::beginFrame() noexcept {
 }
 
 uint8_t* InspectorShmServer::frontBuffer() noexcept {
-  if (!m_shm.isValid()) return nullptr;
+  if (!shm_.isValid()) return nullptr;
   // No longer calls beginFrame() here — the Seqlock odd transition is deferred
   // to publishFrame() to avoid blocking the CPU rasterizer under the lock.
-  const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
-  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * m_stagingIdx);
+  const size_t frameBytes = static_cast<size_t>(width_) * height_ * 4u;
+  return shm_.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * staging_idx_);
 }
 
 const uint8_t* InspectorShmServer::publishedBuffer() const noexcept {
-  if (!m_shm.isValid()) return nullptr;
-  const auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  if (!shm_.isValid()) return nullptr;
+  const auto* hdr = shm_.as<InspectorShmHeader>(0);
   const uint32_t pubIdx = hdr->writeIdx.load(std::memory_order_acquire) % kShmBufferCount;
-  const size_t frameBytes = static_cast<size_t>(m_width) * m_height * 4u;
-  return m_shm.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * pubIdx);
+  const size_t frameBytes = static_cast<size_t>(width_) * height_ * 4u;
+  return shm_.as<uint8_t>(sizeof(InspectorShmHeader) + frameBytes * pubIdx);
 }
 
 uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime, uint8_t debugView) noexcept {
-  if (!m_shm.isValid()) return 0;
-  auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  if (!shm_.isValid()) return 0;
+  auto* hdr = shm_.as<InspectorShmHeader>(0);
 
   // Seqlock: transition to odd (write-in-progress) just before publishing
   // metadata and writeIdx. This shrinks the lock window to just the pointer
@@ -237,7 +237,7 @@ uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime, uint8_t de
 
   // Publish the completed buffer index with relaxed store; the subsequent
   // release fence ensures writeIdx is visible to readers before frameReady.
-  hdr->writeIdx.store(m_stagingIdx, std::memory_order_relaxed);
+  hdr->writeIdx.store(staging_idx_, std::memory_order_relaxed);
 
   // ARM64 fix: A full release fence between writeIdx and frameReady ensures
   // that a reader observing the new frameReady will also see the new writeIdx.
@@ -250,21 +250,21 @@ uint64_t InspectorShmServer::publishFrame(float fps, float deltaTime, uint8_t de
   uint64_t nextEven = (seq | 1u) + 1u;
   hdr->frameReady.store(nextEven, std::memory_order_release);
 
-  m_stagingIdx = (m_stagingIdx + 1u) % kShmBufferCount;
+  staging_idx_ = (staging_idx_ + 1u) % kShmBufferCount;
   return nextEven / 2u;
 }
 
 uint64_t InspectorShmServer::sequenceNumber() const noexcept {
-  if (!m_shm.isValid()) return 0;
-  const auto* hdr = m_shm.as<InspectorShmHeader>(0);
+  if (!shm_.isValid()) return 0;
+  const auto* hdr = shm_.as<InspectorShmHeader>(0);
   return hdr->frameReady.load(std::memory_order_acquire);
 }
 
 void InspectorShmServer::bumpGeneration() noexcept {
-  ++m_generation;
-  if (!m_shm.isValid()) return;
-  auto* hdr = m_shm.as<InspectorShmHeader>(0);
-  hdr->generation.store(m_generation, std::memory_order_release);
+  ++generation_;
+  if (!shm_.isValid()) return;
+  auto* hdr = shm_.as<InspectorShmHeader>(0);
+  hdr->generation.store(generation_, std::memory_order_release);
 }
 
 }  // namespace synapse::inspector
