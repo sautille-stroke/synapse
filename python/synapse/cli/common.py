@@ -42,6 +42,7 @@ __all__ = [
     "SynapseError",
     "TraceContext",
     "SynapseArgumentParser",
+    "add_traceboard_args",
     "get_json_parent_parser",
     "_run_with_json_mode",
 ]
@@ -73,6 +74,16 @@ def get_json_parent_parser() -> argparse.ArgumentParser:
         help="Emit machine-readable JSON to stdout (no log noise)",
     )
     return parent
+
+
+def add_traceboard_args(parser: argparse.ArgumentParser) -> None:
+    """Add the ``--traceboard`` flag to *parser*."""
+    parser.add_argument(
+        "--traceboard",
+        metavar="LOG_DIR",
+        default=None,
+        help="Enable Traceboard observability; write .tbevt events to LOG_DIR",
+    )
 
 
 def _run_with_json_mode(

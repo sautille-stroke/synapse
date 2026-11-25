@@ -39,6 +39,7 @@ from synapse.cli._worker import (
 from synapse.cli.common import (
     SynapseArgumentParser,
     TraceContext,
+    add_traceboard_args,
     get_json_parent_parser,
 )
 from synapse.errors import ContractValidationError
@@ -64,6 +65,7 @@ def main_synapse(args: list[str] | None = None) -> int:
         description="Synapse -- 3D CG Rendering & Neural Video Interop CLI",
         parents=[json_parent],
     )
+    add_traceboard_args(parser)
     subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
     # Register all domain subparsers with json_parent
@@ -94,6 +96,14 @@ def main_synapse(args: list[str] | None = None) -> int:
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
     json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
+    # Initialize Traceboard if requested
+    if getattr(parsed, "traceboard", None):
+        from synapse.observability import init_traceboard
+        init_traceboard(
+            parsed.traceboard,
+            run_name=f"synapse_{parsed.command or 'cli'}_{int(__import__('time').time())}",
+        )
+
     if parsed.command is None:
         if json_mode:
             json.dump(
@@ -111,49 +121,53 @@ def main_synapse(args: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
-    if parsed.command == "fgpp":
-        return dispatch_fgpp(parsed, json_mode, trace_ctx, fgpp_parser)
-    elif parsed.command == "bench":
-        return dispatch_bench(parsed, json_mode, trace_ctx, bench_parser)
-    elif parsed.command == "generate":
-        return dispatch_generate(parsed, json_mode, trace_ctx)
-    elif parsed.command == "view":
-        return dispatch_view(parsed, json_mode, trace_ctx)
-    elif parsed.command == "worker":
-        return dispatch_worker(
-            parsed,
-            json_mode,
-            trace_ctx,
-            worker_parser,
-        )
-    elif parsed.command == "lora":
-        return dispatch_lora(parsed, json_mode, trace_ctx, lora_parser)
-    elif parsed.command == "inspect":
-        return dispatch_inspect(
-            parsed,
-            json_mode,
-            trace_ctx,
-            inspect_parser,
-        )
-    elif parsed.command == "recon":
-        return dispatch_recon(
-            parsed,
-            json_mode,
-            trace_ctx,
-            recon_parser,
-        )
-    elif parsed.command == "refine":
-        return dispatch_refine(
-            parsed,
-            json_mode,
-            trace_ctx,
-            refine_parser,
-        )
-    elif parsed.command == "rsi":
-        return dispatch_rsi(parsed, json_mode, trace_ctx, rsi_parser)
-    else:
-        parser.print_help()
-        return 0
+    try:
+        if parsed.command == "fgpp":
+            return dispatch_fgpp(parsed, json_mode, trace_ctx, fgpp_parser)
+        elif parsed.command == "bench":
+            return dispatch_bench(parsed, json_mode, trace_ctx, bench_parser)
+        elif parsed.command == "generate":
+            return dispatch_generate(parsed, json_mode, trace_ctx)
+        elif parsed.command == "view":
+            return dispatch_view(parsed, json_mode, trace_ctx)
+        elif parsed.command == "worker":
+            return dispatch_worker(
+                parsed,
+                json_mode,
+                trace_ctx,
+                worker_parser,
+            )
+        elif parsed.command == "lora":
+            return dispatch_lora(parsed, json_mode, trace_ctx, lora_parser)
+        elif parsed.command == "inspect":
+            return dispatch_inspect(
+                parsed,
+                json_mode,
+                trace_ctx,
+                inspect_parser,
+            )
+        elif parsed.command == "recon":
+            return dispatch_recon(
+                parsed,
+                json_mode,
+                trace_ctx,
+                recon_parser,
+            )
+        elif parsed.command == "refine":
+            return dispatch_refine(
+                parsed,
+                json_mode,
+                trace_ctx,
+                refine_parser,
+            )
+        elif parsed.command == "rsi":
+            return dispatch_rsi(parsed, json_mode, trace_ctx, rsi_parser)
+        else:
+            parser.print_help()
+            return 0
+    finally:
+        from synapse.observability import shutdown_traceboard
+        shutdown_traceboard()
 
 
 def main_bench(args: list[str] | None = None) -> int:
@@ -170,6 +184,7 @@ def main_bench(args: list[str] | None = None) -> int:
         description="Synapse-Bench -- evaluation dataset & benchmark CLI",
         parents=[json_parent],
     )
+    add_traceboard_args(parser)
     subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
     register_bench_subparsers(subparsers, json_parent=json_parent)
@@ -191,6 +206,14 @@ def main_bench(args: list[str] | None = None) -> int:
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
     json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
+    # Initialize Traceboard if requested
+    if getattr(parsed, "traceboard", None):
+        from synapse.observability import init_traceboard
+        init_traceboard(
+            parsed.traceboard,
+            run_name=f"synapse_{parsed.command or 'cli'}_{int(__import__('time').time())}",
+        )
+
     if parsed.command is None:
         if json_mode:
             json.dump(
@@ -208,4 +231,8 @@ def main_bench(args: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
-    return dispatch_bench(parsed, json_mode, trace_ctx)
+    try:
+        return dispatch_bench(parsed, json_mode, trace_ctx)
+    finally:
+        from synapse.observability import shutdown_traceboard
+        shutdown_traceboard()
