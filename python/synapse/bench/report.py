@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from synapse.observability import get_probe
+
 
 def _status_badge(passed: bool) -> str:
     """Return an HTML span with a green/red pass/fail badge."""
@@ -359,6 +361,17 @@ def generate_html_report(
 
     html_content = "\n".join(parts)
     output_path.write_text(html_content, encoding="utf-8")
+
+    # Log the HTML report as a Traceboard artifact
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_artifact(
+            "bench/report",
+            filename=output_path.name,
+            data=html_content.encode("utf-8"),
+            mime_type="text/html",
+        )
+
     return output_path
 
 
