@@ -22,6 +22,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from synapse.errors import ContractValidationError
+from synapse.observability import get_probe
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +380,15 @@ class StatelessLoRATrainer:
                     f"max_trainable_ratio {self._config.max_trainable_ratio:.4f}."
                 )
 
+        # Log injection stats to Traceboard
+        probe = get_probe()
+        if probe is not None and probe.active:
+            total = sum(p.numel() for p in module.parameters())
+            trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+            probe.log_scalar("train/lora_injected_layers", float(injected))
+            probe.log_scalar("train/total_params", float(total))
+            probe.log_scalar("train/trainable_params", float(trainable))
+
         return injected
 
     def _build_optimizer(self, module: Any) -> Any:
@@ -482,6 +492,12 @@ class StatelessLoRATrainer:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         torch.save(state, str(out))
+
+        # Log checkpoint save to Traceboard
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar("train/checkpoint_step", float(self._step_count))
+
         return out.resolve()
 
     def load_state_dict(self, path: Path, module: Any) -> int:
@@ -697,7 +713,18 @@ class StatelessLoRATrainer:
             self._optimizer.zero_grad()
 
         self._step_count = step
-        return {"loss": float(raw_loss.item()), "step": step}
+        result = {"loss": float(raw_loss.item()), "step": step}
+
+        # Log training scalars to Traceboard
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar("train/loss", result["loss"])
+            probe.log_scalar("train/step", float(step))
+            probe.log_scalar("train/lr_multiplier", lr_mult)
+            if self._config.loss_mode == "dpo":
+                probe.log_scalar("train/dpo_beta", self._config.dpo_beta)
+
+        return result
 
     def export_checkpoint(
         self,

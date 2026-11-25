@@ -21,6 +21,8 @@ from typing import Any
 
 import numpy as np
 
+from synapse.observability import get_probe
+
 # ===================================================================
 # Differentiable PyTorch loss classes
 # ===================================================================
@@ -356,7 +358,21 @@ class DiffusionDPOLoss:
         logit = -self.beta * (diff_w - diff_l)
 
         losses = torch.nn.functional.softplus(-logit)
-        return torch.mean(losses)
+        result = torch.mean(losses)
+
+        # Log DPO loss components to Traceboard
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar(
+                "train/dpo_preferred_err",
+                float(torch.mean(err_theta_w).item()),
+            )
+            probe.log_scalar(
+                "train/dpo_rejected_err",
+                float(torch.mean(err_theta_l).item()),
+            )
+
+        return result
 
 
 # ===================================================================
