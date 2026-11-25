@@ -1038,6 +1038,24 @@ class WanAdapter(VideoModelAdapter):
 
         validate_output_non_degenerate(raw_frames)
 
+        # --- Traceboard instrumentation ---
+        from synapse.observability import get_probe
+
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar("adapter/wan/num_output_frames", float(len(raw_frames)))
+            probe.log_scalar("adapter/wan/output_height", float(config.height))
+            probe.log_scalar("adapter/wan/output_width", float(config.width))
+            probe.log_scalar("adapter/wan/guidance_scale", float(config.guidance_scale))
+            probe.log_scalar("adapter/wan/num_inference_steps", float(config.num_inference_steps))
+            probe.log_scalar("adapter/wan/seed", float(config.seed))
+            probe.log_scalar("adapter/wan/gamma_flow_bias", self._gamma_flow_bias)
+            probe.log_scalar(
+                "adapter/wan/has_lora", float(self._lora_manager is not None),
+            )
+            probe.log_scalar("adapter/wan/total_frames", float(total_frames))
+            probe.log_scalar("adapter/wan/window_size", float(window_size))
+
         return VideoResult(
             frames_srgb_u8=raw_frames,
             fps=config.fps,

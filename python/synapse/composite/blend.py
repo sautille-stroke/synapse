@@ -599,6 +599,23 @@ def composite_surgical_sequence(
         result[t] = blended
         prev_boundary = blended.copy()
 
+    # --- Traceboard instrumentation ---
+    from synapse.observability import get_probe
+
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_scalar("composite/surgical/num_frames", float(t_count))
+        probe.log_scalar("composite/surgical/height", float(h))
+        probe.log_scalar("composite/surgical/width", float(w))
+        probe.log_scalar("composite/surgical/ema_alpha", ema_alpha)
+        # Mean mask coverage (fraction of pixels inside mask)
+        mask_coverage = float(np.mean(surgical_masks > 0.5))
+        probe.log_scalar("composite/surgical/mean_mask_coverage", mask_coverage)
+        probe.log_scalar(
+            "composite/surgical/has_motion_vectors",
+            float(motion_vectors is not None),
+        )
+
     return result
 
 
