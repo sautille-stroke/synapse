@@ -336,13 +336,27 @@ def extract_style_optical(frames_srgb: np.ndarray) -> StyleDescriptor:
         contrast_list.append(_estimate_contrast(frame_linear))
         sat_list.append(_estimate_saturation(frame_linear))
 
-    return StyleDescriptor(
+    desc = StyleDescriptor(
         color_temp_kelvin=float(np.median(cct_list)),
         exposure_ev=float(np.median(ev_list)),
         grain_sigma=float(np.median(grain_list)),
         contrast=float(np.median(contrast_list)),
         saturation=float(np.median(sat_list)),
     )
+
+    # --- Traceboard instrumentation ---
+    from synapse.observability import get_probe
+
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_scalar("style/optical/color_temp_kelvin", desc.color_temp_kelvin)
+        probe.log_scalar("style/optical/exposure_ev", desc.exposure_ev)
+        probe.log_scalar("style/optical/grain_sigma", desc.grain_sigma)
+        probe.log_scalar("style/optical/contrast", desc.contrast)
+        probe.log_scalar("style/optical/saturation", desc.saturation)
+        probe.log_scalar("style/optical/num_sampled_frames", float(len(cct_list)))
+
+    return desc
 
 
 def extract_style_fgpp_intrinsic(
@@ -465,5 +479,21 @@ def extract_style_fgpp_intrinsic(
 
     if ambient_ratios:
         desc.ambient_ratio = float(np.median(ambient_ratios))
+
+    # --- Traceboard instrumentation ---
+    from synapse.observability import get_probe
+
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_scalar("style/fgpp/num_light_samples", float(len(light_dirs)))
+        if desc.ambient_ratio is not None:
+            probe.log_scalar("style/fgpp/ambient_ratio", desc.ambient_ratio)
+        if desc.key_light_dir_world is not None:
+            probe.log_text(
+                "style/fgpp/key_light_dir",
+                f"[{desc.key_light_dir_world[0]:.4f}, "
+                f"{desc.key_light_dir_world[1]:.4f}, "
+                f"{desc.key_light_dir_world[2]:.4f}]",
+            )
 
     return desc
