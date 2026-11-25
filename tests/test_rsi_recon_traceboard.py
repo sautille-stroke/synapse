@@ -6,6 +6,7 @@ when active, and that modules behave identically when Traceboard is absent.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -79,23 +80,23 @@ class TestPromotionGateTraceboard:
 
     def test_promotion_logs_quarantine_table_on_reject(self, mock_probe: MagicMock) -> None:
         """When promotion fails with quarantine, log_table is called."""
-        from synapse.rsi.promotion_gate import evaluate_monotonic_promotion
+        from synapse.rsi.promotion_gate import (
+            BenchScenarioScore,
+            evaluate_monotonic_promotion,
+        )
 
         baseline = self._make_bench_report(overall=0.8, geom=0.8, temporal=0.8)
         # Candidate is worse in scenario s0
         cand_scenarios = [
-            {"scenario_id": "s0", "overall": 0.5, "geom": 0.5, "temporal": 0.5},
+            BenchScenarioScore(scenario_id="s0", overall=0.5, geom=0.5, temporal=0.5),
             *[
-                {"scenario_id": f"s{i}", "overall": 0.9, "geom": 0.9, "temporal": 0.9}
+                BenchScenarioScore(scenario_id=f"s{i}", overall=0.9, geom=0.9, temporal=0.9)
                 for i in range(1, 30)
             ],
         ]
         candidate = self._make_bench_report(overall=0.88, geom=0.87, temporal=0.87)
-        # Override candidate scenarios
-        from synapse.rsi.promotion_gate import BenchScenarioScore
-
-        candidate.scenarios = [BenchScenarioScore(**s) for s in cand_scenarios]
-        candidate.overall_score = sum(s["overall"] for s in cand_scenarios) / len(cand_scenarios)
+        candidate.scenarios = cand_scenarios
+        candidate.overall_score = sum(s.overall for s in cand_scenarios) / len(cand_scenarios)
 
         with patch("synapse.rsi.promotion_gate.get_probe", return_value=mock_probe):
             result = evaluate_monotonic_promotion(
@@ -107,12 +108,16 @@ class TestPromotionGateTraceboard:
             )
 
         assert not result.promoted
-        # Quarantine table should be logged
+        # Quarantine table should be logged with (tag, columns, rows) matching Probe.log_table
         table_calls = [
             c for c in mock_probe.log_table.call_args_list
             if "quarantine" in c.args[0]
         ]
         assert len(table_calls) >= 1
+        tag, cols, rows = table_calls[0].args
+        assert isinstance(tag, str)
+        assert isinstance(cols, list) and all("name" in col for col in cols)
+        assert isinstance(rows, list) and len(rows) >= 1
 
     def test_promotion_silent_without_probe(self) -> None:
         """When probe is None, promotion still works without errors."""
@@ -343,6 +348,42 @@ class TestJevCriticTraceboard:
             if "defects" in c.args[0]
         ]
         assert len(table_calls) >= 1
+        tag, cols, rows = table_calls[0].args
+        assert isinstance(tag, str)
+        assert isinstance(cols, list) and all("name" in col for col in cols)
+        assert isinstance(rows, list) and len(rows) >= 1
+
+    @pytest.mark.external_data
+    def test_jev_critic_real_probe_e2e(self, tmp_path: Path) -> None:
+        """Real Probe writes defect TABLE events without signature mismatch."""
+        try:
+            import aether_traceboard  # noqa: F401
+        except ImportError:
+            pytest.skip("aether-traceboard not installed")
+
+        import synapse.observability as obs
+        from aether_traceboard._types import EventType
+        from aether_traceboard.reader import read_events
+        from synapse.inspect.jev_critic import MockJevTransport, VisualJevCritic
+
+        obs._probe = None
+        obs._initialized = False
+        probe = obs.init_traceboard(tmp_path, "jev_table_e2e")
+        assert probe is not None
+        try:
+            critic = VisualJevCritic(
+                transport=MockJevTransport(defect_overrides={"mesh_crumple": 0.9}),
+            )
+            critic.evaluate(
+                asset_id="defective_asset",
+                asset_name="DefectiveAsset",
+                image_uris=["view_0.png"],
+            )
+        finally:
+            obs.shutdown_traceboard()
+
+        records = read_events(next(tmp_path.glob("*.tbevt")))
+        assert any(r.event_type == EventType.TABLE for r in records)
 
     def test_evaluate_silent_without_probe(self) -> None:
         """When probe is None, evaluate still works."""

@@ -354,9 +354,10 @@ def _has_aether_traceboard() -> bool:
         return False
 
 
+@pytest.mark.external_data
 @pytest.mark.skipif(
     not _has_aether_traceboard(),
-    reason="aether-traceboard not installed",
+    reason="aether-traceboard not installed (external sibling package)",
 )
 class TestEndToEndIntegration:
     """Integration tests using real aether-traceboard SDK."""

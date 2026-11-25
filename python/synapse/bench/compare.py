@@ -251,15 +251,25 @@ def compare_runs(
         # Log leaderboard table to Traceboard
         probe = get_probe()
         if probe is not None and probe.active:
-            table_rows: list[dict[str, Any]] = []
-            for row in report.rows:
-                table_row: dict[str, Any] = {
-                    "model": row.model_name,
-                    "overall_score": row.overall_score,
-                }
-                for tid, ts in row.track_scores.items():
-                    table_row[tid] = ts.score
-                table_rows.append(table_row)
-            probe.log_table("bench/compare/leaderboard", table_rows)
+            track_ids = list(TRACK_DEFINITIONS.keys())
+            columns: list[dict[str, str]] = [
+                {"name": "model", "type": "string"},
+                {"name": "overall_score", "type": "float"},
+                *[{"name": tid, "type": "float"} for tid in track_ids],
+            ]
+            table_rows: list[list[Any]] = [
+                [
+                    row.model_name,
+                    float(row.overall_score),
+                    *[
+                        float(row.track_scores[tid].score)
+                        if tid in row.track_scores
+                        else 0.0
+                        for tid in track_ids
+                    ],
+                ]
+                for row in report.rows
+            ]
+            probe.log_table("bench/compare/leaderboard", columns, table_rows)
 
     return report

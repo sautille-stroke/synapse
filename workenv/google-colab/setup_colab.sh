@@ -78,8 +78,15 @@ python3 -m pip install --quiet \
     "sentencepiece>=0.2.0" \
     "webdataset>=0.2.86" \
     "huggingface_hub>=0.24.0" \
-    "pybind11>=2.12.0" \
-    "aether-traceboard>=0.1.0"
+    "pybind11>=2.12.0"
+
+# Install optional Traceboard SDK (prefer sibling aether source, fallback to PyPI)
+if [ -d "${SYNAPSE_ROOT}/../aether/traceboard/python" ]; then
+    python3 -m pip install --quiet -e "${SYNAPSE_ROOT}/../aether/traceboard/python"
+else
+    python3 -m pip install --quiet "aether-traceboard>=0.1.0" || \
+        echo "⚠️ Optional aether-traceboard unavailable; continuing in graceful-degradation mode."
+fi
 
 # Build and install native C++20 geometry kernel (@aether//python:aether_geo)
 echo ">>> Building native aether_geo extension kernel..."

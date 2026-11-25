@@ -6,6 +6,8 @@ observability layer without requiring aether-traceboard to be installed.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,7 +50,7 @@ _needs_safetensors = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def _reset_observability():
+def _reset_observability() -> Iterator[None]:
     """Reset observability module state before each test."""
     import synapse.observability as obs
 
@@ -60,7 +62,7 @@ def _reset_observability():
 
 
 @pytest.fixture
-def mock_probe():
+def mock_probe() -> MagicMock:
     """Create a mock Traceboard probe with active=True."""
     probe = MagicMock()
     probe.active = True
@@ -71,7 +73,7 @@ def mock_probe():
 
 
 @pytest.fixture
-def _set_probe(mock_probe):
+def _set_probe(mock_probe: MagicMock) -> Iterator[None]:
     """Install mock probe into observability module."""
     import synapse.observability as obs
 
@@ -92,7 +94,7 @@ class TestTrainerTrainStepLogging:
 
     @_needs_torch
     @pytest.mark.usefixtures("_set_probe")
-    def test_train_step_logs_loss_and_step(self, mock_probe):
+    def test_train_step_logs_loss_and_step(self, mock_probe: MagicMock) -> None:
         """train_step should log loss, step, and lr_multiplier."""
         import torch
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
@@ -132,7 +134,7 @@ class TestTrainerInjectLoraLogging:
 
     @_needs_torch
     @pytest.mark.usefixtures("_set_probe")
-    def test_inject_lora_logs_params(self, mock_probe):
+    def test_inject_lora_logs_params(self, mock_probe: MagicMock) -> None:
         """inject_lora should log injected layers and param counts."""
         import torch
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
@@ -162,7 +164,9 @@ class TestTrainerCheckpointLogging:
 
     @_needs_torch
     @pytest.mark.usefixtures("_set_probe")
-    def test_save_state_dict_logs_step(self, mock_probe, tmp_path):
+    def test_save_state_dict_logs_step(
+        self, mock_probe: MagicMock, tmp_path: Path
+    ) -> None:
         """save_state_dict should log checkpoint_step scalar."""
         import torch
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
@@ -195,7 +199,7 @@ class TestTrainerWithoutTraceboard:
     """Verify training works fine without any Traceboard probe."""
 
     @_needs_torch
-    def test_train_step_without_probe(self):
+    def test_train_step_without_probe(self) -> None:
         """train_step must not error when no probe is initialized."""
         import torch
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
@@ -227,7 +231,9 @@ class TestPackagerLogging:
     @_needs_torch
     @_needs_safetensors
     @pytest.mark.usefixtures("_set_probe")
-    def test_package_logs_gate_result(self, mock_probe, tmp_path):
+    def test_package_logs_gate_result(
+        self, mock_probe: MagicMock, tmp_path: Path
+    ) -> None:
         """Successful packaging should log package_passed scalar."""
         import torch
         from safetensors.torch import save_file
@@ -248,9 +254,9 @@ class TestPackagerLogging:
             category="style",
             rank=4,
             bench_metrics={
-                "chamfer_mm": 5.0,
-                "normal_angular_error_deg": 8.0,
-                "border_ring_ciede2000": 2.0,
+                "chamfer_mm": 2.5,
+                "normal_angular_error_deg": 6.0,
+                "border_ring_ciede2000": 1.2,
             },
         )
         assert result["passed"] is True
@@ -271,7 +277,7 @@ class TestDPOLossLogging:
 
     @_needs_torch
     @pytest.mark.usefixtures("_set_probe")
-    def test_dpo_loss_logs_components(self, mock_probe):
+    def test_dpo_loss_logs_components(self, mock_probe: MagicMock) -> None:
         """DPO loss should log preferred and rejected error scalars."""
         import torch
         from synapse.training.losses import DiffusionDPOLoss

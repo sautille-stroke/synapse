@@ -9,10 +9,14 @@ weights.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    from synapse.adapters.wan import WanAdapter
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -37,7 +41,7 @@ def mock_probe() -> MagicMock:
 class TestWanAdapterTraceboard:
     """Verify Traceboard logging in WanAdapter.generate()."""
 
-    def _make_adapter(self) -> object:
+    def _make_adapter(self) -> WanAdapter:
         from synapse.adapters.wan import LocalCallableBackend, WanAdapter
 
         def fake_backend(payload: object, config: object) -> np.ndarray:
