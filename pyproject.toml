@@ -65,8 +65,11 @@ train = [
     "pyyaml>=6.0",
     "webdataset>=0.2.86",
 ]
+traceboard = [
+    "aether-traceboard>=0.1.0",
+]
 full = [
-    "synapse[image,metrics,gpu,mesh,invrender,jit,train,dev]",
+    "synapse[image,metrics,gpu,mesh,invrender,jit,train,traceboard,dev]",
 ]
 
 [project.scripts]
@@ -134,6 +137,8 @@ module = [
     "torchvision.*",
     "transformers",
     "transformers.*",
+    "aether_traceboard",
+    "aether_traceboard.*",
 ]
 ignore_missing_imports = true
 
