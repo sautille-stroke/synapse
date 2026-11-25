@@ -353,6 +353,7 @@ class TestJevCriticTraceboard:
         assert isinstance(cols, list) and all("name" in col for col in cols)
         assert isinstance(rows, list) and len(rows) >= 1
 
+    @pytest.mark.external_data
     def test_jev_critic_real_probe_e2e(self, tmp_path: Path) -> None:
         """Real Probe writes defect TABLE events without signature mismatch."""
         try:

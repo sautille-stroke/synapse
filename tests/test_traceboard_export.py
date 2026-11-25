@@ -79,6 +79,7 @@ def _make_reports() -> list[_FakeReport]:
 # ---------------------------------------------------------------------------
 # Test: export with real aether-traceboard (if installed)
 # ---------------------------------------------------------------------------
+@pytest.mark.external_data
 class TestExportWithRealTraceboard:
     """Test export_reports_to_traceboard with real aether-traceboard SDK."""
 

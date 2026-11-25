@@ -254,9 +254,9 @@ class TestPackagerLogging:
             category="style",
             rank=4,
             bench_metrics={
-                "chamfer_mm": 5.0,
-                "normal_angular_error_deg": 8.0,
-                "border_ring_ciede2000": 2.0,
+                "chamfer_mm": 2.5,
+                "normal_angular_error_deg": 6.0,
+                "border_ring_ciede2000": 1.2,
             },
         )
         assert result["passed"] is True
