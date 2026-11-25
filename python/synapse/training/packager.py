@@ -33,6 +33,7 @@ from synapse.metrics.profiles import (
     GateProfileName,
     get_profile_thresholds,
 )
+from synapse.observability import get_probe
 
 # -------------------------------------------------------------------
 # Quality gate thresholds
@@ -324,6 +325,14 @@ def package_and_gate_lora_bundle(
         "waived": report.waived,
         "report": report.model_dump(),
     }
+
+    # Log packaging result to Traceboard
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_scalar("train/package_passed", 1.0 if report.passed else 0.0)
+        for k, v in report.measured.items():
+            if isinstance(v, (int, float)):
+                probe.log_scalar(f"train/package/{k}", float(v))
 
     return result
 
