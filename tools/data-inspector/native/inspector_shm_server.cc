@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstring>
 #include <new>
+#include <string>
 #include <utility>
 
 #if defined(_WIN32)

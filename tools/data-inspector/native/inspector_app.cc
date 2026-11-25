@@ -3,28 +3,31 @@
 
 #include "inspector_app.h"
 
-#include <aether/fs/file_utils.h>
-#include <aether/fs/filesystem.h>
-#include <aether/json.h>
-#include <aether/pal/console.h>
-
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include <aether/fs/file_utils.h>
+#include <aether/fs/filesystem.h>
 #include <aether/io/exr_io.h>
+#include <aether/json.h>
+#include <aether/pal/console.h>
 
 #ifdef SYNAPSE_HAS_TINYEXR
 #include "tinyexr.h"
@@ -174,7 +177,7 @@ bool InspectorApp::loadObjMesh(std::string_view objPath, InspectorMesh& outMesh)
 
       while (iss >> token) {
         char* endPtr = nullptr;
-        long idx = std::strtol(token.c_str(), &endPtr, 10);
+        int64_t idx = std::strtoll(token.c_str(), &endPtr, 10);
         if (idx == 0) continue;  // invalid OBJ index
 
         uint32_t resolved = 0;

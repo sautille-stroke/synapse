@@ -11,13 +11,13 @@
 /// - Writer increments `frameReady` to odd before writing, then updates `writeIdx`
 ///   and publishes `frameReady` to the next even number (2k+2) with release semantics.
 
-#include <aether/pal/shared_memory.h>
-
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+
+#include <aether/pal/shared_memory.h>
 
 namespace synapse::inspector {
 

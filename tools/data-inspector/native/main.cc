@@ -16,14 +16,14 @@
 ///   --keep-shm            Do not unlink SHM region on exit (for CLI/test inspection)
 ///   --bundle=<path>       Path to the InspectionBundle directory
 
-#include "inspector_app.h"
-
 #include <charconv>
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "inspector_app.h"
 
 namespace {
 
@@ -53,7 +53,7 @@ namespace {
   const char* begin = text.data();
   const char* end = text.data() + text.size();
   auto [ptr, ec] = std::from_chars(begin, end, val);
-  if (ec != std::errc{} || ptr != end) {
+  if (ec != std::errc() || ptr != end) {
     return false;
   }
   out = val;

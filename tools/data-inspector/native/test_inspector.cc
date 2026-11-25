@@ -1,23 +1,23 @@
 /// @file test_inspector.cc
 /// @brief Unit tests for Data Inspector native application and SHM frame server.
 
-#include "inspector_app.h"
-#include "inspector_shm_server.h"
-
-#include <gtest/gtest.h>
-
-#include <aether/fs/file_utils.h>
-#include <aether/fs/filesystem.h>
-
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
 
-using namespace synapse::inspector;
+#include <aether/fs/file_utils.h>
+#include <aether/fs/filesystem.h>
+#include <gtest/gtest.h>
+
+#include "inspector_app.h"
+#include "inspector_shm_server.h"
+
+namespace synapse::inspector {
 
 namespace {
 
@@ -1050,3 +1050,5 @@ TEST(InspectorApp, SeekFrameAndRoughnessMetallicMode) {
   EXPECT_EQ(app.debugViewMode(), DebugViewMode::kRoughnessMetallic);
   app.renderFrame(0.016f);
 }
+
+}  // namespace synapse::inspector
