@@ -124,6 +124,7 @@ pytest tests/test_bench.py -k "test_scenario_create" -v
 - **3D 动画引导生成、可微逆向渲染与局部修补双向闭环设计规范 (SYN-RFC-0062)**：[SYN-RFC-0062 规范](docs/SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) · [详细设计](docs/DESIGN_INVERSE_RENDERING_CLOSED_LOOP.md)
 - **质量保障、测试验证机制与行业横向评测基准规范 (SYN-RFC-0063)**：[SYN-RFC-0063 规范](docs/SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) · [详细设计](docs/DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md) · [落地计划 (PLAN-M17-M20)](docs/archive/plans/PLAN-M17-M20-QUALITY-GOVERNANCE-AND-BENCHMARK-LANDING.md)
 - **3D 多视角生成与逆向重建闭环验证计划**：[docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md](docs/plans/PLAN-3D-ROUNDTRIP-RECONSTRUCTION-VERIFICATION.md)
+- **Traceboard Python SDK 与 Synapse 可观测性集成 Plan 与落地总结**：[集成计划与落地台账](docs/plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) · [集成架构设计](docs/DESIGN_TRACEBOARD_INTEGRATION.md)
 - **Google Colab 实验与微调运行环境指南**：[workenv/google-colab/README.md](workenv/google-colab/README.md)
 
 ---
