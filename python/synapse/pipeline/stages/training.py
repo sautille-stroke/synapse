@@ -70,7 +70,7 @@ def handle_lora_preencode(
         )
 
     for i, npy_path in enumerate(sample_files):
-        video_frames = np.load(str(npy_path))
+        video_frames = np.load(str(npy_path), allow_pickle=False)
         caption_path = npy_path.with_suffix(".txt")
         if caption_path.is_file():
             caption = caption_path.read_text(encoding="utf-8").strip()

@@ -67,20 +67,35 @@ def _is_blocked_ip(
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
     *,
     allow_loopback: bool = False,
+    allow_private: bool = False,
 ) -> bool:
-    """Return True if ip or any unwrapped mapping matches blocked networks/hosts."""
+    """Return True if ip or any unwrapped mapping matches blocked networks/hosts.
+
+    By default, RFC 1918 private ranges (``10/8``, ``172.16/12``,
+    ``192.168/16``) and RFC 4193 unique-local IPv6 (``fc00::/7``) are
+    blocked.  Pass ``allow_private=True`` only for trusted intra-VPC
+    service-mesh traffic.
+    """
     for unwrapped in _unwrap_ip(ip):
         if unwrapped.is_unspecified or unwrapped.is_multicast:
             return True
-        for net in _ALWAYS_BLOCKED_NETWORKS:
-            if unwrapped in net:
-                return True
+        # Loopback check must precede is_private because Python classifies
+        # 127.0.0.0/8 and ::1 as *both* loopback and private.  When
+        # allow_loopback=True we must let them through rather than
+        # blocking on the broader is_private predicate.
         if not allow_loopback:
             if unwrapped.is_loopback:
                 return True
             for net in _LOOPBACK_NETWORKS:
                 if unwrapped in net:
                     return True
+        # TD-25: Block RFC 1918 / RFC 4193 private networks (SSRF defense).
+        # Skip when the address is loopback and already allowed above.
+        if not allow_private and unwrapped.is_private and not unwrapped.is_loopback:
+            return True
+        for net in _ALWAYS_BLOCKED_NETWORKS:
+            if unwrapped in net:
+                return True
         if str(unwrapped) in _BLOCKED_HOSTNAMES:
             return True
     return False
@@ -90,9 +105,14 @@ def validate_safe_url(
     url: str,
     *,
     allow_loopback: bool = False,
+    allow_private: bool = False,
 ) -> tuple[str, list[str]]:
     """Validate that a URL uses safe HTTP/HTTPS scheme and does not target
     link-local, unspecified, multicast, or cloud metadata endpoints (SSRF prevention).
+
+    RFC 1918 private ranges (``10/8``, ``172.16/12``, ``192.168/16``) and
+    RFC 4193 unique-local IPv6 (``fc00::/7``) are blocked by default.
+    Pass ``allow_private=True`` only for trusted intra-VPC traffic.
 
     Loopback addresses (``127.0.0.0/8``, ``::1``, ``localhost``) are blocked by
     default and permitted only when ``allow_loopback=True`` for trusted intra-pod
@@ -150,9 +170,9 @@ def validate_safe_url(
     # Check if hostname is an IP literal
     try:
         ip = ipaddress.ip_address(hostname)
-        if _is_blocked_ip(ip, allow_loopback=allow_loopback):
+        if _is_blocked_ip(ip, allow_loopback=allow_loopback, allow_private=allow_private):
             raise ContractValidationError(
-                f"Blocked link-local / cloud metadata / loopback IP: {ip}",
+                f"Blocked link-local / cloud metadata / private / loopback IP: {ip}",
                 agent_fix_hint="Access to cloud metadata endpoints and disallowed IPs is forbidden.",
             )
         resolved_ips.append(str(ip))
@@ -173,7 +193,7 @@ def validate_safe_url(
         for _, _, _, _, sockaddr in addr_info:
             resolved_ip_str = str(sockaddr[0])
             resolved_ip = ipaddress.ip_address(resolved_ip_str)
-            if _is_blocked_ip(resolved_ip, allow_loopback=allow_loopback):
+            if _is_blocked_ip(resolved_ip, allow_loopback=allow_loopback, allow_private=allow_private):
                 raise ContractValidationError(
                     f"Blocked hostname '{hostname}' resolves to blocked IP: {resolved_ip}",
                     agent_fix_hint="Access to cloud metadata endpoints, unspecified, and disallowed IPs is forbidden.",

@@ -1184,7 +1184,7 @@ def _load_array_dir(dir_path: Path) -> np.ndarray | None:
 
     npy_files = sorted(dir_path.glob("*.npy"))
     if npy_files:
-        arrays = [np.load(str(f)) for f in npy_files]
+        arrays = [np.load(str(f), allow_pickle=False) for f in npy_files]
         if arrays:
             return np.stack(arrays, axis=0)
 
@@ -1208,7 +1208,7 @@ def _load_array_dir(dir_path: Path) -> np.ndarray | None:
 def _try_load_npy(path: Path) -> np.ndarray | None:
     """Load a NumPy file if it exists, else ``None``."""
     if path.is_file():
-        return np.asarray(np.load(str(path)))
+        return np.asarray(np.load(str(path), allow_pickle=False))
     return None
 
 
@@ -1236,7 +1236,7 @@ def _try_load_exr_sequence(fgpp_dir: Path, channel_prefix: str) -> np.ndarray | 
     frames: list[np.ndarray] = []
     for npy_path in npy_files:
         try:
-            data = np.load(str(npy_path))
+            data = np.load(str(npy_path), allow_pickle=False)
             frames.append(np.asarray(data))
         except Exception:
             continue

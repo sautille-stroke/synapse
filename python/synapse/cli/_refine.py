@@ -93,7 +93,7 @@ def _cmd_refine_anatomical(
                 "file of shape (T, H, W, 3) float32 ACEScg."
             ),
         )
-    frames = np.load(video_path_raw).astype(np.float32)
+    frames = np.load(video_path_raw, allow_pickle=False).astype(np.float32)
 
     height, width = frames.shape[1], frames.shape[2]
 
@@ -134,7 +134,7 @@ def _cmd_refine_anatomical(
             frames=frames,
         )
     elif meta_path.suffix.lower() == ".npy":
-        arr = np.load(str(meta_path))
+        arr = np.load(str(meta_path), allow_pickle=False)
         if arr.ndim == 2 and arr.shape[1] == 4:
             for t_idx in range(min(frames.shape[0], arr.shape[0])):
                 bbox = arr[t_idx].astype(np.float32)

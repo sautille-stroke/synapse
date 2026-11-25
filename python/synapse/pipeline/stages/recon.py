@@ -196,7 +196,7 @@ def handle_kinematic_distill(
     # Load foot contacts
     contacts_path = manifest.inputs.get("foot_contacts", "")
     if contacts_path and Path(contacts_path).is_file():
-        contacts = np.load(contacts_path)
+        contacts = np.load(contacts_path, allow_pickle=False)
     else:
         # Minimal periodic stance phase contacts
         n_frames = int(params.get("num_frames", 60))
@@ -291,7 +291,7 @@ def handle_inverse_render_loop(
                 "a valid .npy file of shape (T, H, W, 3) float32."
             ),
         )
-    normals = np.load(normals_path).astype(np.float32)
+    normals = np.load(normals_path, allow_pickle=False).astype(np.float32)
 
     # Load UV maps — no synthetic fallback
     uv_path = manifest.inputs.get("uv_maps", "")
@@ -305,7 +305,7 @@ def handle_inverse_render_loop(
                 "a valid .npy file of shape (T, H, W, 2) float32."
             ),
         )
-    uv_maps = np.load(uv_path).astype(np.float32)
+    uv_maps = np.load(uv_path, allow_pickle=False).astype(np.float32)
 
     loop_config = LoopConfig(
         n_preroll=n_preroll,
@@ -382,7 +382,7 @@ def handle_delight_albedo(
                 "a valid .npy file of shape (T, H, W, 3)."
             ),
         )
-    frames = np.load(video_path)
+    frames = np.load(video_path, allow_pickle=False)
 
     # Reconstruct mesh for normals
     params = dict(manifest.params)

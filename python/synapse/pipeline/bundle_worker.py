@@ -955,7 +955,7 @@ def _handle_surgical_composite(
     # Generate per-frame surgical masks from compositing module
     mask_input_path = manifest.inputs.get("masks", "")
     if mask_input_path and Path(mask_input_path).is_file():
-        masks = np.load(mask_input_path).astype(np.float32)
+        masks = np.load(mask_input_path, allow_pickle=False).astype(np.float32)
     else:
         # Generate masks from the neural/rendered frame differences
         masks = np.zeros(

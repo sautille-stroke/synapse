@@ -148,13 +148,15 @@ class FoundaryTransport(ABC):
         )
 
     def poll_job(self, job_id: str, service: str = "") -> FoundaryJobStatus:
-        """Query current state of an asynchronous inference job."""
-        return FoundaryJobStatus(
-            job_id=job_id,
-            service=service,
-            state="succeeded",
-            progress=1.0,
-            outputs={},
+        """Query current state of an asynchronous inference job.
+
+        Subclasses **must** override this method to query the actual job
+        status from the Foundary backend.  The base class raises
+        ``NotImplementedError`` to prevent silent false-success (TD-29).
+        """
+        raise NotImplementedError(
+            f"Subclass {type(self).__name__} must override poll_job() — "
+            "the base FoundaryTransport does not know how to query job state."
         )
 
     def wait_for_job(

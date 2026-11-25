@@ -109,7 +109,7 @@ def _load_image_directory(
     frames_list: list[np.ndarray] = []
     for p in selected:
         if p.suffix.lower() == ".npy":
-            arr = np.load(p)
+            arr = np.load(p, allow_pickle=False)
         else:
             try:
                 from PIL import Image

@@ -89,7 +89,7 @@ def handle_anatomical_refine(
                 "a valid .npy file of shape (T, H, W, 3) float32 ACEScg."
             ),
         )
-    frames = np.load(video_path).astype(np.float32)
+    frames = np.load(video_path, allow_pickle=False).astype(np.float32)
 
     # Parse regions
     region_names: list[str] = params.get("regions", ["HAND", "FACE"])
@@ -130,7 +130,7 @@ def handle_anatomical_refine(
     if p_rois.suffix.lower() == ".npy":
         # .npy files contain bbox arrays, not JSON — load with np.load
         # (previously this went through json.loads which crashes on binary data)
-        arr = np.load(str(p_rois))
+        arr = np.load(str(p_rois), allow_pickle=False)
         # Build a synthetic JSON-compatible structure for parse_rois_json
         rois_list: list[list[dict[str, object]]] = []
         if arr.ndim == 2 and arr.shape[1] == 4:

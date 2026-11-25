@@ -321,7 +321,7 @@ def _cmd_recon_closed_loop(
                 "file of shape (T, H, W, 3) float32."
             ),
         )
-    frames = np.load(video_path_raw).astype(np.float32)
+    frames = np.load(video_path_raw, allow_pickle=False).astype(np.float32)
 
     t_count, h, w, _ = frames.shape
 
@@ -343,7 +343,7 @@ def _cmd_recon_closed_loop(
                 "file of shape (T, H, W, 3) float32."
             ),
         )
-    normals = np.load(normals_path_raw).astype(np.float32)
+    normals = np.load(normals_path_raw, allow_pickle=False).astype(np.float32)
 
     uv_maps_path_raw = getattr(args, "uv_maps", None)
     if uv_maps_path_raw:
@@ -355,7 +355,7 @@ def _cmd_recon_closed_loop(
                     "file of shape (T, H, W, 2) float32."
                 ),
             )
-        uv_maps = np.load(uv_maps_path_raw).astype(np.float32)
+        uv_maps = np.load(uv_maps_path_raw, allow_pickle=False).astype(np.float32)
     else:
         uv_maps = np.zeros((t_count, h, w, 2), dtype=np.float32)
         u_lin = np.linspace(0.0, 1.0, w, dtype=np.float32)
