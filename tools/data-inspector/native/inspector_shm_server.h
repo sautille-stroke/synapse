@@ -106,7 +106,7 @@ class InspectorShmServer {
   void close() noexcept;
 
   /// @brief Whether the SHM region is currently open.
-  [[nodiscard]] bool isOpen() const noexcept { return m_shm.isValid(); }
+  [[nodiscard]] bool isOpen() const noexcept { return shm_.isValid(); }
 
   /// @brief Begin frame writing: transitions Seqlock counter to odd (writing in progress).
   void beginFrame() noexcept;
@@ -136,19 +136,19 @@ class InspectorShmServer {
   void bumpGeneration() noexcept;
 
   /// @brief Current monotonically increasing resize generation counter.
-  [[nodiscard]] uint32_t generation() const noexcept { return m_generation; }
+  [[nodiscard]] uint32_t generation() const noexcept { return generation_; }
 
   /// @brief Total SHM size in bytes for the current resolution.
-  [[nodiscard]] size_t totalSize() const noexcept { return m_shm.size(); }
+  [[nodiscard]] size_t totalSize() const noexcept { return shm_.size(); }
 
  private:
-  aether::pal::SharedMemory m_shm;
-  uint32_t m_width = 0;
-  uint32_t m_height = 0;
-  uint32_t m_stagingIdx = 0;
-  uint32_t m_generation = 0;
-  bool m_unlinkOnClose = true;
-  std::string m_shmFilePath;  ///< File path for file-backed SHM cleanup.
+  aether::pal::SharedMemory shm_;
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
+  uint32_t staging_idx_ = 0;
+  uint32_t generation_ = 0;
+  bool unlink_on_close_ = true;
+  std::string shm_file_path_;  ///< File path for file-backed SHM cleanup.
 };
 
 }  // namespace synapse::inspector

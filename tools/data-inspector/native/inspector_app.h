@@ -97,14 +97,14 @@ class InspectorApp {
   void run();
 
   /// @brief Signal the frame loop to exit after the current frame.
-  void requestQuit() noexcept { m_running.store(false, std::memory_order_release); }
+  void requestQuit() noexcept { running_.store(false, std::memory_order_release); }
 
   /// @brief Process a single JSON command line from the Electron host.
   void handleCommand(std::string_view jsonCmd);
 
   /// @brief Direct access to SHM server (for testing).
-  [[nodiscard]] InspectorShmServer& shmServer() noexcept { return m_shm; }
-  [[nodiscard]] const InspectorShmServer& shmServer() const noexcept { return m_shm; }
+  [[nodiscard]] InspectorShmServer& shmServer() noexcept { return shm_; }
+  [[nodiscard]] const InspectorShmServer& shmServer() const noexcept { return shm_; }
 
   /// @brief Direct render a single frame into SHM (for testing).
   void renderFrame(float deltaTime);
@@ -113,74 +113,74 @@ class InspectorApp {
   [[nodiscard]] bool exportScreenshotPpm(std::string_view outputPath) const;
 
   /// @brief Diagnostic accessors for testing and inspection.
-  [[nodiscard]] size_t vertexCount() const noexcept { return m_mesh.vertices.size() / 3; }
-  [[nodiscard]] size_t faceCount() const noexcept { return m_mesh.faces.size() / 3; }
-  [[nodiscard]] DebugViewMode debugViewMode() const noexcept { return m_debugView; }
-  [[nodiscard]] bool hasCustomMesh() const noexcept { return m_hasCustomMesh; }
+  [[nodiscard]] size_t vertexCount() const noexcept { return mesh_.vertices.size() / 3; }
+  [[nodiscard]] size_t faceCount() const noexcept { return mesh_.faces.size() / 3; }
+  [[nodiscard]] DebugViewMode debugViewMode() const noexcept { return debug_view_; }
+  [[nodiscard]] bool hasCustomMesh() const noexcept { return has_custom_mesh_; }
 
   /// @brief Multi-entity mesh management accessors.
-  [[nodiscard]] size_t entityCount() const noexcept { return m_entities.size(); }
-  [[nodiscard]] const std::vector<MeshEntity>& entities() const noexcept { return m_entities; }
+  [[nodiscard]] size_t entityCount() const noexcept { return entities_.size(); }
+  [[nodiscard]] const std::vector<MeshEntity>& entities() const noexcept { return entities_; }
   [[nodiscard]] const MeshEntity* findEntity(std::string_view name) const noexcept;
   [[nodiscard]] MeshEntity* findEntity(std::string_view name) noexcept;
   bool setEntityVisible(std::string_view name, bool visible) noexcept;
   [[nodiscard]] bool isEntityVisible(std::string_view name) const noexcept;
 
   /// @brief Active navigation tab & current timeline frame index.
-  [[nodiscard]] const std::string& activeTab() const noexcept { return m_activeTab; }
+  [[nodiscard]] const std::string& activeTab() const noexcept { return active_tab_; }
   void setActiveTab(std::string_view tab) noexcept;
-  [[nodiscard]] uint32_t currentFrame() const noexcept { return m_currentFrame; }
+  [[nodiscard]] uint32_t currentFrame() const noexcept { return current_frame_; }
 
   /// @brief Dynamically resize viewport and recreate SHM framebuffer.
   [[nodiscard]] bool resizeViewport(uint32_t width, uint32_t height);
 
   /// @brief FGPP 15-channel AOV container access.
-  [[nodiscard]] const FgppAovData& fgppAov() const noexcept { return m_fgppAov; }
+  [[nodiscard]] const FgppAovData& fgppAov() const noexcept { return fgpp_aov_; }
 
  private:
-  InspectorConfig m_config;
-  InspectorShmServer m_shm;
-  std::atomic<bool> m_running{false};
-  DebugViewMode m_debugView = DebugViewMode::kLit;
-  bool m_entityVisible = true;
-  std::string m_activeTab = "source";
-  uint32_t m_currentFrame = 0;
+  InspectorConfig config_;
+  InspectorShmServer shm_;
+  std::atomic<bool> running_{false};
+  DebugViewMode debug_view_ = DebugViewMode::kLit;
+  bool entity_visible_ = true;
+  std::string active_tab_ = "source";
+  uint32_t current_frame_ = 0;
 
   // Multi-entity mesh slots (source, animation, reconstructed).
-  std::vector<MeshEntity> m_entities;
+  std::vector<MeshEntity> entities_;
 
   // Active primary mesh container (for backward compatibility with tests/view).
-  InspectorMesh m_mesh;
-  bool m_hasCustomMesh = false;
+  InspectorMesh mesh_;
+  bool has_custom_mesh_ = false;
 
   // Persistent depth buffer to eliminate heap reallocation per frame at 60 Hz.
-  std::vector<float> m_zBuffer;
+  std::vector<float> z_buffer_;
 
   // Camera orbit/pan/zoom state.
-  float m_orbitYaw = 0.4f;
-  float m_orbitPitch = 0.35f;
-  float m_orbitDistance = 3.5f;
-  float m_panX = 0.0f;
-  float m_panY = 0.0f;
+  float orbit_yaw_ = 0.4f;
+  float orbit_pitch_ = 0.35f;
+  float orbit_distance_ = 3.5f;
+  float pan_x_ = 0.0f;
+  float pan_y_ = 0.0f;
 
   // 15-channel FGPP AOV container.
-  FgppAovData m_fgppAov;
+  FgppAovData fgpp_aov_;
 
   // AOV overlay from loaded .exr file (backward compatibility).
-  std::vector<float> m_exrAovData;
-  uint32_t m_exrAovWidth = 0;
-  uint32_t m_exrAovHeight = 0;
-  bool m_hasExrAov = false;
+  std::vector<float> exr_aov_data_;
+  uint32_t exr_aov_width_ = 0;
+  uint32_t exr_aov_height_ = 0;
+  bool has_exr_aov_ = false;
 
-  std::shared_ptr<StdinQueueState> m_stdinState;
-  std::thread m_stdinThread;
+  std::shared_ptr<StdinQueueState> stdin_state_;
+  std::thread stdin_thread_;
 
   [[nodiscard]] bool validateAndLoadBundle(std::string_view bundlePath);
   void initDefaultMesh();
   bool loadObjMesh(std::string_view objPath, InspectorMesh& outMesh);
   bool loadGlbMesh(std::string_view glbPath, InspectorMesh& outMesh);
-  bool loadObjMesh(std::string_view objPath) { return loadObjMesh(objPath, m_mesh); }
-  bool loadGlbMesh(std::string_view glbPath) { return loadGlbMesh(glbPath, m_mesh); }
+  bool loadObjMesh(std::string_view objPath) { return loadObjMesh(objPath, mesh_); }
+  bool loadGlbMesh(std::string_view glbPath) { return loadGlbMesh(glbPath, mesh_); }
   bool loadExrAov(const std::string& path);
   bool pollStdinCommands();
 };
