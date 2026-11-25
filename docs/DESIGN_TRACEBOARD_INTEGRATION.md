@@ -8,6 +8,8 @@ stale_after: 2028-11-25T00:00:00Z
 ---
 # Traceboard Integration Design — Dual-Track Observability for Synapse
 
+> **Related Plan & Landing Summary**: [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)
+
 ## 1. Overview
 
 Traceboard is a lightweight, structured experiment-tracking and observability
@@ -124,17 +126,22 @@ pyproject.toml:
 
 ## 6. File Manifest
 
-| File                                       | Purpose                             |
-|--------------------------------------------|-------------------------------------|
-| `python/synapse/observability.py`          | Core wrapper (init/probe/shutdown)  |
-| `python/synapse/bench/traceboard_export.py`| Dual-track export utility           |
-| `tests/test_traceboard_observability.py`   | 31 unit tests                       |
-| `tests/test_traceboard_export.py`          | Export-specific tests               |
-| `scripts/colab_runner.py`                  | `--traceboard` CLI flag             |
-| `scripts/run_cpu_verification.py`          | `--traceboard` CLI flag             |
-| `.github/workflows/ci.yml`                 | CI dep install                      |
-| `workenv/google-colab/setup_colab.sh`      | Colab dep install                   |
-| `docs/DESIGN_TRACEBOARD_INTEGRATION.md`    | This document                       |
+| File                                        | Purpose                                                      |
+|---------------------------------------------|--------------------------------------------------------------|
+| `python/synapse/observability.py`           | Core wrapper (`init_traceboard`/`get_probe`/`shutdown_traceboard`/`traceboard_stage`) |
+| `python/synapse/bench/traceboard_export.py` | Dual-track export utility (`export_reports_to_traceboard`)   |
+| `tests/test_observability.py`               | 31 unit + E2E tests for `synapse.observability` and CLI      |
+| `tests/test_traceboard_export.py`           | 11 export, pillar-score parity, and real-SDK E2E tests       |
+| `tests/test_training_traceboard.py`         | 6 LoRA / DPO / packager instrumentation tests                |
+| `tests/test_rsi_recon_traceboard.py`        | 13 RSI / ReconPipeline / VisualJevCritic tests               |
+| `tests/test_adapters_style_traceboard.py`   | 7 WanAdapter / StyleExtractor / composite tests              |
+| `tools/import_dag_guard.py`                 | Registers `observability` in Tier 0                          |
+| `scripts/colab_runner.py`                   | `--traceboard` boolean flag (logs to `{job_dir}/traceboard/`)|
+| `scripts/run_cpu_verification.py`           | `--traceboard` boolean flag (logs beside report)             |
+| `.github/workflows/ci.yml`                  | Installs optional SDK from sibling `../aether` or PyPI       |
+| `workenv/google-colab/setup_colab.sh`       | Colab optional SDK install                                   |
+| `docs/DESIGN_TRACEBOARD_INTEGRATION.md`     | This design document                                         |
+| `docs/plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md` | Full plan and merged PR landing summary              |
 
 ## 7. Wire Format Compatibility
 

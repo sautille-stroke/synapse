@@ -39,6 +39,7 @@ stale_after: 2027-11-19T00:00:00Z
   14. ↳ **[PLAN-M45-M48 (Horizon 12 · `PLAN-0100 Wave 4` 视频逆向数字孪生与 3DGS 压缩)](plans/PLAN-M45-M48-PLAN0100-WAVE4-INVERSE-TWIN-AND-3DGS.md)**：承接 `all-overview#692`（`PLAN-0100 Wave 4`: `PR-100-14 ~ PR-100-18`），落地 MP4 流式解封装与 FGPP 感知输出、`foundary` 六位一体容器扩展、TRELLIS/`aether_geo_worker` (`remediate` + `quadriflow` 门禁)、C++ IK 零 Python 切换、`fulgur` Slang `[Differentiable]` 可微光栅、C++ Graph-Cut 缝合 + RFC 0058 OpenUSD + 3DGS 球谐量化及 `colab-gpu` E6 端到端闭环（`PR-193` ~ `PR-202` ✅ 已完成，`PR #193`–`#194` 合入）
   15. ↳ **[PLAN-M49-M50 (Horizon 13A · PR #189 加固、3D 评估全指标闭环与外部数据集)](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md)**：加固 `synapse#189` 5 项拓扑/UV 实证缺陷（孤立顶点欧拉数、bowtie 非单伞、3D 接缝法线跳变、无 UV Fail-Closed、HTML 渲染与 `profiles` 门禁），补齐 `DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC` 剩余 `P0-Perceptual` (`dino_cosine_sim`/`lpips_vgg`)、`P1-Curvature` (`patch_lpips`/曲率方差)、`P2-Misc` (`add_s_norm`/`reprojection_error_px`/`histogram_intersection`) 及 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K` 外部资产接入（30 → 40 套场景，`PR-203` ~ `PR-209` ✅ 已完成，`PR #191`–`#192` 合入）
   16. ↳ **[PLAN-M51-M52 (Horizon 13B · Post-H10 战略待办收口与 4 轨道行业横向评测)](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md)**：落实 `REVIEW-POST-HORIZON10` §7.1 5 项战略行动建议（每周真实 CUDA `Wan 2.1`/`LoRA` 烟测、协同 `@aether//style` 激活 `wire_guard --require-style`、`generators`/`models` 遗留包收编入 `bench/`、`SYN-RFC-0061/0062` GPU 生产硬化、4 轨道行业横向评测排行榜与 `Release v5.0.0`）及安全替代 Open PR `#163` 的 Ruff SSOT 同步校验器（`PR-210` ~ `PR-215` ✅ 已完成，`Release v5.0.0` 封板）
+  17. ↳ **[PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE (Post-v5.0.0 · Traceboard Python SDK 与可观测性集成)](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)**：在 `aether` 落地纯 Python SDK (`aether-traceboard v0.1.0`, `aether#523–#525`) 与在 `synapse` 落地 `synapse.observability`、CLI `--traceboard`、9 子系统埋点、Colab/CI、双轨导出及 PR `#212` 修复闭环（`synapse#204–#212` ✅ 已合入）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -819,6 +820,15 @@ flowchart LR
 | **[PR-213](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-213)** | M52 | 将 `synapse.generators` 与 `synapse.models` 遗留模块收编入 `synapse.bench`（保留零警告兼容 shim） | Post-H10 `P2` | `45b8461` | ~420 行 | `test_dataset_and_viewer.py`, `import_dag_guard.py` | 📋 待启动 |
 | **[PR-214](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-214)** | M52 | 在 `colab-gpu` 用真实非 Mock 大模型权重验证 `SYN-RFC-0061` 解剖修补融合与 `SYN-RFC-0062` LookDev 可微闭环 | Post-H10 `P1` | PR-210 | ~440 行 | `test_refine_fusion.py`, `test_recon_closed_loop_e2e.py` | 📋 待启动 |
 | **[PR-215](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md#pr-215)** | M52 | 落地 `Synapse-Bench` 4 轨道行业横向评测排行榜与 `synapse-bench compare`，全 16 门禁全绿封板 **`Release v5.0.0`** | Post-H10 `P2` | PR-211..214 | ~480 行 | `test_bench_runner.py`, `test_rfc0063_metrics.py`, 16 门禁 | 📋 待启动 |
+
+### 4.15 Post-v5.0.0 专项集成：Traceboard Python SDK 与 Synapse 可观测性闭环（详见 [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)） ✅ 已完成
+
+| 阶段 / PR | 仓库 | 核心交付摘要（点击查看 [Plan 与落地详情](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)） | 实测 PR | 状态 |
+| :---: | :---: | :--- | :---: | :---: |
+| **`PR-T01 ~ PR-T03`** | `aether` | 纯 Python SDK `aether-traceboard v0.1.0`、`.tbevt` v1 序列化/CRC-32、50 项跨语言 Golden 测试 + `python_reference.tbevt` (1,567B)、打包元数据与 Publish CI | `aether#523–#525` | ✅ 已合入 |
+| **`PR-T04 ~ PR-T06`** | `synapse` | Tier 0 `synapse.observability` 懒加载薄封装、`[traceboard]` extra、`synapse`/`synapse-bench --traceboard`、31 项核心单测与真 SDK E2E | `synapse#204–#205` | ✅ 已合入 |
+| **`PR-T07 ~ PR-T10`** | `synapse` | `bench`/`pipeline`/`training`/`rsi`/`recon`/`inspect`/`adapters`/`style`/`composite` 共 9 子系统 14 源码文件非侵入埋点 | `synapse#206–#209` | ✅ 已合入 |
+| **`PR-T11 ~ PR-T12` + Remediation** | `synapse` | Colab/CPU 验证 `--traceboard` 开关、CI 安装整合、双轨 `bench.traceboard_export`、[DESIGN_TRACEBOARD_INTEGRATION](DESIGN_TRACEBOARD_INTEGRATION.md) 及 DAG/真实 `Probe` API 修复 | `synapse#210–#212` | ✅ 已合入 |
 
 ---
 

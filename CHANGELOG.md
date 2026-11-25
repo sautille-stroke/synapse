@@ -12,6 +12,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Traceboard Python SDK & Synapse Observability Integration (`#204`–`#212`, paired with `dervgen/aether#523`–`#525`)
+- **Observability core & CLI (`#204`, `#205`, `#212`)**: Added PEP 562 lazy `synapse.observability` wrapper (`init_traceboard`, `get_probe`, `shutdown_traceboard`, `traceboard_stage`), registered `observability` in Tier 0 of `tools/import_dag_guard.py`, added `[traceboard]` optional extra (`aether-traceboard>=0.1.0`), and wired `--traceboard LOG_DIR` into `synapse` and `synapse-bench`.
+- **Module instrumentation (`#206`–`#209`, `#212`)**: Added non-invasive Traceboard telemetry across 9 subsystems (`adapters`, `bench`, `composite`, `inspect`, `pipeline`, `recon`, `rsi`, `style`, `training`) with zero runtime overhead when uninitialized or absent.
+- **Colab / CI / Dual-Track Export (`#210`, `#211`, `#212`)**: Added `--traceboard` to `scripts/colab_runner.py` and `scripts/run_cpu_verification.py`, added dual-track `synapse.bench.traceboard_export.export_reports_to_traceboard()`, documented integration architecture in `docs/DESIGN_TRACEBOARD_INTEGRATION.md`, and published complete plan & landing summary in `docs/plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`.
+
 ## [5.0.0] — 2026-11-24
 
 ### Horizon 12–13B (M45–M52) — Video-to-3D Twin, 3D Evaluation, External Datasets & 4-Track Leaderboard
