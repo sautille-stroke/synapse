@@ -36,6 +36,10 @@ FOUNDARY_SERVICE_NAMES: tuple[str, ...] = (
     "wan",
     "flux",
     "sdxl",
+    "dust3r",
+    "metric3d",
+    "wham",
+    "intrinsic_image",
 )
 
 FoundaryServiceName = Literal[
@@ -51,6 +55,10 @@ FoundaryServiceName = Literal[
     "wan",
     "flux",
     "sdxl",
+    "dust3r",
+    "metric3d",
+    "wham",
+    "intrinsic_image",
 ]
 
 
@@ -187,6 +195,15 @@ class FoundaryTransport(ABC):
             time.sleep(min(delay, max(0.01, deadline - time.monotonic())))
             delay = min(delay * 1.5, 5.0)
 
+    def list_serving_recipes(
+        self,
+        rfc: str = "RFC-0060",
+        role: str = "",
+    ) -> list[dict[str, Any]]:
+        """Query registered serving recipes filtered by optional RFC anchor and role."""
+        _ = (rfc, role)
+        return []
+
 
 # -----------------------------------------------------------------------
 # Mock transport — testing only
@@ -234,6 +251,34 @@ class MockFoundaryTransport(FoundaryTransport):
         if job_id in self._jobs:
             return self._jobs[job_id]
         return super().poll_job(job_id, service=service)
+
+    def list_serving_recipes(
+        self,
+        rfc: str = "RFC-0060",
+        role: str = "",
+    ) -> list[dict[str, Any]]:
+        """Return built-in Foundary serving recipe metadata for offline tests."""
+        catalog: list[dict[str, Any]] = [
+            {"id": "sam2", "role": "segmentation", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "dust3r", "role": "sfm", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "metric3d-v2", "role": "depth", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "cotracker3", "role": "tracking", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "wham", "role": "mocap", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "trellis", "role": "gen3d", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "intrinsic-image", "role": "intrinsic", "rfc_anchor": "RFC-0060", "engine": "container"},
+            {"id": "deepseek-r1", "role": "planner", "rfc_anchor": "RFC-0053", "engine": "vllm"},
+            {"id": "deepseek-v3", "role": "actor", "rfc_anchor": "RFC-0053", "engine": "vllm"},
+            {"id": "qwen2.5-vl-72b", "role": "critic", "rfc_anchor": "RFC-0053", "engine": "vllm"},
+            {"id": "qwen2.5-vl-7b", "role": "critic_lite", "rfc_anchor": "RFC-0053", "engine": "vllm"},
+        ]
+        rfc_norm = rfc.strip().upper()
+        role_norm = role.strip().lower()
+        return [
+            item
+            for item in catalog
+            if (not rfc_norm or item["rfc_anchor"].upper() == rfc_norm)
+            and (not role_norm or item["role"].lower() == role_norm)
+        ]
 
 
 # -----------------------------------------------------------------------
@@ -476,12 +521,67 @@ class HttpFoundaryTransport(FoundaryTransport):
                 agent_fix_hint="Check foundary container health and network connectivity.",
             ) from exc
 
+    def list_serving_recipes(
+        self,
+        rfc: str = "RFC-0060",
+        role: str = "",
+    ) -> list[dict[str, Any]]:
+        """Fetch serving recipes from ``GET /api/v1/serving/recipes``."""
+        import json
+        import urllib.parse
+        import urllib.request
+
+        from synapse.bridge.http_security import safe_urlopen, validate_safe_url
+        from synapse.errors import BackendUnavailableError
+
+        if not self._base_url:
+            raise BackendUnavailableError(
+                "Foundary HTTP endpoint not configured",
+                agent_fix_hint="Set FOUNDARY_URL or use MockFoundaryTransport.",
+            )
+        if self._allow_loopback:
+            validate_safe_url(self._base_url, allow_loopback=True)
+        else:
+            validate_safe_url(self._base_url)
+
+        params: dict[str, str] = {}
+        if rfc.strip():
+            params["rfc"] = rfc.strip()
+        if role.strip():
+            params["role"] = role.strip()
+        query = f"?{urllib.parse.urlencode(params)}" if params else ""
+        url = f"{self._base_url}/api/v1/serving/recipes{query}"
+        req = urllib.request.Request(url, method="GET")
+        try:
+            open_ctx = (
+                safe_urlopen(req, timeout=self._timeout, allow_loopback=True)
+                if self._allow_loopback
+                else safe_urlopen(req, timeout=self._timeout)
+            )
+            with open_ctx as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+                data = payload.get("data", []) if isinstance(payload, dict) else []
+                return [item for item in data if isinstance(item, dict)]
+        except Exception as exc:
+            raise BackendUnavailableError(
+                f"Failed to query serving recipes at {url}: {exc}",
+                agent_fix_hint="Check foundary server health and /api/v1/serving/recipes route.",
+            ) from exc
+
 
 class FoundaryClient:
-    """High-level ergonomic client for all 12 foundary container inference services."""
+    """High-level ergonomic client for foundary container and LLM inference services."""
 
     def __init__(self, transport: FoundaryTransport | None = None) -> None:
         self.transport: FoundaryTransport = transport or HttpFoundaryTransport()
+
+    def list_serving_recipes(
+        self,
+        rfc: str = "RFC-0060",
+        role: str = "",
+    ) -> list[dict[str, Any]]:
+        """List Foundary serving recipes filtered by optional RFC anchor and role."""
+        return self.transport.list_serving_recipes(rfc=rfc, role=role)
 
     def infer(
         self,
