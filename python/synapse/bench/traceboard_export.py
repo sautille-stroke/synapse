@@ -59,7 +59,7 @@ def export_reports_to_traceboard(
         is not installed or an error occurred.
     """
     try:
-        from aether_traceboard import FileCollector, Probe  # type: ignore[import-untyped]
+        from aether_traceboard import FileCollector, Probe
     except ImportError:
         logger.info(
             "aether-traceboard not installed; skipping Traceboard export. "
@@ -74,12 +74,12 @@ def export_reports_to_traceboard(
         probe = Probe()
         collector = FileCollector(log_path)
         probe.add_collector(collector)
+        probe.activate()
         probe.begin_run(
             run_name,
             engine=engine,
             num_scenarios=str(len(reports)),
         )
-        probe.activate()
 
         # Per-scenario metrics and timings
         n_pass = 0

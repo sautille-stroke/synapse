@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -381,15 +382,16 @@ def evaluate_monotonic_promotion(
         probe.log_scalar("rsi/promotion/promoted", float(promoted))
         probe.log_scalar("rsi/promotion/quarantine_count", float(len(quarantine)))
         if quarantine:
-            q_rows = [
-                {
-                    "scenario_id": q.scenario_id,
-                    "metric": q.metric,
-                    "regression": f"{q.regression:.4f}",
-                }
+            columns: list[dict[str, str]] = [
+                {"name": "scenario_id", "type": "string"},
+                {"name": "metric", "type": "string"},
+                {"name": "regression", "type": "float"},
+            ]
+            q_rows: list[list[Any]] = [
+                [q.scenario_id, q.metric, round(float(q.regression), 4)]
                 for q in quarantine
             ]
-            probe.log_table("rsi/promotion/quarantine", q_rows)
+            probe.log_table("rsi/promotion/quarantine", columns, q_rows)
 
     if not promoted and raise_on_reject:
         raise QualityGateError(

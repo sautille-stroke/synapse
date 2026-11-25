@@ -17,7 +17,7 @@ represent soft runtime coupling, not architectural dependencies.
 
 Tier Map::
 
-    Tier 0: fgpp, errors, telemetry, render_core, bridge
+    Tier 0: fgpp, errors, telemetry, observability, render_core, bridge
     Tier 1: style, metrics, models
     Tier 2: adapters, composite, recon, refine, inspect
     Tier 3: bench, rsi, training, generators
@@ -44,6 +44,7 @@ TIER_MAP: dict[str, int] = {
     # Tier 0 — Foundation / zero-dep
     "errors": 0,
     "telemetry": 0,
+    "observability": 0,
     "fgpp": 0,
     "render_core": 0,
     "bridge": 0,

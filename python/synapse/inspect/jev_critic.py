@@ -586,15 +586,16 @@ class VisualJevCritic:
                     f"inspect/jev/{asset_id}/requires_hitl", float(requires_hitl),
                 )
                 if defects:
-                    radar_data = [
-                        {
-                            "category": d.category,
-                            "severity": f"{d.severity:.4f}",
-                            "action": d.suggested_action,
-                        }
+                    columns: list[dict[str, str]] = [
+                        {"name": "category", "type": "string"},
+                        {"name": "severity", "type": "float"},
+                        {"name": "action", "type": "string"},
+                    ]
+                    radar_rows: list[list[Any]] = [
+                        [d.category, round(float(d.severity), 4), d.suggested_action]
                         for d in defects
                     ]
-                    probe.log_table(f"inspect/jev/{asset_id}/defects", radar_data)
+                    probe.log_table(f"inspect/jev/{asset_id}/defects", columns, radar_rows)
 
             return report
 

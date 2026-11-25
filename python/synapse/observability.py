@@ -34,11 +34,13 @@ _probe: Any = None
 _initialized: bool = False
 
 
-def _try_import_probe() -> type | None:
+def _try_import_probe() -> type[Any] | None:
     """Lazily import Probe class, returning None if unavailable."""
     try:
-        from aether_traceboard import Probe  # type: ignore[import-untyped]
-        return Probe
+        from aether_traceboard import Probe
+
+        probe_cls: type[Any] = Probe
+        return probe_cls
     except ImportError:
         return None
 
@@ -96,14 +98,14 @@ def init_traceboard(
         return None
 
     try:
-        from aether_traceboard import FileCollector  # type: ignore[import-untyped]
+        from aether_traceboard import FileCollector
 
         _probe = ProbeCls()
         collector = FileCollector(Path(log_dir))
         _probe.add_collector(collector)
-        _probe.begin_run(run_name, engine=engine, **config)
         if auto_activate:
             _probe.activate()
+        _probe.begin_run(run_name, engine=engine, **config)
         _initialized = True
         logger.info(
             "Traceboard initialized: run=%r log_dir=%s", run_name, log_dir

@@ -572,19 +572,21 @@ def main() -> int:
     print("[E5] Verifying Track-B whitebox floor & 30-scenario Synapse-Bench ...")
     res_e5 = _verify_e5_whitebox_and_synapse_bench()
 
-    report = {
+    elapsed_sec = round(time.time() - t0, 3)
+    experiments_map: dict[str, dict[str, Any]] = {
+        "E1_fgpp_conditioning_ablation": res_e1,
+        "E2_acescg_style_and_surgical_composite": res_e2,
+        "E3_causal_sliding_window_and_shot_cut": res_e3,
+        "E4_feature_store_and_cryptomatte_lora": res_e4,
+        "E5_whitebox_floor_and_synapse_bench": res_e5,
+    }
+    report: dict[str, Any] = {
         "environment": "ubuntu24_cpu_headless",
-        "elapsed_sec": round(time.time() - t0, 3),
+        "elapsed_sec": elapsed_sec,
         "all_passed": True,
         "sha256_checked": sha_checked_total,
         "sha256_verification": sha_results,
-        "experiments": {
-            "E1_fgpp_conditioning_ablation": res_e1,
-            "E2_acescg_style_and_surgical_composite": res_e2,
-            "E3_causal_sliding_window_and_shot_cut": res_e3,
-            "E4_feature_store_and_cryptomatte_lora": res_e4,
-            "E5_whitebox_floor_and_synapse_bench": res_e5,
-        },
+        "experiments": experiments_map,
     }
 
     report_out.parent.mkdir(parents=True, exist_ok=True)
@@ -597,12 +599,12 @@ def main() -> int:
 
             probe = get_probe()
             if probe is not None and probe.active:
-                for exp_name, exp_res in report["experiments"].items():
+                for exp_name, exp_res in experiments_map.items():
                     probe.log_scalar(
                         f"cpu_verify/{exp_name}/passed",
                         1.0 if exp_res.get("status") == "PASS" else 0.0,
                     )
-                probe.log_scalar("cpu_verify/elapsed_sec", report["elapsed_sec"])
+                probe.log_scalar("cpu_verify/elapsed_sec", elapsed_sec)
                 probe.log_scalar("cpu_verify/all_passed", 1.0)
         except Exception:
             pass  # Best-effort telemetry

@@ -367,9 +367,8 @@ def generate_html_report(
     if probe is not None and probe.active:
         probe.log_artifact(
             "bench/report",
-            filename=output_path.name,
-            data=html_content.encode("utf-8"),
-            mime_type="text/html",
+            {"filename": output_path.name, "mime_type": "text/html"},
+            html_content.encode("utf-8"),
         )
 
     return output_path

@@ -109,6 +109,7 @@ synapse/
 │   ├── py.typed                         # PEP 561 强类型标记
 │   ├── errors.py                        # SynapseError 异常族、退出码 (0/10/20/30/40/50)、agent_fix_hint
 │   ├── telemetry.py                     # W3C traceparent/tracestate 解析与 MemoryForecaster 显存预检
+│   ├── observability.py                 # [Tier 0] Traceboard 可选集成薄封装 (init/probe/stage/shutdown)
 │   ├── render_core/                     # [Tier 0] 无状态底层纯 CPU 软光栅化、相机投影、网格与基础几何原语
 │   │   ├── rasterizer.py                # 纯 NumPy 向量化光栅化主路径 (entity_hash, 深度/法线/光流)
 │   │   ├── camera.py                    # CameraParams、轨迹生成 (6 类轨迹，无奇异点)
@@ -173,13 +174,15 @@ synapse/
 │   │   ├── macro.py                     # 多通道残差热力图定位 + 虚拟微距相机 3D 反投解算
 │   │   ├── jev_critic.py                # Visual Jev 共享视觉上下文批量质检与校准 Logits 置信度提取
 │   │   └── flywheel_exporter.py         # 对接 RFC 0020/0021 导出 IntentGroup / PRM / Undo-DPO JSONL
-│   ├── bench/                           # [Tier 3] Synapse-Bench 30 场景、测试运行与报告
-│   │   ├── scenarios/*.json             # T1–T5 共 30 个标准场景 JSON
+│   ├── bench/                           # [Tier 3] Synapse-Bench 30+ 场景、测试运行与报告
+│   │   ├── scenarios/*.json             # T1–T5 标准场景 JSON
 │   │   ├── scenario.py                  # Scenario 模型 (含 temporal_mode 与资源寻址)
 │   │   ├── registry.py                  # 外部测试资产 SHA256 缓存拉取器
 │   │   ├── domain_randomizer.py         # 11 因子课程域随机化场景生成器
 │   │   ├── bundle_exporter.py           # 导出标准化 InspectionBundle
-│   │   └── report.py                    # 零外部依赖自包含离线 HTML 报告生成器
+│   │   ├── compare.py                   # 4 轨道行业横向对比排行聚合
+│   │   ├── report.py                    # 零外部依赖自包含离线 HTML 报告生成器
+│   │   └── traceboard_export.py         # Benchmark 报告向 Traceboard .tbevt 双轨导出器
 │   ├── rsi/                             # [Tier 3] 物理驱动递归自我提升 (RSI) 无状态阶段算子
 │   │   ├── curriculum.py                # 自博弈课程域随机化参数采样器
 │   │   ├── dual_verifier.py             # 融合物理硬判决与 Visual Jev 的双重验算器

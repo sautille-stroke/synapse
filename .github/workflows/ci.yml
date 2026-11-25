@@ -65,7 +65,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
-          pip install aether-traceboard>=0.1.0
+          if [ -d "../aether/traceboard/python" ]; then
+            pip install -e ../aether/traceboard/python
+          else
+            pip install "aether-traceboard>=0.1.0" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
+          fi
 
       - name: Build native extensions (aether_geo + aether_metrics)
         if: steps.checkout-aether.outcome == 'success'
@@ -159,6 +163,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,image,metrics,train,mesh]"
+          if [ -d "../aether/traceboard/python" ]; then
+            pip install -e ../aether/traceboard/python
+          else
+            pip install "aether-traceboard>=0.1.0" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
+          fi
 
       - name: Build native extensions (aether_geo + aether_metrics)
         if: steps.checkout-aether.outcome == 'success'

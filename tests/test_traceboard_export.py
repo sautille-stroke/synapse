@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -102,6 +101,49 @@ class TestExportWithRealTraceboard:
             assert result is True
             tbevt_files = list(Path(tmpdir).glob("*.tbevt"))
             assert len(tbevt_files) >= 1
+
+            from aether_traceboard._types import EventType
+            from aether_traceboard.reader import read_events
+
+            records = read_events(tbevt_files[0])
+            assert records[0].event_type == EventType.RUN_START
+            assert records[-1].event_type == EventType.RUN_END
+
+    def test_real_probe_report_and_compare_end_to_end(self, tmp_path: Path) -> None:
+        """HTML report artifact and 4-track compare table work with real Probe."""
+        try:
+            import aether_traceboard  # noqa: F401
+        except ImportError:
+            pytest.skip("aether-traceboard not installed")
+
+        import synapse.observability as obs
+        from aether_traceboard._types import EventType
+        from aether_traceboard.reader import read_events
+        from synapse.bench.compare import compare_runs
+        from synapse.bench.report import generate_html_report
+
+        obs._probe = None
+        obs._initialized = False
+        tb_dir = tmp_path / "tblog"
+        run_a = tmp_path / "run_a.json"
+        run_b = tmp_path / "run_b.json"
+        run_a.write_text('{"adapter_id": "a", "metrics": {"chamfer_mm": 4.0, "psnr_db": 32.0}}')
+        run_b.write_text('{"adapter_id": "b", "metrics": {"chamfer_mm": 6.0, "psnr_db": 29.0}}')
+
+        probe = obs.init_traceboard(tb_dir, "bench_artifact_table_e2e")
+        assert probe is not None
+        try:
+            generate_html_report(_make_reports(), tmp_path / "report.html")
+            compare_runs([run_a, run_b])
+        finally:
+            obs.shutdown_traceboard()
+
+        records = read_events(next(tb_dir.glob("*.tbevt")))
+        event_types = {r.event_type for r in records}
+        assert EventType.RUN_START in event_types
+        assert EventType.ARTIFACT in event_types
+        assert EventType.TABLE in event_types
+        assert EventType.RUN_END in event_types
 
     def test_export_contains_scenario_events(self) -> None:
         """Exported .tbevt should contain scenario metric events."""
