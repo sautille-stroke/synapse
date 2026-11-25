@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from synapse.errors import ContractValidationError, QualityGateError
+from synapse.observability import get_probe
 
 # -------------------------------------------------------------------
 # Report models
@@ -367,6 +368,28 @@ def evaluate_monotonic_promotion(
         quarantine=quarantine,
         lora_sha256=candidate.lora_sha256,
     )
+
+    # --- Traceboard instrumentation ---
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_scalar("rsi/promotion/overall_baseline", baseline.overall_score)
+        probe.log_scalar("rsi/promotion/overall_candidate", candidate.overall_score)
+        probe.log_scalar("rsi/promotion/geom_candidate", candidate.geom_score)
+        probe.log_scalar("rsi/promotion/temporal_candidate", candidate.temporal_score)
+        for cond_name, cond_ok in conditions.items():
+            probe.log_scalar(f"rsi/promotion/condition/{cond_name}", float(cond_ok))
+        probe.log_scalar("rsi/promotion/promoted", float(promoted))
+        probe.log_scalar("rsi/promotion/quarantine_count", float(len(quarantine)))
+        if quarantine:
+            q_rows = [
+                {
+                    "scenario_id": q.scenario_id,
+                    "metric": q.metric,
+                    "regression": f"{q.regression:.4f}",
+                }
+                for q in quarantine
+            ]
+            probe.log_table("rsi/promotion/quarantine", q_rows)
 
     if not promoted and raise_on_reject:
         raise QualityGateError(

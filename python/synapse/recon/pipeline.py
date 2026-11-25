@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from synapse.observability import get_probe
 from synapse.recon.delight import decompose_intrinsic
 from synapse.recon.geometry import (
     compute_normals,
@@ -332,6 +333,28 @@ class ReconPipeline:
         }
         if jev_summary is not None:
             telemetry["jev_inspection"] = jev_summary
+
+        # --- Traceboard instrumentation ---
+        probe = get_probe()
+        if probe is not None and probe.active:
+            elapsed = time.monotonic() - t_pipeline_start
+            probe.log_scalar("recon/pipeline/elapsed_s", elapsed)
+            probe.log_scalar("recon/pipeline/num_frames", float(num_frames))
+            probe.log_scalar("recon/pipeline/mesh_vertex_count", float(final_mesh.vertex_count))
+            probe.log_scalar("recon/pipeline/mesh_face_count", float(final_mesh.face_count))
+            probe.log_scalar("recon/pipeline/is_manifold", float(is_manifold))
+            probe.log_scalar(
+                "recon/pipeline/albedo_delta_e", delight_result.delta_e_residual,
+            )
+            if kinematics is not None:
+                probe.log_scalar(
+                    "recon/pipeline/foot_slip_cm_s", kinematics.clamped_foot_slip_cm_s,
+                )
+            if jev_summary is not None:
+                probe.log_scalar(
+                    "recon/pipeline/jev_quality_score",
+                    float(jev_summary["overall_quality_score"]),
+                )
 
         return ReconResult(
             mesh=final_mesh,
