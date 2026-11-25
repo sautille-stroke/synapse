@@ -24,6 +24,7 @@ from synapse.metrics.profiles import (
     GateProfileName,
     get_profile_thresholds,
 )
+from synapse.observability import get_probe
 
 # -------------------------------------------------------------------
 # Physical check thresholds
@@ -368,12 +369,32 @@ class DualVerifierEngine:
             if bucket and bucket not in buckets:
                 buckets.append(bucket)
 
-        return PhysicsCheckResult(
+        result = PhysicsCheckResult(
             passed=len(failures) == 0,
             checks=checks,
             failures=failures,
             lora_buckets=buckets,
         )
+
+        # --- Traceboard instrumentation ---
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar(
+                f"rsi/verifier/physics_passed/{sample_id}", float(result.passed),
+            )
+            for check_name, check_data in checks.items():
+                if isinstance(check_data, dict) and "value" in check_data:
+                    probe.log_scalar(
+                        f"rsi/verifier/{check_name}/{sample_id}",
+                        float(check_data["value"]),
+                    )
+            if failures:
+                probe.log_text(
+                    f"rsi/verifier/failures/{sample_id}",
+                    ", ".join(failures),
+                )
+
+        return result
 
     def verify(
         self,
@@ -409,7 +430,7 @@ class DualVerifierEngine:
 
         if not physics.passed:
             # Physics failure -> HARD_NEGATIVE regardless of PRM
-            return VerificationVerdict(
+            vd = VerificationVerdict(
                 sample_id=sample_id,
                 physics_passed=False,
                 prm_score=prm_score,
@@ -418,6 +439,8 @@ class DualVerifierEngine:
                 target_lora_buckets=physics.lora_buckets,
                 physics_details=physics.checks,
             )
+            self._log_verdict(vd)
+            return vd
 
         # Physics passed: use PRM score for final verdict
         verdict: Literal["ACCEPT", "HARD_NEGATIVE", "REJECT"]
@@ -428,7 +451,7 @@ class DualVerifierEngine:
         else:
             verdict = "HARD_NEGATIVE"
 
-        return VerificationVerdict(
+        vd = VerificationVerdict(
             sample_id=sample_id,
             physics_passed=True,
             prm_score=prm_score,
@@ -437,3 +460,13 @@ class DualVerifierEngine:
             target_lora_buckets=[],
             physics_details=physics.checks,
         )
+        self._log_verdict(vd)
+        return vd
+
+    @staticmethod
+    def _log_verdict(vd: VerificationVerdict) -> None:
+        """Log dual verification verdict to Traceboard."""
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.log_scalar(f"rsi/verifier/prm_score/{vd.sample_id}", vd.prm_score)
+            probe.log_text(f"rsi/verifier/verdict/{vd.sample_id}", vd.verdict)

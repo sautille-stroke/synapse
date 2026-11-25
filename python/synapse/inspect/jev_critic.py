@@ -29,6 +29,7 @@ from synapse.inspect.schemas import (
     DefectAnnotation3D,
     InspectionReport,
 )
+from synapse.observability import get_probe
 
 DefectCategory = Literal[
     "mesh_crumple",
@@ -563,7 +564,7 @@ class VisualJevCritic:
                 datetime.UTC,
             ).isoformat()
 
-            return InspectionReport(
+            report = InspectionReport(
                 asset_id=asset_id,
                 asset_name=asset_name,
                 inspection_timestamp=ts,
@@ -571,6 +572,31 @@ class VisualJevCritic:
                 defects=defects,
                 requires_hitl=requires_hitl,
             )
+
+            # --- Traceboard instrumentation ---
+            probe = get_probe()
+            if probe is not None and probe.active:
+                probe.log_scalar(
+                    f"inspect/jev/{asset_id}/overall_quality", report.overall_quality_score,
+                )
+                probe.log_scalar(
+                    f"inspect/jev/{asset_id}/defect_count", float(len(defects)),
+                )
+                probe.log_scalar(
+                    f"inspect/jev/{asset_id}/requires_hitl", float(requires_hitl),
+                )
+                if defects:
+                    radar_data = [
+                        {
+                            "category": d.category,
+                            "severity": f"{d.severity:.4f}",
+                            "action": d.suggested_action,
+                        }
+                        for d in defects
+                    ]
+                    probe.log_table(f"inspect/jev/{asset_id}/defects", radar_data)
+
+            return report
 
         except ConnectionError as exc:
             raise BackendUnavailableError(
