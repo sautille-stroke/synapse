@@ -829,7 +829,7 @@ flowchart LR
 | **`PR-T04 ~ PR-T06`** | `synapse` | Tier 0 `synapse.observability` 懒加载薄封装、`[traceboard]` extra、`synapse`/`synapse-bench --traceboard`、31 项核心单测与真 SDK E2E | `synapse#204–#205` | ✅ 已合入 |
 | **`PR-T07 ~ PR-T10`** | `synapse` | `bench`/`pipeline`/`training`/`rsi`/`recon`/`inspect`/`adapters`/`style`/`composite` 共 9 子系统 14 源码文件非侵入埋点 | `synapse#206–#209` | ✅ 已合入 |
 | **`PR-T11 ~ PR-T12` + Remediation** | `synapse` | Colab/CPU 验证 `--traceboard` 开关、CI 安装整合、双轨 `bench.traceboard_export`、[DESIGN_TRACEBOARD_INTEGRATION](DESIGN_TRACEBOARD_INTEGRATION.md) 及 DAG/真实 `Probe` API 修复 | `synapse#210–#212` | ✅ 已合入 |
-| **`Wave TR-1 ~ TR-3` (`PR-TR01 ~ PR-TR08`)** | `aether` + `synapse` | 承接 [PR #213 深度评审](audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 20 项发现（`6 P0 / 9 P1 / 5 P2`）：`.tbevt` 线格式与 C++↔Py 双向黄金、洁净打包、`set_fail`/CLI 修复、`step` 与低基数收敛、10 项反作弊门禁封板 | 详见 [整改与硬化计划](plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) | 📋 待启动（阻塞 `v0.1.0` 发包） |
+| **`Wave TR-1 ~ TR-3` (`PR-TR01 ~ PR-TR08`)** | `aether` + `synapse` + 跨仓 | 承接 [PR #213 深度评审](audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 全部 20 项发现：`.tbevt` 线格式与 C++↔Py 双向黄金、`aether-traceboard` 洁净发包 (`traceboard-python-v0.1.0`)、`set_fail`/CLI 共享挂载、`step` 与低基数收敛、NVMe 分离、Worker/Scheduler/Refine 富媒体埋点与 10/10 反作弊门禁封板 | `aether#557–#560` · `synapse#215–#218` + `PR-TR08` · `caelum-core#557` · `all-overview#770` | ✅ 已全量合入封板 |
 
 ---
 
