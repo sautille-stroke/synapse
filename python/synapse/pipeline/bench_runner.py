@@ -180,18 +180,26 @@ class BenchPipelineRunner:
                 report.error = str(exc)
                 report.timings["total_ms"] = _elapsed_ms(t_total_start)
 
-            # Log metrics and timings to Traceboard
+            # Log metrics and timings to Traceboard (finite values only)
+            import math
+
+            from synapse.observability import safe_log_scalar, safe_log_text
+
             probe = get_probe()
             if probe is not None and probe.active:
                 for k, v in report.metrics.items():
-                    probe.log_scalar(f"bench/{scenario_name}/{k}", v)
+                    if math.isfinite(float(v)):
+                        safe_log_scalar(f"bench/{scenario_name}/{k}", float(v))
                 for k, v in report.timings.items():
-                    probe.log_scalar(f"bench/{scenario_name}/{k}", v)
+                    if math.isfinite(float(v)):
+                        safe_log_scalar(f"bench/{scenario_name}/{k}", float(v))
                 if report.num_frames > 0:
-                    probe.log_scalar(
+                    safe_log_scalar(
                         f"bench/{scenario_name}/num_frames",
                         float(report.num_frames),
                     )
+                if report.error is not None:
+                    safe_log_text(f"bench/{scenario_name}/error", report.error)
 
             # Set stage verdict
             if stage is not None:
@@ -482,7 +490,7 @@ class BenchPipelineRunner:
         with traceboard_stage(
             "bench/run_all",
             count=str(len(scenarios)),
-        ):
+        ) as all_stage:
             for name in scenarios:
                 report = self.run_scenario(
                     scenario_name=name,
@@ -491,6 +499,16 @@ class BenchPipelineRunner:
                     num_frames=num_frames,
                 )
                 reports.append(report)
+            if all_stage is not None:
+                any_failed = any(
+                    r.error is not None
+                    or (r.gate_verdict is not None and not r.gate_verdict.passed)
+                    for r in reports
+                )
+                if any_failed:
+                    all_stage.set_fail("one_or_more_scenarios_failed")
+                else:
+                    all_stage.set_pass()
 
         return reports
 

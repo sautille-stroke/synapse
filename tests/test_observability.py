@@ -476,11 +476,11 @@ class TestEndToEndIntegration:
         pos = _FILE_HEADER_FMT.size
         idx = 0
         while pos + _RECORD_HEADER_FMT.size <= len(data):
-            payload_len, stored_crc, _, _, tag_len, _ = unpack_record_header(
+            payload_len, stored_crc, _, _, _tag_len, _ = unpack_record_header(
                 data[pos : pos + _RECORD_HEADER_FMT.size]
             )
             body_start = pos + _RECORD_HEADER_FMT.size
-            body_end = body_start + tag_len + payload_len
+            body_end = body_start + payload_len
             if body_end > len(data):
                 break
             body = data[body_start:body_end]
@@ -550,3 +550,127 @@ class TestCliTraceboardFlag:
         add_traceboard_args(parser)
         args = parser.parse_args([])
         assert args.traceboard is None
+
+
+class TestHardenedObservabilityAndCliRouting:
+    """Tests added by PR-TR04 for locking, atomic rollback, CLI routing, and bench failure."""
+
+    def test_init_exception_leaves_no_partial_probe(self, tmp_path: Path) -> None:
+        obs = _reset_obs()
+        mock_probe_cls = MagicMock(spec=obs.ProbeProtocol)
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
+        mock_probe_instance.begin_run.side_effect = RuntimeError("begin_run exploded")
+        mock_probe_cls.return_value = mock_probe_instance
+        mock_collector = MagicMock()
+
+        with (
+            patch.object(obs, "_try_import_probe", return_value=mock_probe_cls),
+            patch.dict(
+                "sys.modules",
+                {"aether_traceboard": MagicMock(FileCollector=MagicMock(return_value=mock_collector))},
+            ),
+        ):
+            result = obs.init_traceboard(str(tmp_path), "broken_run", trace_id="tr_123")
+
+        assert result is None
+        assert obs.get_probe() is None
+        assert obs._initialized is True
+        mock_collector.on_run_close.assert_called_once()
+
+    def test_traceboard_stage_isolates_stage_errors_and_preserves_caller_exc(self) -> None:
+        obs = _reset_obs()
+        mock_stage = MagicMock(spec=obs.StageProtocol)
+        mock_stage.__enter__ = MagicMock(return_value=mock_stage)
+        mock_stage.__exit__ = MagicMock(side_effect=RuntimeError("stage exit error"))
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
+        mock_probe.active = True
+        mock_probe.begin_stage.return_value = mock_stage
+        obs._probe = mock_probe
+
+        with pytest.raises(ValueError, match="domain failure"):
+            with obs.traceboard_stage("failing_stage") as st:
+                assert st is mock_stage
+                raise ValueError("domain failure")
+
+    def test_safe_log_scalar_ignores_nan_and_inf(self) -> None:
+        obs = _reset_obs()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
+        mock_probe.active = True
+        obs._probe = mock_probe
+
+        obs.safe_log_scalar("x/nan", float("nan"))
+        obs.safe_log_scalar("x/inf", float("inf"))
+        obs.safe_log_scalar("x/ok", 1.25, step=3)
+
+        mock_probe.log_scalar.assert_called_once_with("x/ok", 1.25, step=3)
+
+    def test_cli_traceboard_subcommand_placement_and_no_command_leak(self, tmp_path: Path) -> None:
+        from synapse.cli import main_bench, main_synapse
+
+        obs = _reset_obs()
+        tb_empty = tmp_path / "empty_cmd"
+        assert main_synapse(["--traceboard", str(tb_empty)]) == 0
+        assert not tb_empty.exists()
+        assert obs.get_probe() is None
+
+        tb_after = tmp_path / "after_subcmd"
+        if _has_aether_traceboard():
+            assert main_synapse(["bench", "list", "--json", "--traceboard", str(tb_after)]) == 0
+            assert tb_after.exists()
+            assert len(list(tb_after.glob("synapse_bench_list.*.tbevt"))) == 1
+        else:
+            with (
+                patch.object(obs, "init_traceboard") as m_init,
+                patch.object(obs, "shutdown_traceboard") as m_shut,
+            ):
+                assert main_synapse(["bench", "list", "--json", "--traceboard", str(tb_after)]) == 0
+                m_init.assert_called_once()
+                m_shut.assert_called_once_with(status="finished")
+        assert obs.get_probe() is None
+
+        tb_bench_bin = tmp_path / "synapse_bench_bin"
+        if _has_aether_traceboard():
+            assert main_bench(["list", "--json", "--traceboard", str(tb_bench_bin)]) == 0
+            assert len(list(tb_bench_bin.glob("synapse_bench_list.*.tbevt"))) == 1
+        else:
+            with (
+                patch.object(obs, "init_traceboard") as m_init,
+                patch.object(obs, "shutdown_traceboard") as m_shut,
+            ):
+                assert main_bench(["list", "--json", "--traceboard", str(tb_bench_bin)]) == 0
+                m_init.assert_called_once()
+                m_shut.assert_called_once_with(status="finished")
+        assert obs.get_probe() is None
+
+    def test_bench_runner_error_calls_set_fail_reason_cleanly(self, tmp_path: Path) -> None:
+        from synapse.adapters.mock import MockVideoAdapter
+        from synapse.pipeline.bench_runner import BenchPipelineRunner
+
+        obs = _reset_obs()
+        tb_dir = tmp_path / "bench_err"
+        obs.init_traceboard(str(tb_dir), "bench_err_run")
+        runner = BenchPipelineRunner(adapter=MockVideoAdapter(), gate_profile="T1")
+        try:
+            reports = runner.run_all(scenarios=["nonexistent_scenario_xyz"])
+        finally:
+            obs.shutdown_traceboard(status="failed")
+
+        assert len(reports) == 1
+        assert reports[0].error is not None
+        files = list(tb_dir.glob("*.tbevt"))
+        assert len(files) == 1
+        if _has_aether_traceboard():
+            from aether_traceboard._types import EventType, StageStatus
+            from aether_traceboard.event import unpack_run_end, unpack_stage_end
+            from aether_traceboard.reader import read_events
+
+            recs = read_events(files[0])
+            stage_ends = [r for r in recs if r.event_type == EventType.STAGE_END]
+            assert len(stage_ends) == 2
+            for se in stage_ends:
+                _, meta = unpack_stage_end(se.payload)
+                assert meta is not None
+                assert meta["status"] == int(StageStatus.FAIL)
+                assert "reason" in meta
+            run_ends = [r for r in recs if r.event_type == EventType.RUN_END]
+            assert unpack_run_end(run_ends[-1].payload) == "failed"
