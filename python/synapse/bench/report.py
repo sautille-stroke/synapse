@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from synapse.observability import get_probe
+from synapse.observability import get_probe, safe_log_artifact
 
 
 def _status_badge(passed: bool) -> str:
@@ -565,4 +565,16 @@ def render_comparison_html(
         out_p = Path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         out_p.write_text(doc, encoding="utf-8")
+
+    doc_bytes = doc.encode("utf-8")
+    safe_log_artifact(
+        "bench/compare_report",
+        {
+            "filename": Path(output_path).name if output_path is not None else "leaderboard.html",
+            "mime_type": "text/html",
+            "size_bytes": len(doc_bytes),
+            "overall_winner": overall_winner,
+        },
+        doc_bytes,
+    )
     return doc

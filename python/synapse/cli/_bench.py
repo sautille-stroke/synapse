@@ -57,7 +57,13 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
         adapter = create_adapter(adapter_name)
 
     gate_profile = getattr(args, "profile", None)
-    runner = BenchPipelineRunner(adapter, gate_profile=gate_profile)
+    tb_media = bool(getattr(args, "tb_media", False))
+    runner = BenchPipelineRunner(
+        adapter,
+        gate_profile=gate_profile,
+        log_images=tb_media,
+        log_histograms=tb_media,
+    )
 
     seed = getattr(args, "seed", 42)
     res = getattr(args, "resolution", 512)
@@ -390,6 +396,12 @@ def register_bench_subparsers(
         default=None,
         metavar="DIR",
         help="Export an InspectionBundle to DIR after running",
+    )
+    run_parser.add_argument(
+        "--tb-media",
+        action="store_true",
+        default=False,
+        help="Log bounded keyframe images and depth residual histograms to Traceboard",
     )
 
     eval_parser = subparsers.add_parser(

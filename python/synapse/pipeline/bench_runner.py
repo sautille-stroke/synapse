@@ -120,10 +120,19 @@ class BenchPipelineRunner:
         adapter: Any,  # VideoModelAdapter
         gate_profile: str | None = None,
         rasterizer_cache: dict[str, Any] | None = None,
+        *,
+        log_images: bool = False,
+        log_histograms: bool = False,
+        media_max_dim: int = 512,
+        max_keyframe_images: int = 2,
     ) -> None:
         self._adapter = adapter
         self._gate_profile = gate_profile
         self._rasterizer_cache = rasterizer_cache
+        self._log_images = bool(log_images)
+        self._log_histograms = bool(log_histograms)
+        self._media_max_dim = max(1, int(media_max_dim))
+        self._max_keyframe_images = max(1, int(max_keyframe_images))
 
     # ── single scenario ──────────────────────────────────────────────
 
@@ -385,6 +394,10 @@ class BenchPipelineRunner:
         report.metrics = metrics
         report.timings["metrics_ms"] = _elapsed_ms(t0)
 
+        # Optional rich-media telemetry (bounded keyframe images & depth residual histograms)
+        if self._log_images or self._log_histograms:
+            self._log_rich_media(scenario_name, fgpp_frames, video_result)
+
         # --- Phase 5: Gate evaluation ----------------------------------
         if self._gate_profile is not None:
             from typing import cast
@@ -456,6 +469,68 @@ class BenchPipelineRunner:
 
         report.timings["total_ms"] = _elapsed_ms(t_total_start)
         return report
+
+    def _log_rich_media(
+        self,
+        scenario_name: str,
+        fgpp_frames: list[Any],
+        video_result: Any,
+    ) -> None:
+        """Emit bounded-resolution keyframes and depth residual histograms when active."""
+        from synapse.observability import safe_log_histogram, safe_log_image
+
+        probe = get_probe()
+        if probe is None or not probe.active:
+            return
+
+        if self._log_images:
+            frames_u8 = np.asarray(video_result.frames_srgb_u8)
+            n_frames = int(frames_u8.shape[0]) if frames_u8.ndim >= 3 else 0
+            if n_frames > 0:
+                if self._max_keyframe_images == 1 or n_frames == 1:
+                    indices = [0]
+                else:
+                    raw_idxs = np.linspace(
+                        0, n_frames - 1, num=min(self._max_keyframe_images, n_frames), dtype=int
+                    )
+                    indices = sorted({int(x) for x in raw_idxs})
+                for idx in indices:
+                    safe_log_image(
+                        f"bench/scenario/{scenario_name}/keyframe",
+                        frames_u8[idx],
+                        max_dim=self._media_max_dim,
+                        step=idx,
+                    )
+
+        if self._log_histograms:
+            pred_depth_seq = getattr(video_result, "depth", None)
+            if pred_depth_seq is None and isinstance(video_result.metadata, dict):
+                pred_depth_seq = video_result.metadata.get("depth")
+            if pred_depth_seq is not None:
+                residuals: list[np.ndarray] = []
+                n_check = min(len(fgpp_frames), len(pred_depth_seq))
+                for i in range(n_check):
+                    gt_d = getattr(fgpp_frames[i], "depth", None)
+                    if gt_d is None:
+                        continue
+                    gt_arr = np.asarray(gt_d, dtype=np.float32)
+                    pred_arr = np.asarray(pred_depth_seq[i], dtype=np.float32)
+                    if gt_arr.shape != pred_arr.shape:
+                        continue
+                    valid = (gt_arr > 0) & np.isfinite(gt_arr) & np.isfinite(pred_arr)
+                    if getattr(fgpp_frames[i], "cryptomatte_id", None) is not None:
+                        valid = valid & (fgpp_frames[i].cryptomatte_id > 0)
+                    if np.any(valid):
+                        residuals.append(np.abs(pred_arr[valid] - gt_arr[valid]))
+                if residuals:
+                    merged = np.concatenate(residuals)
+                    counts, edges = np.histogram(merged, bins=16)
+                    safe_log_histogram(
+                        f"bench/scenario/{scenario_name}/depth_residual_hist",
+                        edges.astype(np.float64),
+                        counts.astype(np.float64),
+                        step=0,
+                    )
 
     # ── run all scenarios ─────────────────────────────────────────────
 

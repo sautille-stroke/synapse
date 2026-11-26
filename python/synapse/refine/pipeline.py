@@ -579,6 +579,65 @@ class LocalRefinementPipeline:
             export_hard_negatives(hard_negatives, hard_negatives_path)
             hn_count = len(hard_negatives)
 
+        # Log bounded-resolution pre vs post refinement comparison card & scalar metrics
+        from synapse.observability import (
+            bound_image_u8,
+            get_probe,
+            safe_log_comparison,
+            safe_log_scalar,
+        )
+
+        probe = get_probe()
+        if probe is not None and probe.active:
+            safe_log_scalar("refine/border_psnr_db", float(stitch_report.mean_border_psnr_db))
+            safe_log_scalar("refine/border_ciede2000", float(stitch_report.mean_border_ciede2000))
+            safe_log_scalar("refine/temporal_warp_error", float(temporal_warp_err))
+            safe_log_scalar("refine/num_patches_fused", float(total_fused))
+            safe_log_scalar("refine/passed", 1.0 if verdict.passed else 0.0)
+
+            comp_pre = (
+                first_orig_patch
+                if first_orig_patch is not None
+                else (frames_acescg[0] if frames_acescg.shape[0] > 0 else None)
+            )
+            comp_post = (
+                first_ref_patch
+                if first_ref_patch is not None
+                else (result_frames[0] if result_frames.shape[0] > 0 else None)
+            )
+            if comp_pre is not None and comp_post is not None:
+                pre_u8 = bound_image_u8(comp_pre, max_dim=512, is_linear=True)
+                post_u8 = bound_image_u8(comp_post, max_dim=512, is_linear=True)
+                if pre_u8.shape == post_u8.shape:
+                    diff_u8 = np.clip(
+                        np.abs(pre_u8.astype(np.int16) - post_u8.astype(np.int16)) * 4,
+                        0,
+                        255,
+                    ).astype(np.uint8)
+                else:
+                    diff_u8 = None
+                safe_log_comparison(
+                    "refine/anatomical_patch",
+                    pre_u8,
+                    post_u8,
+                    label_a="pre_refine",
+                    label_b="post_refine",
+                    diff_image=diff_u8,
+                    metrics={
+                        "border_psnr_db": float(stitch_report.mean_border_psnr_db),
+                        "border_ciede2000": float(stitch_report.mean_border_ciede2000),
+                        "temporal_warp_error": float(temporal_warp_err),
+                    },
+                    thresholds={
+                        "min_psnr_db": float(self.gate_thresholds.min_psnr_db),
+                        "max_ciede2000": float(self.gate_thresholds.max_ciede2000),
+                        "max_temporal_warp_error": float(
+                            self.gate_thresholds.max_temporal_warp_error
+                        ),
+                    },
+                    passed=bool(verdict.passed),
+                )
+
         return RefinePipelineResult(
             frames_refined=result_frames,
             stitch_report=stitch_report,

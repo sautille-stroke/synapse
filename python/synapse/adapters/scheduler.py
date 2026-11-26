@@ -13,12 +13,14 @@ and standard library.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
 from synapse.fgpp.schema import DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES
+from synapse.observability import get_probe, safe_log_scalar
 
 # -----------------------------------------------------------------------
 # WindowSlice — describes a single causal generation window
@@ -477,8 +479,12 @@ class ConditionScheduler:
                         is_physical_anchor=True,
                     )
 
+        probe = get_probe()
+        tb_active = probe is not None and probe.active
+
         scheduled: list[ScheduledWindow] = []
         for idx, w in enumerate(windows):
+            t_win = time.perf_counter()
             # Collect reanchors that fall within this window
             window_reanchors: list[ReanchorRequest] = []
             for frame_idx in range(w.start, w.end):
@@ -503,6 +509,17 @@ class ConditionScheduler:
                     reanchor_requests=window_reanchors,
                 )
             )
+            if tb_active:
+                overlap_frames = max(0, windows[idx - 1].end - w.start) if idx > 0 else 0
+                w_elapsed_s = time.perf_counter() - t_win
+                safe_log_scalar("adapter/scheduler/window_idx", float(idx), step=idx)
+                safe_log_scalar("adapter/scheduler/overlap_frames", float(overlap_frames), step=idx)
+                safe_log_scalar(
+                    "adapter/scheduler/shot_cut_reanchor",
+                    1.0 if has_discontinuity else 0.0,
+                    step=idx,
+                )
+                safe_log_scalar("adapter/scheduler/window_elapsed_s", w_elapsed_s, step=idx)
 
         return scheduled
 

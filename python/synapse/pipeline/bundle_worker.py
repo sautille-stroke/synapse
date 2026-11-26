@@ -426,6 +426,12 @@ class BundleManifest(BaseModel):
         if asset_manifest:
             params.setdefault("_asset_manifest", asset_manifest)
 
+        tb_cfg = raw.get("traceboard")
+        if isinstance(tb_cfg, dict) and tb_cfg.get("log_dir"):
+            params.setdefault("_traceboard_dir", str(tb_cfg["log_dir"]))
+        elif isinstance(tb_cfg, str) and tb_cfg:
+            params.setdefault("_traceboard_dir", tb_cfg)
+
         return cls(
             schema_version="synapse.job_bundle.v1.0",
             job_id=str(job_id),
@@ -1063,7 +1069,7 @@ class JobBundleWorker:
         self,
         manifest: BundleManifest,
     ) -> ResultManifest:
-        """Execute a single job bundle stage.
+        """Execute a single job bundle stage with Traceboard stage telemetry.
 
         Args:
             manifest: The job bundle manifest to execute.
@@ -1072,6 +1078,39 @@ class JobBundleWorker:
             A :class:`ResultManifest` with status, checksums, and
             timing information.
         """
+        from synapse.observability import safe_log_scalar, safe_log_text, traceboard_stage
+
+        trace_id = (
+            manifest.traceparent.split("-")[1]
+            if manifest.traceparent and "-" in manifest.traceparent
+            else ""
+        ) or "local"
+
+        with traceboard_stage(
+            f"worker/{manifest.stage}",
+            job_id=manifest.job_id,
+            trace_id=trace_id,
+        ) as stage:
+            result = self._execute_inner(manifest)
+            elapsed_s = float(result.timings.get("total_seconds", 0.0))
+            safe_log_scalar("worker/exit_code", float(result.exit_code))
+            safe_log_scalar("worker/elapsed_s", elapsed_s)
+            safe_log_scalar("worker/output_file_count", float(len(result.output_files)))
+            safe_log_scalar("worker/succeeded", 1.0 if result.exit_code == 0 else 0.0)
+            safe_log_text("worker/trace_id", trace_id)
+            if result.fallback_level:
+                safe_log_text("worker/fallback_level", str(result.fallback_level))
+            if stage is not None:
+                if result.exit_code == 0:
+                    stage.set_pass()
+                else:
+                    stage.set_fail(f"exit_{result.exit_code}:{result.error_type or 'error'}")
+            return result
+
+    def _execute_inner(
+        self,
+        manifest: BundleManifest,
+    ) -> ResultManifest:
         t_start = time.monotonic()
         _ensure_stage_adapters_loaded()
 
@@ -1447,6 +1486,12 @@ def run_worker_cli(
     """
     import sys
 
+    from synapse.observability import (
+        get_probe,
+        init_traceboard,
+        safe_log_scalar,
+        shutdown_traceboard,
+    )
     from synapse.telemetry import TraceContext
 
     if trace_ctx is None:
@@ -1459,132 +1504,177 @@ def run_worker_cli(
         manifest_file = bp
         bp = bp.parent
 
-    if not manifest_file.is_file():
-        err = {
-            "status": "error",
-            "exit_code": 20,
-            "error_type": "AssetNotFoundError",
-            "message": f"Bundle manifest not found: {manifest_file}",
-            "trace_id": trace_ctx.trace_id,
-            "agent_fix_hint": (f"Ensure '{manifest_file}' exists and is a valid JSON file."),
-        }
-        if json_mode:
-            json.dump(err, sys.stdout, default=str)
-            print()
-        else:
-            print(
-                f"Error: {err['message']}",
-                file=sys.stderr,
-            )
-        return 20
+    tb_started_here = False
+    tb_exit_code = 1
+    env_tb_dir = os.environ.get("SYNAPSE_TRACEBOARD_DIR")
+    if env_tb_dir and get_probe() is None:
+        probe_inst = init_traceboard(
+            str(env_tb_dir),
+            run_name=f"worker_{bp.name}",
+            engine="synapse-worker",
+            trace_id=trace_ctx.trace_id or None,
+        )
+        tb_started_here = probe_inst is not None
 
     try:
-        raw = json.loads(
-            manifest_file.read_text(encoding="utf-8"),
+        if not manifest_file.is_file():
+            tb_exit_code = 20
+            safe_log_scalar("worker/exit_code", 20.0)
+            err = {
+                "status": "error",
+                "exit_code": 20,
+                "error_type": "AssetNotFoundError",
+                "message": f"Bundle manifest not found: {manifest_file}",
+                "trace_id": trace_ctx.trace_id,
+                "agent_fix_hint": (f"Ensure '{manifest_file}' exists and is a valid JSON file."),
+            }
+            if json_mode:
+                json.dump(err, sys.stdout, default=str)
+                print()
+            else:
+                print(
+                    f"Error: {err['message']}",
+                    file=sys.stderr,
+                )
+            return 20
+
+        try:
+            raw = json.loads(
+                manifest_file.read_text(encoding="utf-8"),
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            tb_exit_code = 10
+            safe_log_scalar("worker/exit_code", 10.0)
+            err = {
+                "status": "error",
+                "exit_code": 10,
+                "error_type": "ContractValidationError",
+                "message": f"Invalid JSON in bundle manifest: {exc}",
+                "trace_id": trace_ctx.trace_id,
+                "agent_fix_hint": (
+                    f"Fix the JSON syntax in the bundle manifest file '{manifest_file}' and retry."
+                ),
+            }
+            if json_mode:
+                json.dump(err, sys.stdout, default=str)
+                print()
+            else:
+                print(
+                    f"Error: {err['message']}",
+                    file=sys.stderr,
+                )
+            return 10
+
+        # Auto-detect RFC 0039 upstream JobBundle format by presence of
+        # ``closure_type`` key and route through the normaliser.
+        try:
+            if "closure_type" in raw:
+                manifest = BundleManifest.from_rfc0039_job_bundle(
+                    raw, workspace_root=workspace_root
+                )
+            else:
+                manifest = BundleManifest(**raw)
+        except Exception as exc:
+            exit_code = 10
+            from synapse.errors import SynapseError
+
+            if isinstance(exc, SynapseError):
+                exit_code = int(exc.exit_code)
+            tb_exit_code = exit_code
+            safe_log_scalar("worker/exit_code", float(exit_code))
+            err = {
+                "status": "error",
+                "exit_code": exit_code,
+                "error_type": type(exc).__name__,
+                "message": f"Bundle manifest validation failed: {exc}",
+                "trace_id": trace_ctx.trace_id,
+                "agent_fix_hint": (
+                    getattr(exc, "agent_fix_hint", "")
+                    or "Ensure the bundle manifest conforms to the "
+                    "synapse.job_bundle.v1.0 schema or is a valid "
+                    "RFC 0039 JobBundle with 'closure_type'. Check required "
+                    "fields: job_id, stage/closure_type, schema_version."
+                ),
+            }
+            if json_mode:
+                json.dump(err, sys.stdout, default=str)
+                print()
+            else:
+                print(
+                    f"Error: {err['message']}",
+                    file=sys.stderr,
+                )
+            return exit_code
+
+        # Update trace_ctx from manifest if available
+        if manifest.traceparent and not trace_ctx.trace_id:
+            trace_ctx = TraceContext.from_env_or_dict(
+                {"TRACEPARENT": manifest.traceparent},
+            )
+
+        if get_probe() is None:
+            tb_param = (
+                manifest.params.get("_traceboard_dir")
+                or manifest.params.get("traceboard_dir")
+                or (
+                    manifest.params.get("traceboard", {}).get("log_dir")
+                    if isinstance(manifest.params.get("traceboard"), dict)
+                    else None
+                )
+            )
+            if tb_param:
+                probe_inst = init_traceboard(
+                    str(tb_param),
+                    run_name=f"worker_{manifest.job_id}",
+                    engine="synapse-worker",
+                    trace_id=trace_ctx.trace_id or None,
+                    stage=manifest.stage,
+                )
+                tb_started_here = probe_inst is not None
+
+        worker = JobBundleWorker(workspace_root=workspace_root)
+        result = worker.execute(manifest)
+        tb_exit_code = int(result.exit_code)
+
+        # Write result manifest
+        result_file = bp / "result_manifest.json"
+        result_file.write_text(
+            result.model_dump_json(indent=2),
+            encoding="utf-8",
         )
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        err = {
-            "status": "error",
-            "exit_code": 10,
-            "error_type": "ContractValidationError",
-            "message": f"Invalid JSON in bundle manifest: {exc}",
-            "trace_id": trace_ctx.trace_id,
-            "agent_fix_hint": (
-                f"Fix the JSON syntax in the bundle manifest file '{manifest_file}' and retry."
-            ),
-        }
+
         if json_mode:
-            json.dump(err, sys.stdout, default=str)
+            payload = {
+                "trace_id": trace_ctx.trace_id,
+                **result.model_dump(),
+            }
+            json.dump(payload, sys.stdout, default=str)
             print()
         else:
+            status_label = result.status.upper()
             print(
-                f"Error: {err['message']}",
-                file=sys.stderr,
+                f"[{status_label}] job={result.job_id} "
+                f"stage={result.stage} "
+                f"exit_code={result.exit_code}"
             )
-        return 10
+            if result.fallback_level:
+                print(
+                    f"  Fallback: {result.fallback_level}",
+                )
+            if result.error_type:
+                print(
+                    f"  Error: {result.error_type}: {result.message}",
+                )
+            if result.agent_fix_hint:
+                print(
+                    f"  Hint: {result.agent_fix_hint}",
+                )
+            for key, entry in result.output_files.items():
+                print(
+                    f"  {key}: {entry.path} ({entry.size_bytes} bytes, sha256={entry.sha256[:16]}...)",
+                )
 
-    # Auto-detect RFC 0039 upstream JobBundle format by presence of
-    # ``closure_type`` key and route through the normaliser.
-    try:
-        if "closure_type" in raw:
-            manifest = BundleManifest.from_rfc0039_job_bundle(raw, workspace_root=workspace_root)
-        else:
-            manifest = BundleManifest(**raw)
-    except Exception as exc:
-        exit_code = 10
-        from synapse.errors import SynapseError
-
-        if isinstance(exc, SynapseError):
-            exit_code = int(exc.exit_code)
-        err = {
-            "status": "error",
-            "exit_code": exit_code,
-            "error_type": type(exc).__name__,
-            "message": f"Bundle manifest validation failed: {exc}",
-            "trace_id": trace_ctx.trace_id,
-            "agent_fix_hint": (
-                getattr(exc, "agent_fix_hint", "")
-                or "Ensure the bundle manifest conforms to the "
-                "synapse.job_bundle.v1.0 schema or is a valid "
-                "RFC 0039 JobBundle with 'closure_type'. Check required "
-                "fields: job_id, stage/closure_type, schema_version."
-            ),
-        }
-        if json_mode:
-            json.dump(err, sys.stdout, default=str)
-            print()
-        else:
-            print(
-                f"Error: {err['message']}",
-                file=sys.stderr,
-            )
-        return exit_code
-
-    # Update trace_ctx from manifest if available
-    if manifest.traceparent and not trace_ctx.trace_id:
-        trace_ctx = TraceContext.from_env_or_dict(
-            {"TRACEPARENT": manifest.traceparent},
-        )
-
-    worker = JobBundleWorker(workspace_root=workspace_root)
-    result = worker.execute(manifest)
-
-    # Write result manifest
-    result_file = bp / "result_manifest.json"
-    result_file.write_text(
-        result.model_dump_json(indent=2),
-        encoding="utf-8",
-    )
-
-    if json_mode:
-        payload = {
-            "trace_id": trace_ctx.trace_id,
-            **result.model_dump(),
-        }
-        json.dump(payload, sys.stdout, default=str)
-        print()
-    else:
-        status_label = result.status.upper()
-        print(
-            f"[{status_label}] job={result.job_id} "
-            f"stage={result.stage} "
-            f"exit_code={result.exit_code}"
-        )
-        if result.fallback_level:
-            print(
-                f"  Fallback: {result.fallback_level}",
-            )
-        if result.error_type:
-            print(
-                f"  Error: {result.error_type}: {result.message}",
-            )
-        if result.agent_fix_hint:
-            print(
-                f"  Hint: {result.agent_fix_hint}",
-            )
-        for key, entry in result.output_files.items():
-            print(
-                f"  {key}: {entry.path} ({entry.size_bytes} bytes, sha256={entry.sha256[:16]}...)",
-            )
-
-    return result.exit_code
+        return result.exit_code
+    finally:
+        if tb_started_here:
+            shutdown_traceboard(status="finished" if tb_exit_code == 0 else "failed")
