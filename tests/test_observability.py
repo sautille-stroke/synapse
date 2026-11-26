@@ -677,3 +677,62 @@ class TestHardenedObservabilityAndCliRouting:
         else:
             assert files == []
             assert obs.get_probe() is None
+
+
+class TestAcceptsKwargExplicitOnly:
+    """Verify _accepts_kwarg does not match **kwargs and leak flags into RUN_START."""
+
+    def test_var_keyword_does_not_match_accepts_kwarg(self) -> None:
+        obs = _reset_obs()
+
+        def legacy_begin(run_name: str, **config: str) -> None:
+            _ = (run_name, config)
+
+        def modern_begin(
+            run_name: str, *, auto_activate: bool = True, **config: str
+        ) -> None:
+            _ = (run_name, auto_activate, config)
+
+        assert obs._accepts_kwarg(legacy_begin, "auto_activate") is False
+        assert obs._accepts_kwarg(modern_begin, "auto_activate") is True
+        assert obs._accepts_kwarg(legacy_begin, "run_name") is True
+
+    def test_init_traceboard_does_not_leak_auto_activate_into_legacy_varkwargs(
+        self, tmp_path: Path
+    ) -> None:
+        obs = _reset_obs()
+        captured_config: dict[str, Any] = {}
+
+        class _LegacyProbe:
+            active: bool = False
+
+            def add_collector(self, collector: Any) -> None:
+                _ = collector
+
+            def activate(self) -> None:
+                self.active = True
+
+            def begin_run(
+                self, run_name: str, engine: str = "unknown", **config: Any
+            ) -> None:
+                _ = (run_name, engine)
+                captured_config.update(config)
+
+            def end_run(self) -> None:
+                self.active = False
+
+        try:
+            with patch.object(obs, "_try_import_probe", return_value=_LegacyProbe):
+                with patch.dict(
+                    "sys.modules",
+                    {"aether_traceboard": MagicMock(FileCollector=MagicMock())},
+                ):
+                    probe = obs.init_traceboard(
+                        tmp_path / "legacy_tb",
+                        "legacy_run",
+                        auto_activate=True,
+                    )
+                    assert probe is not None
+                    assert "auto_activate" not in captured_config
+        finally:
+            obs.shutdown_traceboard()

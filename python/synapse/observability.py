@@ -154,14 +154,16 @@ def _try_import_probe() -> type[Any] | None:
 
 
 def _accepts_kwarg(fn: Any, name: str) -> bool:
-    """Return True if *fn* accepts keyword argument *name* (explicitly or via ``**kwargs``)."""
+    """Return True if *fn* explicitly declares keyword parameter *name*."""
     try:
         params = inspect.signature(fn).parameters
     except (TypeError, ValueError):
         return False
-    if name in params:
-        return True
-    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+    param = params.get(name)
+    return param is not None and param.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
 
 
 def get_probe() -> ProbeProtocol | None:
@@ -216,7 +218,9 @@ def init_traceboard(
         if probe_cls is None:
             logger.info(
                 "aether-traceboard not installed; observability disabled. "
-                "Install with: pip install aether-traceboard"
+                "Install with: pip install "
+                '"aether-traceboard @ git+https://github.com/dervgen/aether.git'
+                '@traceboard-python-v0.1.0#subdirectory=traceboard/python"'
             )
             _probe = None
             _initialized = True

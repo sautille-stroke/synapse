@@ -1036,6 +1036,84 @@ def _check_ancestor_symlinks(p: Path) -> str | None:
     return None
 
 
+def _emit_cli_error_payload(err: dict[str, Any], json_mode: bool) -> None:
+    """Write a structured CLI error payload to stdout (JSON) or stderr."""
+    import sys
+
+    if json_mode:
+        json.dump(err, sys.stdout, default=str)
+        print()
+    else:
+        print(f"Error: {err['message']}", file=sys.stderr)
+
+
+def _extract_manifest_traceboard_param(params: dict[str, Any]) -> Any:
+    """Extract manifest-configured Traceboard log directory parameter if set."""
+    for key in ("_traceboard_dir", "traceboard_dir"):
+        val = params.get(key)
+        if val is not None:
+            return val
+    tb_cfg = params.get("traceboard")
+    if isinstance(tb_cfg, dict) and tb_cfg.get("log_dir") is not None:
+        return tb_cfg.get("log_dir")
+    return None
+
+
+def _validate_manifest_traceboard_dir(
+    tb_param: Any,
+    workspace_root: str | None,
+) -> Path:
+    """Validate and sandbox manifest-configured Traceboard output directory."""
+    from synapse.errors import ContractValidationError
+
+    if not isinstance(tb_param, str) or not tb_param.strip():
+        raise ContractValidationError(
+            "Traceboard log directory must be a non-empty string path.",
+            agent_fix_hint=(
+                "Set a valid directory path for traceboard_dir (or _traceboard_dir)."
+            ),
+        )
+
+    raw = Path(tb_param)
+    if workspace_root is not None:
+        ws_root = Path(workspace_root).resolve()
+        if not raw.is_absolute():
+            raw = ws_root / raw
+        if raw.is_symlink():
+            raise ContractValidationError(
+                f"Symlinks are forbidden in Traceboard path: '{tb_param}' is a symlink.",
+                agent_fix_hint=(
+                    f"Use a real non-symlink directory inside workspace root '{ws_root}'."
+                ),
+            )
+        ancestor_err = _check_ancestor_symlinks(raw)
+        if ancestor_err:
+            raise ContractValidationError(
+                ancestor_err,
+                agent_fix_hint=(
+                    f"Remove symlinks from Traceboard path ancestors inside '{ws_root}'."
+                ),
+            )
+        resolved = raw.resolve()
+        if not resolved.is_relative_to(ws_root):
+            raise ContractValidationError(
+                f"Traceboard log directory escapes workspace sandbox: "
+                f"'{tb_param}' resolves to '{resolved}' which is outside "
+                f"workspace root '{ws_root}'.",
+                agent_fix_hint=(
+                    f"Ensure Traceboard log directory resolves inside workspace root '{ws_root}'."
+                ),
+            )
+        return resolved
+
+    if raw.is_symlink():
+        raise ContractValidationError(
+            f"Symlinks are forbidden in Traceboard path: '{tb_param}' is a symlink.",
+            agent_fix_hint="Use a real non-symlink directory path.",
+        )
+    return raw
+
+
 # ---------------------------------------------------------------------------
 # JobBundleWorker
 # ---------------------------------------------------------------------------
@@ -1596,14 +1674,7 @@ def run_worker_cli(
                     "fields: job_id, stage/closure_type, schema_version."
                 ),
             }
-            if json_mode:
-                json.dump(err, sys.stdout, default=str)
-                print()
-            else:
-                print(
-                    f"Error: {err['message']}",
-                    file=sys.stderr,
-                )
+            _emit_cli_error_payload(err, json_mode)
             return exit_code
 
         # Update trace_ctx from manifest if available
@@ -1613,18 +1684,35 @@ def run_worker_cli(
             )
 
         if get_probe() is None:
-            tb_param = (
-                manifest.params.get("_traceboard_dir")
-                or manifest.params.get("traceboard_dir")
-                or (
-                    manifest.params.get("traceboard", {}).get("log_dir")
-                    if isinstance(manifest.params.get("traceboard"), dict)
-                    else None
-                )
-            )
-            if tb_param:
+            tb_param = _extract_manifest_traceboard_param(manifest.params)
+            if tb_param is not None:
+                try:
+                    tb_dir = _validate_manifest_traceboard_dir(tb_param, workspace_root)
+                except Exception as exc:
+                    from synapse.errors import SynapseError
+
+                    exit_code = int(exc.exit_code) if isinstance(exc, SynapseError) else 10
+                    tb_exit_code = exit_code
+                    safe_log_scalar("worker/exit_code", float(exit_code))
+                    err = (
+                        exc.to_json_dict(trace_id=trace_ctx.trace_id)
+                        if isinstance(exc, SynapseError)
+                        else {
+                            "status": "error",
+                            "exit_code": exit_code,
+                            "error_type": type(exc).__name__,
+                            "message": str(exc),
+                            "trace_id": trace_ctx.trace_id,
+                            "agent_fix_hint": (
+                                "Provide a valid Traceboard directory inside workspace_root."
+                            ),
+                        }
+                    )
+                    _emit_cli_error_payload(err, json_mode)
+                    return exit_code
+
                 probe_inst = init_traceboard(
-                    str(tb_param),
+                    str(tb_dir),
                     run_name=f"worker_{manifest.job_id}",
                     engine="synapse-worker",
                     trace_id=trace_ctx.trace_id or None,

@@ -536,50 +536,8 @@ class LocalRefinementPipeline:
                 raise
             verdict = GateVerdict(passed=False, failure_reasons=["gate_evaluation_error"])
 
-        # PR-45 fix #3: Act on the verdict
-        if not verdict.passed and stitch_report.num_patches_applied > 0:
-            for t in range(t_count):
-                for ref in refinements[t]:
-                    hard_negatives.append(
-                        {
-                            "frame_index": t,
-                            "region": ref.region.name,
-                            "failure_reasons": verdict.failure_reasons,
-                            "metrics": {
-                                "border_psnr_db": stitch_report.mean_border_psnr_db,
-                                "border_ciede2000": stitch_report.mean_border_ciede2000,
-                            },
-                        }
-                    )
-            if self.strict:
-                raise QualityGateError(
-                    f"Refinement quality gates failed: {', '.join(verdict.failure_reasons)}",
-                    agent_fix_hint=(
-                        "Retry with adjusted thresholds or fall back to original frames."
-                    ),
-                    details={"verdict": verdict.metrics},
-                )
-            else:
-                # Non-strict: keep refined result but flag as bypassed
-                # (AUD-P0-04: do NOT silently copy original as output)
-                logger.warning(
-                    "Quality gates failed (%s); keeping refined output "
-                    "with bypassed=True in non-strict mode.",
-                    ", ".join(verdict.failure_reasons),
-                )
-                gate_bypassed = True
-                gate_bypass_reasons = list(verdict.failure_reasons)
-        else:
-            gate_bypassed = False
-            gate_bypass_reasons = []
-
-        # Export hard negatives
-        hn_count = 0
-        if hard_negatives and hard_negatives_path:
-            export_hard_negatives(hard_negatives, hard_negatives_path)
-            hn_count = len(hard_negatives)
-
-        # Log bounded-resolution pre vs post refinement comparison card & scalar metrics
+        # Log bounded-resolution pre vs post refinement comparison card & scalar
+        # metrics before strict gate enforcement so failures still emit telemetry.
         from synapse.observability import (
             bound_image_u8,
             get_probe,
@@ -637,6 +595,49 @@ class LocalRefinementPipeline:
                     },
                     passed=bool(verdict.passed),
                 )
+
+        # PR-45 fix #3: Act on the verdict
+        if not verdict.passed and stitch_report.num_patches_applied > 0:
+            for t in range(t_count):
+                for ref in refinements[t]:
+                    hard_negatives.append(
+                        {
+                            "frame_index": t,
+                            "region": ref.region.name,
+                            "failure_reasons": verdict.failure_reasons,
+                            "metrics": {
+                                "border_psnr_db": stitch_report.mean_border_psnr_db,
+                                "border_ciede2000": stitch_report.mean_border_ciede2000,
+                            },
+                        }
+                    )
+            if self.strict:
+                raise QualityGateError(
+                    f"Refinement quality gates failed: {', '.join(verdict.failure_reasons)}",
+                    agent_fix_hint=(
+                        "Retry with adjusted thresholds or fall back to original frames."
+                    ),
+                    details={"verdict": verdict.metrics},
+                )
+            else:
+                # Non-strict: keep refined result but flag as bypassed
+                # (AUD-P0-04: do NOT silently copy original as output)
+                logger.warning(
+                    "Quality gates failed (%s); keeping refined output "
+                    "with bypassed=True in non-strict mode.",
+                    ", ".join(verdict.failure_reasons),
+                )
+                gate_bypassed = True
+                gate_bypass_reasons = list(verdict.failure_reasons)
+        else:
+            gate_bypassed = False
+            gate_bypass_reasons = []
+
+        # Export hard negatives
+        hn_count = 0
+        if hard_negatives and hard_negatives_path:
+            export_hard_negatives(hard_negatives, hard_negatives_path)
+            hn_count = len(hard_negatives)
 
         return RefinePipelineResult(
             frames_refined=result_frames,

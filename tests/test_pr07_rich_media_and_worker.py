@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -209,6 +210,80 @@ class TestBundleWorkerTraceboard:
                 rc20 = run_worker_cli(str(tmp_path / "missing_bundle"), json_mode=False)
             assert rc20 == 20
 
+    def test_worker_cli_rejects_manifest_traceboard_dir_escaping_workspace(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _reset_obs()
+        ws = (tmp_path / "workspace").resolve()
+        ws.mkdir()
+        outside_tb = tmp_path.resolve() / "outside_tb"
+        bundle_dir = ws / "bundle_escape"
+        bundle_dir.mkdir()
+        manifest = BundleManifest(
+            job_id="job_escape",
+            stage="no_such_stage",
+            params={"_traceboard_dir": "../outside_tb"},
+        )
+        (bundle_dir / "bundle_manifest.json").write_text(
+            manifest.model_dump_json(), encoding="utf-8"
+        )
+
+        rc = run_worker_cli(str(bundle_dir), json_mode=True, workspace_root=str(ws))
+        assert rc == 10
+        assert not outside_tb.exists()
+        assert obs.get_probe() is None
+        payload = json.loads(capsys.readouterr().out.strip())
+        assert payload["exit_code"] == 10
+        assert payload["error_type"] == "ContractValidationError"
+        assert payload["agent_fix_hint"]
+
+        symlink_tb = ws / "tb_symlink"
+        symlink_tb.symlink_to(outside_tb)
+        (bundle_dir / "bundle_manifest.json").write_text(
+            BundleManifest(
+                job_id="job_escape_sym",
+                stage="no_such_stage",
+                params={"traceboard": {"log_dir": str(symlink_tb)}},
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+        rc_sym = run_worker_cli(str(bundle_dir), json_mode=False, workspace_root=str(ws))
+        assert rc_sym == 10
+        assert not outside_tb.exists()
+
+    def test_worker_cli_allows_manifest_traceboard_dir_inside_workspace(
+        self, tmp_path: Path
+    ) -> None:
+        _reset_obs()
+        stage_name = "_test_tr_sandbox_ok"
+        _STAGE_HANDLERS[stage_name] = lambda _m: {"output_paths": {}, "fallback_level": None}
+        ws = (tmp_path / "workspace_ok").resolve()
+        ws.mkdir()
+        bundle_dir = ws / "bundle_ok"
+        bundle_dir.mkdir()
+        (bundle_dir / "bundle_manifest.json").write_text(
+            BundleManifest(
+                job_id="job_sandbox_ok",
+                stage=stage_name,
+                params={"traceboard_dir": "tb_inside"},
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+
+        try:
+            if _has_aether_traceboard():
+                rc = run_worker_cli(str(bundle_dir), json_mode=False, workspace_root=str(ws))
+                assert rc == 0
+                assert len(list((ws / "tb_inside").glob("*.tbevt"))) == 1
+            else:
+                with _typed_fallback_probe() as (mock_probe, _stages):
+                    rc = run_worker_cli(str(bundle_dir), json_mode=False, workspace_root=str(ws))
+                assert rc == 0
+                mock_probe.log_scalar.assert_any_call("worker/exit_code", 0.0, step=None)
+        finally:
+            _STAGE_HANDLERS.pop(stage_name, None)
+            _reset_obs()
+
 
 class TestConditionSchedulerTraceboard:
     """Validate per-window ConditionScheduler monotonic step telemetry."""
@@ -333,6 +408,68 @@ class TestRichMediaEventsEndToEnd:
             img_a = mock_probe.log_comparison.call_args.args[1]
             assert img_a.dtype == np.uint8
             assert max(img_a.shape[:2]) <= 512
+
+    def test_refine_pipeline_strict_gate_failure_logs_telemetry_before_raising(
+        self, tmp_path: Path
+    ) -> None:
+        from synapse.errors import QualityGateError
+        from synapse.refine.gates import GateThresholds
+        from synapse.refine.hand import HandRefiner
+
+        _reset_obs()
+        frames = np.full((2, 128, 128, 3), 0.35, dtype=np.float32)
+        frames[:, 16:112, 16:112, :] = 0.72
+        roi = RefinementROI(
+            bbox_xyxy=np.array([8.0, 8.0, 120.0, 120.0], dtype=np.float32),
+            crop_acescg=np.full((112, 112, 3), 0.55, dtype=np.float32),
+            region=AnatomicalRegion.HAND,
+            confidence=0.95,
+            anatomical_quality_score=0.5,
+            frame_index=0,
+        )
+        pipe = LocalRefinementPipeline(
+            gate_thresholds=GateThresholds(min_psnr_db=100.0),
+            strict=True,
+        )
+        pipe.hand_refiner = HandRefiner(strict=False)
+
+        if _has_aether_traceboard():
+            EventType, _ss, unpack_comparison, _uh, _ui, _ure, (unpack_scalar, _use, read_file) = (
+                _load_reader()
+            )
+            tb_dir = tmp_path / "refine_strict_tb"
+            obs.init_traceboard(str(tb_dir), "refine_strict_fail")
+            try:
+                with pytest.raises(QualityGateError):
+                    pipe.run(frames, [[roi], []])
+            finally:
+                obs.shutdown_traceboard(status="failed")
+
+            files = list(tb_dir.glob("*.tbevt"))
+            assert len(files) == 1
+            _hdr, recs, stats = read_file(files[0])
+            assert stats.crc_errors == 0
+            passed_vals = [
+                unpack_scalar(r.payload)
+                for r in recs
+                if r.event_type == EventType.SCALAR and r.tag == "refine/passed"
+            ]
+            assert passed_vals == [0.0]
+            comp_recs = [
+                r
+                for r in recs
+                if r.event_type == EventType.COMPARISON and r.tag == "refine/anatomical_patch"
+            ]
+            assert len(comp_recs) == 1
+            meta = unpack_comparison(comp_recs[0].payload)
+            assert meta["pass"] is False
+        else:
+            with _typed_fallback_probe() as (mock_probe, _stages):
+                with pytest.raises(QualityGateError):
+                    pipe.run(frames, [[roi], []])
+            mock_probe.log_scalar.assert_any_call("refine/passed", 0.0, step=None)
+            mock_probe.log_comparison.assert_called_once()
+            assert mock_probe.log_comparison.call_args.kwargs.get("passed") is False
 
     def test_bench_runner_emits_bounded_images_and_depth_histogram(self, tmp_path: Path) -> None:
         _reset_obs()

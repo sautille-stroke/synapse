@@ -37,10 +37,10 @@ DervGen ecosystem's unidirectional dependency rule (Layer 0 -> Layer 2).
 │    └── bound_image_u8()       ← Bounded max_dim<=512 uint8 helper    │
 │                                                                      │
 │  CLI & Execution Entry Points:                                       │
-│    ├── synapse [--traceboard [LOG_DIR]] ...                          │
-│    ├── synapse bench [--traceboard [LOG_DIR]] {list|run|...}         │
+│    ├── synapse [--traceboard LOG_DIR] ...                            │
+│    ├── synapse bench [--traceboard LOG_DIR] {list|run|...}           │
 │    ├── synapse bench run --tb-media --traceboard LOG_DIR             │
-│    ├── synapse worker run --bundle ... [--traceboard | SYNAPSE_TRACEBOARD_DIR]
+│    ├── synapse worker run --bundle ... [--traceboard LOG_DIR | SYNAPSE_TRACEBOARD_DIR]
 │    ├── scripts/colab_runner.py --traceboard [LOG_DIR]                │
 │    └── scripts/run_cpu_verification.py --traceboard [LOG_DIR]        │
 │                                                                      │
@@ -93,7 +93,7 @@ tags keyed by monotonic `step` and record IDs in structured `TABLE` events.
 | **bench / runner** | `bench/run_all`, `bench/{scenario}` | `bench/scenario/{name}/passed`, `bench/scenario/{name}/num_frames`, `bench/scenario/{name}/metrics/{k}`, `bench/scenario/{name}/timing/{k}`, `bench/scenario/{name}/keyframe` (`IMAGE`), `bench/scenario/{name}/depth_residual_hist` (`HISTOGRAM`), `bench/summary/*`, `bench/pillar/*` | Bounded scenarios (`O(S)`); images capped via `bound_image_u8(max_dim<=512)` |
 | **bench / compare & report** | `bench/compare` | `bench/compare/leaderboard` (`TABLE`), `bench/report` (`ARTIFACT`, `text/html`), `bench/compare_report` (`ARTIFACT`, `text/html`) | Single HTML artifact per report; `size_bytes` required |
 | **training** | `train/lora`, `train/package` | `train/loss`, `train/step`, `train/lr_multiplier`, `train/dpo_preferred_err`, `train/dpo_rejected_err`, `train/checkpoint_step`, `train/package/*` | `probe.set_step(step)` + explicit `step=step` strictly monotonic |
-| **rsi** | `rsi/gate`, `rsi/curriculum`, `rsi/verifier` | `rsi/promotion/*`, `rsi/promotion/quarantine` (`TABLE`), `rsi/curriculum/*`, `rsi/verifier/physics_passed`, `rsi/verifier/prm_score`, `rsi/verifier/check/{check}`, `rsi/verifier/verdicts` (`TABLE`) | `round_idx` step for curriculum; per-instance `_traceboard_step` for verifier (`O(1)` tags) |
+| **rsi** | `rsi/gate`, `rsi/curriculum`, `rsi/verifier` | `rsi/promotion/*`, `rsi/promotion/quarantine` (`TABLE`), `rsi/curriculum/*`, `rsi/verifier/physics_passed`, `rsi/verifier/prm_score`, `rsi/verifier/{check}`, `rsi/verifier/verdicts` (`TABLE`) | `round_idx` step for curriculum; per-instance `_traceboard_step` for verifier (`O(1)` tags) |
 | **inspect** | `inspect/jev` | `inspect/jev/overall_quality`, `inspect/jev/defect_count`, `inspect/jev/requires_hitl`, `inspect/jev/defects` (`TABLE`) | Fixed scalar tags + monotonic `_traceboard_step`; `asset_id` column in table |
 | **adapters & scheduler** | `adapter/wan`, `adapter/scheduler` | `adapter/wan/*`, `adapter/scheduler/{window_idx,overlap_frames,shot_cut_reanchor,window_elapsed_s}` | `step=window_index` (`0, 1, 2, ...`) per causal window |
 | **refine (RFC 0061)** | `refine` | `refine/border_psnr_db`, `refine/border_ciede2000`, `refine/temporal_warp_error`, `refine/passed`, `refine/anatomical_patch` (`COMPARISON`) | `uint8` RGB patches capped at `max_dim<=512` with thresholds & pass verdict |
@@ -104,12 +104,13 @@ tags keyed by monotonic `step` and record IDs in structured `TABLE` events.
 
 ### 4.1 Subcommand CLI Flag Routing
 
-`get_json_parent_parser()` registers `--traceboard [LOG_DIR]` (`nargs="?"`,
-`default=argparse.SUPPRESS`, `const="__AUTO__"`), enabling `--traceboard` at any
-parser level (`synapse --traceboard DIR bench list`, `synapse bench --traceboard DIR list`,
-`synapse bench run --traceboard DIR`, `synapse-bench --traceboard DIR`,
-`synapse worker run --traceboard DIR`). Initialization is deferred until a
-valid subcommand is confirmed so bare `synapse --traceboard DIR` exits `0`
+`get_json_parent_parser()` registers `--traceboard LOG_DIR` (`default=argparse.SUPPRESS`,
+`metavar="LOG_DIR"`), enabling `--traceboard` at any parser level (`synapse --traceboard DIR bench list`,
+`synapse bench --traceboard DIR list`, `synapse bench run --traceboard DIR`,
+`synapse-bench --traceboard DIR`, `synapse worker run --traceboard DIR`). Helper scripts
+(`scripts/colab_runner.py`, `scripts/run_cpu_verification.py`) additionally accept
+`--traceboard [LOG_DIR]` (`nargs="?"`, `const="__AUTO__"`). CLI initialization is deferred
+until a valid subcommand is confirmed so bare `synapse --traceboard DIR` exits `0`
 without creating empty `.tbevt` files.
 
 ### 4.2 W3C `traceparent` Correlation & Worker Env Config
