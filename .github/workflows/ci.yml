@@ -115,6 +115,56 @@ jobs:
           SYNAPSE_CI_STRICT_DEPS: "1"
         run: pytest tests/ -m 'not slow' -q -W error::scipy.linalg.LinAlgWarning
 
+      - name: Traceboard real SDK CLI smoke & binary verification
+        if: steps.checkout-aether.outcome == 'success'
+        id: tb_smoke
+        working-directory: synapse
+        env:
+          SYNAPSE_CI_STRICT_DEPS: "1"
+        run: |
+          pytest tests/test_observability.py tests/test_traceboard_export.py tests/test_bench_runner_traceboard.py tests/test_training_traceboard.py tests/test_rsi_recon_traceboard.py tests/test_adapters_style_traceboard.py -v
+          mkdir -p "$RUNNER_TEMP/tb_smoke"
+          synapse bench run \
+            --scenario t1_rigid_cube_orbit \
+            --adapter mock \
+            --resolution 64 \
+            --json \
+            --traceboard "$RUNNER_TEMP/tb_smoke"
+          python -c '
+          from pathlib import Path
+          import sys
+          from aether_traceboard._types import EventType, StageStatus
+          from aether_traceboard.event import unpack_run_end, unpack_stage_end
+          from aether_traceboard.reader import read_file
+          files = list(Path(sys.argv[1]).glob("*.tbevt"))
+          assert len(files) == 1, f"Expected 1 .tbevt file, got {files}"
+          hdr, recs, stats = read_file(files[0])
+          assert stats.crc_errors == 0, f"CRC errors: {stats.crc_errors}"
+          assert not stats.truncated_tail
+          assert stats.valid_records >= 5
+          types = [r.event_type for r in recs]
+          assert types[0] == EventType.RUN_START
+          assert types[-1] == EventType.RUN_END
+          assert unpack_run_end(recs[-1].payload) == "finished"
+          stage_ends = [r for r in recs if r.event_type == EventType.STAGE_END]
+          assert len(stage_ends) >= 1
+          for se in stage_ends:
+              _, meta = unpack_stage_end(se.payload)
+              assert meta is not None and meta["status"] == int(StageStatus.PASS)
+          scalar_tags = {r.tag for r in recs if r.event_type == EventType.SCALAR}
+          assert "bench/scenario/t1_rigid_cube_orbit/passed" in scalar_tags
+          assert any(t.startswith("bench/scenario/t1_rigid_cube_orbit/metrics/") for t in scalar_tags)
+          print(f"Verified {files[0].name}: {stats.valid_records} valid records")
+          ' "$RUNNER_TEMP/tb_smoke"
+
+      - name: Upload Traceboard CI smoke artifact
+        if: steps.checkout-aether.outcome == 'success' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-traceboard-smoke-tbevt
+          path: ${{ runner.temp }}/tb_smoke/*.tbevt
+          if-no-files-found: ignore
+
   # -----------------------------------------------------------------------
   # Job 2: Python slow tests (parallelized)
   # -----------------------------------------------------------------------

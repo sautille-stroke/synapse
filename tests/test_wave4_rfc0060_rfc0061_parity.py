@@ -70,6 +70,7 @@ def test_foundary_rfc0060_services_and_serving_recipes_catalog() -> None:
     assert [r["id"] for r in seg_only] == ["sam2"]
 
 
+@pytest.mark.external_data
 def test_native_draco_point_cloud_3dgs_parity() -> None:
     """RFC 0061 Phase 4: real aether_compress Draco point-cloud quantization >= 70%."""
     reset_aether_cache()
@@ -101,6 +102,7 @@ def test_native_draco_point_cloud_3dgs_parity() -> None:
     assert decoded.sh_band_count == 15
 
 
+@pytest.mark.external_data
 def test_native_two_bone_ik_oracle_parity() -> None:
     """RFC 0060: real aether_animation Two-Bone IK matches Python Oracle (<1e-4) and <= 0.2cm slip."""
     reset_aether_cache()
@@ -142,6 +144,7 @@ def test_native_two_bone_ik_oracle_parity() -> None:
     assert max_diff < 1e-4
 
 
+@pytest.mark.external_data
 def test_native_graph_cut_seam_blend_parity() -> None:
     """RFC 0060: real aether_geo.graph_cut_seam_blend keeps seam discontinuity <= 2.0 ΔE00."""
     reset_aether_cache()

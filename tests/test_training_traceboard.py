@@ -63,12 +63,11 @@ def _reset_observability() -> Iterator[None]:
 
 @pytest.fixture
 def mock_probe() -> MagicMock:
-    """Create a mock Traceboard probe with active=True."""
-    probe = MagicMock()
+    """Create a typed mock Traceboard probe with active=True."""
+    from synapse.observability import ProbeProtocol
+
+    probe = MagicMock(spec=ProbeProtocol)
     probe.active = True
-    probe.log_scalar = MagicMock()
-    probe.log_table = MagicMock()
-    probe.log_artifact = MagicMock()
     return probe
 
 
