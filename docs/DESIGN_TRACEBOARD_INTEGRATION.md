@@ -1,163 +1,153 @@
 ---
 type: Design
 title: "Traceboard Integration Design — Dual-Track Observability for Synapse"
-description: "Integration design for aether-traceboard Python SDK within synapse, covering the dual-track migration strategy, module instrumentation, Colab/CI integration, and bench.report → Traceboard export."
+description: "Integration design for aether-traceboard Python SDK within synapse, covering ProbeProtocol/StageProtocol, Fail-Safe isolation, Tag Taxonomy, monotonic stepping, W3C traceparent correlation, CLI routing, Colab NVMe-First staging, and dual-track bench export."
 tags: [synapse, traceboard, observability, aether]
 status: active
-stale_after: 2028-11-25T00:00:00Z
+stale_after: 2028-11-26T00:00:00Z
 ---
 # Traceboard Integration Design — Dual-Track Observability for Synapse
 
-> **Related Plan & Landing Summary**: [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)
+> **Related Plan & Remediation Ledger**:
+> - [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)
+> - [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
 
 ## 1. Overview
 
 Traceboard is a lightweight, structured experiment-tracking and observability
-platform that originated in `aether` (Layer 0) as a C++20 SDK + Go server.
-This design documents how Traceboard is integrated into `synapse` (Layer 2)
-through its pure-Python SDK (`aether-traceboard`), following the DervGen
-ecosystem's unidirectional dependency rule (Layer 0 → Layer 2).
+platform originating in `aether` (Layer 0) as a C++20 SDK (`@aether//traceboard`)
+and distributed for Python as `aether-traceboard` (released at `traceboard-python-v0.1.0`
+with zero runtime dependencies beyond `numpy>=1.24.0`). This design documents
+how Traceboard integrates into `synapse` (Layer 2) while strictly preserving the
+DervGen ecosystem's unidirectional dependency rule (Layer 0 -> Layer 2).
 
-## 2. Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     synapse (Layer 2)                            │
-│                                                                 │
-│  synapse.observability          ← Thin wrapper module           │
-│    ├── init_traceboard()        ← One-shot initialization       │
-│    ├── get_probe()              ← Global probe accessor         │
-│    ├── shutdown_traceboard()    ← Graceful teardown              │
-│    └── traceboard_stage()       ← Context manager for stages    │
-│                                                                 │
-│  Instrumented Modules:                                          │
-│    ├── synapse.bench            ← Scenario metrics, reports     │
-│    ├── synapse.pipeline         ← Bench runner timings          │
-│    ├── synapse.training         ← LoRA training losses          │
-│    ├── synapse.rsi              ← Curriculum metrics            │
-│    ├── synapse.recon            ← Reconstruction metrics        │
-│    ├── synapse.inspect          ← JEV critique scoring          │
-│    ├── synapse.adapters         ← WanAdapter generate timings   │
-│    ├── synapse.style            ← Style extraction metrics      │
-│    └── synapse.composite        ← Surgical composition metrics  │
-│                                                                 │
-│  synapse.bench.traceboard_export  ← Dual-track export utility   │
-│    └── export_reports_to_traceboard()                            │
-│                                                                 │
-│  CLI Flags:                                                     │
-│    ├── synapse --traceboard      ← Enable for CLI runs          │
-│    ├── synapse-bench --traceboard                                │
-│    ├── colab_runner.py --traceboard                              │
-│    └── run_cpu_verification.py --traceboard                     │
-│                                                                 │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │ pip install aether-traceboard
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               aether-traceboard (Layer 0 SDK)                   │
-│                                                                 │
-│  Probe        ← Event emitter with scalar/artifact/stage APIs   │
-│  FileCollector ← Writes .tbevt files to disk                    │
-│  begin_run()  ← Opens a named run with engine/config metadata   │
-│  end_run()    ← Flushes and closes the event stream             │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 3. Dual-Track Migration Strategy
-
-### Existing Path (unchanged)
-
-`synapse.bench.report.generate_html_report()` produces self-contained HTML
-reports with inline SVG radar and bar charts. This path is fully preserved.
-
-### Parallel Traceboard Path (new)
-
-`synapse.bench.traceboard_export.export_reports_to_traceboard()` takes the
-same `list[ScenarioRunReport]` and writes structured `.tbevt` events:
-
-| Data                      | Traceboard Key Pattern                        |
-|---------------------------|-----------------------------------------------|
-| Per-scenario pass/fail    | `scenario/{name}/passed`                      |
-| Per-scenario metrics      | `scenario/{name}/metrics/{metric_key}`        |
-| Per-scenario timing       | `scenario/{name}/timing/{phase}`              |
-| Aggregate summary         | `summary/total_scenarios`, `summary/pass_rate`|
-| 4-pillar scores           | `pillar/temporal`, `pillar/fgpp_fidelity`, …  |
-
-### Why Dual-Track?
-
-- **Zero regression risk**: The HTML report remains the primary output.
-- **Incremental adoption**: Teams can opt into Traceboard visualization
-  without changing existing workflows.
-- **Eventual convergence**: Once the Go Traceboard server matures to v1.0,
-  the HTML report can be generated from `.tbevt` data as a downstream view.
-
-## 4. Instrumentation Guard Pattern
-
-All instrumentation follows a consistent, non-invasive pattern:
-
-```python
-from synapse.observability import get_probe
-
-probe = get_probe()
-if probe is not None and probe.active:
-    probe.log_scalar("metrics/psnr", 38.7)
-```
-
-Key properties:
-- `get_probe()` returns `None` when `aether-traceboard` is not installed.
-- The import is lazy — no side effects at module load time.
-- Guard checks cost ~50ns per call (attribute lookup + branch), negligible
-  compared to GPU inference or CPU-heavy metric computation.
-
-## 5. Dependency Model
+## 2. Architecture & Lifecycle Contracts
 
 ```
-pyproject.toml:
-  [project.optional-dependencies]
-  traceboard = ["aether-traceboard>=0.1.0"]
-  full = ["synapse[...,traceboard,...]"]
+┌──────────────────────────────────────────────────────────────────────┐
+│                        synapse (Layer 2)                              │
+│                                                                      │
+│  synapse.observability (Tier 0, PEP 562 lazy)                        │
+│    ├── ProbeProtocol / StageProtocol (@runtime_checkable Protocols)  │
+│    ├── init_traceboard()      ← RLock + rollback on partial failure   │
+│    ├── get_probe()            ← Thread-safe global Probe accessor    │
+│    ├── shutdown_traceboard(status=...) ← RunEnd status propagation   │
+│    ├── traceboard_stage()     ← Exception-isolating RAII stage CM    │
+│    ├── safe_log_{scalar,text,table,artifact,image,histogram,comparison}
+│    └── bound_image_u8()       ← Bounded max_dim<=512 uint8 helper    │
+│                                                                      │
+│  CLI & Execution Entry Points:                                       │
+│    ├── synapse [--traceboard [LOG_DIR]] ...                          │
+│    ├── synapse bench [--traceboard [LOG_DIR]] {list|run|...}         │
+│    ├── synapse bench run --tb-media --traceboard LOG_DIR             │
+│    ├── synapse worker run --bundle ... [--traceboard | SYNAPSE_TRACEBOARD_DIR]
+│    ├── scripts/colab_runner.py --traceboard [LOG_DIR]                │
+│    └── scripts/run_cpu_verification.py --traceboard [LOG_DIR]        │
+│                                                                      │
+│  Dual-Track Export:                                                  │
+│    └── synapse.bench.traceboard_export.export_reports_to_traceboard  │
+│        (reuses SSOT compute_pillar_scores() from bench/report.py)    │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │ optional extra: pip install "synapse[traceboard]"
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                  aether-traceboard v0.1.0 (Layer 0)                  │
+│                                                                      │
+│  Probe / StageContext / FileCollector / read_file / iter_events      │
+│  Wire parity verified bi-directionally (C++ <-> Python Golden Gate)  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-- `aether-traceboard` is an **optional** dependency.
-- `import synapse` does NOT trigger traceboard initialization.
-- All Traceboard code paths are guarded by try/except ImportError or
-  the `get_probe() is not None` pattern.
+### 2.1 Fail-Safe & Thread-Safe Boundary
 
-## 6. File Manifest
+1. **Module-level State Ownership**: `synapse.observability` maintains a
+   module-local `_probe` reference protected by `threading.RLock()` and
+   explicitly separates its lifecycle from `aether_traceboard.get_probe()`.
+2. **Atomic Initialization & Rollback**: `init_traceboard()` builds local
+   `Probe` + `FileCollector`, registers the collector, activates, calls
+   `begin_run(run_name, engine=..., trace_id=..., **config)`, and only assigns
+   `_probe` after every step succeeds. On exception, the collector is closed via
+   `collector.on_run_close()`, `_probe` stays `None`, and `_initialized` marks
+   completion so callers never hang or crash.
+3. **Strict Exception Isolation**: `traceboard_stage()` isolates stage-entry
+   and `__exit__` telemetry errors while always re-raising caller exceptions
+   intact. All `safe_log_*` helpers filter `NaN`/`±Inf` floats (`math.isfinite`),
+   coerce table cells to strings, enforce `size_bytes` in artifact metadata,
+   and swallow collector I/O failures with debug logs.
+4. **Typed Contracts for Tests (`ProbeProtocol`, `StageProtocol`)**: Both
+   protocols are `@runtime_checkable` and mirror `aether_traceboard.Probe` and
+   `StageContext` method signatures (including `add_collector`,
+   `remove_collector`, `stage.set_fail(reason=...)`). All unit tests mock via
+   `MagicMock(spec=ProbeProtocol)` / `MagicMock(spec=StageProtocol)` rather than
+   unconstrained `MagicMock()`.
 
-| File                                        | Purpose                                                      |
-|---------------------------------------------|--------------------------------------------------------------|
-| `python/synapse/observability.py`           | Core wrapper (`init_traceboard`/`get_probe`/`shutdown_traceboard`/`traceboard_stage`) |
-| `python/synapse/bench/traceboard_export.py` | Dual-track export utility (`export_reports_to_traceboard`)   |
-| `tests/test_observability.py`               | 31 unit + E2E tests for `synapse.observability` and CLI      |
-| `tests/test_traceboard_export.py`           | 11 export, pillar-score parity, and real-SDK E2E tests       |
-| `tests/test_training_traceboard.py`         | 6 LoRA / DPO / packager instrumentation tests                |
-| `tests/test_rsi_recon_traceboard.py`        | 13 RSI / ReconPipeline / VisualJevCritic tests               |
-| `tests/test_adapters_style_traceboard.py`   | 7 WanAdapter / StyleExtractor / composite tests              |
-| `tools/import_dag_guard.py`                 | Registers `observability` in Tier 0                          |
-| `scripts/colab_runner.py`                   | `--traceboard` boolean flag (logs to `{job_dir}/traceboard/`)|
-| `scripts/run_cpu_verification.py`           | `--traceboard` boolean flag (logs beside report)             |
-| `.github/workflows/ci.yml`                  | Installs optional SDK from sibling `../aether` or PyPI       |
-| `workenv/google-colab/setup_colab.sh`       | Colab optional SDK install                                   |
-| `docs/DESIGN_TRACEBOARD_INTEGRATION.md`     | This design document                                         |
-| `docs/plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md` | Full plan and merged PR landing summary              |
+## 3. Tag Taxonomy & Low-Cardinality Constraints
 
-## 7. Wire Format Compatibility
+All telemetry tags follow a hierarchical prefix (`{domain}/{component}/{metric}`)
+with **bounded `O(1)` unique tag cardinality**. Per-sample or per-asset IDs
+must NEVER be interpolated into scalar tag names; instead, emit fixed metric
+tags keyed by monotonic `step` and record IDs in structured `TABLE` events.
 
-The Python SDK writes `.tbevt` files in the same wire format as the C++
-SDK — both are readable by the Go Traceboard server. This enables:
+| Domain / Subsystem | Stage Prefix | Scalar / Rich-Media Tags | Step / Cardinality Contract |
+|---|---|---|---|
+| **bench / runner** | `bench/run_all`, `bench/{scenario}` | `bench/scenario/{name}/passed`, `bench/scenario/{name}/num_frames`, `bench/scenario/{name}/metrics/{k}`, `bench/scenario/{name}/timing/{k}`, `bench/scenario/{name}/keyframe` (`IMAGE`), `bench/scenario/{name}/depth_residual_hist` (`HISTOGRAM`), `bench/summary/*`, `bench/pillar/*` | Bounded scenarios (`O(S)`); images capped via `bound_image_u8(max_dim<=512)` |
+| **bench / compare & report** | `bench/compare` | `bench/compare/leaderboard` (`TABLE`), `bench/report` (`ARTIFACT`, `text/html`), `bench/compare_report` (`ARTIFACT`, `text/html`) | Single HTML artifact per report; `size_bytes` required |
+| **training** | `train/lora`, `train/package` | `train/loss`, `train/step`, `train/lr_multiplier`, `train/dpo_preferred_err`, `train/dpo_rejected_err`, `train/checkpoint_step`, `train/package/*` | `probe.set_step(step)` + explicit `step=step` strictly monotonic |
+| **rsi** | `rsi/gate`, `rsi/curriculum`, `rsi/verifier` | `rsi/promotion/*`, `rsi/promotion/quarantine` (`TABLE`), `rsi/curriculum/*`, `rsi/verifier/physics_passed`, `rsi/verifier/prm_score`, `rsi/verifier/check/{check}`, `rsi/verifier/verdicts` (`TABLE`) | `round_idx` step for curriculum; per-instance `_traceboard_step` for verifier (`O(1)` tags) |
+| **inspect** | `inspect/jev` | `inspect/jev/overall_quality`, `inspect/jev/defect_count`, `inspect/jev/requires_hitl`, `inspect/jev/defects` (`TABLE`) | Fixed scalar tags + monotonic `_traceboard_step`; `asset_id` column in table |
+| **adapters & scheduler** | `adapter/wan`, `adapter/scheduler` | `adapter/wan/*`, `adapter/scheduler/{window_idx,overlap_frames,shot_cut_reanchor,window_elapsed_s}` | `step=window_index` (`0, 1, 2, ...`) per causal window |
+| **refine (RFC 0061)** | `refine` | `refine/border_psnr_db`, `refine/border_ciede2000`, `refine/temporal_warp_error`, `refine/passed`, `refine/anatomical_patch` (`COMPARISON`) | `uint8` RGB patches capped at `max_dim<=512` with thresholds & pass verdict |
+| **worker (RFC 0039)** | `worker/{stage}` | `worker/exit_code`, `worker/elapsed_s`, `worker/output_file_count`, `worker/succeeded`, `worker/trace_id` (`TEXT`) | Covers all exit codes `0, 10, 20, 30, 40, 50` and `TRACEPARENT` |
+| **runners** | `colab/{exp}`, `cpu_verify/{exp}` | `colab/gpu/vram_gb`, `colab/{exp}/*`, `cpu_verify/{exp}/passed`, `cpu_verify/elapsed_sec` | `finally:` guarantees `RUN_END` (`finished`/`failed`/`cancelled`) |
 
-- C++ engine runs (fulgur) and Python algorithm runs (synapse) to be
-  visualized in the same Traceboard dashboard.
-- Cross-language golden tests in `aether/traceboard/tests/golden/` verify
-  format parity.
+## 4. CLI Routing, W3C `traceparent`, and Colab NVMe-First Staging
 
-## 8. Future Work
+### 4.1 Subcommand CLI Flag Routing
 
-1. **Traceboard Server UI**: Dashboard for browsing `.tbevt` runs with
-   interactive charts, comparison views, and regression detection.
-2. **HTML Report from Traceboard**: Generate the existing HTML report format
-   as a downstream view of `.tbevt` data, completing the convergence.
-3. **Remote Collector**: Stream events to a remote Traceboard server for
-   real-time monitoring of GPU inference runs.
+`get_json_parent_parser()` registers `--traceboard [LOG_DIR]` (`nargs="?"`,
+`default=argparse.SUPPRESS`, `const="__AUTO__"`), enabling `--traceboard` at any
+parser level (`synapse --traceboard DIR bench list`, `synapse bench --traceboard DIR list`,
+`synapse bench run --traceboard DIR`, `synapse-bench --traceboard DIR`,
+`synapse worker run --traceboard DIR`). Initialization is deferred until a
+valid subcommand is confirmed so bare `synapse --traceboard DIR` exits `0`
+without creating empty `.tbevt` files.
+
+### 4.2 W3C `traceparent` Correlation & Worker Env Config
+
+CLI dispatch extracts `trace_ctx.trace_id` from `TRACEPARENT` or generates a
+32-hex ID and forwards `trace_id=...` into `init_traceboard()`. For stateless
+container workers (`synapse worker run`), `run_worker_cli()` additionally honors
+`SYNAPSE_TRACEBOARD_DIR` and RFC 0039 `JobBundle.traceboard` (`_traceboard_dir`).
+
+### 4.3 Colab NVMe-First Staging (Google Drive SSOT V2.0)
+
+In `scripts/colab_runner.py`, when the resolved telemetry directory lies on a
+Google Drive FUSE mount (`/drive/` or `MyDrive`), `.tbevt` writes are staged
+exclusively on local NVMe (`/content/work/traceboard/{user}_{date}_{job_id}/`,
+or `$TMPDIR/synapse_tb_staging/...`). After each experiment checkpoint and again
+inside `finally:` after `shutdown_traceboard(status=...)`, `_sync_traceboard_to_drive()`
+flushes active buffers and atomically copies `.tbevt` files to
+`{job_dir}/traceboard/` via `.tmp` + `replace()`, preventing FUSE tail corruption
+across preemptions (`SIGTERM` exit `143` -> `status="cancelled"`).
+
+## 5. Dual-Track Strategy & Dependency Model
+
+- **HTML & Traceboard Parity**: `bench/report.py` exposes `compute_pillar_scores()`
+  as the Single Source of Truth reused by `bench/traceboard_export.py`. Both
+  `generate_html_report()` and `render_comparison_html()` emit self-contained HTML
+  artifacts (`bench/report`, `bench/compare_report`) alongside live scalars.
+- **Optional Zero-Bloat Dependency**: Declared in `pyproject.toml` under
+  `[project.optional-dependencies].traceboard = ["aether-traceboard>=0.1.0"]`.
+  `import synapse` remains PEP 562 lazy-isolated with zero startup overhead.
+
+## 6. Wire Format & Cross-Language Golden Contract
+
+The Python SDK implements `.tbevt` v1 wire parity matching C++ `@aether//traceboard`:
+- `RecordHeader.payloadLength = tagLength + len(payload)`
+- IEEE CRC-32 (`0xEDB88320`) across the full `payloadLength` body (`tag + payload`)
+- Strict RFC 8259 JSON (`NaN`/`±Inf` sanitized to `0.0`, `TABLE` cells coerced to `str`)
+- `STAGE_END` JSON includes `"status"` (`StageStatus`) + optional `"reason"` and `"metrics"`
+- `ARTIFACT` metadata normalizes `"mime"` -> `"mime_type"` and enforces `"size_bytes"`
+- Verified bi-directionally via C++ `//traceboard:test_golden_interop` reading Python
+  `python_reference.tbevt` and Python `pytest traceboard/tests/golden/` reading C++
+  `cpp_reference.tbevt`.

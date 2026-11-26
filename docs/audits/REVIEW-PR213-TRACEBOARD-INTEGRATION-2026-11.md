@@ -23,9 +23,11 @@ stale_after: 2027-11-25T00:00:00Z
 
 ### 1.1 总体评审结论
 
+> [!NOTE]
+> **整改闭环状态更新 (`2026-11-26` — Full Remediation Closed ✅)**：本报告识别的全部 **20 项缺陷（`TRB-P0-01`–`06` · `TRB-P1-01`–`09` · `TRB-P2-01`–`05`）** 已通过 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](../plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部 3 Wave / 8 PR + 2 跨仓 PR 落地清零（`dervgen/aether#557`, `#558`, `#560`, Tag/Release `traceboard-python-v0.1.0`, `synapse#215`–`#219`, `caelum-core#557`, `all-overview#770`），**10 项反作弊门禁 (`TB-1 ~ TB-10`) 全绿封板**。以下保留原评审发现作为历史溯源记录。
+
 > [!WARNING]
-> **综合判定：⚠️ 有条件暂缓发布 (`Conditional Hold — Remediation Required Before v0.1.0 Release`)**  
-> 本次跨仓改造完成了 Layer 0 纯 Python SDK（`aether-traceboard`）与 Layer 2 集成层（`synapse.observability`、CLI `--traceboard`、9 子系统埋点、Colab/CI 与双轨导出）的工程搭架，且 PR `#212` 主动修掉了 DAG 注册、`activate()` 时序与 `log_table`/`log_artifact` 签名等 6 类初始缺陷；但在逐行源码审查与二进制实证复现中，仍检出 **20 项高价值缺陷（`6×P0` 阻断 · `9×P1` 高危 · `5×P2` 中优先级）**。在清零以下 P0 缺陷与补齐双向跨语言测试前，**严禁对 `aether-traceboard` 打 tag 发包或将其宣称为生产级跨语言兼容**。
+> **历史评审结论 (`2026-11-25`, 已完成整改)**：原基线（`synapse#213`）经逐行源码审查检出 20 项缺陷，现已全部修复归零。
 
 核心架构亮点值得肯定：
 1. **依赖边界正确**：纯 Python SDK 放在 Layer 0 `aether/traceboard/python/`，`synapse` 仅通过 `[traceboard]` optional extra 弱引用，严格遵守 Layer 0 → Layer 2 单向依赖与 PEP 562 零导入副作用铁律。

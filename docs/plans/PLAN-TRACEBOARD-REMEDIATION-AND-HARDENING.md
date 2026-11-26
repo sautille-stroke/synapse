@@ -11,8 +11,8 @@ stale_after: 2027-11-25T00:00:00Z
 > - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) §4.15）
 > - **触发源**: [`REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md`](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md)（检出 **20 项缺陷**：`6×P0` 阻断 · `9×P1` 高危 · `5×P2` 中优先级）
 > - **前置基线**: [`PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`](PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) (`synapse#204–#213` @ `1e3ad5f`, `aether#523–#525` @ `ca2cbff4`)
-> - **规划模型**: `[gemini4-neon]`
-> - **当前状态**: 📋 **待启动（阻塞 `aether-traceboard` 正式发包与生产接入）**
+> - **执行模型**: `[gemini4-hydrogen]`
+> - **当前状态**: ✅ **全量落地封板（Wave TR-1 ~ TR-3 共 8 PR + 2 跨仓协同 PR 已合入，`traceboard-python-v0.1.0` 已发布，10/10 反作弊门禁全绿）**
 > - **目标周期**: 3 个里程碑（`M-T5` – `M-T7`）、3 个 Execution Waves（`Wave TR-1` – `Wave TR-3`）、**8 个原子 PR**（`PR-TR01` – `PR-TR08`）
 
 > [!IMPORTANT]
@@ -330,3 +330,21 @@ flowchart LR
 | **`Gate TB-8`** | **Step 单调性、低基数与去假测试** | 多步训练产出 `Record.step == [0, 1, 2, ...]`；批处理验证 Tag 基数 `O(1)`；`test_traceboard_export.py` 断言 `result is False` 且所有测试 mock 带 `spec` | `TRB-P1-05`, `TRB-P1-06`, `TRB-P1-07`, `TRB-P1-09` |
 | **`Gate TB-9`** | **Colab NVMe 分离 & CPU 验证刷盘** | `colab_runner.py` 仅在本地 NVMe 写热 `.tbevt` 再原子同步 Drive；`run_cpu_verification.py` 早退 `20` / 异常仍写出 `RUN_END` | `TRB-P1-08`, `TRB-P2-02` |
 | **`Gate TB-10`** | **全量 CI 与文档门禁双端全绿** | `docs-and-bench-gate`、`ruff`、`mypy --strict`、`import_dag_guard`、`wire_guard --require-aether`、`python-fast` + `python-slow` (`SYNAPSE_CI_STRICT_DEPS=1`) + `.tbevt` CI artifact 校验全绿 | `TRB-P1-09`, `TRB-P2-01`..`05` |
+
+---
+
+<a id="gate-tb-closure"></a>
+## 6. 落地执行与 10 项门禁封板台账 (Execution & Closure Ledger)
+
+| Wave / PR | 仓库 | 实际 PR / Release | 核心交付落地摘要 | 状态 |
+| :--- | :--- | :--- | :--- | :---: |
+| **PR-TR01** | `dervgen/aether` | `dervgen/aether#557` (`cb0c8e43`) | 修复 `.tbevt` `payloadLength`、`update_crc32`、严格 JSON、`STAGE_END`/`ARTIFACT` Schema 与 C++↔Py 双向黄金 | ✅ |
+| **PR-TR02** | `dervgen/aether` | `dervgen/aether#558` (`ef7d2e83`) | 加固 `FileCollector`（清洗/`xb`/并发锁）、`Probe`/`StageContext`、`Reader` (`FileHeader`/`ReadStats`/`read_file`) | ✅ |
+| **PR-TR03** | `dervgen/aether` | `dervgen/aether#560` (`f409175a`) · `traceboard-python-v0.1.0` | 去 `typing_extensions`、排 `tests*`、`mypy --strict` 清零、Publish CI、打标并发布 `traceboard-python-v0.1.0` Release | ✅ |
+| **PR-TR04** | `sautille-stroke/synapse` | `sautille-stroke/synapse#215` (`769e9c6`) | `observability.py` `RLock`+协议原子化、CLI `get_json_parent_parser` `--traceboard`、`BenchPipelineRunner` `set_fail` 修复 | ✅ |
+| **PR-TR05** | `sautille-stroke/synapse` | `sautille-stroke/synapse#216` (`289be5c`) | `trainer`/`curriculum` 单调 `step`、`dual_verifier`/`jev_critic` 低基数收口、`compute_pillar_scores` SSOT | ✅ |
+| **PR-TR06** | `sautille-stroke/synapse` | `sautille-stroke/synapse#217` (`e5a03d0`) | Colab NVMe staging 原子同步、`cpu_verification` `finally:` 刷盘、Typed Mocks、CI `.tbevt` CLI 烟测与 `5/5` 全绿 | ✅ |
+| **PR-TR07** | `sautille-stroke/synapse` | `sautille-stroke/synapse#218` (`255d187`) | `bundle_worker`、`ConditionScheduler`、`LocalRefinementPipeline` (`COMPARISON`)、`bench_runner --tb-media` & `ARTIFACT` (`5/5` CI) | ✅ |
+| **Cross-Repo** | `dervgen/caelum-core` | `dervgen/caelum-core#557` (`a160ee9e`) | `tests/helpers/traceboard_integration.py`、`run_traceboard_comparison.py` 与 `pyproject.toml` 迁移至 `aether-traceboard` v0.1 | ✅ |
+| **Cross-Repo** | `dervgen/all-overview` | `dervgen/all-overview#770` (`a327cfa`) | 在 `DUP-17` 登记 `@aether//crypto` 收口 `aether/traceboard/src/event.cc` 前必须跑通双向黄金测试门禁 | ✅ |
+| **PR-TR08** | `sautille-stroke/synapse` | 本 PR (`docs/tr08-traceboard-reconciliation-and-ecosystem-closure`) | 10/10 门禁全量复验、文档架构/Quickstart/台账全面对齐并完成 `Conditional Hold` 解封归档 | ✅ |

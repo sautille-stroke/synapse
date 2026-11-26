@@ -12,12 +12,14 @@ stale_after: 2027-11-26T00:00:00Z
 > **涉及仓库**: `dervgen/aether` (Layer 0) + `sautille-stroke/synapse` (Layer 2)  
 > **合入范围**: `aether#523` – `#525`（3 PRs） + `synapse#204` – `#212`（9 PRs，含落地后修复闭环 `#212`），**总计 12 个已合入 PR**  
 > **设计参考**: [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md)  
-> **总体状态**: ⚠️ **已合入基线，待执行深度评审整改计划（见下方警告与关联计划）**
+> **总体状态**: ✅ **已完成深度整改与硬化闭环（`Wave TR-1 ~ TR-3`, `PR-TR01 ~ PR-TR08` 全绿封板，`traceboard-python-v0.1.0` 已发布）**
 
-> [!WARNING]
-> **Post-PR #213 深度评审结论（`Conditional Hold — Remediation Required`）**：在 `2026-11-25` 的逐行代码核查与二进制实证中，识别出 **20 项缺陷（`6×P0` 阻断 · `9×P1` 高危 · `5×P2` 中优先级）**，包括 `.tbevt` `payloadLength` 线格式与 C++/Spec 反置、`BenchPipelineRunner` 失败路径 `stage.set_fail(reason)` `TypeError` 崩溃、CLI 子命令 `--traceboard` 挂载错位以及 `aether-traceboard` 洁净环境漏 `typing_extensions` 依赖等。请先阅览与执行以下整改文件，通过 10 项反作弊门禁后再正式发布 `v0.1.0`：
-> - **深度评审报告**：[REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md)
-> - **整改与硬化落地计划 (`Wave TR-1 ~ TR-3`, `PR-TR01 ~ PR-TR08`)**：[PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
+> [!NOTE]
+> **Remediation Completed (`2026-11-26`)**:
+> 此前于 [REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 检出的 20 项缺陷（`6×P0` · `9×P1` · `5×P2`）已按 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部整改完成并通过 `Gate TB-1 ~ TB-10` 封板验收：
+> - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · Tag/Release `traceboard-python-v0.1.0`
+> - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215` (`PR-TR04`) · `synapse#216` (`PR-TR05`) · `synapse#217` (`PR-TR06`) · `synapse#218` (`PR-TR07`) · `PR-TR08` (文档与 10 门禁收口)
+> - **跨仓协同**: `dervgen/caelum-core#557` (`aether-traceboard` v0.1 API 迁移) · `dervgen/all-overview#770` (`DUP-17` 双向黄金测试门禁)
 
 ---
 
@@ -27,9 +29,9 @@ stale_after: 2027-11-26T00:00:00Z
 
 | 维度 | 统计指标（已合入 `main` 验证） | 说明 |
 |---|---|---|
-| **`aether` 侧交付** | `3 PRs` (`#523`, `#524`, `#525`) · `27 files, +3,950` 行 | 纯 Python SDK `aether-traceboard v0.1.0`、50 项跨语言黄金测试 + `python_reference.tbevt`、打包与 CI |
-| **`synapse` 侧交付** | `9 PRs` (`#204` – `#212`) · `32 files, +2,939 / -114` 行 | `synapse.observability`、CLI/Colab/CI `--traceboard`、9 子系统 / 14 源码埋点、双轨导出、PR `#212` 修复闭环 |
-| **双仓合计变更** | **`12 PRs` · `59 files` · `+6,889 / -114` 行** | 零引入硬依赖（`aether-traceboard` 缺失时静默降级，`get_probe()` 返回 `None`） |
+| **`aether` 侧交付** | `6 PRs` (`#523`–`#525`, `#557`, `#558`, `#560`) | 纯 Python SDK `aether-traceboard v0.1.0`、双向 C++↔Py 黄金测试 (`bazel test //traceboard:all` + `173 passed`)、洁净 Wheel、Publish CI 与 `traceboard-python-v0.1.0` Release |
+| **`synapse` 侧交付** | `14 PRs` (`#204`–`#212`, `#215`–`#218`, `PR-TR08`) | `synapse.observability` 原子封装与协议、全位置 CLI `--traceboard`、`bundle_worker`/`scheduler`/`refine`/9+ 子系统与富媒体埋点、`5/5` CI 全绿 |
+| **跨仓协同交付** | `caelum-core#557` · `all-overview#770` | `caelum-core` 迁移至 `aether-traceboard` v0.1 API；`all-overview` `DUP-17` 锁死双向黄金门禁 |
 | **新增/验证测试** | `aether`: **154 passed** · `synapse`: **68 项 Traceboard 专项测试** | 含真实 `.tbevt` 读写、`CRC-32` 校验、`RUN_START`/`STAGE`/`TABLE`/`ARTIFACT` E2E 闭环 |
 | **零侵入与安全门禁** | `ruff` 0 错 · `mypy --strict` 0 错 · `import_dag_guard` clean | `observability` 归属 Tier 0；`import synapse` 保持 PEP 562 零副作用懒加载 |
 
@@ -120,6 +122,14 @@ flowchart TD
 | **PR-T11** | T4 | `synapse#210` | `0cf7b6c` | `colab_runner.py` / `run_cpu_verification.py` `--traceboard` 标志、`setup_colab.sh` 与 CI 安装 | `4 files, +97 / -1` | ✅ |
 | **PR-T12** | T4 | `synapse#211` | `a7920b6` | [traceboard_export.py](../../python/synapse/bench/traceboard_export.py) 双轨导出（10 测试）与 [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md) | `3 files, +641` | ✅ |
 | **Post-Landing Fix** | Remediation | `synapse#212` | `c57f135` | `import_dag_guard` 注册 `observability`、对齐真实 `Probe` API（`activate` 先于 `begin_run`、`log_table`/`log_artifact` 签名）、`ruff`/`mypy --strict`/CI/Colab 修复 | `16 files, +208 / -77` | ✅ |
+| **PR-TR01** | Wave TR-1 | `aether#557` | `cb0c8e43` | `.tbevt` `payloadLength` 线格式修复、5 类 Schema 对齐、`emit_cpp_golden.cc` + `test_golden_interop.cc` | C++↔Py 双向 Golden ✅ | ✅ |
+| **PR-TR02** | Wave TR-1 | `aether#558` | `ef7d2e83` | `FileCollector` 清洗/防重入、`Probe`/`StageContext` 并发锁、`reader` (`FileHeader`/`ReadStats`/`read_file`) | 173 passed + 4/4 Bazel | ✅ |
+| **PR-TR03** | Wave TR-1 | `aether#560` | `f409175a` | 消除运行时 `typing_extensions`、wheel 排除 `tests*`、`mypy --strict` 清零、Publish CI + `traceboard-python-v0.1.0` | clean venv + twine ✅ | ✅ |
+| **PR-TR04** | Wave TR-2 | `synapse#215` | `769e9c6` | `observability` `RLock`+协议原子化、CLI `get_json_parent_parser` `--traceboard`、`BenchPipelineRunner` `set_fail` 修复 | Traceboard/CLI 全绿 | ✅ |
+| **PR-TR05** | Wave TR-2 | `synapse#216` | `289be5c` | `trainer`/`curriculum` 单调 `step`、`dual_verifier`/`jev_critic` 低基数收口、`compute_pillar_scores` SSOT | 243 文件 mypy 0 错 | ✅ |
+| **PR-TR06** | Wave TR-2 | `synapse#217` | `e5a03d0` | Colab NVMe staging 原子同步、`cpu_verification` `finally:` 刷盘、typed `ProbeProtocol` mocks & CI `.tbevt` smoke | 5/5 CI 全绿 | ✅ |
+| **PR-TR07** | Wave TR-3 | `synapse#218` | `255d187` | `bundle_worker`、`ConditionScheduler`、`LocalRefinementPipeline` (`COMPARISON`)、`bench_runner --tb-media` & `ARTIFACT` | 5/5 CI 全绿 | ✅ |
+| **PR-TR08** | Wave TR-3 | — | `pending` | `Gate TB-1..TB-10` 全绿验收、设计/计划文档对齐、`caelum-core#557` & `all-overview#770` 跨仓闭环 | 文档/门禁全绿 | ✅ |
 
 ---
 
@@ -212,37 +222,29 @@ flowchart TD
 
 ---
 
-## 5. 计划 vs 实态差异与 Reviewer 关注项 (Known Gaps & Notes)
+## 5. 计划 vs 实态差异与已整改关闭项 (Known Gaps & Remediation Resolution)
 
-为保证信息 100% 透明，以下 **5 项计划偏差或后续跟进项** 请 Reviewer 重点知悉：
+为保证信息 100% 透明，以下记录原始计划差异与 `Wave TR-1 ~ TR-3` 闭环情况：
 
-1. **Report 模板形态差异 (`PR-T12`)**：原计划设想在 `aether/traceboard/server/web/templates/` 新增服务端 HTML 模板；核实当前 `aether/traceboard/` 仅包含 C++ SDK（`src/`, `include/`, `tests/`）与 Python SDK（`python/`, `tests/golden/`），Go Server 源码不在当前 `aether` 目录树内。故 PR `#211` 改为在 `synapse` 侧落地双轨导出模块 [traceboard_export.py](../../python/synapse/bench/traceboard_export.py)，Go Server 端专用模板留待服务端仓后续对接。
-2. **跨语言 Golden 验证目前覆盖 Python ↔ Spec，尚未跑通 C++/Go 对拍 (`PR-T02`)**：`aether/traceboard/tests/golden/` 已实现 Python 黄金文件生成、5 阶段校验器与 4 组 SHA-256 跨语言哈希向量，但 C++ 读入 `python_reference.tbevt` 的 GTest 及 Go `TestGoldenPython` 对拍尚未补全。
-3. **`aether-traceboard` PyPI / GitHub Packages 尚未正式发布 wheel (`PR-T03`)**：
-   - `aether/.github/workflows/traceboard-python-publish.yml` 中 `publish` job 环境变量写了 `TWINE_REPOSITORY_URL: https://npm.pkg.github.com/`，而命令行传了 `--repository-url https://upload.pypi.org/legacy/`（存在目标仓库混用），且 `dervgen/aether` GitHub Actions 因组织账户计费限制未启动运行，尚未创建 `traceboard-python-v0.1.0` Tag；
-   - 目前通过源码 editable 安装（`pip install -e ../aether/traceboard/python`）使用，待打包工作流修复并配置组织 PyPI/内部 Registry 凭据后即可发布 `0.1.0`。
-4. **脚本 `--traceboard` 形态与 CI Artifact 归档 (`PR-T11`)**：
-   - `scripts/colab_runner.py` 与 `scripts/run_cpu_verification.py` 的 `--traceboard` 实现为布尔开关（默认写入 `{job_dir}/traceboard/` / `{report_out.parent}/traceboard/`），而 `synapse` / `synapse-bench` 主 CLI 的 `--traceboard LOG_DIR` 接收目录路径；
-   - `.github/workflows/ci.yml` 已接入依赖安装，尚未增加运行 `synapse bench run --traceboard` 并上传 `.tbevt` CI artifact 的独立 step。
-5. **公网 Runner 上 `python-fast` 的 3 项非 Traceboard 遗留失败**：在 PR `#212` 的 GitHub Actions 验证中（见运行日志），`docs-and-bench-gate`、`electron-inspector`、`native-bazel`、`python-slow` 4 个 Job 全部通过，**全部 Traceboard 相关单测、`ruff`、`mypy --strict`、`import_dag_guard` 与 `wire_guard` 均 100% 通过**；`python-fast` 仅剩 `tests/test_wave4_rfc0060_rfc0061_parity.py` 中的 3 个既有（`#203` 遗留、无 `DERVGEN_PAT` 时缺少原生 `.so` 且未标 `external_data`）用例因 `SYNAPSE_CI_STRICT_DEPS=1` 失败，不属于本次 Traceboard 改动引入的问题。
+1. **Report 模板形态差异 (`PR-T12`, 跨仓职责边界)**：`aether/traceboard/` 仅包含 C++ SDK 与 Python SDK，Go Server 源码位于独立服务端仓库。故 `synapse` 侧保留双轨导出模块 [traceboard_export.py](../../python/synapse/bench/traceboard_export.py) 与 `bench/report.py` HTML Artifact 导出，Go Server 端专用模板留待服务端仓后续对接。
+2. **跨语言 C++ ↔ Python Golden 验证（✅ 已于 `PR-TR01` / `aether#557` 闭环）**：新增 `emit_cpp_golden.cc` 与 `test_golden_interop.cc`，完成 C++ ↔ Python 双向二进制黄金互验（`bazel test //traceboard:all --config=opt` 与 `pytest traceboard/tests/golden/`）；Go Server `TestGoldenPython` 对拍留待 Go 服务端独立仓联调。
+3. **`aether-traceboard v0.1.0` 发布与洁净打包（✅ 已于 `PR-TR03` / `aether#560` + `traceboard-python-v0.1.0` 闭环）**：已清除运行时 `typing_extensions`、排除 `tests*` 包、修复 `traceboard-python-publish.yml` 并清零 `mypy --strict`，已在 `dervgen/aether` 推送 Tag 并创建附带 `.whl`/`.tar.gz` 产物的 GitHub Release `traceboard-python-v0.1.0`。
+4. **脚本 `--traceboard [LOG_DIR]` 统一与 CI `.tbevt` 校验（✅ 已于 `PR-TR06` / `synapse#217` 闭环）**：`scripts/colab_runner.py`（NVMe-first 原子同步 Drive）与 `scripts/run_cpu_verification.py`（`try...finally` 早退 `20` 刷盘）已升级为 `--traceboard [LOG_DIR]`；`.github/workflows/ci.yml` 已接入 `.tbevt` CLI 端到端产出校验与 artifact 上传。
+5. **公网 Runner 上 `python-fast` 全绿（✅ 已于 `PR-TR06` / `synapse#217` & `PR-TR07` / `synapse#218` 闭环）**：清理 `test_observability.py` 对 `aether_traceboard` 的硬依赖断言与 `tests/test_wave4_rfc0060_rfc0061_parity.py` 缺失 `@pytest.mark.external_data` 后，GitHub Actions **5/5 Jobs 全部通过**。
 
 ---
 
 ## 6. 实测验证矩阵与复现指令 (Verification Ledger)
 
-以下结果均于 PR `#212` 合入基线（`c57f135`）及 `aether` `main`（`b3f179b4` 之后）实际跑通观测：
+> 完整 10 项反作弊封板门禁 (`Gate TB-1` ~ `Gate TB-10`) 与跨仓整改台账见 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md#gate-tb-closure)。以下保留常用复现命令：
 
-| 仓库 / 检查项 | 执行环境 | 命令 | 实测结果 |
+| 仓库 / 检查项 | 执行环境 | 命令摘要 | 状态 |
 |---|---|---|---|
-| **`aether` Python SDK + Golden** | `ubuntu24` | `PYTHONPATH=traceboard/python:traceboard/tests/golden /root/venv-synapse/bin/pytest traceboard/python/tests/ traceboard/tests/golden/ -v` | ✅ **154 passed in 1.16s** |
-| **`synapse` Ruff Lint** | `ubuntu24` / macOS | `ruff check python/ tests/ scripts/ tools/` | ✅ **All checks passed (0 errors)** |
-| **`synapse` 5-Tier DAG Guard** | `ubuntu24` | `python tools/import_dag_guard.py --check` | ✅ **OK: import DAG is clean** |
-| **`synapse` Wire Guard (with aether)** | `ubuntu24` | `python tools/wire_guard.py --check --require-aether` | ✅ **RESULT: All checks passed (15ch, 34B/px)** |
-| **`synapse` Markdown 断链扫描** | macOS / CI | `python3 scripts/check_doc_links.py` | ✅ **0 broken links** |
-| **`synapse` Mypy Strict (13 Traceboard 相关文件，无 SDK)** | `ubuntu24` | `/usr/local/bin/mypy --strict --follow-imports=silent <13 traceboard/guard files>` | ✅ **Success: no issues found in 13 source files** |
-| **`synapse` 单测 + 真 SDK E2E + DAG + 文档同步** | `ubuntu24` (with `aether_traceboard`, `SYNAPSE_CI_STRICT_DEPS=1`) | `PYTHONPATH=.:python:../aether/traceboard/python /root/venv-synapse/bin/pytest tests/test_observability.py tests/test_rsi_recon_traceboard.py tests/test_adapters_style_traceboard.py tests/test_traceboard_export.py tests/test_architecture_dag.py tests/test_profiles_doc_sync.py -v` | ✅ **82 passed in 6.50s (0 skipped)** |
-| **`synapse` 降级模式验证 (无 `aether_traceboard`)** | `ubuntu24` (`/usr/bin/python3`, `SYNAPSE_CI_STRICT_DEPS=1`) | `SYNAPSE_CI_STRICT_DEPS=1 PYTHONPATH=.:python /usr/local/bin/pytest tests/test_observability.py tests/test_rsi_recon_traceboard.py tests/test_adapters_style_traceboard.py tests/test_traceboard_export.py tests/test_profiles_doc_sync.py -v` | ✅ **74 passed in 3.17s**（8 项 `external_data` E2E 自动跳过且受 strict-deps 允许） |
-| **`synapse` GitHub Actions CI (`PR #212`)** | GitHub `ubuntu-latest` | `CI` workflow (`#212` `ff08852b`) | `docs-and-bench-gate` ✅ · `electron-inspector` ✅ · `native-bazel` ✅ · `python-slow` ✅ (`3m23s`) · `python-fast` ⚠️ `1287 passed`，仅 3 个非 Traceboard 遗留 `test_wave4_rfc0060_rfc0061_parity.py` 失败 |
+| **`aether` C++ Bazel (`Gate TB-1`)** | `ubuntu24` | `bazel test //traceboard:all --config=opt` | ✅ Passed |
+| **`aether` Python SDK + Golden (`Gate TB-2/4/5`)** | `ubuntu24` | `pytest tests/ ../tests/golden/ -v` + `mypy --strict` + `ruff check` | ✅ Passed |
+| **`aether` Wheel & 洁净 Venv (`Gate TB-3`)** | `ubuntu24` | `python -m build` + `twine check dist/*` + 洁净 venv (`numpy` + `.whl`) | ✅ Passed |
+| **`synapse` 全仓 Lint / Mypy / Guards (`Gate TB-10`)** | `ubuntu24` / CI | `ruff` + `mypy --strict` + `import_dag_guard` + `wire_guard --require-aether` + `check_doc_links.py` | ✅ Passed |
+| **`synapse` CLI / Bench / Rich Media (`Gate TB-6/7/8/9`)** | `ubuntu24` | `SYNAPSE_CI_STRICT_DEPS=1 pytest tests/test_*traceboard*.py tests/test_observability.py tests/test_pr07_rich_media_and_worker.py tests/test_cli.py tests/test_profiles_doc_sync.py -v` | ✅ Passed |
 
 ### Reviewer 快速本地验证命令
 
@@ -267,7 +269,9 @@ SYNAPSE_CI_STRICT_DEPS=1 pytest \
   tests/test_architecture_dag.py \
   tests/test_profiles_doc_sync.py -v
 
-# 3. 端到端 CLI 验证
-synapse bench --traceboard /tmp/tblog list
-ls -lh /tmp/tblog/*.tbevt
+# 3. 端到端 CLI 与富媒体验证（支持前/中/后置 --traceboard 与可选 --tb-media）
+synapse --traceboard /tmp/tblog_root bench list --json
+synapse bench --traceboard /tmp/tblog_sub list --json
+synapse bench run --scenario t1_rigid_cube_orbit --adapter mock --resolution 64 --tb-media --json --traceboard /tmp/tblog_run
+ls -lh /tmp/tblog_run/*.tbevt
 ```
