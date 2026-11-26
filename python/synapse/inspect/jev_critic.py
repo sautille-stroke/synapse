@@ -385,6 +385,7 @@ class VisualJevCritic:
             raise ValueError("calibration_temperature must be a positive finite float")
         self._transport = transport
         self._tc = calibration_temperature
+        self._traceboard_step: int = 0
 
     def calibrated_probability(
         self,
@@ -573,29 +574,43 @@ class VisualJevCritic:
                 requires_hitl=requires_hitl,
             )
 
-            # --- Traceboard instrumentation ---
+            # --- Traceboard instrumentation (low-cardinality tags + explicit step) ---
+            step = self._traceboard_step
+            self._traceboard_step += 1
             probe = get_probe()
             if probe is not None and probe.active:
                 probe.log_scalar(
-                    f"inspect/jev/{asset_id}/overall_quality", report.overall_quality_score,
+                    "inspect/jev/overall_quality",
+                    report.overall_quality_score,
+                    step=step,
                 )
                 probe.log_scalar(
-                    f"inspect/jev/{asset_id}/defect_count", float(len(defects)),
+                    "inspect/jev/defect_count",
+                    float(len(defects)),
+                    step=step,
                 )
                 probe.log_scalar(
-                    f"inspect/jev/{asset_id}/requires_hitl", float(requires_hitl),
+                    "inspect/jev/requires_hitl",
+                    float(requires_hitl),
+                    step=step,
                 )
                 if defects:
                     columns: list[dict[str, str]] = [
+                        {"name": "asset_id", "type": "string"},
                         {"name": "category", "type": "string"},
                         {"name": "severity", "type": "float"},
                         {"name": "action", "type": "string"},
                     ]
                     radar_rows: list[list[Any]] = [
-                        [d.category, round(float(d.severity), 4), d.suggested_action]
+                        [
+                            asset_id,
+                            d.category,
+                            f"{float(d.severity):.4f}",
+                            d.suggested_action,
+                        ]
                         for d in defects
                     ]
-                    probe.log_table(f"inspect/jev/{asset_id}/defects", columns, radar_rows)
+                    probe.log_table("inspect/jev/defects", columns, radar_rows, step=step)
 
             return report
 

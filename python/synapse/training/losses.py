@@ -317,6 +317,7 @@ class DiffusionDPOLoss:
         v_ref_l: Any,
         target_w: Any,
         target_l: Any,
+        step: int | None = None,
     ) -> Any:
         """Compute DPO loss.
 
@@ -366,10 +367,12 @@ class DiffusionDPOLoss:
             probe.log_scalar(
                 "train/dpo_preferred_err",
                 float(torch.mean(err_theta_w).item()),
+                step=step,
             )
             probe.log_scalar(
                 "train/dpo_rejected_err",
                 float(torch.mean(err_theta_l).item()),
+                step=step,
             )
 
         return result

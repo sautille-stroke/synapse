@@ -496,7 +496,11 @@ class StatelessLoRATrainer:
         # Log checkpoint save to Traceboard
         probe = get_probe()
         if probe is not None and probe.active:
-            probe.log_scalar("train/checkpoint_step", float(self._step_count))
+            probe.log_scalar(
+                "train/checkpoint_step",
+                float(self._step_count),
+                step=self._step_count,
+            )
 
         return out.resolve()
 
@@ -617,6 +621,10 @@ class StatelessLoRATrainer:
         """
         import torch
 
+        probe = get_probe()
+        if probe is not None and probe.active:
+            probe.set_step(step)
+
         self._last_module = module
         # Shallow-copy caller batch so internal mutations (sampled 't',
         # extracted depth/normal, device migration) never freeze future steps.
@@ -716,13 +724,13 @@ class StatelessLoRATrainer:
         result = {"loss": float(raw_loss.item()), "step": step}
 
         # Log training scalars to Traceboard
-        probe = get_probe()
         if probe is not None and probe.active:
-            probe.log_scalar("train/loss", result["loss"])
-            probe.log_scalar("train/step", float(step))
-            probe.log_scalar("train/lr_multiplier", lr_mult)
+            probe.set_step(step)
+            probe.log_scalar("train/loss", result["loss"], step=step)
+            probe.log_scalar("train/step", float(step), step=step)
+            probe.log_scalar("train/lr_multiplier", lr_mult, step=step)
             if self._config.loss_mode == "dpo":
-                probe.log_scalar("train/dpo_beta", self._config.dpo_beta)
+                probe.log_scalar("train/dpo_beta", self._config.dpo_beta, step=step)
 
         return result
 

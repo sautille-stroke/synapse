@@ -250,8 +250,10 @@ class CurriculumSampler:
         # --- Traceboard instrumentation ---
         probe = get_probe()
         if probe is not None and probe.active:
-            probe.log_scalar("rsi/curriculum/round_idx", float(round_idx))
-            probe.log_scalar("rsi/curriculum/num_scenarios", float(len(scenarios)))
+            probe.log_scalar("rsi/curriculum/round_idx", float(round_idx), step=round_idx)
+            probe.log_scalar(
+                "rsi/curriculum/num_scenarios", float(len(scenarios)), step=round_idx
+            )
             if scenarios:
                 factor_counts: dict[str, int] = {}
                 for sc in scenarios:
@@ -259,6 +261,7 @@ class CurriculumSampler:
                 probe.log_text(
                     "rsi/curriculum/factor_distribution",
                     ", ".join(f"{k}={v}" for k, v in sorted(factor_counts.items())),
+                    step=round_idx,
                 )
 
         return scenarios
@@ -326,20 +329,6 @@ class CurriculumManager:
         """
         scenarios = self._sampler.sample_scenarios(bench_scores, round_idx=self._round)
         self._history.append(dict(bench_scores))
-        # --- Traceboard instrumentation ---
-        probe = get_probe()
-        if probe is not None and probe.active:
-            probe.log_scalar("rsi/curriculum/round_idx", float(self._round))
-            probe.log_scalar("rsi/curriculum/num_scenarios", float(len(scenarios)))
-            if scenarios:
-                factor_counts: dict[str, int] = {}
-                for sc in scenarios:
-                    factor_counts[sc.factor] = factor_counts.get(sc.factor, 0) + 1
-                probe.log_text(
-                    "rsi/curriculum/factor_distribution",
-                    ", ".join(f"{k}={v}" for k, v in sorted(factor_counts.items())),
-                )
-
         return scenarios
 
     def record_quarantine(

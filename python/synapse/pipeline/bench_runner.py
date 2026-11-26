@@ -187,19 +187,24 @@ class BenchPipelineRunner:
 
             probe = get_probe()
             if probe is not None and probe.active:
+                prefix = f"bench/scenario/{scenario_name}"
+                passed = report.error is None and (
+                    report.gate_verdict is None or report.gate_verdict.passed
+                )
+                safe_log_scalar(f"{prefix}/passed", 1.0 if passed else 0.0)
                 for k, v in report.metrics.items():
                     if math.isfinite(float(v)):
-                        safe_log_scalar(f"bench/{scenario_name}/{k}", float(v))
+                        safe_log_scalar(f"{prefix}/metrics/{k}", float(v))
                 for k, v in report.timings.items():
                     if math.isfinite(float(v)):
-                        safe_log_scalar(f"bench/{scenario_name}/{k}", float(v))
+                        safe_log_scalar(f"{prefix}/timing/{k}", float(v))
                 if report.num_frames > 0:
                     safe_log_scalar(
-                        f"bench/{scenario_name}/num_frames",
+                        f"{prefix}/num_frames",
                         float(report.num_frames),
                     )
                 if report.error is not None:
-                    safe_log_text(f"bench/{scenario_name}/error", report.error)
+                    safe_log_text(f"{prefix}/error", report.error)
 
             # Set stage verdict
             if stage is not None:
@@ -500,12 +505,24 @@ class BenchPipelineRunner:
                 )
                 reports.append(report)
             if all_stage is not None:
-                any_failed = any(
-                    r.error is not None
-                    or (r.gate_verdict is not None and not r.gate_verdict.passed)
+                from synapse.bench.report import compute_pillar_scores
+                from synapse.observability import safe_log_scalar
+
+                n_pass = sum(
+                    1
                     for r in reports
+                    if r.error is None and (r.gate_verdict is None or r.gate_verdict.passed)
                 )
-                if any_failed:
+                n_fail = len(reports) - n_pass
+                safe_log_scalar("bench/summary/total_scenarios", float(len(reports)))
+                safe_log_scalar("bench/summary/passed", float(n_pass))
+                safe_log_scalar("bench/summary/failed", float(n_fail))
+                safe_log_scalar(
+                    "bench/summary/pass_rate", float(n_pass) / max(len(reports), 1)
+                )
+                for pillar, score in sorted(compute_pillar_scores(reports).items()):
+                    safe_log_scalar(f"bench/pillar/{pillar}", float(score))
+                if n_fail > 0:
                     all_stage.set_fail("one_or_more_scenarios_failed")
                 else:
                     all_stage.set_pass()
