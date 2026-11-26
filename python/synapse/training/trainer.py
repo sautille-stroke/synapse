@@ -698,6 +698,7 @@ class StatelessLoRATrainer:
                     module,
                     work_batch,
                     beta=self._config.dpo_beta,
+                    step=step,
                 )
 
         scaled_loss = raw_loss / float(accum)
@@ -993,6 +994,7 @@ class StatelessLoRATrainer:
         module: Any,
         batch: dict[str, Any],
         beta: float = 500.0,
+        step: int | None = None,
     ) -> Any:
         """Compute reference-anchored Diffusion-DPO loss.
 
@@ -1028,4 +1030,12 @@ class StatelessLoRATrainer:
             if was_training:
                 module.train()
 
-        return self._dpo_loss(v_theta_w, v_theta_l, v_ref_w, v_ref_l, target_w, target_l)
+        return self._dpo_loss(
+            v_theta_w,
+            v_theta_l,
+            v_ref_w,
+            v_ref_l,
+            target_w,
+            target_l,
+            step=step,
+        )

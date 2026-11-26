@@ -302,3 +302,51 @@ class TestDPOLossLogging:
         ]
         assert "train/dpo_preferred_err" in scalar_tags
         assert "train/dpo_rejected_err" in scalar_tags
+
+    @_needs_torch
+    @pytest.mark.usefixtures("_set_probe")
+    def test_trainer_dpo_step_forwards_step_to_loss_logging(
+        self, mock_probe: MagicMock
+    ) -> None:
+        """StatelessLoRATrainer DPO train_step must forward step to DPO loss scalars."""
+        import torch
+        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+        config = LoRATrainConfig(
+            category="style",
+            rank=4,
+            max_steps=10,
+            loss_mode="dpo",
+            dpo_beta=500.0,
+        )
+        trainer = StatelessLoRATrainer(config)
+
+        model = torch.nn.Sequential(torch.nn.Linear(8, 8))
+        trainer.inject_lora(model, ["0"])
+        trainer.freeze_backbone(model)
+
+        batch = {
+            "chosen": torch.randn(1, 8),
+            "rejected": torch.randn(1, 8),
+            "noise": torch.randn(1, 8),
+        }
+        mock_probe.log_scalar.reset_mock()
+        result = trainer.train_step(model, batch, step=7)
+
+        assert "loss" in result
+        assert result["step"] == 7
+
+        dpo_pref_calls = [
+            c
+            for c in mock_probe.log_scalar.call_args_list
+            if c.args[0] == "train/dpo_preferred_err"
+        ]
+        dpo_rej_calls = [
+            c
+            for c in mock_probe.log_scalar.call_args_list
+            if c.args[0] == "train/dpo_rejected_err"
+        ]
+        assert len(dpo_pref_calls) == 1
+        assert len(dpo_rej_calls) == 1
+        assert dpo_pref_calls[0].kwargs.get("step") == 7
+        assert dpo_rej_calls[0].kwargs.get("step") == 7

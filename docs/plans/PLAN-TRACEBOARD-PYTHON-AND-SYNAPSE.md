@@ -10,29 +10,29 @@ stale_after: 2027-11-26T00:00:00Z
 
 > **文档用途**: 作为 **Plan + Implementation Landing Record (Review Baseline)**，供团队成员对 Traceboard Python 化与 Synapse 全链路接入进行 Code Review、架构复核与上线验收。  
 > **涉及仓库**: `dervgen/aether` (Layer 0) + `sautille-stroke/synapse` (Layer 2)  
-> **合入范围**: `aether#523` – `#525`（3 PRs） + `synapse#204` – `#212`（9 PRs，含落地后修复闭环 `#212`），**总计 12 个已合入 PR**  
+> **合入范围**: `aether#523`–`#525`, `#557`–`#560`, `#569`（7 PRs） + `synapse#204`–`#212`, `#215`–`#219` 及 Post-Review 硬化 follow-up  
 > **设计参考**: [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md)  
-> **总体状态**: ✅ **已完成深度整改与硬化闭环（`Wave TR-1 ~ TR-3`, `PR-TR01 ~ PR-TR08` 全绿封板，`traceboard-python-v0.1.0` 已发布）**
+> **总体状态**: ✅ **已完成深度整改与 Post-Review 硬化闭环（`Wave TR-1 ~ TR-3` 全绿封板，`aether-traceboard` `v0.1.1` 已合并至 `aether` `main`）**
 
 > [!NOTE]
-> **Remediation Completed (`2026-11-26`)**:
+> **Remediation & Post-Review Hardening (`2026-11-26`)**:
 > 此前于 [REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 检出的 20 项缺陷（`6×P0` · `9×P1` · `5×P2`）已按 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部整改完成并通过 `Gate TB-1 ~ TB-10` 封板验收：
-> - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · Tag/Release `traceboard-python-v0.1.0`
-> - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215` (`PR-TR04`) · `synapse#216` (`PR-TR05`) · `synapse#217` (`PR-TR06`) · `synapse#218` (`PR-TR07`) · `PR-TR08` (文档与 10 门禁收口)
+> - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · Tag/Release `traceboard-python-v0.1.0` · `aether#569` (`v0.1.1` 安全硬化：`NaN`/非有限比较阈值 fail-closed、NumPy 标量 JSON 强转、`begin_run` 并发锁、UTF-8 截断边界修复)
+> - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215` (`PR-TR04`) · `synapse#216` (`PR-TR05`) · `synapse#217` (`PR-TR06`) · `synapse#218` (`PR-TR07`) · `synapse#219` (`PR-TR08` 文档与 10 门禁收口) + Post-Review 硬化 follow-up
 > - **跨仓协同**: `dervgen/caelum-core#557` (`aether-traceboard` v0.1 API 迁移) · `dervgen/all-overview#770` (`DUP-17` 双向黄金测试门禁)
 
 ---
 
 ## 0. 执行摘要 (Executive Summary)
 
-为使 `synapse`（Python 算法 SDK / 无状态 Worker / Synapse-Bench）能够复用 `aether` 生态现有的结构化实验追踪能力（`.tbevt` 线格式），而不反向依赖重型 C++ 构建环境，本次改造分 **4 个 Horizon（原计划 12 个 PR + 1 个落地后修复闭环 PR `#212`）** 完成跨仓落地：
+为使 `synapse`（Python 算法 SDK / 无状态 Worker / Synapse-Bench）能够复用 `aether` 生态现有的结构化实验追踪能力（`.tbevt` 线格式），而不反向依赖重型 C++ 构建环境，本次改造分初始落地（`aether#523`–`#525` + `synapse#204`–`#212`）与三波深度整改硬化（`Wave TR-1 ~ TR-3` + `aether#569`）完成跨仓闭环：
 
 | 维度 | 统计指标（已合入 `main` 验证） | 说明 |
 |---|---|---|
-| **`aether` 侧交付** | `6 PRs` (`#523`–`#525`, `#557`, `#558`, `#560`) | 纯 Python SDK `aether-traceboard v0.1.0`、双向 C++↔Py 黄金测试 (`bazel test //traceboard:all` + `173 passed`)、洁净 Wheel、Publish CI 与 `traceboard-python-v0.1.0` Release |
-| **`synapse` 侧交付** | `14 PRs` (`#204`–`#212`, `#215`–`#218`, `PR-TR08`) | `synapse.observability` 原子封装与协议、全位置 CLI `--traceboard`、`bundle_worker`/`scheduler`/`refine`/9+ 子系统与富媒体埋点、`5/5` CI 全绿 |
+| **`aether` 侧交付** | `7 PRs` (`#523`–`#525`, `#557`, `#558`, `#560`, `#569`) | 纯 Python SDK `aether-traceboard`（`v0.1.0` Release → `v0.1.1` 安全硬化）、双向 C++↔Py 黄金测试 (`bazel test //traceboard:all` 4/4 + `177 passed, 1 skipped`)、洁净 Wheel 与 Publish CI |
+| **`synapse` 侧交付** | `14+ PRs` (`#204`–`#212`, `#215`–`#219` + 硬化 follow-up) | `synapse.observability` 原子封装与协议、全位置 CLI `--traceboard`、`bundle_worker` 沙箱/全子系统富媒体埋点、`5/5` CI 全绿 |
 | **跨仓协同交付** | `caelum-core#557` · `all-overview#770` | `caelum-core` 迁移至 `aether-traceboard` v0.1 API；`all-overview` `DUP-17` 锁死双向黄金门禁 |
-| **新增/验证测试** | `aether`: **154 passed** · `synapse`: **68 项 Traceboard 专项测试** | 含真实 `.tbevt` 读写、`CRC-32` 校验、`RUN_START`/`STAGE`/`TABLE`/`ARTIFACT` E2E 闭环 |
+| **新增/验证测试** | `aether`: **177 passed, 1 skipped** + **4/4 Bazel** · `synapse`: **86+ 项 Traceboard 专项测试** | 覆盖 7 个测试模块，含真实 `.tbevt` 读写、`CRC-32` 校验、`IMAGE`/`HISTOGRAM`/`COMPARISON`/`TABLE`/`ARTIFACT` 与 Worker 沙箱校验 |
 | **零侵入与安全门禁** | `ruff` 0 错 · `mypy --strict` 0 错 · `import_dag_guard` clean | `observability` 归属 Tier 0；`import synapse` 保持 PEP 562 零副作用懒加载 |
 
 ---
@@ -45,15 +45,15 @@ stale_after: 2027-11-26T00:00:00Z
 flowchart LR
     subgraph Layer0 ["Layer 0: dervgen/aether (SSOT)"]
         CPP["@aether//traceboard\nC++20 Probe SDK ✅"]
-        PYSDK["aether-traceboard (v0.1.0)\n纯 Python SDK (仅依赖 numpy) ✅"]
-        SPEC[".tbevt Wire Format Spec v1\n& Golden Contract (1,567B) ✅"]
+        PYSDK["aether-traceboard (v0.1.1)\n纯 Python SDK (仅依赖 numpy) ✅"]
+        SPEC[".tbevt Wire Format Spec v1\n& Golden Contract (1,657B Py) ✅"]
         CPP --> SPEC
         PYSDK --> SPEC
     end
 
     subgraph Layer2 ["Layer 2: sautille-stroke/synapse"]
         OBS["Tier 0: synapse.observability\ninit_traceboard / get_probe /\nshutdown_traceboard / traceboard_stage ✅"]
-        INST["9 个子系统 14 处非侵入埋点\nbench / pipeline / training / rsi /\nrecon / inspect / adapters / style / composite ✅"]
+        INST["全链路非侵入与富媒体埋点\nbench / worker / refine / scheduler / training\nrsi / recon / inspect / adapters / style / composite ✅"]
         EXP["bench.traceboard_export\n双轨导出 (.tbevt ∥ HTML) ✅"]
         CLI["CLI & Scripts --traceboard\nsynapse / synapse-bench /\ncolab_runner / run_cpu_verification ✅"]
 
@@ -74,7 +74,7 @@ flowchart LR
 | **3** | **PEP 562 零导入副作用** | `observability` 登记在 [\_\_init\_\_.py](../../python/synapse/__init__.py) `_SUBMODULES` 延迟表；`import synapse` 或 `from synapse import observability` 均不触发初始化或 I/O（已由 `TestLazyImportIsolation` 断言锁死）。 |
 | **4** | **缺失时 Graceful Degradation** | `init_traceboard()` 在缺包或初始化异常时捕获处理并置 `get_probe() -> None`；业务埋点统一走 `probe = get_probe(); if probe is not None and probe.active:`，无 Probe 时退化为单次空检查。 |
 | **5** | **零重型依赖** | `aether-traceboard` 唯一运行时依赖为 `numpy>=1.24.0`（`pyproject.toml` 声明 `requires-python >= 3.10` + `py.typed`），不引入 `torch` / C++ 扩展；`synapse` 保持 `requires-python >= 3.12`。 |
-| **6** | **`.tbevt` 线格式字节兼容** | 严格实现 `.tbevt` v1 文件头（`TBEV` magic、`uint32` version=1、`uint64` SHA-256 `runIdHash`）、记录头、payload 与 IEEE `CRC-32`（`zlib.crc32`），配合 `python_reference.tbevt` 防止跨语言漂移。 |
+| **6** | **`.tbevt` 线格式字节兼容** | 严格实现 `.tbevt` v1 文件头（`TBEV` magic、`uint16` version=1、`uint16` flags=0、`uint64` SHA-256 `runIdHash`）、记录头、payload 与 IEEE `CRC-32`（`zlib.crc32`），配合 `python_reference.tbevt` 与双向 C++ 黄金测试防止跨语言漂移。 |
 
 ---
 
@@ -129,19 +129,19 @@ flowchart TD
 | **PR-TR05** | Wave TR-2 | `synapse#216` | `289be5c` | `trainer`/`curriculum` 单调 `step`、`dual_verifier`/`jev_critic` 低基数收口、`compute_pillar_scores` SSOT | 243 文件 mypy 0 错 | ✅ |
 | **PR-TR06** | Wave TR-2 | `synapse#217` | `e5a03d0` | Colab NVMe staging 原子同步、`cpu_verification` `finally:` 刷盘、typed `ProbeProtocol` mocks & CI `.tbevt` smoke | 5/5 CI 全绿 | ✅ |
 | **PR-TR07** | Wave TR-3 | `synapse#218` | `255d187` | `bundle_worker`、`ConditionScheduler`、`LocalRefinementPipeline` (`COMPARISON`)、`bench_runner --tb-media` & `ARTIFACT` | 5/5 CI 全绿 | ✅ |
-| **PR-TR08** | Wave TR-3 | — | `pending` | `Gate TB-1..TB-10` 全绿验收、设计/计划文档对齐、`caelum-core#557` & `all-overview#770` 跨仓闭环 | 文档/门禁全绿 | ✅ |
+| **PR-TR08** | Wave TR-3 | `synapse#219` | `cb4589d` | `Gate TB-1..TB-10` 全绿验收、设计/计划文档对齐、`caelum-core#557` & `all-overview#770` 跨仓闭环 | 文档/门禁全绿 | ✅ |
 
 ---
 
 ## 3. 详细落地内容清单 (Detailed Landing Inventory)
 
-### 3.1 `dervgen/aether` 侧：`aether-traceboard` Python SDK (`#523`–`#525`)
+### 3.1 `dervgen/aether` 侧：`aether-traceboard` Python SDK (`#523`–`#525`, `#557`–`#560`, `#569`)
 
 #### 核心包 (`aether/traceboard/python/aether_traceboard/`)
 
 | 文件路径 | 核心职责与实现细节 |
 |---|---|
-| `aether_traceboard/__init__.py` | 导出公开契约：`Probe`, `get_probe`, `StageContext`, `ProbeCollector`, `FileCollector`, `EventType`, `ImageFormat`, `StageStatus`, `Record`, `FileHeader`, `read_file`, `read_events`, `__version__="0.1.0"`。 |
+| `aether_traceboard/__init__.py` | 导出公开契约：`Probe`, `get_probe`, `StageContext`, `ProbeCollector`, `FileCollector`, `EventType`, `ImageFormat`, `StageStatus`, `Record`, `FileHeader`, `read_file`, `read_events`, `__version__="0.1.1"`。 |
 | `aether_traceboard/_types.py` | 定义 `EventType`（`SCALAR=0`, `IMAGE=1`, `HISTOGRAM=2`, `TEXT=3`, `COMPARISON=4`, `TABLE=5`, `ARTIFACT=6`, `SERIES_GROUP=7`, `RUN_START=240`, `RUN_END=241`, `STAGE_BEGIN=242`, `STAGE_END=243`, `CONFIG=244`）、`ImageFormat` 与 `StageStatus`。 |
 | `aether_traceboard/_crc32.py` / `_hash.py` | 复用标准库 `zlib.crc32` 计算 IEEE CRC-32 与 SHA-256 截断生成小端 `uint64` `runIdHash`。 |
 | `aether_traceboard/event.py` | 完整的 `.tbevt` v1 二进制封包/解包（`FileHeader` 16B、`RecordHeader` 32B、`pack_*/unpack_*` 全 13 类事件），严格小端对齐与 CRC 校验。 |
@@ -153,59 +153,63 @@ flowchart TD
 #### 跨语言黄金契约与打包 (`aether/traceboard/tests/golden/` & CI)
 
 - **黄金测试套件** (`traceboard/tests/golden/`):
-  - `generate_python_golden.py`: 在固定时间戳生成涵盖全部 13 类事件共 17 条记录的 `python_reference.tbevt`（`1,567 bytes`，已入库追踪）。
-  - `verify_golden.py`: 独立 5 阶段校验脚本（文件头、记录内容、CRC-32 扫描、manifest 对齐、字节级确定性重生成对比）。
-  - `test_golden.py`: 17 个测试类 / 43 个测试函数（经参数化展开 50 项用例），额外锁死 4 组 SHA-256 `run_id_hash` 跨语言参考向量。
+  - `generate_python_golden.py`: 在固定时间戳生成涵盖全部 13 类事件共 17 条记录的 `python_reference.tbevt`（`1,657 bytes`，已入库追踪）。
+  - `verify_golden.py`: 独立 5 阶段校验脚本（文件头、记录内容、CRC-32 扫描、manifest 对齐、字节级确定性重生成对比 Python 黄金参考文件；C++ 双向黄金验证由 `test_golden.py` 与 `//traceboard:test_golden_interop` 承担）。
+  - `test_golden.py`: 跨语言双向黄金契约测试（C++↔Python 双向互读、4 组 SHA-256 `run_id_hash` 参考向量与 5 类富媒体/控制流对齐）。
 - **发布元数据与 CI**: `aether/traceboard/python/{pyproject.toml, README.md, LICENSE}` 与 `.github/workflows/traceboard-python-publish.yml`（Python `3.10`/`3.11`/`3.12` × `ubuntu`/`macos` 测试矩阵）。
 
 ---
 
-### 3.2 `sautille-stroke/synapse` 侧：集成层、全模块埋点与双轨导出 (`#204`–`#212`)
+### 3.2 `sautille-stroke/synapse` 侧：集成层、全模块埋点与双轨导出 (`#204`–`#212`, `#215`–`#219`)
 
 #### A. 核心集成层、CLI 与工程护栏
 
 | 模块/文件 | 落地内容 | 关键接口/标志 |
 |---|---|---|
-| [observability.py](../../python/synapse/observability.py) | Thin wrapper 单例管理与异常隔离；先 `activate()` 后 `begin_run()`（保证写入 `RUN_START`）。 | `init_traceboard()`, `get_probe()`, `shutdown_traceboard()`, `traceboard_stage()` |
+| [observability.py](../../python/synapse/observability.py) | Thin wrapper 单例管理与异常隔离；`RLock` + 原子化 `init_traceboard()` 回滚、显式签名的 `_accepts_kwarg`、`ProbeProtocol`/`StageProtocol` 与 `bound_image_u8()` / `safe_log_{image,histogram,comparison}`。 | `init_traceboard()`, `get_probe()`, `shutdown_traceboard()`, `traceboard_stage()` |
 | [\_\_init\_\_.py](../../python/synapse/__init__.py) | 在 `_SUBMODULES` / `TYPE_CHECKING` / `__all__` 注册 `"observability"`。 | PEP 562 延迟加载 |
 | [pyproject.toml](../../pyproject.toml) | 新增 optional extra `traceboard = ["aether-traceboard>=0.1.0"]`、`[full]` 纳管，及 `mypy` override。 | `pip install -e ".[traceboard]"` |
-| [cli/common.py](../../python/synapse/cli/common.py) & [cli/_app.py](../../python/synapse/cli/_app.py) | 为 `synapse` 与 `synapse-bench` 双入口注册 `--traceboard LOG_DIR`，在 `finally:` 确保 `shutdown_traceboard()` 刷盘。 | `synapse [--traceboard LOG_DIR] ...` |
+| [cli/common.py](../../python/synapse/cli/common.py) & [cli/_app.py](../../python/synapse/cli/_app.py) | 为 `synapse` 与 `synapse-bench` 双入口通过 `get_json_parent_parser()` 注册 `--traceboard LOG_DIR`，并在 `finally:` 确保 `shutdown_traceboard()` 刷盘。 | `synapse [--traceboard LOG_DIR] ...` |
 | [tools/import_dag_guard.py](../../tools/import_dag_guard.py) & [ARCHITECTURE.md](../ARCHITECTURE.md) | `observability` 注册为 **Tier 0**，同步更新权威架构目录树以通过 `test_profiles_doc_sync.py`。 | `python tools/import_dag_guard.py --check` |
 
-#### B. 9 个子系统 · 14 处模块埋点全览
+#### B. 全子系统非侵入埋点与富媒体观测全览
 
 所有埋点均采用延迟局部或安全门卫模式：`probe = get_probe(); if probe is not None and probe.active:`，无 Probe 时开销仅单次 `None` 判断：
 
 | 子系统 | 源码文件 | 埋点函数 / 方法 | 记录的 Traceboard 事件与 Tag 命名空间 |
 |---|---|---|---|
-| **pipeline** | [bench_runner.py](../../python/synapse/pipeline/bench_runner.py) | `run_scenario()`, `run_all()` | `traceboard_stage("bench/run_all")`, `traceboard_stage("bench/{scenario}")`, `log_scalar("bench/{scenario}/{metric\|timing\|num_frames}")`, `stage.set_pass()` / `stage.set_fail()` |
-| **bench** | [compare.py](../../python/synapse/bench/compare.py) | `compare_runs()` | `traceboard_stage("bench/compare")`, `log_table("bench/compare/leaderboard", columns, rows)` |
-| **bench** | [report.py](../../python/synapse/bench/report.py) | `generate_html_report()` | `log_artifact("bench/report", {"filename": ..., "mime_type": "text/html"}, html_bytes)` |
-| **bench** | [traceboard_export.py](../../python/synapse/bench/traceboard_export.py) | `export_reports_to_traceboard()` | 独立离线转换：`scenario/{name}/passed`, `scenario/{name}/metrics/*`, `scenario/{name}/timing/*`, `summary/*`, `pillar/*` |
-| **training** | [trainer.py](../../python/synapse/training/trainer.py) | `inject_lora()`, `save_state_dict()`, `train_step()` | `log_scalar`: `train/lora_injected_layers`, `train/total_params`, `train/trainable_params`, `train/checkpoint_step`, `train/loss`, `train/step`, `train/lr_multiplier`, `train/dpo_beta` |
-| **training** | [losses.py](../../python/synapse/training/losses.py) | `DiffusionDPOLoss.__call__()` | `log_scalar`: `train/dpo_preferred_err`, `train/dpo_rejected_err` |
+| **pipeline** | [bench_runner.py](../../python/synapse/pipeline/bench_runner.py) | `run_scenario()`, `run_all()`, `tb_media` 媒体开关 | `traceboard_stage("bench/run_all")`, `traceboard_stage("bench/{scenario}")`, `log_scalar("bench/scenario/{scenario}/{passed\|metrics/*\|timing/*\|num_frames}")`, `IMAGE`/`HISTOGRAM` (`--tb-media`), `stage.set_pass()` / `stage.set_fail()` |
+| **pipeline** | [bundle_worker.py](../../python/synapse/pipeline/bundle_worker.py) | `JobBundleWorker.execute()`, `run_worker_cli()` | `traceboard_stage("worker/{stage}")`, `worker/{exit_code\|elapsed_s\|output_file_count\|succeeded}`, `TEXT` (`worker/trace_id`, `worker/fallback_level`), `workspace_root` 沙箱校验 `traceboard_dir` |
+| **bench** | [compare.py](../../python/synapse/bench/compare.py) | `compare_runs()`, `render_comparison_html()` | `traceboard_stage("bench/compare")`, `log_table("bench/compare/leaderboard", columns, rows)`, `ARTIFACT` (`bench/compare_report`) |
+| **bench** | [report.py](../../python/synapse/bench/report.py) | `generate_html_report()` | `log_artifact("bench/report", {"filename": ..., "mime_type": "text/html", "size_bytes": ...}, html_bytes)` |
+| **bench** | [traceboard_export.py](../../python/synapse/bench/traceboard_export.py) | `export_reports_to_traceboard()` | 独立离线转换（复用 `compute_pillar_scores()` SSOT）：`bench/scenario/{name}/passed`, `bench/scenario/{name}/metrics/*`, `bench/scenario/{name}/timing/*`, `bench/summary/*`, `bench/pillar/*` |
+| **training** | [trainer.py](../../python/synapse/training/trainer.py) | `inject_lora()`, `save_state_dict()`, `train_step()`, `_dpo_step()` | `log_scalar`: `train/lora_injected_layers`, `train/total_params`, `train/trainable_params`, `train/checkpoint_step`, `train/loss`, `train/step`, `train/lr_multiplier`, `train/dpo_beta`（并传递 `step=step` 至 DPO 损失） |
+| **training** | [losses.py](../../python/synapse/training/losses.py) | `DiffusionDPOLoss.__call__()` | `log_scalar(..., step=step)`: `train/dpo_preferred_err`, `train/dpo_rejected_err` |
 | **training** | [packager.py](../../python/synapse/training/packager.py) | `package_and_gate_lora_bundle()` | `log_scalar`: `train/package_passed`, `train/package/{metric}` |
 | **rsi** | [promotion_gate.py](../../python/synapse/rsi/promotion_gate.py) | `evaluate_monotonic_promotion()` | `log_scalar("rsi/promotion/*")`, `log_table("rsi/promotion/quarantine", columns, q_rows)` |
 | **rsi** | [curriculum.py](../../python/synapse/rsi/curriculum.py) | `analyse_weaknesses()`, `sample_scenarios()`, `plan_round()` | `log_scalar("rsi/curriculum/{weight/*\|round_idx\|num_scenarios}")`, `log_text("rsi/curriculum/{weak_factors\|factor_distribution}")` |
-| **rsi** | [dual_verifier.py](../../python/synapse/rsi/dual_verifier.py) | `verify_physics()`, `_log_verdict()` | `log_scalar("rsi/verifier/{physics_passed\|<check>\|prm_score}/{sample_id}")`, `log_text("rsi/verifier/{failures\|verdict}/{sample_id}")` |
+| **rsi** | [dual_verifier.py](../../python/synapse/rsi/dual_verifier.py) | `verify_physics()`, `_log_verdict()` | 低基数固定 Tag：`log_scalar("rsi/verifier/{physics_passed\|prm_score\|<check>}", step=_traceboard_step)`、`log_table("rsi/verifier/verdicts", columns, rows)` |
 | **recon** | [pipeline.py](../../python/synapse/recon/pipeline.py) | `ReconPipeline.run()` | `log_scalar`: `recon/pipeline/{elapsed_s\|num_frames\|mesh_vertex_count\|mesh_face_count\|is_manifold\|albedo_delta_e\|foot_slip_cm_s\|jev_quality_score}` |
-| **inspect** | [jev_critic.py](../../python/synapse/inspect/jev_critic.py) | `VisualJevCritic.evaluate()` | `log_scalar("inspect/jev/{asset_id}/*")`, `log_table("inspect/jev/{asset_id}/defects", columns, rows)` |
-| **adapters** | [wan.py](../../python/synapse/adapters/wan.py) | `WanAdapter.generate()` | `log_scalar`: `adapter/wan/{num_output_frames\|output_height\|output_width\|guidance_scale\|num_inference_steps\|seed\|gamma_flow_bias\|has_lora\|total_frames\|window_size}` |
+| **inspect** | [jev_critic.py](../../python/synapse/inspect/jev_critic.py) | `VisualJevCritic.evaluate()` | 低基数固定 Tag：`log_scalar("inspect/jev/{overall_quality\|defect_count\|requires_hitl}")`、`log_table("inspect/jev/defects", columns, rows)` |
+| **adapters** | [wan.py](../../python/synapse/adapters/wan.py), [scheduler.py](../../python/synapse/adapters/scheduler.py) | `WanAdapter.generate()`, `ConditionScheduler` | `adapter/wan/*`、`adapter/scheduler/{window_idx\|overlap_frames\|shot_cut_reanchor\|window_elapsed_s}`（按 `step=window_index`） |
+| **refine** | [pipeline.py](../../python/synapse/refine/pipeline.py) | `LocalRefinementPipeline.run()` | `refine/{border_psnr_db\|border_ciede2000\|temporal_warp_error\|num_patches_fused\|passed}` 与 `COMPARISON` (`refine/anatomical_patch`，含 `strict=True` 门禁失败前上报) |
 | **style** | [extractor.py](../../python/synapse/style/extractor.py) | `extract_style_optical()`, `extract_style_fgpp_intrinsic()` | `log_scalar("style/optical/*")`, `log_scalar("style/fgpp/num_light_samples")`, `log_scalar("style/fgpp/ambient_ratio")`, `log_text("style/fgpp/key_light_dir")` |
 | **composite** | [blend.py](../../python/synapse/composite/blend.py) | `composite_surgical_sequence()` | `log_scalar`: `composite/surgical/{num_frames\|height\|width\|ema_alpha\|mean_mask_coverage\|has_motion_vectors}` |
 
 #### C. Colab / CPU 验证 / CI 与测试资产
 
 - **脚本集成**:
-  - [scripts/colab_runner.py](../../scripts/colab_runner.py): 新增 `--traceboard` 开关，激活后写入 `{job_dir}/traceboard/`，在 `finally` 块刷盘关闭（在 `--auto-release` 前执行）。
-  - [scripts/run_cpu_verification.py](../../scripts/run_cpu_verification.py): 新增 `--traceboard` 开关，输出 `cpu_verify/*` 阶段与耗时指标到 `{report_out.parent}/traceboard/`。
-  - [workenv/google-colab/setup_colab.sh](../../workenv/google-colab/setup_colab.sh) & [.github/workflows/ci.yml](../../.github/workflows/ci.yml): 优先使用同级 `../aether/traceboard/python` editable 安装；缺失 PyPI 包时优雅降级并告警，不阻断主流程。
-- **测试套件（共 68 项 Traceboard 专项用例）**:
-  - [tests/test_observability.py](../../tests/test_observability.py): 31 项（生命周期、单次/重init、stage RAII、懒加载隔离、CLI flag、4 项真 SDK `.tbevt` + CRC-32 E2E）。
-  - [tests/test_rsi_recon_traceboard.py](../../tests/test_rsi_recon_traceboard.py): 13 项（RSI 门禁/课程/双验证、ReconPipeline、VisualJevCritic 及真 SDK `TABLE` E2E）。
-  - [tests/test_traceboard_export.py](../../tests/test_traceboard_export.py): 11 项（双轨 `.tbevt` 导出、4 支柱得分算法与 `bench/report.py` + `bench/compare.py` 真 SDK `ARTIFACT`/`TABLE` E2E）。
-  - [tests/test_adapters_style_traceboard.py](../../tests/test_adapters_style_traceboard.py): 7 项（`WanAdapter`、`extract_style_*`、`composite_surgical_sequence`）。
-  - [tests/test_training_traceboard.py](../../tests/test_training_traceboard.py): 6 项（`StatelessLoRATrainer`、`packager`、`DiffusionDPOLoss`）。
+  - [scripts/colab_runner.py](../../scripts/colab_runner.py): 支持 `--traceboard [LOG_DIR]`；目标位于 Google Drive FUSE 挂载路径时启用 NVMe-first 暂存（本地 `/tmp` 写入，`finally` 关停刷盘后 `shutil.copy2` + `os.replace` 原子同步至 `{job_dir}/traceboard/`，并早于 `--auto-release` 执行）。
+  - [scripts/run_cpu_verification.py](../../scripts/run_cpu_verification.py): 支持 `--traceboard [LOG_DIR]`，并在 `try...finally` 块中确保早退 `20` 时亦完整刷盘输出 `cpu_verify/*`。
+  - [workenv/google-colab/setup_colab.sh](../../workenv/google-colab/setup_colab.sh) & [.github/workflows/ci.yml](../../.github/workflows/ci.yml): 优先使用同级 `../aether/traceboard/python` editable 安装，通过 `has_tb` 输出状态明确驱动或显式提示跳过 `.tbevt` 实机冒烟校验。
+- **测试套件（共 86+ 项 Traceboard 专项用例，覆盖 7 个测试模块）**:
+  - [tests/test_observability.py](../../tests/test_observability.py): 生命周期、单次/重init、stage RAII、`_accepts_kwarg` 显式签名匹配、懒加载隔离、CLI flag、`bound_image_u8`、真实 SDK `.tbevt` + CRC-32 E2E。
+  - [tests/test_bench_runner_traceboard.py](../../tests/test_bench_runner_traceboard.py): `BenchPipelineRunner` 通过/失败 verdict 与 `set_fail`、关键帧 `IMAGE` / 深度残差 `HISTOGRAM` 校验。
+  - [tests/test_pr07_rich_media_and_worker.py](../../tests/test_pr07_rich_media_and_worker.py): `bundle_worker` Traceboard 注入与 `workspace_root` 沙箱边界、`ConditionScheduler` 滑窗指标、`LocalRefinementPipeline`（含 `strict=True` 失败）`COMPARISON` 卡与 `render_comparison_html` `ARTIFACT`。
+  - [tests/test_rsi_recon_traceboard.py](../../tests/test_rsi_recon_traceboard.py): RSI 门禁/课程/双验证、`ReconPipeline`、`VisualJevCritic` 及真 SDK `TABLE` 低基数 E2E。
+  - [tests/test_traceboard_export.py](../../tests/test_traceboard_export.py): 双轨 `.tbevt` 导出、`compute_pillar_scores()` 4 支柱得分 SSOT 与 `bench/report.py` + `bench/compare.py` 真 SDK `ARTIFACT`/`TABLE` E2E。
+  - [tests/test_adapters_style_traceboard.py](../../tests/test_adapters_style_traceboard.py): `WanAdapter`、`extract_style_*`、`composite_surgical_sequence`。
+  - [tests/test_training_traceboard.py](../../tests/test_training_traceboard.py): `StatelessLoRATrainer`（含 DPO `step` 传递）、`packager`、`DiffusionDPOLoss`。
 
 ---
 
