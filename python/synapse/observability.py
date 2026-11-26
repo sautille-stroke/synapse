@@ -372,6 +372,83 @@ def safe_log_artifact(
         logger.debug("Traceboard safe_log_artifact(%r) failed", tag, exc_info=True)
 
 
+def bound_image_u8(
+    image: Any,
+    *,
+    max_dim: int = 512,
+    is_linear: bool = False,
+) -> Any:
+    """Convert an array to bounded-resolution ``uint8`` RGB/grayscale for telemetry."""
+    import numpy as np
+
+    arr = np.asarray(image)
+    if arr.ndim == 2:
+        h, w = arr.shape
+    elif arr.ndim == 3:
+        h, w = arr.shape[:2]
+    else:
+        raise ValueError(f"Expected 2D or 3D image array, got shape {arr.shape}")
+
+    if max_dim > 0 and max(h, w) > max_dim:
+        stride = (max(h, w) + max_dim - 1) // max_dim
+        arr = arr[::stride, ::stride]
+
+    if arr.dtype == np.uint8:
+        return np.ascontiguousarray(arr)
+
+    arr_f = np.nan_to_num(arr.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+    if is_linear or float(np.max(arr_f)) <= 1.0 + 1e-6:
+        clamped = np.clip(arr_f, 0.0, 1.0)
+        if is_linear:
+            clamped = np.power(clamped, 1.0 / 2.2)
+        return np.ascontiguousarray(np.round(clamped * 255.0).astype(np.uint8))
+    return np.ascontiguousarray(np.clip(arr_f, 0.0, 255.0).astype(np.uint8))
+
+
+def safe_log_image(
+    tag: str,
+    image: Any,
+    *,
+    max_dim: int | None = 512,
+    is_linear: bool = False,
+    step: int | None = None,
+) -> None:
+    """Fail-safe bounded-resolution uint8 image logger."""
+    probe = get_probe()
+    if probe is None or not probe.active:
+        return
+    try:
+        payload_img = (
+            bound_image_u8(image, max_dim=max_dim, is_linear=is_linear)
+            if max_dim is not None
+            else image
+        )
+        probe.log_image(tag, payload_img, step=step)
+    except Exception:
+        logger.debug("Traceboard safe_log_image(%r) failed", tag, exc_info=True)
+
+
+def safe_log_histogram(
+    tag: str,
+    edges: Any,
+    counts: Any,
+    *,
+    step: int | None = None,
+) -> None:
+    """Fail-safe histogram logger converting inputs to float64 arrays."""
+    probe = get_probe()
+    if probe is None or not probe.active:
+        return
+    try:
+        import numpy as np
+
+        edges_arr = np.asarray(edges, dtype=np.float64)
+        counts_arr = np.asarray(counts, dtype=np.float64)
+        probe.log_histogram(tag, edges_arr, counts_arr, step=step)
+    except Exception:
+        logger.debug("Traceboard safe_log_histogram(%r) failed", tag, exc_info=True)
+
+
 def safe_log_comparison(
     tag: str,
     image_a: Any,
