@@ -35,6 +35,7 @@ status: active
 | [AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md) | Guide | active | synapse |
 | [audits/AUDIT-POST-HORIZON9-2026-11.md](audits/AUDIT-POST-HORIZON9-2026-11.md) | Guide | active | synapse |
 | [audits/REVIEW-POST-HORIZON10-2026-11.md](audits/REVIEW-POST-HORIZON10-2026-11.md) | Guide | active | synapse |
+| [audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) | Guide | active | synapse, traceboard, observability, aether, review, audit |
 | [DESIGN_3D_INSPECTION_AND_REFINEMENT.md](DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | Guide | active | synapse |
 | [DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | Guide | active | synapse |
 | [DESIGN_DATA_INSPECTOR.md](DESIGN_DATA_INSPECTOR.md) | Guide | active | synapse |
@@ -58,10 +59,11 @@ status: active
 | [plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md](plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md) | Guide | active | synapse |
 | [plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md](plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) | Guide | active | synapse |
 | [plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) | Guide | active | synapse, traceboard, observability |
+| [plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) | Guide | active | synapse, traceboard, observability, aether, plan, remediation |
 | [SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) | Guide | active | synapse |
 | [SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md](SYN-RFC-0061-LOCAL-REFINEMENT-AND-MULTI-MODEL-FUSION.md) | Guide | active | synapse |
 | [SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md](SYN-RFC-0062-INVERSE-RENDERING-AND-3D-NEURAL-CLOSED-LOOP.md) | Guide | active | rendering, synapse |
 | [SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) | Guide | active | synapse, testing |
 | [WIRE_CONTRACTS.md](WIRE_CONTRACTS.md) | Guide | active | synapse |
 
-> 本索引由 OKF Index Generator 自动生成，共 52 篇文档。
+> 本索引由 OKF Index Generator 自动生成，共 54 篇文档。
