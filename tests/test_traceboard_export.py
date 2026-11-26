@@ -233,14 +233,13 @@ class TestExportWithoutTraceboard:
         import synapse.bench.traceboard_export as mod
 
         with patch.dict("sys.modules", {"aether_traceboard": None}):
-            # Force re-evaluation of the import inside the function
+            # Blocking aether_traceboard must cleanly degrade and return False
             result = mod.export_reports_to_traceboard(
                 _make_reports(),
                 log_dir="/tmp/nonexistent",
                 run_name="test-noop",
             )
-            # May return True if already cached; in a fresh env returns False
-            assert isinstance(result, bool)
+            assert result is False
 
 
 # ---------------------------------------------------------------------------

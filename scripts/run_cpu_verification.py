@@ -28,6 +28,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -469,11 +470,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--traceboard",
-        action="store_true",
-        default=False,
+        nargs="?",
+        const="__AUTO__",
+        default=None,
+        metavar="LOG_DIR",
         help=(
-            "Enable Traceboard observability telemetry. Logs per-experiment "
-            "pass/fail status and timing to a .tbevt file alongside the report."
+            "Enable Traceboard observability telemetry. Optionally specify LOG_DIR "
+            "(defaults to <report-out parent>/traceboard)."
         ),
     )
     args = parser.parse_args()
@@ -483,18 +486,25 @@ def main() -> int:
     if report_out.is_dir():
         report_out = report_out / "cpu_verification_report.json"
 
-    # --- Traceboard initialization (opt-in via --traceboard) ---
-    if args.traceboard:
+    # --- Traceboard initialization (opt-in via --traceboard [LOG_DIR]) ---
+    tb_started = False
+    tb_status = "failed"
+    if args.traceboard is not None:
         try:
             from synapse.observability import init_traceboard
 
-            tb_log_dir = report_out.parent / "traceboard"
+            tb_log_dir = (
+                report_out.parent / "traceboard"
+                if args.traceboard == "__AUTO__"
+                else Path(str(args.traceboard))
+            )
             tb_log_dir.mkdir(parents=True, exist_ok=True)
-            init_traceboard(
+            probe_inst = init_traceboard(
                 log_dir=str(tb_log_dir),
                 run_name="cpu-verification",
                 engine="synapse-cpu-verify",
             )
+            tb_started = probe_inst is not None
             print(f"[traceboard] Telemetry enabled → {tb_log_dir}")
         except Exception as tb_err:
             print(
@@ -503,123 +513,115 @@ def main() -> int:
             )
 
     t0 = time.time()
-    dir_b_17f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_17f"
-    dir_b_97f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_97f"
-    dir_a_17f = args.dataset_root / "track_a_caelum" / "cornell_spheres_17f"
+    try:
+        dir_b_17f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_17f"
+        dir_b_97f = args.dataset_root / "track_b_fulgur" / "course_102_pbr_97f"
+        dir_a_17f = args.dataset_root / "track_a_caelum" / "cornell_spheres_17f"
 
-    bundle_tar = args.dataset_root / "synapse_colab_bundle_v1.tar.gz"
-    if not dir_b_17f.exists() and bundle_tar.is_file():
-        print(f"Extracting {bundle_tar} -> {args.dataset_root} ...")
-        with tarfile.open(bundle_tar, "r:gz") as tar:
-            tar.extractall(path=args.dataset_root, filter="data")
+        bundle_tar = args.dataset_root / "synapse_colab_bundle_v1.tar.gz"
+        if not dir_b_17f.exists() and bundle_tar.is_file():
+            print(f"Extracting {bundle_tar} -> {args.dataset_root} ...")
+            with tarfile.open(bundle_tar, "r:gz") as tar:
+                tar.extractall(path=args.dataset_root, filter="data")
 
-    # SHA-256 manifest verification of EXR frame files BEFORE decoding EXR bytes
-    # (fail-closed if checked == 0 or any file is tampered/missing -> exit code 20)
-    sha_results: dict[str, dict[str, Any]] = {}
-    sha_checked_total = 0
-    sha_failures_total = 0
-    for label, ddir in [
-        ("track_b_17f", dir_b_17f),
-        ("track_b_97f", dir_b_97f),
-        ("track_a_17f", dir_a_17f),
-    ]:
-        sha_res = _check_manifest_sha256(ddir)
-        sha_results[label] = sha_res
-        sha_checked_total += int(sha_res["checked"])
-        sha_failures_total += int(sha_res["failed"])
-        if sha_res["checked"] > 0:
+        # SHA-256 manifest verification of EXR frame files BEFORE decoding EXR bytes
+        # (fail-closed if checked == 0 or any file is tampered/missing -> exit code 20)
+        sha_results: dict[str, dict[str, Any]] = {}
+        sha_checked_total = 0
+        sha_failures_total = 0
+        for label, ddir in [
+            ("track_b_17f", dir_b_17f),
+            ("track_b_97f", dir_b_97f),
+            ("track_a_17f", dir_a_17f),
+        ]:
+            sha_res = _check_manifest_sha256(ddir)
+            sha_results[label] = sha_res
+            sha_checked_total += int(sha_res["checked"])
+            sha_failures_total += int(sha_res["failed"])
+            if sha_res["checked"] > 0:
+                print(
+                    f"  [SHA-256] {label}: {sha_res['passed']}/{sha_res['checked']} passed"
+                    + (f", MISMATCHES: {sha_res['mismatches']}" if sha_res["failed"] else "")
+                )
+
+        if sha_checked_total == 0:
             print(
-                f"  [SHA-256] {label}: {sha_res['passed']}/{sha_res['checked']} passed"
-                + (f", MISMATCHES: {sha_res['mismatches']}" if sha_res["failed"] else "")
+                "ERROR: 0 EXR files had SHA-256 entries in metadata.json. "
+                "Re-run scripts/prepare_datasets.py to generate per-frame SHA-256 checksums.",
+                file=sys.stderr,
             )
+            return 20  # Exit code 20: fail-closed when no checksums were verified
 
-    if sha_checked_total == 0:
-        print(
-            "ERROR: 0 EXR files had SHA-256 entries in metadata.json. "
-            "Re-run scripts/prepare_datasets.py to generate per-frame SHA-256 checksums.",
-            file=sys.stderr,
-        )
-        return 20  # Exit code 20: fail-closed when no checksums were verified
+        if sha_failures_total > 0:
+            print(
+                f"ERROR: {sha_failures_total} SHA-256 checksum mismatch(es) detected. "
+                "EXR files may be corrupted or regenerated without updating the manifest.",
+                file=sys.stderr,
+            )
+            return 20  # Exit code 20: input file SHA256 mismatch
 
-    if sha_failures_total > 0:
-        print(
-            f"ERROR: {sha_failures_total} SHA-256 checksum mismatch(es) detected. "
-            "EXR files may be corrupted or regenerated without updating the manifest.",
-            file=sys.stderr,
-        )
-        return 20  # Exit code 20: input file SHA256 mismatch
+        from synapse.observability import safe_log_scalar, traceboard_stage
 
-    print("Loading Golden FGPP sequences from", args.dataset_root)
-    seq_b_17f = import_fgpp(dir_b_17f, lazy=False)
-    seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
-    seq_a_17f = import_fgpp(dir_a_17f, lazy=False)
-    assert isinstance(seq_b_17f, FGPPSequence)
-    assert isinstance(seq_b_97f, FGPPSequence)
-    assert isinstance(seq_a_17f, FGPPSequence)
+        print("Loading Golden FGPP sequences from", args.dataset_root)
+        seq_b_17f = import_fgpp(dir_b_17f, lazy=False)
+        seq_b_97f = import_fgpp(dir_b_97f, lazy=False)
+        seq_a_17f = import_fgpp(dir_a_17f, lazy=False)
+        assert isinstance(seq_b_17f, FGPPSequence)
+        assert isinstance(seq_b_97f, FGPPSequence)
+        assert isinstance(seq_a_17f, FGPPSequence)
 
-    print("[E1] Verifying 7-ch conditioning ablation & MockVideoAdapter ...")
-    res_e1 = _verify_e1_conditioning_ablation(seq_b_17f, seq_a_17f)
+        experiments_map: dict[str, dict[str, Any]] = {}
+        stage_specs: list[tuple[str, Callable[[], dict[str, Any]]]] = [
+            ("E1_fgpp_conditioning_ablation", lambda: _verify_e1_conditioning_ablation(seq_b_17f, seq_a_17f)),
+            ("E2_acescg_style_and_surgical_composite", lambda: _verify_e2_style_and_composite(seq_a_17f)),
+            ("E3_causal_sliding_window_and_shot_cut", lambda: _verify_e3_long_horizon_scheduler(seq_b_97f)),
+            ("E4_feature_store_and_cryptomatte_lora", lambda: _verify_e4_feature_store_and_multi_lora(seq_a_17f)),
+            ("E5_whitebox_floor_and_synapse_bench", _verify_e5_whitebox_and_synapse_bench),
+        ]
+        for exp_idx, (exp_name, runner_fn) in enumerate(stage_specs):
+            print(f"[{exp_name}] Verifying ...")
+            with traceboard_stage(f"cpu_verify/{exp_name}") as stage:
+                exp_res = runner_fn()
+                experiments_map[exp_name] = exp_res
+                passed = exp_res.get("status") == "PASS"
+                safe_log_scalar(
+                    f"cpu_verify/{exp_name}/passed",
+                    1.0 if passed else 0.0,
+                    step=exp_idx,
+                )
+                if stage is not None:
+                    if passed:
+                        stage.set_pass()
+                    else:
+                        stage.set_fail("experiment_failed")
 
-    print("[E2] Verifying ACEScg style extraction & 16px surgical compositing ...")
-    res_e2 = _verify_e2_style_and_composite(seq_a_17f)
+        elapsed_sec = round(time.time() - t0, 3)
+        report: dict[str, Any] = {
+            "environment": "ubuntu24_cpu_headless",
+            "elapsed_sec": elapsed_sec,
+            "all_passed": True,
+            "sha256_checked": sha_checked_total,
+            "sha256_verification": sha_results,
+            "experiments": experiments_map,
+        }
 
-    print("[E3] Verifying 97-frame sliding window scheduler & shot-cut detector ...")
-    res_e3 = _verify_e3_long_horizon_scheduler(seq_b_97f)
+        report_out.parent.mkdir(parents=True, exist_ok=True)
+        report_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    print("[E4] Verifying WebDataset FeatureStore & Multi-LoRA Cryptomatte masks ...")
-    res_e4 = _verify_e4_feature_store_and_multi_lora(seq_a_17f)
+        safe_log_scalar("cpu_verify/elapsed_sec", elapsed_sec)
+        safe_log_scalar("cpu_verify/all_passed", 1.0)
+        tb_status = "finished"
 
-    print("[E5] Verifying Track-B whitebox floor & 30-scenario Synapse-Bench ...")
-    res_e5 = _verify_e5_whitebox_and_synapse_bench()
+        print(f"ALL E1-E5 CPU BASELINE VERIFICATIONS PASSED! Report -> {report_out}")
+        return 0
+    finally:
+        if tb_started:
+            try:
+                from synapse.observability import shutdown_traceboard
 
-    elapsed_sec = round(time.time() - t0, 3)
-    experiments_map: dict[str, dict[str, Any]] = {
-        "E1_fgpp_conditioning_ablation": res_e1,
-        "E2_acescg_style_and_surgical_composite": res_e2,
-        "E3_causal_sliding_window_and_shot_cut": res_e3,
-        "E4_feature_store_and_cryptomatte_lora": res_e4,
-        "E5_whitebox_floor_and_synapse_bench": res_e5,
-    }
-    report: dict[str, Any] = {
-        "environment": "ubuntu24_cpu_headless",
-        "elapsed_sec": elapsed_sec,
-        "all_passed": True,
-        "sha256_checked": sha_checked_total,
-        "sha256_verification": sha_results,
-        "experiments": experiments_map,
-    }
-
-    report_out.parent.mkdir(parents=True, exist_ok=True)
-    report_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    # --- Log per-experiment pass/fail to Traceboard ---
-    if args.traceboard:
-        try:
-            from synapse.observability import get_probe
-
-            probe = get_probe()
-            if probe is not None and probe.active:
-                for exp_name, exp_res in experiments_map.items():
-                    probe.log_scalar(
-                        f"cpu_verify/{exp_name}/passed",
-                        1.0 if exp_res.get("status") == "PASS" else 0.0,
-                    )
-                probe.log_scalar("cpu_verify/elapsed_sec", elapsed_sec)
-                probe.log_scalar("cpu_verify/all_passed", 1.0)
-        except Exception:
-            pass  # Best-effort telemetry
-
-    # --- Traceboard shutdown ---
-    if args.traceboard:
-        try:
-            from synapse.observability import shutdown_traceboard
-
-            shutdown_traceboard()
-        except Exception:
-            pass
-
-    print(f"ALL E1-E5 CPU BASELINE VERIFICATIONS PASSED! Report -> {report_out}")
-    return 0
+                shutdown_traceboard(status=tb_status)
+            except Exception:
+                pass  # Best-effort telemetry
 
 
 if __name__ == "__main__":

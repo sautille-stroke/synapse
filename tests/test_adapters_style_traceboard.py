@@ -27,8 +27,10 @@ _PATCH_TARGET = "synapse.observability.get_probe"
 
 @pytest.fixture
 def mock_probe() -> MagicMock:
-    """Return a mock Traceboard probe with active=True."""
-    probe = MagicMock()
+    """Return a typed mock Traceboard probe with active=True."""
+    from synapse.observability import ProbeProtocol
+
+    probe = MagicMock(spec=ProbeProtocol)
     probe.active = True
     return probe
 

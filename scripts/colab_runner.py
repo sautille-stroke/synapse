@@ -17,6 +17,7 @@ import os
 import signal
 import sys
 import tarfile
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -262,6 +263,15 @@ def _verify_e1_real_gpu(
     from synapse.adapters import DiffusersWanBackend, VideoGenerationConfig, WanAdapter
 
     gpu_profile = detect_gpu_profile()
+    from synapse.observability import get_probe, safe_log_scalar
+
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_config(
+            "colab/gpu_profile",
+            {str(k): str(v) for k, v in gpu_profile.items()},
+        )
+        safe_log_scalar("colab/gpu/vram_gb", float(gpu_profile.get("vram_gb", 0.0)))
     model_id = os.environ.get("WAN_MODEL_PATH") or str(
         gpu_profile.get("recommended_wan_model", "Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
     )
@@ -545,12 +555,39 @@ def _verify_e6_real_video_twin(
     return metrics
 
 
+def _sync_traceboard_to_drive(
+    staging_dir: Path | None,
+    drive_dir: Path | None,
+) -> None:
+    """Flush active probe buffers and atomically sync `.tbevt` files from NVMe staging to Drive."""
+    if staging_dir is None or drive_dir is None:
+        return
+    try:
+        from synapse.observability import get_probe
+
+        probe = get_probe()
+        if probe is not None:
+            probe.flush()
+    except Exception:
+        pass
+
+    import shutil
+
+    drive_dir.mkdir(parents=True, exist_ok=True)
+    for src_evt in staging_dir.glob("*.tbevt"):
+        tmp_dst = drive_dir / f".{src_evt.name}.tmp"
+        shutil.copy2(src_evt, tmp_dst)
+        tmp_dst.replace(drive_dir / src_evt.name)
+
+
 def run_colab_suite(
     dataset_dir: Path,
     checkpoint_dir: Path,
     experiments: list[str],
     mode: str = "auto",
     video_path: Path | None = None,
+    tb_staging_dir: Path | None = None,
+    tb_drive_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Run selected experiments with per-stage Google Drive checkpointing.
 
@@ -564,6 +601,15 @@ def run_colab_suite(
             (require CUDA WanAdapter; error if unavailable).
     """
     gpu_profile = detect_gpu_profile()
+    from synapse.observability import get_probe, safe_log_scalar, traceboard_stage
+
+    probe = get_probe()
+    if probe is not None and probe.active:
+        probe.log_config(
+            "colab/gpu_profile",
+            {str(k): str(v) for k, v in gpu_profile.items()},
+        )
+        safe_log_scalar("colab/gpu/vram_gb", float(gpu_profile.get("vram_gb", 0.0)))
     use_real_gpu = False
     if mode == "real-gpu":
         if not gpu_profile.get("cuda_available", False):
@@ -670,57 +716,73 @@ def run_colab_suite(
             )
 
     try:
-        for exp in experiments:
+        for exp_idx, exp in enumerate(experiments):
             if exp in state.get("completed", {}):
                 print(f"[SKIP] {exp} already checkpointed in {state_path}")
                 continue
 
             t0 = time.time()
-            if use_real_gpu:
-                if exp == "e1":
-                    assert seq_b is not None
-                    assert seq_a is not None
-                    res = _verify_e1_real_gpu(seq_b, seq_a, checkpoint_dir)
-                elif exp == "e2":
-                    assert seq_a is not None
-                    res = _verify_e2_style_and_composite(seq_a)
-                elif exp == "e3":
-                    assert seq_b_97f is not None
-                    res = _verify_e3_long_horizon_scheduler(seq_b_97f)
-                elif exp == "e4":
-                    assert seq_a is not None
-                    res = _verify_e4_real_gpu(seq_a, checkpoint_dir)
-                elif exp == "e6":
-                    res = _verify_e6_real_video_twin(
-                        checkpoint_dir, video_path=video_path, mode="real-gpu"
-                    )
+            with traceboard_stage(f"colab/{exp}", mode=mode) as exp_stage:
+                if use_real_gpu:
+                    if exp == "e1":
+                        assert seq_b is not None
+                        assert seq_a is not None
+                        res = _verify_e1_real_gpu(seq_b, seq_a, checkpoint_dir)
+                    elif exp == "e2":
+                        assert seq_a is not None
+                        res = _verify_e2_style_and_composite(seq_a)
+                    elif exp == "e3":
+                        assert seq_b_97f is not None
+                        res = _verify_e3_long_horizon_scheduler(seq_b_97f)
+                    elif exp == "e4":
+                        assert seq_a is not None
+                        res = _verify_e4_real_gpu(seq_a, checkpoint_dir)
+                    elif exp == "e6":
+                        res = _verify_e6_real_video_twin(
+                            checkpoint_dir, video_path=video_path, mode="real-gpu"
+                        )
+                    else:
+                        res = {"status": "PASS", "note": f"Stage {exp} completed"}
                 else:
-                    res = {"status": "PASS", "note": f"Stage {exp} completed"}
-            else:
-                if exp == "e1":
-                    assert seq_b is not None
-                    assert seq_a is not None
-                    res = _verify_e1_conditioning_ablation(seq_b, seq_a)
-                elif exp == "e2":
-                    assert seq_a is not None
-                    res = _verify_e2_style_and_composite(seq_a)
-                elif exp == "e3":
-                    assert seq_b_97f is not None
-                    res = _verify_e3_long_horizon_scheduler(seq_b_97f)
-                elif exp == "e4":
-                    assert seq_a is not None
-                    res = _verify_e4_feature_store_and_multi_lora(seq_a)
-                elif exp == "e6":
-                    res = _verify_e6_real_video_twin(
-                        checkpoint_dir, video_path=video_path, mode="mock"
-                    )
-                else:
-                    res = {"status": "PASS", "note": f"Stage {exp} completed"}
+                    if exp == "e1":
+                        assert seq_b is not None
+                        assert seq_a is not None
+                        res = _verify_e1_conditioning_ablation(seq_b, seq_a)
+                    elif exp == "e2":
+                        assert seq_a is not None
+                        res = _verify_e2_style_and_composite(seq_a)
+                    elif exp == "e3":
+                        assert seq_b_97f is not None
+                        res = _verify_e3_long_horizon_scheduler(seq_b_97f)
+                    elif exp == "e4":
+                        assert seq_a is not None
+                        res = _verify_e4_feature_store_and_multi_lora(seq_a)
+                    elif exp == "e6":
+                        res = _verify_e6_real_video_twin(
+                            checkpoint_dir, video_path=video_path, mode="mock"
+                        )
+                    else:
+                        res = {"status": "PASS", "note": f"Stage {exp} completed"}
 
-            res["elapsed_sec"] = round(time.time() - t0, 3)
+                elapsed_exp = round(time.time() - t0, 3)
+                res["elapsed_sec"] = elapsed_exp
+                if exp_stage is not None:
+                    exp_stage.log_metric("elapsed_sec", float(elapsed_exp))
+                    if res.get("status") == "PASS":
+                        exp_stage.set_pass()
+                    else:
+                        exp_stage.set_fail("experiment_failed")
+                safe_log_scalar(
+                    f"colab/{exp}/elapsed_sec", float(elapsed_exp), step=exp_idx
+                )
+                for mk, mv in res.items():
+                    if not isinstance(mv, bool) and isinstance(mv, (int, float)):
+                        safe_log_scalar(f"colab/{exp}/{mk}", float(mv), step=exp_idx)
+
             state.setdefault("completed", {})[exp] = res
             _persist_state(state_path, state)
             print(f"[CHECKPOINT SAVED] {exp} -> {state_path}")
+            _sync_traceboard_to_drive(tb_staging_dir, tb_drive_dir)
     except BaseException:
         # Catch BaseException (not just Exception) to ensure checkpoint state
         # is persisted on KeyboardInterrupt, SystemExit, and SIGTERM signals.
@@ -805,12 +867,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--traceboard",
-        action="store_true",
-        default=False,
+        nargs="?",
+        const="__AUTO__",
+        default=None,
+        metavar="LOG_DIR",
         help=(
-            "Enable Traceboard observability telemetry. Logs scalar metrics, "
-            "GPU profile, and experiment results to {job_dir}/traceboard/ "
-            "as .tbevt files. Requires aether-traceboard>=0.1.0."
+            "Enable Traceboard observability telemetry. Optionally specify LOG_DIR "
+            "(defaults to NVMe staging synced atomically to {job_dir}/traceboard/)."
         ),
     )
     args = parser.parse_args()
@@ -838,19 +901,41 @@ def main() -> int:
     if is_cloud_job:
         init_job_workspace(job_dir, args.user, args.job_id, today)
 
-    # --- Traceboard initialization (opt-in via --traceboard) ---
-    if args.traceboard:
+    # --- Traceboard initialization (SSOT V2.0: stage on NVMe, sync to Drive on finalize) ---
+    tb_started = False
+    tb_status = "failed"
+    tb_staging_dir: Path | None = None
+    tb_drive_dir: Path | None = None
+    if args.traceboard is not None:
         try:
             from synapse.observability import init_traceboard
 
-            tb_log_dir = job_dir / "traceboard"
-            tb_log_dir.mkdir(parents=True, exist_ok=True)
-            init_traceboard(
-                log_dir=str(tb_log_dir),
+            target_drive_tb = (
+                job_dir / "traceboard"
+                if args.traceboard == "__AUTO__"
+                else Path(str(args.traceboard))
+            )
+            norm_tb = str(target_drive_tb).replace("\\", "/")
+            if "/drive/" in norm_tb or "MyDrive" in norm_tb:
+                nvme_base = (
+                    Path("/content/work/traceboard")
+                    if Path("/content").is_dir()
+                    else Path(os.environ.get("TMPDIR") or tempfile.gettempdir())
+                    / "synapse_tb_staging"
+                )
+                tb_staging_dir = nvme_base / f"{args.user}_{today}_{args.job_id}"
+                tb_drive_dir = target_drive_tb
+            else:
+                tb_staging_dir = target_drive_tb
+
+            tb_staging_dir.mkdir(parents=True, exist_ok=True)
+            probe_inst = init_traceboard(
+                log_dir=str(tb_staging_dir),
                 run_name=args.job_id,
                 engine="synapse-colab",
             )
-            print(f"[traceboard] Telemetry enabled → {tb_log_dir}")
+            tb_started = probe_inst is not None
+            print(f"[traceboard] Telemetry enabled → {tb_staging_dir}")
         except Exception as tb_err:
             print(
                 f"[traceboard] WARNING: init failed ({tb_err}); continuing without telemetry.",
@@ -873,12 +958,19 @@ def main() -> int:
             exps,
             mode=args.mode,
             video_path=args.video,
+            tb_staging_dir=tb_staging_dir,
+            tb_drive_dir=tb_drive_dir,
         )
+        tb_status = "finished"
         t_duration = time.time() - t_start
         if is_cloud_job:
             finalize_job_workspace(job_dir, state, t_duration, status="COMPLETED")
         print(json.dumps(state, indent=2))
         return 0
+    except SystemExit as exit_exc:
+        if exit_exc.code == 143:
+            tb_status = "cancelled"
+        raise
     except SynapseError as err:
         t_duration = time.time() - t_start
         # Preserve completed experiment metrics in job.json on failure
@@ -919,12 +1011,13 @@ def main() -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
-        # Flush and shut down Traceboard probe if it was initialized
-        if args.traceboard:
+        # Flush and shut down Traceboard probe, then atomically sync Drive copy if staged on NVMe
+        if tb_started:
             try:
                 from synapse.observability import shutdown_traceboard
 
-                shutdown_traceboard()
+                shutdown_traceboard(status=tb_status)
+                _sync_traceboard_to_drive(tb_staging_dir, tb_drive_dir)
                 print("[traceboard] Telemetry flushed and shut down.")
             except Exception:
                 pass  # Best-effort cleanup

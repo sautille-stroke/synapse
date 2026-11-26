@@ -50,7 +50,7 @@ class TestGetProbe:
     def test_returns_probe_after_successful_init(self, tmp_path: Path) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_instance = MagicMock()
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
         mock_probe_cls.return_value = mock_probe_instance
         mock_collector_cls = MagicMock()
 
@@ -64,7 +64,7 @@ class TestGetProbe:
 
     def test_returns_none_after_shutdown(self) -> None:
         obs = _reset_obs()
-        obs._probe = MagicMock()
+        obs._probe = MagicMock(spec=obs.ProbeProtocol)
         obs._initialized = True
         obs.shutdown_traceboard()
         assert obs.get_probe() is None
@@ -81,7 +81,7 @@ class TestInitTraceboard:
     def test_init_success(self, tmp_path: Path) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_instance = MagicMock()
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
         mock_probe_cls.return_value = mock_probe_instance
         mock_collector_cls = MagicMock()
 
@@ -101,7 +101,7 @@ class TestInitTraceboard:
     def test_init_no_auto_activate(self, tmp_path: Path) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_instance = MagicMock()
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
         mock_probe_cls.return_value = mock_probe_instance
         mock_collector_cls = MagicMock()
 
@@ -120,7 +120,7 @@ class TestInitTraceboard:
     def test_init_custom_engine(self, tmp_path: Path) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_instance = MagicMock()
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
         mock_probe_cls.return_value = mock_probe_instance
         mock_collector_cls = MagicMock()
 
@@ -148,7 +148,7 @@ class TestInitTraceboard:
 
     def test_double_init_returns_existing_probe(self) -> None:
         obs = _reset_obs()
-        existing_probe = MagicMock()
+        existing_probe = MagicMock(spec=obs.ProbeProtocol)
         obs._probe = existing_probe
         obs._initialized = True
         result = obs.init_traceboard("/tmp/tblog", "test_run")
@@ -170,9 +170,9 @@ class TestInitTraceboard:
     ) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_cls.return_value = MagicMock(
-            add_collector=MagicMock(side_effect=RuntimeError("disk full"))
-        )
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
+        mock_probe_instance.add_collector.side_effect = RuntimeError("disk full")
+        mock_probe_cls.return_value = mock_probe_instance
 
         with patch.object(obs, "_try_import_probe", return_value=mock_probe_cls):
             with patch.dict(
@@ -189,7 +189,7 @@ class TestInitTraceboard:
     def test_init_with_path_object(self, tmp_path: Path) -> None:
         obs = _reset_obs()
         mock_probe_cls = MagicMock()
-        mock_probe_instance = MagicMock()
+        mock_probe_instance = MagicMock(spec=obs.ProbeProtocol)
         mock_probe_cls.return_value = mock_probe_instance
         mock_collector_cls = MagicMock()
 
@@ -213,7 +213,7 @@ class TestShutdown:
 
     def test_shutdown_resets_state(self) -> None:
         obs = _reset_obs()
-        obs._probe = MagicMock()
+        obs._probe = MagicMock(spec=obs.ProbeProtocol)
         obs._initialized = True
         obs.shutdown_traceboard()
         assert obs._probe is None
@@ -221,7 +221,7 @@ class TestShutdown:
 
     def test_shutdown_calls_end_run(self) -> None:
         obs = _reset_obs()
-        mock_probe = MagicMock()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
         obs._probe = mock_probe
         obs._initialized = True
         obs.shutdown_traceboard()
@@ -237,7 +237,7 @@ class TestShutdown:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         obs = _reset_obs()
-        mock_probe = MagicMock()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
         mock_probe.end_run.side_effect = RuntimeError("flush failed")
         obs._probe = mock_probe
         obs._initialized = True
@@ -251,7 +251,7 @@ class TestShutdown:
 
     def test_shutdown_idempotent(self) -> None:
         obs = _reset_obs()
-        obs._probe = MagicMock()
+        obs._probe = MagicMock(spec=obs.ProbeProtocol)
         obs._initialized = True
         obs.shutdown_traceboard()
         obs.shutdown_traceboard()  # Second call should be safe
@@ -274,7 +274,7 @@ class TestTraceboardStage:
 
     def test_yields_none_when_probe_inactive(self) -> None:
         obs = _reset_obs()
-        mock_probe = MagicMock()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
         mock_probe.active = False
         obs._probe = mock_probe
         with obs.traceboard_stage("test_stage") as ctx:
@@ -282,10 +282,10 @@ class TestTraceboardStage:
 
     def test_yields_stage_context_when_active(self) -> None:
         obs = _reset_obs()
-        mock_stage = MagicMock()
+        mock_stage = MagicMock(spec=obs.StageProtocol)
         mock_stage.__enter__ = MagicMock(return_value=mock_stage)
         mock_stage.__exit__ = MagicMock(return_value=False)
-        mock_probe = MagicMock()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
         mock_probe.active = True
         mock_probe.begin_stage.return_value = mock_stage
         obs._probe = mock_probe
@@ -295,10 +295,10 @@ class TestTraceboardStage:
 
     def test_stage_with_multiple_params(self) -> None:
         obs = _reset_obs()
-        mock_stage = MagicMock()
+        mock_stage = MagicMock(spec=obs.StageProtocol)
         mock_stage.__enter__ = MagicMock(return_value=mock_stage)
         mock_stage.__exit__ = MagicMock(return_value=False)
-        mock_probe = MagicMock()
+        mock_probe = MagicMock(spec=obs.ProbeProtocol)
         mock_probe.active = True
         mock_probe.begin_stage.return_value = mock_stage
         obs._probe = mock_probe
@@ -658,8 +658,8 @@ class TestHardenedObservabilityAndCliRouting:
         assert len(reports) == 1
         assert reports[0].error is not None
         files = list(tb_dir.glob("*.tbevt"))
-        assert len(files) == 1
         if _has_aether_traceboard():
+            assert len(files) == 1
             from aether_traceboard._types import EventType, StageStatus
             from aether_traceboard.event import unpack_run_end, unpack_stage_end
             from aether_traceboard.reader import read_events
@@ -674,3 +674,6 @@ class TestHardenedObservabilityAndCliRouting:
                 assert "reason" in meta
             run_ends = [r for r in recs if r.event_type == EventType.RUN_END]
             assert unpack_run_end(run_ends[-1].payload) == "failed"
+        else:
+            assert files == []
+            assert obs.get_probe() is None
