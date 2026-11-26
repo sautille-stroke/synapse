@@ -186,6 +186,7 @@ class TestCurriculumTraceboard:
         ]
         assert len(round_calls) == 1
         assert round_calls[0].args[1] == 2.0
+        assert round_calls[0].kwargs.get("step") == 2
 
 
 # ---------------------------------------------------------------------------
@@ -215,31 +216,42 @@ class TestDualVerifierTraceboard:
             result = engine.verify_physics("sample_001", metrics)
 
         assert result.passed
-        # Check physics_passed scalar
+        # Check low-cardinality physics_passed scalar and monotonic step
         passed_calls = [
             c for c in mock_probe.log_scalar.call_args_list
-            if "physics_passed" in c.args[0]
+            if c.args[0] == "rsi/verifier/physics_passed"
         ]
         assert len(passed_calls) == 1
         assert passed_calls[0].args[1] == 1.0
+        assert passed_calls[0].kwargs.get("step") == 0
 
     def test_verify_logs_verdict(self, mock_probe: MagicMock) -> None:
-        """Full verify logs verdict text."""
+        """Full verify logs low-cardinality verdict text, table row, and monotonic steps."""
         from synapse.rsi.dual_verifier import DualVerifierEngine
 
         engine = DualVerifierEngine()
         metrics = self._good_metrics()
 
         with patch("synapse.rsi.dual_verifier.get_probe", return_value=mock_probe):
-            verdict = engine.verify("sample_002", metrics, prm_score=0.9)
+            verdict0 = engine.verify("sample_002", metrics, prm_score=0.9)
+            verdict1 = engine.verify("sample_003", metrics, prm_score=0.8)
 
-        assert verdict.verdict == "ACCEPT"
+        assert verdict0.verdict == "ACCEPT"
+        assert verdict1.verdict == "ACCEPT"
         text_calls = [
             c for c in mock_probe.log_text.call_args_list
-            if "verdict" in c.args[0]
+            if c.args[0] == "rsi/verifier/verdict"
         ]
-        assert len(text_calls) >= 1
+        assert len(text_calls) == 2
         assert text_calls[0].args[1] == "ACCEPT"
+        assert [c.kwargs.get("step") for c in text_calls] == [0, 1]
+        table_calls = [
+            c for c in mock_probe.log_table.call_args_list
+            if c.args[0] == "rsi/verifier/verdicts"
+        ]
+        assert len(table_calls) == 2
+        assert table_calls[0].args[2][0][0] == "sample_002"
+        assert table_calls[1].args[2][0][0] == "sample_003"
 
     def test_verify_silent_without_probe(self) -> None:
         """When probe is None, verify still works."""
@@ -312,21 +324,23 @@ class TestJevCriticTraceboard:
                 image_uris=["view_0.png"],
             )
 
-        # Overall quality should be logged
+        # Overall quality should be logged under low-cardinality tag with step=0
         quality_calls = [
             c for c in mock_probe.log_scalar.call_args_list
-            if "overall_quality" in c.args[0]
+            if c.args[0] == "inspect/jev/overall_quality"
         ]
         assert len(quality_calls) == 1
+        assert quality_calls[0].kwargs.get("step") == 0
         # Defect count should be logged
         defect_count_calls = [
             c for c in mock_probe.log_scalar.call_args_list
-            if "defect_count" in c.args[0]
+            if c.args[0] == "inspect/jev/defect_count"
         ]
         assert len(defect_count_calls) == 1
+        assert defect_count_calls[0].kwargs.get("step") == 0
 
     def test_evaluate_logs_defect_table(self, mock_probe: MagicMock) -> None:
-        """When defects are found, a table is logged."""
+        """When defects are found, a table is logged with asset_id column."""
         from synapse.inspect.jev_critic import MockJevTransport, VisualJevCritic
 
         # Set high severity for mesh_crumple
@@ -345,13 +359,13 @@ class TestJevCriticTraceboard:
         assert len(report.defects) > 0
         table_calls = [
             c for c in mock_probe.log_table.call_args_list
-            if "defects" in c.args[0]
+            if c.args[0] == "inspect/jev/defects"
         ]
         assert len(table_calls) >= 1
         tag, cols, rows = table_calls[0].args
-        assert isinstance(tag, str)
-        assert isinstance(cols, list) and all("name" in col for col in cols)
-        assert isinstance(rows, list) and len(rows) >= 1
+        assert tag == "inspect/jev/defects"
+        assert cols[0]["name"] == "asset_id"
+        assert rows[0][0] == "defective_asset"
 
     @pytest.mark.external_data
     def test_jev_critic_real_probe_e2e(self, tmp_path: Path) -> None:

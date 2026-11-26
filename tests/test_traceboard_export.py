@@ -84,7 +84,7 @@ class TestExportWithRealTraceboard:
     """Test export_reports_to_traceboard with real aether-traceboard SDK."""
 
     def test_export_creates_tbevt_files(self) -> None:
-        """Export should create .tbevt files when aether-traceboard is available."""
+        """Export should create .tbevt files with per-scenario stages and unified tags."""
         try:
             import aether_traceboard  # noqa: F401
         except ImportError:
@@ -109,6 +109,34 @@ class TestExportWithRealTraceboard:
             records = read_events(tbevt_files[0])
             assert records[0].event_type == EventType.RUN_START
             assert records[-1].event_type == EventType.RUN_END
+            stage_begins = [r for r in records if r.event_type == EventType.STAGE_BEGIN]
+            assert len(stage_begins) == len(reports)
+            scalar_tags = {r.tag for r in records if r.event_type == EventType.SCALAR}
+            assert "bench/scenario/turntable_hero/metrics/psnr_db" in scalar_tags
+            assert "bench/summary/pass_rate" in scalar_tags
+            assert "bench/pillar/temporal" in scalar_tags
+
+    def test_injected_probe_reused_without_closing(self, tmp_path: Path) -> None:
+        """Caller-owned probe should receive export events without being closed."""
+        try:
+            import aether_traceboard  # noqa: F401
+        except ImportError:
+            pytest.skip("aether-traceboard not installed")
+
+        from aether_traceboard import FileCollector, Probe
+        from synapse.bench.traceboard_export import export_reports_to_traceboard
+
+        probe = Probe()
+        probe.add_collector(FileCollector(tmp_path))
+        probe.begin_run("shared_export_run")
+        ok = export_reports_to_traceboard(
+            _make_reports(),
+            log_dir=tmp_path,
+            probe=probe,
+        )
+        assert ok is True
+        assert probe.active is True  # Not closed by export_reports_to_traceboard
+        probe.end_run("finished")
 
     def test_real_probe_report_and_compare_end_to_end(self, tmp_path: Path) -> None:
         """HTML report artifact and 4-track compare table work with real Probe."""
@@ -190,8 +218,8 @@ class TestExportWithRealTraceboard:
             tbevt_files = list(Path(tmpdir).glob("*.tbevt"))
             assert tbevt_files
             content = tbevt_files[0].read_bytes()
-            assert b"pillar/temporal" in content
-            assert b"pillar/roundtrip" in content
+            assert b"bench/pillar/temporal" in content
+            assert b"bench/pillar/roundtrip" in content
 
 
 # ---------------------------------------------------------------------------
@@ -219,12 +247,14 @@ class TestExportWithoutTraceboard:
 # Test: pillar score computation
 # ---------------------------------------------------------------------------
 class TestPillarScores:
-    """Test _compute_pillar_scores_from_reports parity with report.py."""
+    """Test compute_pillar_scores (SSOT in synapse.bench.report) & export alias parity."""
 
     def test_pillar_temporal(self) -> None:
         """Temporal pillar should derive from flicker_score."""
+        from synapse.bench.report import compute_pillar_scores
         from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
 
+        assert _compute_pillar_scores_from_reports is compute_pillar_scores
         reports = [
             _FakeReport(
                 scenario_name="t1",
@@ -232,13 +262,13 @@ class TestPillarScores:
                 metrics={"flicker_score": 0.1},
             ),
         ]
-        scores = _compute_pillar_scores_from_reports(reports)
+        scores = compute_pillar_scores(reports)
         assert "temporal" in scores
         assert abs(scores["temporal"] - 0.9) < 1e-6
 
     def test_pillar_fgpp_fidelity(self) -> None:
         """FGPP fidelity should derive from silhouette_iou and depth_rmse_m."""
-        from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
+        from synapse.bench.report import compute_pillar_scores
 
         reports = [
             _FakeReport(
@@ -247,13 +277,13 @@ class TestPillarScores:
                 metrics={"silhouette_iou": 0.9, "depth_rmse_m": 0.2},
             ),
         ]
-        scores = _compute_pillar_scores_from_reports(reports)
+        scores = compute_pillar_scores(reports)
         expected = (0.9 + 0.8) / 2.0  # iou=0.9, depth=1-0.2=0.8
         assert abs(scores["fgpp_fidelity"] - expected) < 1e-6
 
     def test_pillar_roundtrip(self) -> None:
         """Roundtrip pillar should derive from psnr_db and ssim."""
-        from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
+        from synapse.bench.report import compute_pillar_scores
 
         reports = [
             _FakeReport(
@@ -262,13 +292,13 @@ class TestPillarScores:
                 metrics={"psnr_db": 20.0, "ssim": 0.8},
             ),
         ]
-        scores = _compute_pillar_scores_from_reports(reports)
+        scores = compute_pillar_scores(reports)
         expected = (20.0 / 40.0 + 0.8) / 2.0  # psnr=0.5, ssim=0.8
         assert abs(scores["roundtrip"] - expected) < 1e-6
 
     def test_pillar_style(self) -> None:
         """Style pillar should derive from style_color_de."""
-        from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
+        from synapse.bench.report import compute_pillar_scores
 
         reports = [
             _FakeReport(
@@ -277,21 +307,21 @@ class TestPillarScores:
                 metrics={"style_color_de": 10.0},
             ),
         ]
-        scores = _compute_pillar_scores_from_reports(reports)
+        scores = compute_pillar_scores(reports)
         expected = 1.0 - 10.0 / 20.0  # = 0.5
         assert abs(scores["style"] - expected) < 1e-6
 
     def test_empty_reports_all_zero(self) -> None:
         """Empty reports should produce all-zero pillar scores."""
-        from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
+        from synapse.bench.report import compute_pillar_scores
 
-        scores = _compute_pillar_scores_from_reports([])
+        scores = compute_pillar_scores([])
         assert all(v == 0.0 for v in scores.values())
         assert len(scores) == 4
 
     def test_nan_metrics_excluded(self) -> None:
         """NaN metrics should be excluded from pillar computation."""
-        from synapse.bench.traceboard_export import _compute_pillar_scores_from_reports
+        from synapse.bench.report import compute_pillar_scores
 
         reports = [
             _FakeReport(
@@ -304,6 +334,6 @@ class TestPillarScores:
                 },
             ),
         ]
-        scores = _compute_pillar_scores_from_reports(reports)
+        scores = compute_pillar_scores(reports)
         assert scores["fgpp_fidelity"] == 0.0  # nan excluded → no data
         assert scores["roundtrip"] > 0.0  # psnr_db is valid

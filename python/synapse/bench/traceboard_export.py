@@ -1,27 +1,28 @@
-"""Convert Synapse-Bench reports to Traceboard `.tbevt` event streams.
+"""Convert Synapse-Bench reports to Traceboard ``.tbevt`` event streams.
 
-Provides a dual-track migration path: the existing HTML report generator
-(``synapse.bench.report``) remains unchanged, while this module adds a
-parallel Traceboard rendering path that writes per-scenario scalar metrics,
-pillar scores, and timing data as structured ``.tbevt`` events.
-
-Usage::
-
-    from synapse.bench.traceboard_export import export_reports_to_traceboard
-    from synapse.pipeline.bench_runner import ScenarioRunReport
-
-    reports: list[ScenarioRunReport] = [...]
-    export_reports_to_traceboard(reports, log_dir="./tblog", run_name="bench_v1")
+Provides a dual-track migration path alongside the HTML report generator
+(``synapse.bench.report``) using identical pillar scoring (`compute_pillar_scores`)
+and unified ``bench/scenario/{name}/*``, ``bench/summary/*``, ``bench/pillar/*``
+tag namespaces.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from synapse.bench.report import compute_pillar_scores
+
+if TYPE_CHECKING:
+    from synapse.observability import ProbeProtocol
 
 logger = logging.getLogger(__name__)
+
+# Backward-compatible alias (compute_pillar_scores in synapse.bench.report is SSOT)
+_compute_pillar_scores_from_reports = compute_pillar_scores
 
 
 def export_reports_to_traceboard(
@@ -30,58 +31,55 @@ def export_reports_to_traceboard(
     log_dir: str | Path,
     run_name: str = "synapse-bench",
     engine: str = "synapse-bench",
-    close_on_finish: bool = True,
+    probe: ProbeProtocol | None = None,
 ) -> bool:
-    """Export benchmark reports to Traceboard `.tbevt` files.
+    """Export benchmark reports to Traceboard ``.tbevt`` events.
 
-    Creates a standalone Traceboard run with one stage per scenario,
-    logging all metrics, timing data, and pillar scores as scalars.
-    This function is **additive** — it does not modify or replace the
-    existing HTML report pipeline.
-
-    Parameters
-    ----------
-    reports:
-        List of ``ScenarioRunReport`` instances from a bench run.
-    log_dir:
-        Directory where ``.tbevt`` files will be written.
-    run_name:
-        Name for the Traceboard run.
-    engine:
-        Engine identifier recorded in the run metadata.
-    close_on_finish:
-        Whether to end the run and flush after export.
+    Creates a standalone Traceboard run with one stage per scenario when *probe*
+    is *None*, or writes into an existing caller-managed *probe* without
+    closing it.
 
     Returns
     -------
     bool
         ``True`` if export succeeded, ``False`` if ``aether-traceboard``
-        is not installed or an error occurred.
+        is unavailable or an error occurred.
     """
-    try:
-        from aether_traceboard import FileCollector, Probe
-    except ImportError:
-        logger.info(
-            "aether-traceboard not installed; skipping Traceboard export. "
-            "Install with: pip install aether-traceboard"
-        )
-        return False
+    owns_probe = probe is None
+    active_probe: Any = probe
+
+    if owns_probe:
+        try:
+            from aether_traceboard import FileCollector, Probe
+        except ImportError:
+            logger.info(
+                "aether-traceboard not installed; skipping Traceboard export. "
+                "Install with: pip install aether-traceboard"
+            )
+            return False
+    else:
+        if active_probe is None or not active_probe.active:
+            return False
+
+    collector: Any = None
+    run_opened = False
+    had_error = False
 
     try:
-        log_path = Path(log_dir)
-        log_path.mkdir(parents=True, exist_ok=True)
+        if owns_probe:
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+            active_probe = Probe()
+            collector = FileCollector(log_path)
+            active_probe.add_collector(collector)
+            active_probe.activate()
+            active_probe.begin_run(
+                run_name,
+                engine=engine,
+                num_scenarios=str(len(reports)),
+            )
+            run_opened = True
 
-        probe = Probe()
-        collector = FileCollector(log_path)
-        probe.add_collector(collector)
-        probe.activate()
-        probe.begin_run(
-            run_name,
-            engine=engine,
-            num_scenarios=str(len(reports)),
-        )
-
-        # Per-scenario metrics and timings
         n_pass = 0
         n_fail = 0
         for report in reports:
@@ -94,126 +92,67 @@ def export_reports_to_traceboard(
             else:
                 n_fail += 1
 
-            prefix = f"scenario/{report.scenario_name}"
+            prefix = f"bench/scenario/{report.scenario_name}"
+            with active_probe.begin_stage(
+                f"bench/{report.scenario_name}",
+                adapter=str(getattr(report, "adapter_id", "unknown")),
+            ) as stage:
+                active_probe.log_scalar(f"{prefix}/passed", 1.0 if passed else 0.0)
+                active_probe.log_scalar(f"{prefix}/num_frames", float(report.num_frames))
 
-            # Status
-            probe.log_scalar(f"{prefix}/passed", 1.0 if passed else 0.0)
-            probe.log_scalar(f"{prefix}/num_frames", float(report.num_frames))
+                if report.metrics:
+                    for key, value in sorted(report.metrics.items()):
+                        if (
+                            not isinstance(value, bool)
+                            and isinstance(value, (int, float))
+                            and math.isfinite(float(value))
+                        ):
+                            active_probe.log_scalar(f"{prefix}/metrics/{key}", float(value))
 
-            # Metrics
-            if report.metrics:
-                for key, value in sorted(report.metrics.items()):
-                    if isinstance(value, (int, float)) and not math.isnan(value):
-                        probe.log_scalar(f"{prefix}/metrics/{key}", float(value))
+                if report.timings:
+                    for key, value in sorted(report.timings.items()):
+                        if (
+                            not isinstance(value, bool)
+                            and isinstance(value, (int, float))
+                            and math.isfinite(float(value))
+                        ):
+                            active_probe.log_scalar(f"{prefix}/timing/{key}", float(value))
 
-            # Timings
-            if report.timings:
-                for key, value in sorted(report.timings.items()):
-                    if isinstance(value, (int, float)) and not math.isnan(value):
-                        probe.log_scalar(f"{prefix}/timing/{key}", float(value))
+                if report.error is not None:
+                    active_probe.log_text(f"{prefix}/error", str(report.error))
+                    stage.set_fail(str(report.error))
+                elif report.gate_verdict is not None and not report.gate_verdict.passed:
+                    stage.set_fail("gate_failed")
+                else:
+                    stage.set_pass()
 
-        # Aggregate summary
-        probe.log_scalar("summary/total_scenarios", float(len(reports)))
-        probe.log_scalar("summary/passed", float(n_pass))
-        probe.log_scalar("summary/failed", float(n_fail))
-        probe.log_scalar(
-            "summary/pass_rate",
+        active_probe.log_scalar("bench/summary/total_scenarios", float(len(reports)))
+        active_probe.log_scalar("bench/summary/passed", float(n_pass))
+        active_probe.log_scalar("bench/summary/failed", float(n_fail))
+        active_probe.log_scalar(
+            "bench/summary/pass_rate",
             float(n_pass) / max(len(reports), 1),
         )
 
-        # Pillar scores
-        pillar_scores = _compute_pillar_scores_from_reports(reports)
-        for pillar, score in pillar_scores.items():
-            probe.log_scalar(f"pillar/{pillar}", score)
-
-        if close_on_finish:
-            probe.end_run()
+        pillar_scores = compute_pillar_scores(reports)
+        for pillar, score in sorted(pillar_scores.items()):
+            active_probe.log_scalar(f"bench/pillar/{pillar}", float(score))
 
         logger.info(
-            "Traceboard export complete: %d scenarios → %s",
+            "Traceboard export complete: %d scenarios",
             len(reports),
-            log_path,
         )
         return True
 
     except Exception:
+        had_error = True
         logger.warning("Traceboard export failed", exc_info=True)
         return False
-
-
-def _compute_pillar_scores_from_reports(
-    reports: list[Any],
-) -> dict[str, float]:
-    """Derive 4-pillar aggregate scores from scenario reports.
-
-    Mirrors the logic in ``synapse.bench.report._compute_pillar_scores``
-    to ensure parity between the HTML and Traceboard outputs.
-
-    Pillars:
-    - temporal: Based on flicker_score and temporal_warp_error
-    - fgpp_fidelity: Based on depth_rmse_m, normal_angular_error_deg,
-      silhouette_iou
-    - roundtrip: Based on chamfer_mm, psnr_db, ssim
-    - style: Based on style_color_de, style_light_error_deg
-    """
-    accumulators: dict[str, list[float]] = {
-        "temporal": [],
-        "fgpp_fidelity": [],
-        "roundtrip": [],
-        "style": [],
-    }
-
-    for r in reports:
-        m = r.metrics
-        if not m:
-            continue
-
-        if "flicker_score" in m:
-            accumulators["temporal"].append(
-                max(0.0, 1.0 - min(m["flicker_score"], 1.0))
-            )
-        if "temporal_warp_error" in m:
-            accumulators["temporal"].append(
-                max(0.0, 1.0 - min(m["temporal_warp_error"], 1.0))
-            )
-
-        if "silhouette_iou" in m:
-            accumulators["fgpp_fidelity"].append(min(m["silhouette_iou"], 1.0))
-        if "depth_rmse_m" in m:
-            accumulators["fgpp_fidelity"].append(
-                max(0.0, 1.0 - min(m["depth_rmse_m"], 1.0))
-            )
-        if "normal_angular_error_deg" in m and not math.isnan(
-            m["normal_angular_error_deg"]
-        ):
-            accumulators["fgpp_fidelity"].append(
-                max(0.0, 1.0 - min(m["normal_angular_error_deg"] / 90.0, 1.0))
-            )
-
-        if "psnr_db" in m:
-            accumulators["roundtrip"].append(
-                min(1.0, max(0.0, m["psnr_db"] / 40.0))
-            )
-        if "ssim" in m:
-            accumulators["roundtrip"].append(
-                min(1.0, max(0.0, m["ssim"]))
-            )
-        if "chamfer_mm" in m and not math.isnan(m["chamfer_mm"]):
-            accumulators["roundtrip"].append(
-                max(0.0, 1.0 - min(m["chamfer_mm"] / 50.0, 1.0))
-            )
-
-        if "style_color_de" in m:
-            accumulators["style"].append(
-                max(0.0, 1.0 - min(m["style_color_de"] / 20.0, 1.0))
-            )
-        if "style_light_error_deg" in m:
-            accumulators["style"].append(
-                max(0.0, 1.0 - min(m["style_light_error_deg"] / 45.0, 1.0))
-            )
-
-    scores: dict[str, float] = {}
-    for pillar, vals in accumulators.items():
-        scores[pillar] = sum(vals) / len(vals) if vals else 0.0
-
-    return scores
+    finally:
+        if owns_probe:
+            if run_opened and active_probe is not None:
+                with contextlib.suppress(Exception):
+                    active_probe.end_run("failed" if had_error else "finished")
+            elif collector is not None:
+                with contextlib.suppress(Exception):
+                    collector.on_run_close()

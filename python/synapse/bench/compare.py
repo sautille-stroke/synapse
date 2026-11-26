@@ -259,12 +259,14 @@ def compare_runs(
             ]
             table_rows: list[list[Any]] = [
                 [
-                    row.model_name,
-                    float(row.overall_score),
+                    str(row.model_name),
+                    f"{float(row.overall_score):.4f}",
                     *[
-                        float(row.track_scores[tid].score)
-                        if tid in row.track_scores
-                        else 0.0
+                        (
+                            f"{float(row.track_scores[tid].score):.4f}"
+                            if tid in row.track_scores
+                            else "0.0000"
+                        )
                         for tid in track_ids
                     ],
                 ]

@@ -244,7 +244,7 @@ def generate_html_report(
     n_fail = n_total - n_pass
 
     # Compute pillar scores for radar chart
-    pillar_scores = _compute_pillar_scores(reports)
+    pillar_scores = compute_pillar_scores(reports)
 
     # Build HTML
     parts: list[str] = []
@@ -363,28 +363,33 @@ def generate_html_report(
     output_path.write_text(html_content, encoding="utf-8")
 
     # Log the HTML report as a Traceboard artifact
+    html_bytes = html_content.encode("utf-8")
     probe = get_probe()
     if probe is not None and probe.active:
         probe.log_artifact(
             "bench/report",
-            {"filename": output_path.name, "mime_type": "text/html"},
-            html_content.encode("utf-8"),
+            {
+                "filename": output_path.name,
+                "mime_type": "text/html",
+                "size_bytes": len(html_bytes),
+            },
+            html_bytes,
         )
 
     return output_path
 
 
-def _compute_pillar_scores(
+def compute_pillar_scores(
     reports: list[Any],
 ) -> dict[str, float]:
-    """Derive 4-pillar aggregate scores from scenario reports.
+    """Derive 4-pillar aggregate scores from scenario reports (Single Source of Truth).
 
     Pillars:
-    - temporal: Based on flicker_score and temporal_warp_error
-    - fgpp_fidelity: Based on depth_rmse_m, normal_angular_error_deg,
-      silhouette_iou
-    - roundtrip: Based on chamfer_mm, psnr_db, ssim
-    - style: Based on style_color_de, style_light_error_deg
+    - temporal: Based on ``flicker_score`` and ``temporal_warp_error``
+    - fgpp_fidelity: Based on ``depth_rmse_m``, ``normal_angular_error_deg``,
+      ``silhouette_iou``
+    - roundtrip: Based on ``chamfer_mm``, ``psnr_db``, ``ssim``
+    - style: Based on ``style_color_de``, ``style_light_error_deg``
     """
     pillar_accumulators: dict[str, list[float]] = {
         "temporal": [],
@@ -393,65 +398,52 @@ def _compute_pillar_scores(
         "style": [],
     }
 
+    def _finite(val: Any) -> float | None:
+        if isinstance(val, bool) or not isinstance(val, (int, float)):
+            return None
+        fval = float(val)
+        return fval if math.isfinite(fval) else None
+
     for r in reports:
-        m = r.metrics
+        m = getattr(r, "metrics", None)
         if not m:
             continue
 
         # Temporal
-        if "flicker_score" in m:
-            # Lower is better; clamp to [0,1]
-            pillar_accumulators["temporal"].append(max(0.0, 1.0 - min(m["flicker_score"], 1.0)))
-        if "temporal_warp_error" in m:
-            pillar_accumulators["temporal"].append(
-                max(0.0, 1.0 - min(m["temporal_warp_error"], 1.0))
-            )
+        if (v := _finite(m.get("flicker_score"))) is not None:
+            pillar_accumulators["temporal"].append(max(0.0, 1.0 - min(v, 1.0)))
+        if (v := _finite(m.get("temporal_warp_error"))) is not None:
+            pillar_accumulators["temporal"].append(max(0.0, 1.0 - min(v, 1.0)))
 
         # FGPP fidelity
-        if "silhouette_iou" in m:
-            pillar_accumulators["fgpp_fidelity"].append(min(m["silhouette_iou"], 1.0))
-        if "depth_rmse_m" in m:
-            pillar_accumulators["fgpp_fidelity"].append(max(0.0, 1.0 - min(m["depth_rmse_m"], 1.0)))
-        if "normal_angular_error_deg" in m and not math.isnan(m["normal_angular_error_deg"]):
-            pillar_accumulators["fgpp_fidelity"].append(
-                max(0.0, 1.0 - min(m["normal_angular_error_deg"] / 90.0, 1.0))
-            )
+        if (v := _finite(m.get("silhouette_iou"))) is not None:
+            pillar_accumulators["fgpp_fidelity"].append(max(0.0, min(v, 1.0)))
+        if (v := _finite(m.get("depth_rmse_m"))) is not None:
+            pillar_accumulators["fgpp_fidelity"].append(max(0.0, 1.0 - min(v, 1.0)))
+        if (v := _finite(m.get("normal_angular_error_deg"))) is not None:
+            pillar_accumulators["fgpp_fidelity"].append(max(0.0, 1.0 - min(v / 90.0, 1.0)))
 
         # Roundtrip
-        if "psnr_db" in m:
-            # Normalize: 40 dB = 1.0, 0 dB = 0.0
-            pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, m["psnr_db"] / 40.0)))
-        if "ssim" in m:
-            pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, m["ssim"])))
-        if "chamfer_mm" in m and not math.isnan(m["chamfer_mm"]):
-            pillar_accumulators["roundtrip"].append(max(0.0, 1.0 - min(m["chamfer_mm"] / 50.0, 1.0)))
+        if (v := _finite(m.get("psnr_db"))) is not None:
+            pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, v / 40.0)))
+        if (v := _finite(m.get("ssim"))) is not None:
+            pillar_accumulators["roundtrip"].append(min(1.0, max(0.0, v)))
+        if (v := _finite(m.get("chamfer_mm"))) is not None:
+            pillar_accumulators["roundtrip"].append(max(0.0, 1.0 - min(v / 50.0, 1.0)))
 
         # Style
-        if "style_color_de" in m:
-            # Lower is better; 0 = perfect
-            pillar_accumulators["style"].append(
-                max(0.0, 1.0 - min(m["style_color_de"] / 20.0, 1.0))
-            )
-        if "style_light_error_deg" in m:
-            pillar_accumulators["style"].append(
-                max(
-                    0.0,
-                    1.0
-                    - min(
-                        m["style_light_error_deg"] / 45.0,
-                        1.0,
-                    ),
-                )
-            )
+        if (v := _finite(m.get("style_color_de"))) is not None:
+            pillar_accumulators["style"].append(max(0.0, 1.0 - min(v / 20.0, 1.0)))
+        if (v := _finite(m.get("style_light_error_deg"))) is not None:
+            pillar_accumulators["style"].append(max(0.0, 1.0 - min(v / 45.0, 1.0)))
 
-    scores: dict[str, float] = {}
-    for pillar, vals in pillar_accumulators.items():
-        if vals:
-            scores[pillar] = sum(vals) / len(vals)
-        else:
-            scores[pillar] = 0.0
+    return {
+        pillar: (sum(vals) / len(vals) if vals else 0.0)
+        for pillar, vals in pillar_accumulators.items()
+    }
 
-    return scores
+
+_compute_pillar_scores = compute_pillar_scores
 
 
 # Inlined CSS for the report.

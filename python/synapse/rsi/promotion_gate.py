@@ -388,7 +388,7 @@ def evaluate_monotonic_promotion(
                 {"name": "regression", "type": "float"},
             ]
             q_rows: list[list[Any]] = [
-                [q.scenario_id, q.metric, round(float(q.regression), 4)]
+                [str(q.scenario_id), str(q.metric), f"{float(q.regression):.4f}"]
                 for q in quarantine
             ]
             probe.log_table("rsi/promotion/quarantine", columns, q_rows)

@@ -110,18 +110,22 @@ class TestTrainerTrainStepLogging:
             "latent": torch.randn(1, 8),
             "noise": torch.randn(1, 8),
         }
-        result = trainer.train_step(model, batch, step=0)
+        mock_probe.log_scalar.reset_mock()
+        result = trainer.train_step(model, batch, step=5)
 
         assert "loss" in result
-        assert result["step"] == 0
+        assert result["step"] == 5
 
-        # Verify Traceboard scalars logged
+        # Verify Traceboard step + scalars logged with explicit step=5
+        mock_probe.set_step.assert_called_with(5)
         scalar_tags = [
             call.args[0] for call in mock_probe.log_scalar.call_args_list
         ]
         assert "train/loss" in scalar_tags
         assert "train/step" in scalar_tags
         assert "train/lr_multiplier" in scalar_tags
+        for call in mock_probe.log_scalar.call_args_list:
+            assert call.kwargs.get("step") == 5
 
 
 # ---------------------------------------------------------------------------
@@ -184,10 +188,11 @@ class TestTrainerCheckpointLogging:
             call.args[0] for call in mock_probe.log_scalar.call_args_list
         ]
         assert "train/checkpoint_step" in scalar_tags
-        # Verify correct step value
+        # Verify correct step value and step kwarg
         for call in mock_probe.log_scalar.call_args_list:
             if call.args[0] == "train/checkpoint_step":
                 assert call.args[1] == 42.0
+                assert call.kwargs.get("step") == 42
 
 
 # ---------------------------------------------------------------------------

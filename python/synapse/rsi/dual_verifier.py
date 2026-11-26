@@ -193,6 +193,7 @@ class DualVerifierEngine:
         self._thresholds = thresholds or PhysicsThresholds()
         self._prm_accept = prm_accept_threshold
         self._prm_reject = prm_reject_threshold
+        self._traceboard_step: int = 0
 
     @property
     def thresholds(self) -> PhysicsThresholds:
@@ -376,22 +377,24 @@ class DualVerifierEngine:
             lora_buckets=buckets,
         )
 
-        # --- Traceboard instrumentation ---
+        # --- Traceboard instrumentation (low-cardinality tags + explicit step) ---
+        step = self._traceboard_step
+        self._traceboard_step += 1
         probe = get_probe()
         if probe is not None and probe.active:
-            probe.log_scalar(
-                f"rsi/verifier/physics_passed/{sample_id}", float(result.passed),
-            )
+            probe.log_scalar("rsi/verifier/physics_passed", float(result.passed), step=step)
             for check_name, check_data in checks.items():
                 if isinstance(check_data, dict) and "value" in check_data:
                     probe.log_scalar(
-                        f"rsi/verifier/{check_name}/{sample_id}",
+                        f"rsi/verifier/{check_name}",
                         float(check_data["value"]),
+                        step=step,
                     )
             if failures:
                 probe.log_text(
-                    f"rsi/verifier/failures/{sample_id}",
-                    ", ".join(failures),
+                    "rsi/verifier/failures",
+                    f"{sample_id}: {', '.join(failures)}",
+                    step=step,
                 )
 
         return result
@@ -439,7 +442,7 @@ class DualVerifierEngine:
                 target_lora_buckets=physics.lora_buckets,
                 physics_details=physics.checks,
             )
-            self._log_verdict(vd)
+            self._log_verdict(vd, step=max(0, self._traceboard_step - 1))
             return vd
 
         # Physics passed: use PRM score for final verdict
@@ -460,13 +463,31 @@ class DualVerifierEngine:
             target_lora_buckets=[],
             physics_details=physics.checks,
         )
-        self._log_verdict(vd)
+        self._log_verdict(vd, step=max(0, self._traceboard_step - 1))
         return vd
 
     @staticmethod
-    def _log_verdict(vd: VerificationVerdict) -> None:
-        """Log dual verification verdict to Traceboard."""
+    def _log_verdict(vd: VerificationVerdict, *, step: int = 0) -> None:
+        """Log dual verification verdict to Traceboard using low-cardinality tags."""
         probe = get_probe()
         if probe is not None and probe.active:
-            probe.log_scalar(f"rsi/verifier/prm_score/{vd.sample_id}", vd.prm_score)
-            probe.log_text(f"rsi/verifier/verdict/{vd.sample_id}", vd.verdict)
+            probe.log_scalar("rsi/verifier/prm_score", vd.prm_score, step=step)
+            probe.log_text("rsi/verifier/verdict", vd.verdict, step=step)
+            probe.log_table(
+                "rsi/verifier/verdicts",
+                [
+                    {"name": "sample_id", "type": "string"},
+                    {"name": "physics_passed", "type": "string"},
+                    {"name": "prm_score", "type": "float"},
+                    {"name": "verdict", "type": "string"},
+                ],
+                [
+                    [
+                        vd.sample_id,
+                        str(vd.physics_passed),
+                        f"{float(vd.prm_score):.4f}",
+                        vd.verdict,
+                    ]
+                ],
+                step=step,
+            )
