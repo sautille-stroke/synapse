@@ -43,6 +43,7 @@ __all__ = [
     "TraceContext",
     "SynapseArgumentParser",
     "add_traceboard_args",
+    "get_common_parent_parser",
     "get_json_parent_parser",
     "_run_with_json_mode",
 ]
@@ -60,11 +61,11 @@ class SynapseArgumentParser(argparse.ArgumentParser):
 
 
 def get_json_parent_parser() -> argparse.ArgumentParser:
-    """Return a parent parser defining the common --json flag.
+    """Return a shared parent parser defining common flags (``--json``, ``--traceboard``).
 
-    Uses ``default=argparse.SUPPRESS`` so that ``--json`` only appears in the
-    namespace when explicitly passed, allowing the top-level ``is_json_in_raw``
-    detection to stay authoritative.
+    Uses ``default=argparse.SUPPRESS`` so flags only appear in the namespace
+    when explicitly specified, allowing placement before or after subcommands
+    without clobbering parent values.
     """
     parent = argparse.ArgumentParser(add_help=False)
     parent.add_argument(
@@ -73,15 +74,25 @@ def get_json_parent_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help="Emit machine-readable JSON to stdout (no log noise)",
     )
+    add_traceboard_args(parent, suppress_default=True)
     return parent
 
 
-def add_traceboard_args(parser: argparse.ArgumentParser) -> None:
+def get_common_parent_parser() -> argparse.ArgumentParser:
+    """Alias for :func:`get_json_parent_parser` returning common CLI parent flags."""
+    return get_json_parent_parser()
+
+
+def add_traceboard_args(
+    parser: argparse.ArgumentParser,
+    *,
+    suppress_default: bool = False,
+) -> None:
     """Add the ``--traceboard`` flag to *parser*."""
     parser.add_argument(
         "--traceboard",
         metavar="LOG_DIR",
-        default=None,
+        default=argparse.SUPPRESS if suppress_default else None,
         help="Enable Traceboard observability; write .tbevt events to LOG_DIR",
     )
 

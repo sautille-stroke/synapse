@@ -39,7 +39,6 @@ from synapse.cli._worker import (
 from synapse.cli.common import (
     SynapseArgumentParser,
     TraceContext,
-    add_traceboard_args,
     get_json_parent_parser,
 )
 from synapse.errors import ContractValidationError
@@ -65,7 +64,6 @@ def main_synapse(args: list[str] | None = None) -> int:
         description="Synapse -- 3D CG Rendering & Neural Video Interop CLI",
         parents=[json_parent],
     )
-    add_traceboard_args(parser)
     subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
     # Register all domain subparsers with json_parent
@@ -96,14 +94,6 @@ def main_synapse(args: list[str] | None = None) -> int:
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
     json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
-    # Initialize Traceboard if requested
-    if getattr(parsed, "traceboard", None):
-        from synapse.observability import init_traceboard
-        init_traceboard(
-            parsed.traceboard,
-            run_name=f"synapse_{parsed.command or 'cli'}_{int(__import__('time').time())}",
-        )
-
     if parsed.command is None:
         if json_mode:
             json.dump(
@@ -121,53 +111,72 @@ def main_synapse(args: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
+    tb_dir: str | None = getattr(parsed, "traceboard", None)
+    tb_started = False
+    exit_code = 1
     try:
+        if tb_dir:
+            from synapse.observability import init_traceboard
+
+            cmd = str(parsed.command)
+            sub_cmd = getattr(parsed, f"{cmd}_command", None)
+            run_suffix = f"{cmd}_{sub_cmd}" if sub_cmd else cmd
+            init_traceboard(
+                tb_dir,
+                run_name=f"synapse_{run_suffix}",
+                trace_id=trace_ctx.trace_id,
+            )
+            tb_started = True
+
         if parsed.command == "fgpp":
-            return dispatch_fgpp(parsed, json_mode, trace_ctx, fgpp_parser)
+            exit_code = dispatch_fgpp(parsed, json_mode, trace_ctx, fgpp_parser)
         elif parsed.command == "bench":
-            return dispatch_bench(parsed, json_mode, trace_ctx, bench_parser)
+            exit_code = dispatch_bench(parsed, json_mode, trace_ctx, bench_parser)
         elif parsed.command == "generate":
-            return dispatch_generate(parsed, json_mode, trace_ctx)
+            exit_code = dispatch_generate(parsed, json_mode, trace_ctx)
         elif parsed.command == "view":
-            return dispatch_view(parsed, json_mode, trace_ctx)
+            exit_code = dispatch_view(parsed, json_mode, trace_ctx)
         elif parsed.command == "worker":
-            return dispatch_worker(
+            exit_code = dispatch_worker(
                 parsed,
                 json_mode,
                 trace_ctx,
                 worker_parser,
             )
         elif parsed.command == "lora":
-            return dispatch_lora(parsed, json_mode, trace_ctx, lora_parser)
+            exit_code = dispatch_lora(parsed, json_mode, trace_ctx, lora_parser)
         elif parsed.command == "inspect":
-            return dispatch_inspect(
+            exit_code = dispatch_inspect(
                 parsed,
                 json_mode,
                 trace_ctx,
                 inspect_parser,
             )
         elif parsed.command == "recon":
-            return dispatch_recon(
+            exit_code = dispatch_recon(
                 parsed,
                 json_mode,
                 trace_ctx,
                 recon_parser,
             )
         elif parsed.command == "refine":
-            return dispatch_refine(
+            exit_code = dispatch_refine(
                 parsed,
                 json_mode,
                 trace_ctx,
                 refine_parser,
             )
         elif parsed.command == "rsi":
-            return dispatch_rsi(parsed, json_mode, trace_ctx, rsi_parser)
+            exit_code = dispatch_rsi(parsed, json_mode, trace_ctx, rsi_parser)
         else:
             parser.print_help()
-            return 0
+            exit_code = 0
+        return exit_code
     finally:
-        from synapse.observability import shutdown_traceboard
-        shutdown_traceboard()
+        if tb_started:
+            from synapse.observability import shutdown_traceboard
+
+            shutdown_traceboard(status="finished" if exit_code == 0 else "failed")
 
 
 def main_bench(args: list[str] | None = None) -> int:
@@ -184,7 +193,6 @@ def main_bench(args: list[str] | None = None) -> int:
         description="Synapse-Bench -- evaluation dataset & benchmark CLI",
         parents=[json_parent],
     )
-    add_traceboard_args(parser)
     subparsers = parser.add_subparsers(dest="command", parser_class=SynapseArgumentParser)
 
     register_bench_subparsers(subparsers, json_parent=json_parent)
@@ -206,14 +214,6 @@ def main_bench(args: list[str] | None = None) -> int:
     trace_ctx = TraceContext.from_env_or_dict(dict(os.environ))
     json_mode: bool = bool(getattr(parsed, "json", False)) or is_json_in_raw
 
-    # Initialize Traceboard if requested
-    if getattr(parsed, "traceboard", None):
-        from synapse.observability import init_traceboard
-        init_traceboard(
-            parsed.traceboard,
-            run_name=f"synapse_{parsed.command or 'cli'}_{int(__import__('time').time())}",
-        )
-
     if parsed.command is None:
         if json_mode:
             json.dump(
@@ -231,8 +231,24 @@ def main_bench(args: list[str] | None = None) -> int:
             parser.print_help()
         return 0
 
+    tb_dir: str | None = getattr(parsed, "traceboard", None)
+    tb_started = False
+    exit_code = 1
     try:
-        return dispatch_bench(parsed, json_mode, trace_ctx)
+        if tb_dir:
+            from synapse.observability import init_traceboard
+
+            init_traceboard(
+                tb_dir,
+                run_name=f"synapse_bench_{parsed.command}",
+                trace_id=trace_ctx.trace_id,
+            )
+            tb_started = True
+
+        exit_code = dispatch_bench(parsed, json_mode, trace_ctx)
+        return exit_code
     finally:
-        from synapse.observability import shutdown_traceboard
-        shutdown_traceboard()
+        if tb_started:
+            from synapse.observability import shutdown_traceboard
+
+            shutdown_traceboard(status="finished" if exit_code == 0 else "failed")
