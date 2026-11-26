@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Observability core & CLI (`#204`, `#205`, `#212`)**: Added PEP 562 lazy `synapse.observability` wrapper (`init_traceboard`, `get_probe`, `shutdown_traceboard`, `traceboard_stage`), registered `observability` in Tier 0 of `tools/import_dag_guard.py`, added `[traceboard]` optional extra (`aether-traceboard>=0.1.0`), and wired `--traceboard LOG_DIR` into `synapse` and `synapse-bench`.
 - **Module instrumentation (`#206`–`#209`, `#212`)**: Added non-invasive Traceboard telemetry across 9 subsystems (`adapters`, `bench`, `composite`, `inspect`, `pipeline`, `recon`, `rsi`, `style`, `training`) with zero runtime overhead when uninitialized or absent.
 - **Colab / CI / Dual-Track Export (`#210`, `#211`, `#212`)**: Added `--traceboard` to `scripts/colab_runner.py` and `scripts/run_cpu_verification.py`, added dual-track `synapse.bench.traceboard_export.export_reports_to_traceboard()`, documented integration architecture in `docs/DESIGN_TRACEBOARD_INTEGRATION.md`, and published complete plan & landing summary in `docs/plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`.
+- **Post-PR #213 Deep Review & Remediation Blueprint**: Completed deep cross-repo review (`docs/audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md`, identifying 20 findings: 6 P0 / 9 P1 / 5 P2) and published an actionable 3-Wave, 8-PR remediation & hardening plan (`docs/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`).
 
 ## [5.0.0] — 2026-11-24
 

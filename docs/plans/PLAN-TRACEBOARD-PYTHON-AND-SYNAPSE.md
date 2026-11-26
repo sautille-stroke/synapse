@@ -12,7 +12,12 @@ stale_after: 2027-11-26T00:00:00Z
 > **涉及仓库**: `dervgen/aether` (Layer 0) + `sautille-stroke/synapse` (Layer 2)  
 > **合入范围**: `aether#523` – `#525`（3 PRs） + `synapse#204` – `#212`（9 PRs，含落地后修复闭环 `#212`），**总计 12 个已合入 PR**  
 > **设计参考**: [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md)  
-> **总体状态**: ✅ **核心能力与全量 PR 已合入两仓 `main`**（详见 §5 计划 vs 实态差异与待办说明）
+> **总体状态**: ⚠️ **已合入基线，待执行深度评审整改计划（见下方警告与关联计划）**
+
+> [!WARNING]
+> **Post-PR #213 深度评审结论（`Conditional Hold — Remediation Required`）**：在 `2026-11-25` 的逐行代码核查与二进制实证中，识别出 **20 项缺陷（`6×P0` 阻断 · `9×P1` 高危 · `5×P2` 中优先级）**，包括 `.tbevt` `payloadLength` 线格式与 C++/Spec 反置、`BenchPipelineRunner` 失败路径 `stage.set_fail(reason)` `TypeError` 崩溃、CLI 子命令 `--traceboard` 挂载错位以及 `aether-traceboard` 洁净环境漏 `typing_extensions` 依赖等。请先阅览与执行以下整改文件，通过 10 项反作弊门禁后再正式发布 `v0.1.0`：
+> - **深度评审报告**：[REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md)
+> - **整改与硬化落地计划 (`Wave TR-1 ~ TR-3`, `PR-TR01 ~ PR-TR08`)**：[PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
 
 ---
 
