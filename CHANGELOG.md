@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Unified `aether v0.7.2` Alignment (`aether#575`, `v0.7.2` Release)**: Aligned `[traceboard]` optional dependency (`aether-traceboard>=0.7.2`), CI/Colab fallback installs, missing-dependency hints (`@v0.7.2#subdirectory=traceboard/python`), and Traceboard integration docs with `dervgen/aether` lockstep `0.7.2`.
+
 ### Traceboard Post-Review Hardening (`aether#569` `v0.1.1` & `synapse` polish)
 - **Layer 0 `aether-traceboard v0.1.1` (`aether#569`)**: Made Python `_evaluate_comparison_pass` and C++ `ProbeContext::logComparison` fail closed on non-finite (`NaN`/`Inf`) metrics/thresholds, coerced NumPy scalar types (`np.bool_`, `np.integer`, `np.floating`) in JSON sanitization, held `Probe._lock` across `on_run_open` and `RUN_START` emission with `_active = False` until `RUN_START` completes, and fixed `FileCollector` UTF-8 multi-byte truncation boundaries.
 - **Synapse hardening & docs reconciliation**: Enforced `workspace_root` sandboxing on manifest-supplied Traceboard paths in `bundle_worker.py`, emitted `LocalRefinementPipeline(strict=True)` Traceboard comparison/scalar telemetry before raising `QualityGateError`, forwarded `step=step` through `StatelessLoRATrainer._dpo_step()`, tightened `_accepts_kwarg()` against `**kwargs`, updated missing-dependency install hints to the pinned release URL, added `has_tb` CI smoke visibility, and reconciled Traceboard documentation/changelogs.

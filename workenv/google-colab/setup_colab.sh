@@ -84,7 +84,7 @@ python3 -m pip install --quiet \
 if [ -d "${SYNAPSE_ROOT}/../aether/traceboard/python" ]; then
     python3 -m pip install --quiet -e "${SYNAPSE_ROOT}/../aether/traceboard/python"
 else
-    python3 -m pip install --quiet "aether-traceboard>=0.1.0" || \
+    python3 -m pip install --quiet "aether-traceboard>=0.7.2" || \
         echo "⚠️ Optional aether-traceboard unavailable; continuing in graceful-degradation mode."
 fi
 

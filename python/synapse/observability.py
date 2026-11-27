@@ -220,7 +220,7 @@ def init_traceboard(
                 "aether-traceboard not installed; observability disabled. "
                 "Install with: pip install "
                 '"aether-traceboard @ git+https://github.com/dervgen/aether.git'
-                '@traceboard-python-v0.1.0#subdirectory=traceboard/python"'
+                '@v0.7.2#subdirectory=traceboard/python"'
             )
             _probe = None
             _initialized = True

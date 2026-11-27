@@ -56,7 +56,7 @@ def export_reports_to_traceboard(
                 "aether-traceboard not installed; skipping Traceboard export. "
                 "Install with: pip install "
                 '"aether-traceboard @ git+https://github.com/dervgen/aether.git'
-                '@traceboard-python-v0.1.0#subdirectory=traceboard/python"'
+                '@v0.7.2#subdirectory=traceboard/python"'
             )
             return False
     else:

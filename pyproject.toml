@@ -66,7 +66,7 @@ train = [
     "webdataset>=0.2.86",
 ]
 traceboard = [
-    "aether-traceboard>=0.1.0",
+    "aether-traceboard>=0.7.2",
 ]
 full = [
     "synapse[image,metrics,gpu,mesh,invrender,jit,train,traceboard,dev]",

@@ -69,7 +69,7 @@ jobs:
           if [ -d "../aether/traceboard/python" ]; then
             pip install -e ../aether/traceboard/python
           else
-            pip install "aether-traceboard>=0.1.0" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
+            pip install "aether-traceboard>=0.7.2" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
           fi
           if python -c "import aether_traceboard" 2>/dev/null; then
             echo "has_tb=true" >> "$GITHUB_OUTPUT"
@@ -228,7 +228,7 @@ jobs:
           if [ -d "../aether/traceboard/python" ]; then
             pip install -e ../aether/traceboard/python
           else
-            pip install "aether-traceboard>=0.1.0" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
+            pip install "aether-traceboard>=0.7.2" || echo "::warning::aether-traceboard unavailable from PyPI; verifying graceful-degradation path."
           fi
           if python -c "import aether_traceboard" 2>/dev/null; then
             echo "has_tb=true" >> "$GITHUB_OUTPUT"
