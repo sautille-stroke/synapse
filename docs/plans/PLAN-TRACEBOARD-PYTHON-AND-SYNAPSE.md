@@ -10,29 +10,29 @@ stale_after: 2027-11-26T00:00:00Z
 
 > **文档用途**: 作为 **Plan + Implementation Landing Record (Review Baseline)**，供团队成员对 Traceboard Python 化与 Synapse 全链路接入进行 Code Review、架构复核与上线验收。  
 > **涉及仓库**: `dervgen/aether` (Layer 0) + `sautille-stroke/synapse` (Layer 2)  
-> **合入范围**: `aether#523`–`#525`, `#557`–`#560`, `#569`（7 PRs） + `synapse#204`–`#212`, `#215`–`#219` 及 Post-Review 硬化 follow-up  
+> **合入范围**: `aether#523`–`#525`, `#557`–`#560`, `#569`, `#575`（8 PRs） + `synapse#204`–`#212`, `#215`–`#220` + 版本对齐 follow-up  
 > **设计参考**: [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md)  
-> **总体状态**: ✅ **已完成深度整改与 Post-Review 硬化闭环（`Wave TR-1 ~ TR-3` 全绿封板，`aether-traceboard` `v0.1.1` 已合并至 `aether` `main`）**
+> **总体状态**: ✅ **已完成深度整改、Post-Review 硬化与统一版本对齐（`Wave TR-1 ~ TR-3` 全绿封板，`aether v0.7.2` Release 已发布）**
 
 > [!NOTE]
 > **Remediation & Post-Review Hardening (`2026-11-26`)**:
 > 此前于 [REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 检出的 20 项缺陷（`6×P0` · `9×P1` · `5×P2`）已按 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部整改完成并通过 `Gate TB-1 ~ TB-10` 封板验收：
-> - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · Tag/Release `traceboard-python-v0.1.0` · `aether#569` (`v0.1.1` 安全硬化：`NaN`/非有限比较阈值 fail-closed、NumPy 标量 JSON 强转、`begin_run` 并发锁、UTF-8 截断边界修复)
-> - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215` (`PR-TR04`) · `synapse#216` (`PR-TR05`) · `synapse#217` (`PR-TR06`) · `synapse#218` (`PR-TR07`) · `synapse#219` (`PR-TR08` 文档与 10 门禁收口) + Post-Review 硬化 follow-up
-> - **跨仓协同**: `dervgen/caelum-core#557` (`aether-traceboard` v0.1 API 迁移) · `dervgen/all-overview#770` (`DUP-17` 双向黄金测试门禁)
+> - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · `aether#569`（安全硬化）· `aether#575`（统一锁步版本并发布 `v0.7.2` Release）
+> - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215`–`#219` (`PR-TR04`–`PR-TR08`) · `synapse#220`（Post-Review 硬化）+ 统一 `aether-traceboard>=0.7.2` 版本对齐
+> - **跨仓协同**: `dervgen/caelum-core#557` · `dervgen/all-overview#770` (`DUP-17` 双向黄金测试门禁)
 
 ---
 
 ## 0. 执行摘要 (Executive Summary)
 
-为使 `synapse`（Python 算法 SDK / 无状态 Worker / Synapse-Bench）能够复用 `aether` 生态现有的结构化实验追踪能力（`.tbevt` 线格式），而不反向依赖重型 C++ 构建环境，本次改造分初始落地（`aether#523`–`#525` + `synapse#204`–`#212`）与三波深度整改硬化（`Wave TR-1 ~ TR-3` + `aether#569`）完成跨仓闭环：
+为使 `synapse`（Python 算法 SDK / 无状态 Worker / Synapse-Bench）能够复用 `aether` 生态现有的结构化实验追踪能力（`.tbevt` 线格式），而不反向依赖重型 C++ 构建环境，本次改造分初始落地（`aether#523`–`#525` + `synapse#204`–`#212`）、三波深度整改硬化（`Wave TR-1 ~ TR-3` + `aether#569` / `synapse#220`）与 `aether v0.7.2` 统一版本发布完成跨仓闭环：
 
 | 维度 | 统计指标（已合入 `main` 验证） | 说明 |
 |---|---|---|
-| **`aether` 侧交付** | `7 PRs` (`#523`–`#525`, `#557`, `#558`, `#560`, `#569`) | 纯 Python SDK `aether-traceboard`（`v0.1.0` Release → `v0.1.1` 安全硬化）、双向 C++↔Py 黄金测试 (`bazel test //traceboard:all` 4/4 + `177 passed, 1 skipped`)、洁净 Wheel 与 Publish CI |
-| **`synapse` 侧交付** | `14+ PRs` (`#204`–`#212`, `#215`–`#219` + 硬化 follow-up) | `synapse.observability` 原子封装与协议、全位置 CLI `--traceboard`、`bundle_worker` 沙箱/全子系统富媒体埋点、`5/5` CI 全绿 |
-| **跨仓协同交付** | `caelum-core#557` · `all-overview#770` | `caelum-core` 迁移至 `aether-traceboard` v0.1 API；`all-overview` `DUP-17` 锁死双向黄金门禁 |
-| **新增/验证测试** | `aether`: **177 passed, 1 skipped** + **4/4 Bazel** · `synapse`: **86+ 项 Traceboard 专项测试** | 覆盖 7 个测试模块，含真实 `.tbevt` 读写、`CRC-32` 校验、`IMAGE`/`HISTOGRAM`/`COMPARISON`/`TABLE`/`ARTIFACT` 与 Worker 沙箱校验 |
+| **`aether` 侧交付** | `8 PRs` (`#523`–`#525`, `#557`, `#558`, `#560`, `#569`, `#575`) | 纯 Python SDK `aether-traceboard`（与 `MODULE.bazel` / `aether_py` 统一锁步至 `v0.7.2`）、双向 C++↔Py 黄金测试、洁净 Wheel 与统一 `v0.7.2` Release |
+| **`synapse` 侧交付** | `15+ PRs` (`#204`–`#212`, `#215`–`#220` + 版本对齐) | `synapse.observability` 原子封装与协议、全位置 CLI `--traceboard`、`bundle_worker` 沙箱/全子系统富媒体埋点、`5/5` CI 全绿 |
+| **跨仓协同交付** | `caelum-core#557` · `all-overview#770` | `caelum-core` 对齐 `aether-traceboard>=0.7.2`；`all-overview` `DUP-17` 锁死双向黄金门禁 |
+| **新增/验证测试** | `aether`: **178 passed, 1 skipped** + **5/5 Bazel** · `synapse`: **92+ 项 Traceboard 专项测试** | 覆盖 7 个测试模块，含真实 `.tbevt` 读写、`CRC-32` 校验、`IMAGE`/`HISTOGRAM`/`COMPARISON`/`TABLE`/`ARTIFACT` 与 Worker 沙箱校验 |
 | **零侵入与安全门禁** | `ruff` 0 错 · `mypy --strict` 0 错 · `import_dag_guard` clean | `observability` 归属 Tier 0；`import synapse` 保持 PEP 562 零副作用懒加载 |
 
 ---
@@ -45,7 +45,7 @@ stale_after: 2027-11-26T00:00:00Z
 flowchart LR
     subgraph Layer0 ["Layer 0: dervgen/aether (SSOT)"]
         CPP["@aether//traceboard\nC++20 Probe SDK ✅"]
-        PYSDK["aether-traceboard (v0.1.1)\n纯 Python SDK (仅依赖 numpy) ✅"]
+        PYSDK["aether-traceboard (v0.7.2)\n纯 Python SDK (仅依赖 numpy) ✅"]
         SPEC[".tbevt Wire Format Spec v1\n& Golden Contract (1,657B Py) ✅"]
         CPP --> SPEC
         PYSDK --> SPEC
@@ -135,13 +135,13 @@ flowchart TD
 
 ## 3. 详细落地内容清单 (Detailed Landing Inventory)
 
-### 3.1 `dervgen/aether` 侧：`aether-traceboard` Python SDK (`#523`–`#525`, `#557`–`#560`, `#569`)
+### 3.1 `dervgen/aether` 侧：`aether-traceboard` Python SDK (`#523`–`#525`, `#557`–`#560`, `#569`, `#575`)
 
 #### 核心包 (`aether/traceboard/python/aether_traceboard/`)
 
 | 文件路径 | 核心职责与实现细节 |
 |---|---|
-| `aether_traceboard/__init__.py` | 导出公开契约：`Probe`, `get_probe`, `StageContext`, `ProbeCollector`, `FileCollector`, `EventType`, `ImageFormat`, `StageStatus`, `Record`, `FileHeader`, `read_file`, `read_events`, `__version__="0.1.1"`。 |
+| `aether_traceboard/__init__.py` | 导出公开契约：`Probe`, `get_probe`, `StageContext`, `ProbeCollector`, `FileCollector`, `EventType`, `ImageFormat`, `StageStatus`, `Record`, `FileHeader`, `read_file`, `read_events`, `__version__="0.7.2"`。 |
 | `aether_traceboard/_types.py` | 定义 `EventType`（`SCALAR=0`, `IMAGE=1`, `HISTOGRAM=2`, `TEXT=3`, `COMPARISON=4`, `TABLE=5`, `ARTIFACT=6`, `SERIES_GROUP=7`, `RUN_START=240`, `RUN_END=241`, `STAGE_BEGIN=242`, `STAGE_END=243`, `CONFIG=244`）、`ImageFormat` 与 `StageStatus`。 |
 | `aether_traceboard/_crc32.py` / `_hash.py` | 复用标准库 `zlib.crc32` 计算 IEEE CRC-32 与 SHA-256 截断生成小端 `uint64` `runIdHash`。 |
 | `aether_traceboard/event.py` | 完整的 `.tbevt` v1 二进制封包/解包（`FileHeader` 16B、`RecordHeader` 32B、`pack_*/unpack_*` 全 13 类事件），严格小端对齐与 CRC 校验。 |
@@ -168,7 +168,7 @@ flowchart TD
 |---|---|---|
 | [observability.py](../../python/synapse/observability.py) | Thin wrapper 单例管理与异常隔离；`RLock` + 原子化 `init_traceboard()` 回滚、显式签名的 `_accepts_kwarg`、`ProbeProtocol`/`StageProtocol` 与 `bound_image_u8()` / `safe_log_{image,histogram,comparison}`。 | `init_traceboard()`, `get_probe()`, `shutdown_traceboard()`, `traceboard_stage()` |
 | [\_\_init\_\_.py](../../python/synapse/__init__.py) | 在 `_SUBMODULES` / `TYPE_CHECKING` / `__all__` 注册 `"observability"`。 | PEP 562 延迟加载 |
-| [pyproject.toml](../../pyproject.toml) | 新增 optional extra `traceboard = ["aether-traceboard>=0.1.0"]`、`[full]` 纳管，及 `mypy` override。 | `pip install -e ".[traceboard]"` |
+| [pyproject.toml](../../pyproject.toml) | 新增 optional extra `traceboard = ["aether-traceboard>=0.7.2"]`、`[full]` 纳管，及 `mypy` override。 | `pip install -e ".[traceboard]"` |
 | [cli/common.py](../../python/synapse/cli/common.py) & [cli/_app.py](../../python/synapse/cli/_app.py) | 为 `synapse` 与 `synapse-bench` 双入口通过 `get_json_parent_parser()` 注册 `--traceboard LOG_DIR`，并在 `finally:` 确保 `shutdown_traceboard()` 刷盘。 | `synapse [--traceboard LOG_DIR] ...` |
 | [tools/import_dag_guard.py](../../tools/import_dag_guard.py) & [ARCHITECTURE.md](../ARCHITECTURE.md) | `observability` 注册为 **Tier 0**，同步更新权威架构目录树以通过 `test_profiles_doc_sync.py`。 | `python tools/import_dag_guard.py --check` |
 

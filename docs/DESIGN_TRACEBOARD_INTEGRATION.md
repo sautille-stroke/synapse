@@ -51,7 +51,7 @@ DervGen ecosystem's unidirectional dependency rule (Layer 0 -> Layer 2).
                                     │ optional extra: pip install "synapse[traceboard]"
                                     ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                  aether-traceboard v0.1.0 (Layer 0)                  │
+│                  aether-traceboard v0.7.2 (Layer 0)                  │
 │                                                                      │
 │  Probe / StageContext / FileCollector / read_file / iter_events      │
 │  Wire parity verified bi-directionally (C++ <-> Python Golden Gate)  │
