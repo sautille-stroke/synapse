@@ -405,6 +405,7 @@ class TestGenerateCliJsonEnvelopes:
 
     def test_synapse_generate_json_mode(self, tmp_path: Path) -> None:
         """'synapse --json generate' should emit 100% parseable JSON to stdout."""
+        pytest.importorskip("OpenEXR", reason="OpenEXR not installed")
         out_dir = tmp_path / "gen_output"
         code, out, err = _capture_synapse(
             [
@@ -432,6 +433,7 @@ class TestGenerateCliJsonEnvelopes:
 
     def test_standalone_data_gen_json_flag(self, tmp_path: Path) -> None:
         """'synapse-data-gen --json' should emit 100% parseable JSON to stdout."""
+        pytest.importorskip("cv2", reason="cv2 not installed (needed for dataset rendering)")
         out_dir = tmp_path / "data_gen_out"
         code, out, err = _capture_data_gen(
             [
@@ -504,6 +506,7 @@ class TestCliJsonHardening:
     @pytest.mark.slow
     def test_bench_export_fgpp_generates_exr(self, tmp_path: Path) -> None:
         """'synapse bench export-fgpp' should write valid 15-channel EXR files."""
+        pytest.importorskip("OpenEXR", reason="OpenEXR not installed")
         out_dir = tmp_path / "bench_export"
         code, out, _ = _capture_synapse(
             [
@@ -529,6 +532,7 @@ class TestCliJsonHardening:
     @pytest.mark.slow
     def test_fgpp_inspect_export_vis(self, tmp_path: Path) -> None:
         """'synapse fgpp inspect --export-vis' should render visualization images."""
+        pytest.importorskip("OpenEXR", reason="OpenEXR not installed")
         out_dir = tmp_path / "bench_export_vis"
         code1, _, _ = _capture_synapse(
             [

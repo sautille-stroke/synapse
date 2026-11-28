@@ -42,6 +42,7 @@ class TestModels:
 
     @pytest.mark.slow
     def test_load_damaged_helmet_or_fallback(self) -> None:
+        pytest.importorskip("trimesh", reason="trimesh not installed")
         models = list_builtin_models()
         target = "damaged_helmet" if "damaged_helmet" in models else "bunny"
         model = load_model(target, normalize=True, target_radius=1.0)
@@ -122,6 +123,7 @@ class TestVisualizer:
     """Test visualization colormapping functions."""
 
     def test_visualizers(self) -> None:
+        pytest.importorskip("cv2", reason="cv2 not installed")
         depth = np.full((64, 64), 2.0, dtype=np.float32)
         mask = np.ones((64, 64), dtype=np.uint8)
         normal = np.zeros((64, 64, 3), dtype=np.float32)
@@ -147,6 +149,7 @@ class TestDatasetGenerator:
     """Test end-to-end dataset generation pipeline."""
 
     def test_generate_dataset(self, tmp_path: Any) -> None:
+        pytest.importorskip("cv2", reason="cv2 not installed")
         out_dir = tmp_path / "test_dataset"
         cfg = DatasetConfig(
             model_name="cube",
@@ -180,6 +183,7 @@ class TestDatasetGenerator:
 
     @pytest.mark.parametrize("traj_type", ["spiral", "hemisphere"])
     def test_generate_dataset_spiral_and_hemisphere(self, tmp_path: Any, traj_type: Any) -> None:
+        pytest.importorskip("cv2", reason="cv2 not installed")
         out_dir = tmp_path / f"test_dataset_{traj_type}"
         cfg = DatasetConfig(
             model_name="cube",
