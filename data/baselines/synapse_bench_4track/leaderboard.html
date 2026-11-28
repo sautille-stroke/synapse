@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Synapse-Bench 4-Track Leaderboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+  background: #f8fafc; color: #1e293b; line-height: 1.6;
+  max-width: 960px; margin: 0 auto; padding: 24px;
+}
+header { text-align: center; margin-bottom: 32px; }
+h1 { font-size: 28px; margin-bottom: 4px; }
+h2 { font-size: 20px; margin: 24px 0 12px; }
+h3 { font-size: 16px; margin-bottom: 8px; }
+.subtitle { color: #64748b; font-size: 14px; }
+.pass-count { color: #22c55e; font-weight: 700; }
+.fail-count { color: #ef4444; font-weight: 700; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+th, td {
+  padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+th { background: #f1f5f9; font-weight: 600; }
+.summary-table { margin-bottom: 24px; }
+.chart-container { text-align: center; margin: 16px 0; }
+.card {
+  border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;
+  margin: 12px 0; background: #fff;
+}
+.card-pass { border-left: 4px solid #22c55e; }
+.card-fail { border-left: 4px solid #ef4444; }
+.error { color: #ef4444; font-size: 13px; margin: 4px 0; }
+.metrics-table { max-width: 400px; }
+footer {
+  margin-top: 32px; padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  text-align: center; color: #94a3b8; font-size: 12px;
+}
+section { margin-bottom: 24px; }
+</style>
+</head>
+<body>
+<header>
+<h1>Synapse-Bench 4-Track Comparison Leaderboard</h1>
+<p class="subtitle">Overall Winner: <strong>mock_clean</strong></p>
+</header>
+<div class="chart-container"><svg viewBox="0 0 600 200" width="600" height="200">
+  <text x="300" y="18" text-anchor="middle" font-size="14" font-weight="700" fill="#333">Overall 4-Track Score (0-100)</text>
+  <text x="134" y="40" text-anchor="end" font-size="11" fill="#555" dominant-baseline="central">mock_clean</text>
+  <rect x="140" y="30" width="400" height="18" fill="#3b82f6" rx="3"/>
+  <text x="544" y="40" font-size="11" fill="#333" dominant-baseline="central">29.9</text>
+  <text x="134" y="64" text-anchor="end" font-size="11" fill="#555" dominant-baseline="central">mock_perturbed_basel</text>
+  <rect x="140" y="54" width="122" height="18" fill="#3b82f6" rx="3"/>
+  <text x="266" y="64" font-size="11" fill="#333" dominant-baseline="central">9.1</text>
+</svg></div>
+<section>
+<h2>Leaderboard Ranking</h2>
+<table class="summary-table">
+<thead><tr><th>Rank</th><th>Model</th><th>Overall</th><th>track1_3d_assets</th><th>track2_video_continuity</th><th>track3_kinematics_mocap</th><th>track4_inverse_rendering</th></tr></thead>
+<tbody>
+<tr><td>#1</td><td><strong>mock_clean</strong></td><td>29.9</td><td>77.8</td><td>0.0</td><td>35.4</td><td>6.5</td></tr>
+<tr><td>#2</td><td><strong>mock_perturbed_baseline</strong></td><td>9.1</td><td>0.0</td><td>0.0</td><td>30.0</td><td>6.5</td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Per-Track Winners</h2>
+<ul><li><strong>Track 1: Generative 3D Assets &amp; Topology</strong>: mock_clean</li><li><strong>Track 2: Video Spatio-Temporal Continuity</strong>: mock_clean</li><li><strong>Track 3: Kinematics &amp; Volumetric Rigging</strong>: mock_clean</li><li><strong>Track 4: Physical Relighting &amp; Inverse Rendering</strong>: mock_clean</li></ul>
+</section>
+</body>
+</html>

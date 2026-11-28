@@ -1,0 +1,3825 @@
+{
+  "adapter_id": "mock_perturbed_baseline",
+  "seed": 42,
+  "resolution": [
+    32,
+    32
+  ],
+  "num_frames": 4,
+  "scenario_count": 40,
+  "metrics": {
+    "chamfer_mm": 47.511498,
+    "f_score_1mm": 0.0,
+    "is_watertight": 0.0
+  },
+  "reports": [
+    {
+      "scenario_name": "t1_ext_gso_ceramic_mug",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.06303203850984573,
+        "temporal_warp_error": 0.09948639568385671,
+        "silhouette_iou": 0.3342391638653777,
+        "psnr_db": 15.601554629064657,
+        "ssim": 0.1103856959716884,
+        "ciede2000": 14.344979641039952,
+        "border_ring_ciede2000": 13.56709885956113,
+        "style_color_de": 13.56709885956113,
+        "lpips": 0.11330444028401229,
+        "light_dir_error_deg": 45.21698644618087,
+        "style_color_temp": 6520.177860605465,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.042208004742860794,
+        "fgpp_load_ms": 17.573875025846064,
+        "generate_ms": 0.8213749970309436,
+        "metrics_ms": 11.90208300249651,
+        "total_ms": 30.37179197417572
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "gso_ceramic_mug",
+        "source": "gso",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cylinder",
+        "license": "CC-BY-4.0",
+        "up_axis": "Z",
+        "dataset_category": "household"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09948639568385671,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.06303203850984573,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3342391638653777,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.56709885956113,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 45.21698644618087,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.601554629064657,
+            "threshold": 26.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1103856959716884,
+            "threshold": 0.86,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_cube_orbit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.05526253953576088,
+        "temporal_warp_error": 0.10102431300020298,
+        "silhouette_iou": 0.38222501955370025,
+        "psnr_db": 16.372679221547674,
+        "ssim": 0.15326536201346608,
+        "ciede2000": 13.211232504556152,
+        "border_ring_ciede2000": 13.312661002595236,
+        "style_color_de": 13.312661002595236,
+        "lpips": 0.1096749612991952,
+        "light_dir_error_deg": 7.867424361875069,
+        "style_color_temp": 6413.388209260829,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09595800656825304,
+        "fgpp_load_ms": 3.310499945655465,
+        "generate_ms": 0.7323329919017851,
+        "metrics_ms": 11.359333992004395,
+        "total_ms": 15.524209011346102
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10102431300020298,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.05526253953576088,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.38222501955370025,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.312661002595236,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.372679221547674,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.15326536201346608,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_cylinder_arc",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.046307627111673355,
+        "temporal_warp_error": 0.08285747996218244,
+        "silhouette_iou": 0.22840391884594616,
+        "psnr_db": 14.67279860459901,
+        "ssim": 0.08194612197296831,
+        "ciede2000": 14.80361072361602,
+        "border_ring_ciede2000": 14.183835181982243,
+        "style_color_de": 14.183835181982243,
+        "lpips": 0.11424709716411277,
+        "light_dir_error_deg": 44.34375258472882,
+        "style_color_temp": 6303.505544048711,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.0772500061430037,
+        "fgpp_load_ms": 17.197249981109053,
+        "generate_ms": 0.7579579832963645,
+        "metrics_ms": 11.999040958471596,
+        "total_ms": 30.05933394888416
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cylinder",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08285747996218244,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.046307627111673355,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.22840391884594616,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.183835181982243,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.34375258472882,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.67279860459901,
+            "threshold": 26.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.08194612197296831,
+            "threshold": 0.86,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_cylinder_closeup",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.13264241814613342,
+        "temporal_warp_error": 0.11862576317324373,
+        "silhouette_iou": 0.7058511508676066,
+        "psnr_db": 14.389221634866036,
+        "ssim": 0.2627115945351808,
+        "ciede2000": 13.88729486872868,
+        "border_ring_ciede2000": 15.505445585583994,
+        "style_color_de": 15.505445585583994,
+        "lpips": 0.11786504090483624,
+        "light_dir_error_deg": 44.27247775214699,
+        "style_color_temp": 6131.497957744112,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08625001646578312,
+        "fgpp_load_ms": 19.98716703383252,
+        "generate_ms": 0.7761669694446027,
+        "metrics_ms": 12.647499970626086,
+        "total_ms": 33.527250052429736
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cylinder",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.11862576317324373,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.13264241814613342,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.7058511508676066,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 15.505445585583994,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.27247775214699,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.389221634866036,
+            "threshold": 27.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.2627115945351808,
+            "threshold": 0.87,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_sphere_multi_light",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08050990104675293,
+        "temporal_warp_error": 0.11162381009086715,
+        "silhouette_iou": 0.5200971705161023,
+        "psnr_db": 13.436262804107393,
+        "ssim": 0.1728431422911765,
+        "ciede2000": 16.016425723813477,
+        "border_ring_ciede2000": 13.94354110636871,
+        "style_color_de": 13.94354110636871,
+        "lpips": 0.12614060872201463,
+        "light_dir_error_deg": 16.10247077222414,
+        "style_color_temp": 6302.272544164717,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09450002107769251,
+        "fgpp_load_ms": 108.4682919899933,
+        "generate_ms": 0.7917080074548721,
+        "metrics_ms": 12.388000031933188,
+        "total_ms": 121.7739999992773
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.11162381009086715,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08050990104675293,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5200971705161023,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.94354110636871,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 13.436262804107393,
+            "threshold": 27.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1728431422911765,
+            "threshold": 0.87,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 3.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_sphere_orbit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08050990104675293,
+        "temporal_warp_error": 0.11162381009086715,
+        "silhouette_iou": 0.5200971705161023,
+        "psnr_db": 14.769997747477273,
+        "ssim": 0.20315531974449522,
+        "ciede2000": 14.000862197313598,
+        "border_ring_ciede2000": 13.94354110636871,
+        "style_color_de": 13.94354110636871,
+        "lpips": 0.10910803817106432,
+        "light_dir_error_deg": 44.303321077986745,
+        "style_color_temp": 6302.272544164717,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12320803944021463,
+        "fgpp_load_ms": 105.38937500678003,
+        "generate_ms": 0.7889579865150154,
+        "metrics_ms": 12.31424999423325,
+        "total_ms": 118.64762502955273
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.11162381009086715,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08050990104675293,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5200971705161023,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.94354110636871,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.303321077986745,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.769997747477273,
+            "threshold": 28.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.20315531974449522,
+            "threshold": 0.88,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_sphere_sparse",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08010095357894897,
+        "temporal_warp_error": 0.1103081756527775,
+        "silhouette_iou": 0.5200971705161023,
+        "psnr_db": 14.921850076746242,
+        "ssim": 0.20117273918757264,
+        "ciede2000": 13.915123730427704,
+        "border_ring_ciede2000": 13.892146557642702,
+        "style_color_de": 13.892146557642702,
+        "lpips": 0.10937378124291866,
+        "light_dir_error_deg": 44.28122260627708,
+        "style_color_temp": 6302.465953035222,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11637498391792178,
+        "fgpp_load_ms": 105.98845797358081,
+        "generate_ms": 0.8012499893084168,
+        "metrics_ms": 12.32008298393339,
+        "total_ms": 119.2576659959741
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.1103081756527775,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08010095357894897,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5200971705161023,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.892146557642702,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.28122260627708,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.921850076746242,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.20117273918757264,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_torus_dolly",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.15575076639652252,
+        "temporal_warp_error": 0.09135221371971809,
+        "silhouette_iou": 0.33091307253283975,
+        "psnr_db": 14.744240338378207,
+        "ssim": 0.19197207317855713,
+        "ciede2000": 14.137265352910585,
+        "border_ring_ciede2000": 13.830066052000177,
+        "style_color_de": 13.830066052000177,
+        "lpips": 0.11139519125015201,
+        "light_dir_error_deg": 44.333362939061985,
+        "style_color_temp": 6418.6829860516145,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11387496488168836,
+        "fgpp_load_ms": 102.01437497744337,
+        "generate_ms": 0.7921669748611748,
+        "metrics_ms": 11.957750015426427,
+        "total_ms": 114.91891701007262
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "torus",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09135221371971809,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.15575076639652252,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.33091307253283975,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.830066052000177,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.333362939061985,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.744240338378207,
+            "threshold": 26.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.19197207317855713,
+            "threshold": 0.86,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t1_rigid_torus_overhead",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.0439620316028595,
+        "temporal_warp_error": 0.1334231977176451,
+        "silhouette_iou": 0.3359111483125322,
+        "psnr_db": 12.017087676088483,
+        "ssim": 0.16095062273316138,
+        "ciede2000": 17.45619293004597,
+        "border_ring_ciede2000": 15.126992460683796,
+        "style_color_de": 15.126992460683796,
+        "lpips": 0.1229797158528961,
+        "light_dir_error_deg": 44.36344762827682,
+        "style_color_temp": 6871.39860791603,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13333302922546864,
+        "fgpp_load_ms": 110.45862501487136,
+        "generate_ms": 0.8312499849125743,
+        "metrics_ms": 12.048458971548826,
+        "total_ms": 123.5026249778457
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "torus",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.1334231977176451,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.0439620316028595,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3359111483125322,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 15.126992460683796,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.36344762827682,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 12.017087676088483,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.16095062273316138,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_ext_abo_metal_lamp",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.0652812197804451,
+        "temporal_warp_error": 0.09735356496215582,
+        "silhouette_iou": 0.23474383785333175,
+        "psnr_db": 15.062353446030162,
+        "ssim": 0.07118667213142356,
+        "ciede2000": 14.613885727396703,
+        "border_ring_ciede2000": 13.666426578832425,
+        "style_color_de": 13.666426578832425,
+        "lpips": 0.11604799060230897,
+        "light_dir_error_deg": 44.30297028773525,
+        "style_color_temp": 6237.15557337708,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.1200829865410924,
+        "fgpp_load_ms": 10.67200000397861,
+        "generate_ms": 0.7598749944008887,
+        "metrics_ms": 11.69370801653713,
+        "total_ms": 23.2729580020532
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "abo_metal_lamp",
+        "source": "abo",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cone",
+        "license": "CC-BY-4.0",
+        "up_axis": "Y",
+        "dataset_category": "lighting"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09735356496215582,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.0652812197804451,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.23474383785333175,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.666426578832425,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.30297028773525,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.062353446030162,
+            "threshold": 24.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.07118667213142356,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_ext_abo_wooden_chair",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.06121382117271423,
+        "temporal_warp_error": 0.101617289597405,
+        "silhouette_iou": 0.29318381633246365,
+        "psnr_db": 16.55147698970753,
+        "ssim": 0.12160849477134617,
+        "ciede2000": 13.338067840266008,
+        "border_ring_ciede2000": 13.1983832340594,
+        "style_color_de": 13.1983832340594,
+        "lpips": 0.10955378776458335,
+        "light_dir_error_deg": 16.004905738298635,
+        "style_color_temp": 6492.070064937237,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.07966597331687808,
+        "fgpp_load_ms": 3.3249580301344395,
+        "generate_ms": 0.7449999684467912,
+        "metrics_ms": 11.55645796097815,
+        "total_ms": 15.732958039734513
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "abo_wooden_chair",
+        "source": "abo",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cube",
+        "license": "CC-BY-4.0",
+        "up_axis": "Y",
+        "dataset_category": "furniture"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.101617289597405,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.06121382117271423,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.29318381633246365,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.1983832340594,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.55147698970753,
+            "threshold": 24.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.12160849477134617,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_ext_gso_sneaker_orbit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.07697946578264236,
+        "temporal_warp_error": 0.10757154459858186,
+        "silhouette_iou": 0.38132823482281264,
+        "psnr_db": 16.30514438178509,
+        "ssim": 0.1570830716562135,
+        "ciede2000": 13.216176853631456,
+        "border_ring_ciede2000": 13.333594372236746,
+        "style_color_de": 13.333594372236746,
+        "lpips": 0.1105871149984908,
+        "light_dir_error_deg": 16.004905738298724,
+        "style_color_temp": 6421.321590400514,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08762499783188105,
+        "fgpp_load_ms": 3.4967079991474748,
+        "generate_ms": 0.7353330147452652,
+        "metrics_ms": 11.445334006566554,
+        "total_ms": 15.79116698121652
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "gso_sneaker_scan",
+        "source": "gso",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cube",
+        "license": "CC-BY-4.0",
+        "up_axis": "Z",
+        "dataset_category": "footwear"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10757154459858186,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.07697946578264236,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.38132823482281264,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.333594372236746,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.30514438178509,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1570830716562135,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_ext_gso_toy_truck",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.06274909526109695,
+        "temporal_warp_error": 0.10368602718251234,
+        "silhouette_iou": 0.3469286023300355,
+        "psnr_db": 16.1863816818719,
+        "ssim": 0.1415773793349106,
+        "ciede2000": 13.357436351269712,
+        "border_ring_ciede2000": 13.299076084187643,
+        "style_color_de": 13.299076084187643,
+        "lpips": 0.11126140873018293,
+        "light_dir_error_deg": 16.00490573829859,
+        "style_color_temp": 6552.38827354248,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08112500654533505,
+        "fgpp_load_ms": 3.4549160045571625,
+        "generate_ms": 0.759333954192698,
+        "metrics_ms": 11.480582994408906,
+        "total_ms": 15.800875029526651
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "gso_toy_truck",
+        "source": "gso",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cube",
+        "license": "CC-BY-4.0",
+        "up_axis": "Z",
+        "dataset_category": "toys"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10368602718251234,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.06274909526109695,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3469286023300355,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.299076084187643,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.1863816818719,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1415773793349106,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_ext_omni_scanned_fruit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.13597600162029266,
+        "temporal_warp_error": 0.12948739573808593,
+        "silhouette_iou": 0.6369759706977458,
+        "psnr_db": 14.336850819458283,
+        "ssim": 0.27918205567689947,
+        "ciede2000": 13.832495708113006,
+        "border_ring_ciede2000": 14.591405882498812,
+        "style_color_de": 14.591405882498812,
+        "lpips": 0.11303424138733711,
+        "light_dir_error_deg": 44.29471339858922,
+        "style_color_temp": 6401.118387597291,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.07854198338463902,
+        "fgpp_load_ms": 111.23733298154548,
+        "generate_ms": 0.7776659913361073,
+        "metrics_ms": 12.524041987489909,
+        "total_ms": 124.64787502540275
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "omni_scanned_fruit",
+        "source": "omniobject3d",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:sphere",
+        "license": "CC-BY-4.0",
+        "up_axis": "Z",
+        "dataset_category": "food"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.12948739573808593,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.13597600162029266,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.6369759706977458,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.591405882498812,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.29471339858922,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.336850819458283,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.27918205567689947,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_falling_sphere",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.027631768956780434,
+        "temporal_warp_error": 0.0658297175945176,
+        "silhouette_iou": 0.37741794172268595,
+        "psnr_db": 14.43521649022781,
+        "ssim": 0.14785528609463017,
+        "ciede2000": 14.365484182119413,
+        "border_ring_ciede2000": 14.567229850537005,
+        "style_color_de": 14.567229850537005,
+        "lpips": 0.10809064410166037,
+        "light_dir_error_deg": 44.28154614007496,
+        "style_color_temp": 6246.613244229538,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12354098726063967,
+        "fgpp_load_ms": 101.60091699799523,
+        "generate_ms": 0.811500009149313,
+        "metrics_ms": 12.022459006402642,
+        "total_ms": 114.5914169610478
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.0658297175945176,
+            "threshold": 0.06,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.027631768956780434,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.37741794172268595,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.567229850537005,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.28154614007496,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.43521649022781,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.14785528609463017,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_humanoid_idle",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.0429697223007679,
+        "temporal_warp_error": 0.08498510562247262,
+        "silhouette_iou": 0.05085053529258699,
+        "psnr_db": 16.262645713794214,
+        "ssim": 0.001766440642178423,
+        "ciede2000": 14.186193920694702,
+        "border_ring_ciede2000": 13.347771561251928,
+        "style_color_de": 13.347771561251928,
+        "lpips": 0.11692041636551821,
+        "light_dir_error_deg": 44.33242477474041,
+        "style_color_temp": 6422.689125324061,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11991697829216719,
+        "fgpp_load_ms": 253.22120898636058,
+        "generate_ms": 0.8030419703572989,
+        "metrics_ms": 11.997499968856573,
+        "total_ms": 266.17600000463426
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08498510562247262,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.0429697223007679,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.05085053529258699,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.347771561251928,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.33242477474041,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.262645713794214,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.001766440642178423,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 0.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_humanoid_walk_frontal",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.04346558451652527,
+        "temporal_warp_error": 0.07951202732589718,
+        "silhouette_iou": 0.051372882878954695,
+        "psnr_db": 15.134626434609997,
+        "ssim": 0.008338825800847497,
+        "ciede2000": 14.637719744775033,
+        "border_ring_ciede2000": 13.694994942407337,
+        "style_color_de": 13.694994942407337,
+        "lpips": 0.1176834937901539,
+        "light_dir_error_deg": 44.267936049987675,
+        "style_color_temp": 6196.692456934877,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13079197378829122,
+        "fgpp_load_ms": 252.37158400705084,
+        "generate_ms": 0.8129170164465904,
+        "metrics_ms": 11.92791701760143,
+        "total_ms": 265.27995796641335
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.07951202732589718,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.04346558451652527,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.051372882878954695,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.694994942407337,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.267936049987675,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.134626434609997,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.008338825800847497,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "foot_sliding_cm",
+            "measured": NaN,
+            "threshold": 2.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 1.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_humanoid_walk_orbit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.042046353220939636,
+        "temporal_warp_error": 0.0828729864543989,
+        "silhouette_iou": 0.042996376978773954,
+        "psnr_db": 16.725087730339308,
+        "ssim": 0.0038012108571930433,
+        "ciede2000": 13.888644360700624,
+        "border_ring_ciede2000": 13.284546213011966,
+        "style_color_de": 13.284546213011966,
+        "lpips": 0.11517724549634668,
+        "light_dir_error_deg": 44.32817504349854,
+        "style_color_temp": 6557.471475902914,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13800000306218863,
+        "fgpp_load_ms": 255.2192909643054,
+        "generate_ms": 0.8294169674627483,
+        "metrics_ms": 11.619791970588267,
+        "total_ms": 267.843791982159
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.0828729864543989,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.042046353220939636,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.042996376978773954,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.284546213011966,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.32817504349854,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.725087730339308,
+            "threshold": 20.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.0038012108571930433,
+            "threshold": 0.78,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 10.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "foot_sliding_cm",
+            "measured": NaN,
+            "threshold": 2.5,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 1.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_humanoid_walk_side",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.04977533221244812,
+        "temporal_warp_error": 0.07920598083782823,
+        "silhouette_iou": 0.026562987631543737,
+        "psnr_db": 16.049449873271634,
+        "ssim": -0.0006677654462961537,
+        "ciede2000": 14.136918312949398,
+        "border_ring_ciede2000": 13.403662105361251,
+        "style_color_de": 13.403662105361251,
+        "lpips": 0.11700403667672056,
+        "light_dir_error_deg": 44.28482140903409,
+        "style_color_temp": 6537.941654451217,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12779200915247202,
+        "fgpp_load_ms": 252.10529199102893,
+        "generate_ms": 0.8066250011324883,
+        "metrics_ms": 11.94449997274205,
+        "total_ms": 265.0303749833256
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.07920598083782823,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.04977533221244812,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.026562987631543737,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.403662105361251,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.28482140903409,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.049449873271634,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": -0.0006677654462961537,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "foot_sliding_cm",
+            "measured": NaN,
+            "threshold": 2.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 1.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_pendulum_cylinder",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.054766833782196045,
+        "temporal_warp_error": 0.08312925827188154,
+        "silhouette_iou": 0.18123516254118832,
+        "psnr_db": 14.723868734445661,
+        "ssim": 0.06496441932734019,
+        "ciede2000": 14.85149311771438,
+        "border_ring_ciede2000": 14.300960154767607,
+        "style_color_de": 14.300960154767607,
+        "lpips": 0.11455808044273327,
+        "light_dir_error_deg": 44.296973331915765,
+        "style_color_temp": 6548.627756798613,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13954099267721176,
+        "fgpp_load_ms": 15.079042001161724,
+        "generate_ms": 0.7675410015508533,
+        "metrics_ms": 11.933750007301569,
+        "total_ms": 27.95958297792822
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cylinder",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08312925827188154,
+            "threshold": 0.06,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.054766833782196045,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.18123516254118832,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.300960154767607,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.296973331915765,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.723868734445661,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.06496441932734019,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_rotating_cube",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.03637832775712013,
+        "temporal_warp_error": 0.07344838506428457,
+        "silhouette_iou": 0.37863124896363937,
+        "psnr_db": 14.686235381672859,
+        "ssim": 0.1588100598647978,
+        "ciede2000": 13.798187282405749,
+        "border_ring_ciede2000": 13.762291211435155,
+        "style_color_de": 13.762291211435155,
+        "lpips": 0.1092151789372843,
+        "light_dir_error_deg": 21.12617776145095,
+        "style_color_temp": 6267.087741922021,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09429099736735225,
+        "fgpp_load_ms": 2.8326670289970934,
+        "generate_ms": 0.741249998100102,
+        "metrics_ms": 11.294417025055736,
+        "total_ms": 14.989040966611356
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.07344838506428457,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.03637832775712013,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.37863124896363937,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.762291211435155,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 21.12617776145095,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.686235381672859,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1588100598647978,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_cube_behind_cylinder",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.09015866369009018,
+        "temporal_warp_error": 0.10662878667465403,
+        "silhouette_iou": 0.1692066570098958,
+        "psnr_db": 15.71613743112897,
+        "ssim": 0.05836425225011663,
+        "ciede2000": 14.264171556215127,
+        "border_ring_ciede2000": 13.456155592594275,
+        "style_color_de": 13.456155592594275,
+        "lpips": 0.11534197787597751,
+        "light_dir_error_deg": 44.573209719916285,
+        "style_color_temp": 6351.627940707108,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08287501987069845,
+        "fgpp_load_ms": 15.112249995581806,
+        "generate_ms": 0.7409999961964786,
+        "metrics_ms": 11.911582958418876,
+        "total_ms": 27.874333958607167
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10662878667465403,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.09015866369009018,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.1692066570098958,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.456155592594275,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.573209719916285,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.71613743112897,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.05836425225011663,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_ext_abo_fabric_sofa",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.07229604572057724,
+        "temporal_warp_error": 0.09820614423752345,
+        "silhouette_iou": 0.240308509180926,
+        "psnr_db": 16.37508791571321,
+        "ssim": 0.0955932340745118,
+        "ciede2000": 13.540425489512447,
+        "border_ring_ciede2000": 13.196338529734707,
+        "style_color_de": 13.196338529734707,
+        "lpips": 0.11083209275357289,
+        "light_dir_error_deg": 18.654660670622476,
+        "style_color_temp": 6530.989665957966,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09404198499396443,
+        "fgpp_load_ms": 3.3296250039711595,
+        "generate_ms": 0.7435419829562306,
+        "metrics_ms": 11.673833010718226,
+        "total_ms": 15.86729200789705
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "abo_fabric_sofa",
+        "source": "abo",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:cube",
+        "license": "CC-BY-4.0",
+        "up_axis": "Y",
+        "dataset_category": "furniture"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09820614423752345,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.07229604572057724,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.240308509180926,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.196338529734707,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.37508791571321,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.0955932340745118,
+            "threshold": 0.81,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_ext_omni_plush_bear",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.11680690199136734,
+        "temporal_warp_error": 0.11148351420993385,
+        "silhouette_iou": 0.5240229087460729,
+        "psnr_db": 14.900544026079087,
+        "ssim": 0.20559080009552474,
+        "ciede2000": 13.917300483141672,
+        "border_ring_ciede2000": 13.924617659923223,
+        "style_color_de": 13.924617659923223,
+        "lpips": 0.10927494300176935,
+        "light_dir_error_deg": 44.30482093182392,
+        "style_color_temp": 6327.521415662328,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09229098213836551,
+        "fgpp_load_ms": 107.83945803996176,
+        "generate_ms": 0.780666945502162,
+        "metrics_ms": 12.329666991718113,
+        "total_ms": 121.0729589802213
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "omni_plush_bear",
+        "source": "omniobject3d",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:sphere",
+        "license": "CC-BY-4.0",
+        "up_axis": "Z",
+        "dataset_category": "toys"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.11148351420993385,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.11680690199136734,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5240229087460729,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.924617659923223,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.30482093182392,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.900544026079087,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.20559080009552474,
+            "threshold": 0.81,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_ext_thingi10k_gear_mechanism",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08717446774244308,
+        "temporal_warp_error": 0.11469413855250715,
+        "silhouette_iou": 0.35021945610696537,
+        "psnr_db": 15.299307268384904,
+        "ssim": 0.17333174092534737,
+        "ciede2000": 14.02472670835936,
+        "border_ring_ciede2000": 13.33332800632611,
+        "style_color_de": 13.33332800632611,
+        "lpips": 0.11058665758976315,
+        "light_dir_error_deg": 44.3503363092168,
+        "style_color_temp": 6496.3712453131575,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12220803182572126,
+        "fgpp_load_ms": 108.17412496544421,
+        "generate_ms": 0.9486250346526504,
+        "metrics_ms": 11.747749987989664,
+        "total_ms": 121.0245419642888
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "thingi10k_gear",
+        "source": "thingi10k",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:torus",
+        "license": "CC0-1.0",
+        "up_axis": "Z",
+        "dataset_category": "mechanical"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.11469413855250715,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08717446774244308,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.35021945610696537,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.33332800632611,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.3503363092168,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.299307268384904,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.17333174092534737,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_humanoid_with_prop",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.052936702966690063,
+        "temporal_warp_error": 0.08815756071289867,
+        "silhouette_iou": 0.07153640733738162,
+        "psnr_db": 16.675225867162865,
+        "ssim": 0.015859690098628282,
+        "ciede2000": 13.960369187306444,
+        "border_ring_ciede2000": 13.281382944125497,
+        "style_color_de": 13.281382944125497,
+        "lpips": 0.11583991556652104,
+        "light_dir_error_deg": 44.412727064812145,
+        "style_color_temp": 6415.855486804671,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11299998732283711,
+        "fgpp_load_ms": 257.5601250282489,
+        "generate_ms": 0.8113750373013318,
+        "metrics_ms": 11.871707974933088,
+        "total_ms": 270.39058302761987
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08815756071289867,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.052936702966690063,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.07153640733738162,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.281382944125497,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.412727064812145,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.675225867162865,
+            "threshold": 21.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.015859690098628282,
+            "threshold": 0.79,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 1.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_ring_of_cubes",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.06361738592386246,
+        "temporal_warp_error": 0.08627904230628813,
+        "silhouette_iou": 0.05164061217003968,
+        "psnr_db": 15.993611000841303,
+        "ssim": 0.01720033868888114,
+        "ciede2000": 14.147706751436843,
+        "border_ring_ciede2000": 13.379707892962633,
+        "style_color_de": 13.379707892962633,
+        "lpips": 0.11568778977629966,
+        "light_dir_error_deg": 19.505237186062406,
+        "style_color_temp": 6350.30847753962,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13862497871741652,
+        "fgpp_load_ms": 13.912209018599242,
+        "generate_ms": 0.7714160019531846,
+        "metrics_ms": 11.63183298194781,
+        "total_ms": 26.484666974283755
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08627904230628813,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.06361738592386246,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.05164061217003968,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.379707892962633,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.993611000841303,
+            "threshold": 21.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.01720033868888114,
+            "threshold": 0.79,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_stacked_objects",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.04623057320713997,
+        "temporal_warp_error": 0.08743126427044468,
+        "silhouette_iou": 0.0835165548064617,
+        "psnr_db": 16.708307514374326,
+        "ssim": 0.02590786887580495,
+        "ciede2000": 13.897162881422785,
+        "border_ring_ciede2000": 13.282193135703878,
+        "style_color_de": 13.282193135703878,
+        "lpips": 0.11372579680065725,
+        "light_dir_error_deg": 44.37604137232901,
+        "style_color_temp": 6128.515599709553,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09512499673292041,
+        "fgpp_load_ms": 78.98524997290224,
+        "generate_ms": 0.8061670232564211,
+        "metrics_ms": 11.881250014994293,
+        "total_ms": 91.79829194908962
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08743126427044468,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.04623057320713997,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.0835165548064617,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.282193135703878,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.37604137232901,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.708307514374326,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.02590786887580495,
+            "threshold": 0.81,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_two_spheres_crossing",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.07467883080244064,
+        "temporal_warp_error": 0.09046390778016682,
+        "silhouette_iou": 0.11368303376600705,
+        "psnr_db": 15.747083112758208,
+        "ssim": 0.06071534076219523,
+        "ciede2000": 14.186676144391301,
+        "border_ring_ciede2000": 13.56546104162762,
+        "style_color_de": 13.56546104162762,
+        "lpips": 0.11317995462915305,
+        "light_dir_error_deg": 44.31095437080095,
+        "style_color_temp": 6456.527677558002,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11237501166760921,
+        "fgpp_load_ms": 133.4071250166744,
+        "generate_ms": 0.7772090029902756,
+        "metrics_ms": 11.807582981418818,
+        "total_ms": 146.13583299797028
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09046390778016682,
+            "threshold": 0.07,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.07467883080244064,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.11368303376600705,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.56546104162762,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.31095437080095,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.747083112758208,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.06071534076219523,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_ambient_only_soft",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.03845841810107231,
+        "temporal_warp_error": 0.09791324311066203,
+        "silhouette_iou": 0.3569292415485744,
+        "psnr_db": 13.874065769935685,
+        "ssim": 0.1405549721794499,
+        "ciede2000": 15.142696757156873,
+        "border_ring_ciede2000": 13.118535167685256,
+        "style_color_de": 13.118535167685256,
+        "lpips": 0.10982921920907807,
+        "light_dir_error_deg": 0.0,
+        "style_color_temp": 6678.562730277315,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11670804815366864,
+        "fgpp_load_ms": 106.52099997969344,
+        "generate_ms": 0.7989159785211086,
+        "metrics_ms": 11.173417035024613,
+        "total_ms": 118.64062497625127
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "torus",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09791324311066203,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.03845841810107231,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3569292415485744,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.118535167685256,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 13.874065769935685,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.1405549721794499,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_backlit_silhouette",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.028515437617897987,
+        "temporal_warp_error": 0.06811129961741043,
+        "silhouette_iou": 0.28326492789647206,
+        "psnr_db": 14.2133311842735,
+        "ssim": 0.07704493363155893,
+        "ciede2000": 16.2884359369612,
+        "border_ring_ciede2000": 13.482323170038809,
+        "style_color_de": 13.482323170038809,
+        "lpips": 0.11403620760557483,
+        "light_dir_error_deg": 90.0,
+        "style_color_temp": 6563.716286554715,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12008397607132792,
+        "fgpp_load_ms": 2.217290981207043,
+        "generate_ms": 0.7618330419063568,
+        "metrics_ms": 11.158374953083694,
+        "total_ms": 14.288833015598357
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.06811129961741043,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.028515437617897987,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.28326492789647206,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.482323170038809,
+            "threshold": 12.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 90.0,
+            "threshold": 10.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.2133311842735,
+            "threshold": 22.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.07704493363155893,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_cool_moonlight_cube",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08463958650827408,
+        "temporal_warp_error": 0.10417119267788733,
+        "silhouette_iou": 0.3858906668698603,
+        "psnr_db": 15.497965562731823,
+        "ssim": 0.15808915655414488,
+        "ciede2000": 13.842498408037638,
+        "border_ring_ciede2000": 13.406156083663795,
+        "style_color_de": 13.406156083663795,
+        "lpips": 0.11085968264052225,
+        "light_dir_error_deg": 17.605868512596132,
+        "style_color_temp": 6418.8921498851905,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08854200132191181,
+        "fgpp_load_ms": 3.2738749869167805,
+        "generate_ms": 0.7535830372944474,
+        "metrics_ms": 11.30812504561618,
+        "total_ms": 15.449750004336238
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10417119267788733,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08463958650827408,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3858906668698603,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.406156083663795,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 17.605868512596132,
+            "threshold": 15.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.497965562731823,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.15808915655414488,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_ext_thingi10k_lattice_stress",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.03789841756224632,
+        "temporal_warp_error": 0.09333093593102874,
+        "silhouette_iou": 0.3032004667517034,
+        "psnr_db": 16.746490045283153,
+        "ssim": 0.15724806699587848,
+        "ciede2000": 13.195716806296181,
+        "border_ring_ciede2000": 12.944721548873044,
+        "style_color_de": 12.944721548873044,
+        "lpips": 0.10749823548404279,
+        "light_dir_error_deg": 65.03300566044739,
+        "style_color_temp": 6565.446941321581,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.08329097181558609,
+        "fgpp_load_ms": 97.09787496831268,
+        "generate_ms": 0.8082080166786909,
+        "metrics_ms": 11.826417001429945,
+        "total_ms": 109.84420799650252
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "thingi10k_lattice",
+        "source": "thingi10k",
+        "fallback_used": true,
+        "stage0_passed": true,
+        "resolved_via": "fallback_procedural:torus",
+        "license": "MIT",
+        "up_axis": "Z",
+        "dataset_category": "lattice"
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09333093593102874,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.03789841756224632,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3032004667517034,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 12.944721548873044,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 65.03300566044739,
+            "threshold": 15.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.746490045283153,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.15724806699587848,
+            "threshold": 0.8,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_high_contrast_split",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.05301607772707939,
+        "temporal_warp_error": 0.10475546371364954,
+        "silhouette_iou": 0.5200971705161023,
+        "psnr_db": 13.88892462759949,
+        "ssim": 0.2022147981954589,
+        "ciede2000": 15.001725235795647,
+        "border_ring_ciede2000": 14.034592676975212,
+        "style_color_de": 14.034592676975212,
+        "lpips": 0.11197658596803861,
+        "light_dir_error_deg": 55.00200946709364,
+        "style_color_temp": 6306.506993347054,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11616700794547796,
+        "fgpp_load_ms": 105.60229094699025,
+        "generate_ms": 0.8073750068433583,
+        "metrics_ms": 12.405916000716388,
+        "total_ms": 118.96308400901034
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10475546371364954,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.05301607772707939,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5200971705161023,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.034592676975212,
+            "threshold": 10.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 55.00200946709364,
+            "threshold": 12.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 13.88892462759949,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.2022147981954589,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_three_point_setup",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.05301607772707939,
+        "temporal_warp_error": 0.10475546371364954,
+        "silhouette_iou": 0.5200971705161023,
+        "psnr_db": 13.952340551813734,
+        "ssim": 0.21541102280566293,
+        "ciede2000": 14.494885715316906,
+        "border_ring_ciede2000": 14.034592676975212,
+        "style_color_de": 14.034592676975212,
+        "lpips": 0.10656682448447952,
+        "light_dir_error_deg": 54.99984607847361,
+        "style_color_temp": 6306.506993347054,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12700003571808338,
+        "fgpp_load_ms": 105.67379201529548,
+        "generate_ms": 0.796375039499253,
+        "metrics_ms": 12.167125009000301,
+        "total_ms": 118.79620898980647
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10475546371364954,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.05301607772707939,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5200971705161023,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.034592676975212,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 54.99984607847361,
+            "threshold": 10.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 13.952340551813734,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.21541102280566293,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_warm_sunset_sphere",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.04704631492495537,
+        "temporal_warp_error": 0.09638637331468829,
+        "silhouette_iou": 0.419582571115479,
+        "psnr_db": 15.413273107489289,
+        "ssim": 0.15460953879651354,
+        "ciede2000": 14.43577411128966,
+        "border_ring_ciede2000": 13.478085140778603,
+        "style_color_de": 13.478085140778603,
+        "lpips": 0.11198461119928219,
+        "light_dir_error_deg": 80.02610574025995,
+        "style_color_temp": 6493.776328284925,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11725001968443394,
+        "fgpp_load_ms": 98.7472910201177,
+        "generate_ms": 0.793792016338557,
+        "metrics_ms": 12.125499953981489,
+        "total_ms": 111.81562504498288
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09638637331468829,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.04704631492495537,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.419582571115479,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.478085140778603,
+            "threshold": 8.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 80.02610574025995,
+            "threshold": 15.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.413273107489289,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.15460953879651354,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_crane_97f_landscape",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.052210528403520584,
+        "temporal_warp_error": 0.08453152035853746,
+        "silhouette_iou": 0.14887793660988696,
+        "psnr_db": 15.019260281049355,
+        "ssim": 0.06427194022140795,
+        "ciede2000": 14.51145487773354,
+        "border_ring_ciede2000": 13.606731623323778,
+        "style_color_de": 13.606731623323778,
+        "lpips": 0.11798926395995613,
+        "light_dir_error_deg": 44.37036018759209,
+        "style_color_temp": 6255.733704270207,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11087500024586916,
+        "fgpp_load_ms": 138.33041698671877,
+        "generate_ms": 0.777791952714324,
+        "metrics_ms": 11.993833002634346,
+        "total_ms": 151.24604100128636
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08453152035853746,
+            "threshold": 0.06,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.052210528403520584,
+            "threshold": 0.04,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.14887793660988696,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.606731623323778,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.37036018759209,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 15.019260281049355,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.06427194022140795,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_dolly_97f_humanoid",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.05904097482562065,
+        "temporal_warp_error": 0.09298796070944072,
+        "silhouette_iou": 0.09132354272448884,
+        "psnr_db": 14.665072869979625,
+        "ssim": 0.01304920836761023,
+        "ciede2000": 15.242087081425765,
+        "border_ring_ciede2000": 14.060392718900768,
+        "style_color_de": 14.060392718900768,
+        "lpips": 0.11853583879399193,
+        "light_dir_error_deg": 44.2529352918981,
+        "style_color_temp": 6264.488949491171,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12691598385572433,
+        "fgpp_load_ms": 256.07470801332965,
+        "generate_ms": 0.777832989115268,
+        "metrics_ms": 12.068375013768673,
+        "total_ms": 269.0817920374684
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09298796070944072,
+            "threshold": 0.06,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.05904097482562065,
+            "threshold": 0.04,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.09132354272448884,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 14.060392718900768,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.2529352918981,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 14.665072869979625,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.01304920836761023,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "bone_length_drift_pct",
+            "measured": NaN,
+            "threshold": 1.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_orbit_97f_cube",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.05293697118759155,
+        "temporal_warp_error": 0.10285160695474198,
+        "silhouette_iou": 0.3850492870233446,
+        "psnr_db": 16.078360067907937,
+        "ssim": 0.16439017723363913,
+        "ciede2000": 13.306346741775158,
+        "border_ring_ciede2000": 13.353873562822113,
+        "style_color_de": 13.353873562822113,
+        "lpips": 0.1101866390870535,
+        "light_dir_error_deg": 7.867424361875069,
+        "style_color_temp": 6436.8401845474655,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12458401033654809,
+        "fgpp_load_ms": 3.1875420245341957,
+        "generate_ms": 0.7599579985253513,
+        "metrics_ms": 11.47945795673877,
+        "total_ms": 15.58216696139425
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10285160695474198,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.05293697118759155,
+            "threshold": 0.03,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3850492870233446,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.353873562822113,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 16.078360067907937,
+            "threshold": 25.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.16439017723363913,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_pan_97f_multi_object",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.2693275511264801,
+        "temporal_warp_error": 0.12330502869215669,
+        "silhouette_iou": 0.11295220463057543,
+        "psnr_db": 17.480658785174285,
+        "ssim": 0.05384037460833968,
+        "ciede2000": 13.39194175565202,
+        "border_ring_ciede2000": 13.11745737251059,
+        "style_color_de": 13.11745737251059,
+        "lpips": 0.11228377032816553,
+        "light_dir_error_deg": 44.3900247698791,
+        "style_color_temp": 6473.253638681139,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.0908339861780405,
+        "fgpp_load_ms": 56.56933400314301,
+        "generate_ms": 0.7703750161454082,
+        "metrics_ms": 11.392165964934975,
+        "total_ms": 68.85316700208932
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.12330502869215669,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.2693275511264801,
+            "threshold": 0.03,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.11295220463057543,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.11745737251059,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.3900247698791,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 17.480658785174285,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.05384037460833968,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    }
+  ]
+}
