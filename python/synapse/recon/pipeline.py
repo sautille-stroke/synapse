@@ -47,6 +47,8 @@ class ReconPipeline:
         voxel_size: float = 0.02,
         sdf_trunc: float = 0.04,
         volume_bounds: tuple[float, float, float] = (1.5, 1.5, 1.5),
+        inverse_backend: Literal["classical", "diffusion_renderer", "dual_track"] = "classical",
+        diffusion_renderer_transport: Any | None = None,
     ) -> None:
         """Initialize the reconstruction pipeline.
 
@@ -57,12 +59,20 @@ class ReconPipeline:
             voxel_size: Edge length of a single voxel in metres for TSDF fusion.
             sdf_trunc: Truncation distance in metres for TSDF fusion.
             volume_bounds: (x, y, z) extent of reconstruction volume in metres.
+            inverse_backend: Material/G-buffer decomposition backend:
+                ``"classical"`` (SH de-lighting), ``"diffusion_renderer"``
+                (neural inverse rendering via ``DiffusionRendererTransport``), or
+                ``"dual_track"`` (run both and record agreement metrics).
+            diffusion_renderer_transport: Optional injected transport implementing
+                ``inverse_render`` (e.g. ``MockDiffusionRendererBackend``).
         """
         self.target_quad_faces = target_quad_faces
         self.geometry_backend = geometry_backend
         self.voxel_size = voxel_size
         self.sdf_trunc = sdf_trunc
         self.volume_bounds = volume_bounds
+        self.inverse_backend = inverse_backend
+        self.diffusion_renderer_transport = diffusion_renderer_transport
 
     def run(
         self,
@@ -83,6 +93,8 @@ class ReconPipeline:
         jev_critic: Any | None = None,
         hitl_ledger_path: Path | None = None,
         elapsed_seconds_override: float | None = None,
+        inverse_backend: Literal["classical", "diffusion_renderer", "dual_track"] | None = None,
+        diffusion_renderer_transport: Any | None = None,
     ) -> ReconResult:
         """Execute the end-to-end reconstruction pipeline.
 
@@ -246,25 +258,118 @@ class ReconPipeline:
             # telemetry for upstream visibility.
             kinematics = None
 
-        # 5. Intrinsic Albedo De-lighting
+        # 5. Intrinsic Albedo De-lighting / DiffusionRenderer Dual-Track (PR-220)
+        active_inv_backend = inverse_backend if inverse_backend is not None else self.inverse_backend
+        active_dr_transport = (
+            diffusion_renderer_transport
+            if diffusion_renderer_transport is not None
+            else self.diffusion_renderer_transport
+        )
+
         active_cams = (
             cameras
             if (cameras is not None and len(cameras) == num_frames)
             else (camera_traj.extrinsics if (camera_traj is not None and len(camera_traj.extrinsics) == num_frames) else None)
         )
-        if active_cams is not None:
-            from synapse.recon.delight import delight_multiview_albedo
 
-            delight_result = delight_multiview_albedo(
-                frames=frames,
-                cameras=active_cams,
-                mesh=final_mesh,
-                foundary_client=foundary_client,
+        dual_track_telemetry: dict[str, Any] | None = None
+        if active_inv_backend in ("diffusion_renderer", "dual_track"):
+            from synapse.bridge.diffusion_renderer import (
+                FoundaryDiffusionRendererBackend,
+                compare_inverse_rendering_tracks,
             )
-        else:
+            from synapse.errors import BackendUnavailableError
+            from synapse.recon.types import DelightResult
+
+            dr_backend = active_dr_transport or FoundaryDiffusionRendererBackend()
+            if not dr_backend.is_available():
+                raise BackendUnavailableError(
+                    "DiffusionRenderer backend is not available for inverse rendering.",
+                    agent_fix_hint=(
+                        "Provide an available DiffusionRendererTransport (or MockDiffusionRendererBackend) "
+                        "or switch back to inverse_backend='classical'."
+                    ),
+                )
+            frames_u8 = (
+                np.clip(frames * 255.0, 0.0, 255.0).astype(np.uint8)
+                if np.issubdtype(frames.dtype, np.floating)
+                else frames.astype(np.uint8)
+            )
+            gbuf = dr_backend.inverse_render(frames_u8)
             keyframe_idx = num_frames // 2
-            lit_keyframe = frames[keyframe_idx]
-            delight_result = decompose_intrinsic(lit_keyframe)
+
+            if active_inv_backend == "diffusion_renderer":
+                albedo_kf = gbuf.albedo[keyframe_idx].astype(np.float32)
+                shading_kf = np.ones_like(albedo_kf, dtype=np.float32)
+                delight_result = DelightResult(
+                    albedo=albedo_kf,
+                    shading=shading_kf,
+                    specular=np.zeros_like(albedo_kf, dtype=np.float32),
+                    ambient_sh=np.zeros((9, 3), dtype=np.float32),
+                    delta_e_residual=0.0,
+                )
+                dual_track_telemetry = {
+                    "mode": "diffusion_renderer",
+                    "gbuffer_depth_shape": list(gbuf.depth.shape),
+                }
+            else:
+                # Dual-track: run classical SH path and compare against neural G-buffer
+                if active_cams is not None:
+                    from synapse.recon.delight import delight_multiview_albedo
+
+                    delight_result = delight_multiview_albedo(
+                        frames=frames,
+                        cameras=active_cams,
+                        mesh=final_mesh,
+                        foundary_client=foundary_client,
+                    )
+                else:
+                    lit_keyframe = frames[keyframe_idx]
+                    delight_result = decompose_intrinsic(lit_keyframe)
+
+                classical_alb = np.broadcast_to(
+                    delight_result.albedo[np.newaxis, ...].astype(np.float32),
+                    gbuf.albedo.shape,
+                )
+                classical_nrm = np.zeros_like(gbuf.normals, dtype=np.float32)
+                if final_mesh.normals is not None and len(final_mesh.normals) > 0:
+                    mean_n = np.mean(final_mesh.normals, axis=0).astype(np.float32)
+                    n_len = float(np.linalg.norm(mean_n))
+                    classical_nrm[..., :] = (mean_n / n_len) if n_len > 1e-8 else [0.0, 0.0, 1.0]
+                else:
+                    classical_nrm[..., 2] = 1.0
+                classical_dep = (
+                    depths.astype(np.float32)
+                    if depths is not None and depths.shape == gbuf.depth.shape
+                    else gbuf.depth.astype(np.float32)
+                )
+                cmp_res = compare_inverse_rendering_tracks(
+                    classical_alb,
+                    classical_nrm,
+                    classical_dep,
+                    gbuf,
+                )
+                dual_track_telemetry = {
+                    "mode": "dual_track",
+                    "albedo_psnr": cmp_res.albedo_psnr,
+                    "normal_cosine_sim": cmp_res.normal_cosine_sim,
+                    "depth_rmse": cmp_res.depth_rmse,
+                    "agreement_score": cmp_res.agreement_score,
+                }
+        else:
+            if active_cams is not None:
+                from synapse.recon.delight import delight_multiview_albedo
+
+                delight_result = delight_multiview_albedo(
+                    frames=frames,
+                    cameras=active_cams,
+                    mesh=final_mesh,
+                    foundary_client=foundary_client,
+                )
+            else:
+                keyframe_idx = num_frames // 2
+                lit_keyframe = frames[keyframe_idx]
+                delight_result = decompose_intrinsic(lit_keyframe)
 
         # 6. Optional Visual-JEV defect probe & HITL 15-min circuit breaker
         jev_summary: dict[str, Any] | None = None
@@ -324,6 +429,7 @@ class ReconPipeline:
             "mesh_face_count": final_mesh.face_count,
             "is_manifold": is_manifold,
             "is_quad_dominant": final_mesh.is_quad_dominant,
+            "inverse_backend": active_inv_backend,
             "kinematics": (
                 kinematics.to_telemetry()
                 if kinematics is not None
@@ -331,6 +437,8 @@ class ReconPipeline:
             ),
             "albedo_delta_e_residual": delight_result.delta_e_residual,
         }
+        if dual_track_telemetry is not None:
+            telemetry["dual_track_comparison"] = dual_track_telemetry
         if jev_summary is not None:
             telemetry["jev_inspection"] = jev_summary
 
@@ -354,6 +462,11 @@ class ReconPipeline:
                 probe.log_scalar(
                     "recon/pipeline/jev_quality_score",
                     float(jev_summary["overall_quality_score"]),
+                )
+            if dual_track_telemetry is not None and "agreement_score" in dual_track_telemetry:
+                probe.log_scalar(
+                    "recon/pipeline/dual_track_agreement",
+                    float(dual_track_telemetry["agreement_score"]),
                 )
 
         return ReconResult(

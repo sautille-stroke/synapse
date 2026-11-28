@@ -6,8 +6,20 @@ Pure-Python Ground Truth Oracle functions extracted from ``synapse.recon.geometr
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 import numpy as np
+
+
+def _coerce_topology_policy(topology_policy: Any) -> str:
+    """Normalise a ``TopologyPolicy`` enum or string to canonical str."""
+    val = str(getattr(topology_policy, "value", topology_policy)).strip().lower()
+    if val not in ("strict", "open_surface_allowed", "permissive"):
+        raise ValueError(
+            f"Invalid topology_policy {topology_policy!r}; expected "
+            "'strict', 'open_surface_allowed', or 'permissive'."
+        )
+    return val
 
 
 def compute_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
@@ -59,22 +71,28 @@ def compute_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
     return normals.astype(np.float32)
 
 
-def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
-    """Check whether a mesh is a valid 2-manifold surface.
+def check_manifold(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    topology_policy: Any = "strict",
+) -> bool:
+    """Check whether a mesh satisfies 2-manifold topology under ``topology_policy``.
 
-    A surface mesh is 2-manifold if:
-    1. Every edge is incident to at most 2 faces (no non-manifold edges).
-    2. Vertices do not form non-manifold pinch points (the incident faces
-       around every vertex form a single connected umbrella/fan).
-    3. Vertices do not contain NaN, Inf, or empty arrays.
+    Policies:
+    - ``"strict"`` / ``"open_surface_allowed"``: Enforce 2-manifold edges (<= 2
+      incident faces) and vertex umbrella connectedness.
+    - ``"permissive"``: Only validate finite non-empty vertex/face bounds.
 
     Args:
         vertices: Vertex positions, shape (V, 3).
         faces: Face indices, shape (F, 3) or (F, 4).
+        topology_policy: ``TopologyPolicy`` enum value or string.
 
     Returns:
-        True if the mesh satisfies 2-manifold criteria, False otherwise.
+        True if the mesh satisfies the manifold criteria for ``topology_policy``.
     """
+    policy_str = _coerce_topology_policy(topology_policy)
     v = np.asarray(vertices)
     f = np.asarray(faces)
 
@@ -89,6 +107,9 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
 
     if np.min(f) < 0 or np.max(f) >= len(v):
         return False
+
+    if policy_str == "permissive":
+        return True
 
     # Check non-manifold edges & per-face vertex uniqueness
     edge_counts: dict[tuple[int, int], int] = defaultdict(int)
@@ -155,21 +176,34 @@ def check_manifold(vertices: np.ndarray, faces: np.ndarray) -> bool:
     return True
 
 
-def check_watertight(vertices: np.ndarray, faces: np.ndarray) -> bool:
-    """Check whether a mesh is strictly watertight (closed 2-manifold).
+def check_watertight(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    topology_policy: Any = "strict",
+) -> bool:
+    """Check whether a mesh is watertight (or valid open surface when permitted).
 
-    A mesh is watertight if it is 2-manifold and has zero boundary edges
-    (every edge is shared by exactly 2 faces with opposite orientations).
+    Under ``"strict"`` policy, every edge must be shared by exactly 2 faces
+    with opposite orientations (zero boundary edges).  Under
+    ``"open_surface_allowed"`` (TRELLIS.2 cloth/foliage mode), open boundary
+    edges are permitted as long as the surface is 2-manifold.  Under
+    ``"permissive"``, delegates to finite/indexed validation.
 
     Args:
         vertices: Vertex positions, shape (V, 3).
         faces: Face indices, shape (F, 3).
+        topology_policy: ``TopologyPolicy`` enum value or string.
 
     Returns:
-        True if the mesh is closed and watertight, False otherwise.
+        True if the mesh passes watertightness for ``topology_policy``.
     """
-    if not check_manifold(vertices, faces):
+    policy_str = _coerce_topology_policy(topology_policy)
+    if not check_manifold(vertices, faces, topology_policy=policy_str):
         return False
+
+    if policy_str in ("open_surface_allowed", "permissive"):
+        return True
 
     f = np.asarray(faces, dtype=np.int64)
     directed_edges: dict[tuple[int, int], int] = defaultdict(int)
