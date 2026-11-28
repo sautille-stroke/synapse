@@ -62,8 +62,16 @@ def _probe_gpu() -> dict[str, Any]:
         return {"cuda_available": False, "device_name": "cpu (torch missing)", "vram_gb": 0.0}
 
 
+def _select_torch_device() -> Any:
+    """Return the target CUDA PyTorch device for GPU smoke execution."""
+    import torch
+
+    return torch.device("cuda:0")
+
+
 def _run_wan_single_window_stage(
     wan_model_path: str | Path | None,
+    device: str = "cuda:0",
 ) -> dict[str, Any]:
     """Run DiffusersWanBackend single-window inference + LocalRefinementPipeline smoke."""
     if not wan_model_path:
@@ -116,7 +124,7 @@ def _run_wan_single_window_stage(
 
     backend = DiffusersWanBackend(
         model_id_or_path=str(model_path),
-        device="cuda:0",
+        device=device,
         allow_untrained_control=True,
     )
     adapter = WanAdapter(backend=backend)
@@ -253,11 +261,12 @@ def run_gpu_smoke(
         from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
 
         stages: dict[str, dict[str, Any]] = {}
-        device = torch.device("cuda:0")
+        device = _select_torch_device()
 
         # Stage 1: DiffusersWanBackend single-window + LocalRefinementPipeline (honest skip if no weights)
         stages["diffusers_wan_backend_single_window"] = _run_wan_single_window_stage(
             resolved_wan_path,
+            device=str(device),
         )
 
         # Stage 2: ControlNeXtPatchifyStem 7-channel forward pass

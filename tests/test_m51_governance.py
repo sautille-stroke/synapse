@@ -151,14 +151,13 @@ def test_td05_gpu_smoke_stages_align_and_safetensors_reload(
     pytest.importorskip("safetensors")
     monkeypatch.delenv("WAN_MODEL_PATH", raising=False)
 
-    real_device = torch.device
     out_json = tmp_path / "smoke_cuda.json"
     with (
         mock.patch(
             "scripts.run_gpu_smoke._probe_gpu",
             return_value={"cuda_available": True, "device_name": "MockCUDA-T4", "vram_gb": 16.0},
         ),
-        mock.patch("torch.device", side_effect=lambda *_a, **_kw: real_device("cpu")),
+        mock.patch("scripts.run_gpu_smoke._select_torch_device", return_value=torch.device("cpu")),
         mock.patch("torch.cuda.max_memory_allocated", return_value=2 * 1024**3),
     ):
         rc = gpu_smoke_main(["--json", "--output-json", str(out_json)])
