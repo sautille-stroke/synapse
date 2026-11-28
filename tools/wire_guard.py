@@ -747,6 +747,104 @@ def _check_against_header(header_path: Path) -> list[str]:
     return errors
 
 
+def _check_horizon14_contracts() -> list[str]:
+    """Validate Horizon 14 (M53-M60) module exports, contracts, and release parity."""
+    import tomllib
+
+    errs: list[str] = []
+    try:
+        import synapse
+        from synapse.adapters import (
+            ConditionMode,
+            ConditionScheduler,
+            SpatialMemory,
+            VaceAdapter,
+            VaceTaskMode,
+            list_adapters,
+        )
+        from synapse.bench.scenario import list_scenarios
+        from synapse.bridge.diffusion_renderer import (
+            MockDiffusionRendererBackend,
+        )
+        from synapse.bridge.sam2_transport import (
+            MockSAM2Backend,
+            SAM2Transport,
+        )
+        from synapse.composite.mask import generate_surgical_mask_sequence
+        from synapse.recon.gltf_splat import (
+            KHR_GS_EXTENSION,
+            KHR_GS_SPZ_EXTENSION,
+            convert_3dgs_asset,
+            export_gltf_gaussian_splat,
+        )
+        from synapse.recon.trellis2 import TopologyPolicy, Trellis2Transport
+        from synapse.training import (
+            NF4_CODEBOOK,
+            auto_tune_lora_config,
+            snap_to_frame_bucket,
+        )
+    except Exception as exc:
+        errs.append(f"Horizon 14 import/contract failure: {exc}")
+        return errs
+
+    # Version parity (pyproject.toml == synapse.__version__ == 6.0.0)
+    pyproject_ver = str(
+        tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
+            "project"
+        ]["version"]
+    )
+    if synapse.__version__ != pyproject_ver:
+        errs.append(
+            f"Version mismatch: synapse.__version__={synapse.__version__!r} vs pyproject.toml={pyproject_ver!r}"
+        )
+    if synapse.__version__ != "6.0.0":
+        errs.append(f"Expected Horizon 14 release version '6.0.0', got {synapse.__version__!r}")
+
+    # M53 VACE & FLF2V
+    if "vace" not in list_adapters():
+        errs.append("VaceAdapter not registered under 'vace' in adapter registry")
+    _ = (
+        VaceAdapter,
+        ConditionMode.VCU_UNIFIED,
+        VaceTaskMode.REFERENCE_TO_VIDEO,
+        ConditionScheduler,
+    )
+
+    # M54/M55/M56/M57
+    _ = (
+        MockDiffusionRendererBackend,
+        MockSAM2Backend,
+        SAM2Transport,
+        generate_surgical_mask_sequence,
+        SpatialMemory,
+        Trellis2Transport,
+    )
+    if {p.value for p in TopologyPolicy} != {"strict", "open_surface_allowed", "permissive"}:
+        errs.append("TopologyPolicy enum drifted from expected values")
+
+    # M58 Mask-Aware LoRA + NF4 QLoRA + Frame Bucketing + Auto-Tune
+    if len(NF4_CODEBOOK) != 16 or list(NF4_CODEBOOK) != sorted(NF4_CODEBOOK):
+        errs.append("NF4_CODEBOOK must contain 16 sorted normal quantiles")
+    bucket = snap_to_frame_bucket(480, 848, 50)
+    if bucket.num_frames != 49 or bucket.height % 8 != 0 or bucket.width % 8 != 0:
+        errs.append(f"Invalid frame bucket snap result: {bucket}")
+    rec = auto_tune_lora_config("identity", vram_gb=24.0, dataset_size=50)
+    if not rec.use_qlora or rec.quantization_bits != 4 or rec.rank not in (32, 64):
+        errs.append(f"Unexpected low-VRAM auto-tune config: {rec}")
+
+    # M59 glTF KHR_gaussian_splatting
+    if KHR_GS_EXTENSION != "KHR_gaussian_splatting" or not KHR_GS_SPZ_EXTENSION:
+        errs.append("Invalid KHR_gaussian_splatting extension constant")
+    _ = (convert_3dgs_asset, export_gltf_gaussian_splat)
+
+    # M60 Synapse-Bench >= 50 scenarios
+    scenarios = list_scenarios()
+    if len(scenarios) < 50:
+        errs.append(f"Expected >= 50 Synapse-Bench scenarios, found {len(scenarios)}")
+
+    return errs
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -894,6 +992,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL: {msg}")
         else:
             print(msg)
+
+    # --- Section 6: Horizon 14 module, version & bench=50 gates ---
+    print()
+    print("=== Horizon 14 contract & release parity check ===")
+    h14_errors = _check_horizon14_contracts()
+    all_errors.extend(h14_errors)
+    if h14_errors:
+        for e in h14_errors:
+            print(f"  FAIL: {e}")
+    else:
+        print("  OK: Horizon 14 contracts, exports, v6.0.0 parity, and >=50 scenarios verified")
 
     print()
     if all_errors:

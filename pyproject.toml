@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synapse"
-version = "5.0.0"
+version = "6.0.0"
 description = "3D CG Rendering & Neural Video Generation Interoperability Hub & Hybrid Cinema Pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
