@@ -181,9 +181,9 @@ def test_td05_gpu_smoke_stages_align_and_safetensors_reload(
         return_value={"cuda_available": True, "device_name": "MockCUDA-T4", "vram_gb": 16.0},
     ):
         rc_missing = gpu_smoke_main(["--json", "--wan-model-path", str(missing_model)])
-    assert rc_missing == int(ExitCode.ASSET_NOT_FOUND)
+    assert rc_missing == int(ExitCode.RESOURCE_MISSING)
     missing_payload = json.loads(capsys.readouterr().out)
-    assert missing_payload["exit_code"] == int(ExitCode.ASSET_NOT_FOUND)
+    assert missing_payload["exit_code"] == int(ExitCode.RESOURCE_MISSING)
 
 
 def test_td05_gpu_smoke_with_wan_weights_runs_diffusers_and_refine(
@@ -203,8 +203,11 @@ def test_td05_gpu_smoke_with_wan_weights_runs_diffusers_and_refine(
 
         def submit(self, _payload: Any, config: Any) -> np.ndarray:
             rng = np.random.default_rng(7)
-            return rng.integers(
-                20, 220, size=(config.num_frames, config.height, config.width, 3), dtype=np.uint8
+            return np.asarray(
+                rng.integers(
+                    20, 220, size=(config.num_frames, config.height, config.width, 3), dtype=np.uint8
+                ),
+                dtype=np.uint8,
             )
 
     from scripts.run_gpu_smoke import _run_wan_single_window_stage

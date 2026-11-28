@@ -274,7 +274,7 @@ def run_gpu_smoke(
         cfg = LoRATrainConfig(category="style", rank=8, alpha=8.0)
         trainer = StatelessLoRATrainer(cfg)
         backbone = build_mock_dit_backbone(dim=16).to(device)
-        targets = resolve_target_modules("style")
+        targets = resolve_target_modules(backbone, "style")
         injected = trainer.inject_lora(backbone, targets)
         if injected <= 0:
             raise ContractValidationError(
