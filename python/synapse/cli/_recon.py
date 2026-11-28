@@ -300,6 +300,71 @@ def _cmd_recon_compress_3dgs(
     }
 
 
+def _cmd_recon_export_gltf_3dgs(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Export a 3DGS cloud (.ply/.npz/.s3dgs/.glb) into KHR_gaussian_splatting .glb."""
+    from synapse.recon.gltf_splat import (
+        export_gltf_gaussian_splat,
+        load_any_3dgs_cloud,
+    )
+
+    inp_raw = getattr(args, "input", None)
+    if not inp_raw:
+        raise ContractValidationError(
+            "Missing required '--input' argument for export-gltf-3dgs",
+            agent_fix_hint="Provide '--input <cloud.ply|cloud.npz|cloud.s3dgs>'.",
+        )
+    out_path = Path(getattr(args, "output", "./output/cloud.glb"))
+    compress_spz = bool(getattr(args, "compress_spz", False))
+    cloud, _ = load_any_3dgs_cloud(inp_raw)
+    resolved, report = export_gltf_gaussian_splat(
+        cloud,
+        out_path,
+        compress_spz=compress_spz,
+    )
+    return {
+        "output_path": str(resolved),
+        "num_gaussians": report.num_gaussians,
+        "sh_degree": report.sh_degree,
+        "compressed_spz": report.compressed_spz,
+        "raw_bytes": report.raw_bytes,
+        "encoded_bytes": report.encoded_bytes,
+        "compression_ratio": report.compression_ratio,
+        "roundtrip_psnr_db": report.roundtrip_psnr_db,
+    }
+
+
+def _cmd_recon_convert_3dgs(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Convert bidirectionally between .ply, .glb (KHR_gaussian_splatting), .s3dgs, and .npz."""
+    from synapse.recon.gltf_splat import convert_3dgs_asset
+
+    inp_raw = getattr(args, "input", None)
+    out_raw = getattr(args, "output", None)
+    if not inp_raw or not out_raw:
+        raise ContractValidationError(
+            "Both '--input' and '--output' are required for convert-3dgs",
+            agent_fix_hint="Run `synapse recon convert-3dgs --input in.ply --output out.glb`.",
+        )
+    compress_spz = bool(getattr(args, "compress_spz", False))
+    report = convert_3dgs_asset(inp_raw, out_raw, compress_spz=compress_spz)
+    return {
+        "input_path": str(report.input_path),
+        "output_path": str(report.output_path),
+        "source_format": report.source_format,
+        "target_format": report.target_format,
+        "num_gaussians": report.num_gaussians,
+        "sh_degree": report.sh_degree,
+        "compressed_spz": report.compressed_spz,
+        "input_bytes": report.input_bytes,
+        "output_bytes": report.output_bytes,
+        "compression_ratio": report.compression_ratio,
+        "roundtrip_psnr_db": report.roundtrip_psnr_db,
+    }
+
+
 def _cmd_recon_closed_loop(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
@@ -566,6 +631,54 @@ def register_recon_subparser(
         default=False,
         help="Require @aether//compress Draco encoder and exit 30 if unavailable",
     )
+
+    recon_export_gltf = recon_sub.add_parser(
+        "export-gltf-3dgs",
+        help="Export 3DGS cloud (.ply/.npz/.s3dgs) to KHR_gaussian_splatting .glb (M59)",
+        parents=parents,
+    )
+    recon_export_gltf.add_argument(
+        "--input",
+        "-i",
+        default=None,
+        help="Input 3DGS path (.ply, .npz, .s3dgs, or .glb)",
+    )
+    recon_export_gltf.add_argument(
+        "--output",
+        "-o",
+        default="./output/cloud.glb",
+        help="Output .glb path",
+    )
+    recon_export_gltf.add_argument(
+        "--compress-spz",
+        action="store_true",
+        default=False,
+        help="Encode with compact SPZ v2 payload (KHR_gaussian_splatting_compression_spz_2)",
+    )
+
+    recon_convert = recon_sub.add_parser(
+        "convert-3dgs",
+        help="Bidirectional conversion between .ply, .glb (KHR_gaussian_splatting), .s3dgs, and .npz",
+        parents=parents,
+    )
+    recon_convert.add_argument(
+        "--input",
+        "-i",
+        default=None,
+        help="Source 3DGS file (.ply, .glb, .s3dgs, .npz)",
+    )
+    recon_convert.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Target 3DGS file (.glb, .ply, .s3dgs, .npz)",
+    )
+    recon_convert.add_argument(
+        "--compress-spz",
+        action="store_true",
+        default=False,
+        help="Use compact SPZ v2 payload when targeting .glb",
+    )
     return cast(argparse.ArgumentParser, recon_parser)
 
 
@@ -594,6 +707,20 @@ def dispatch_recon(
     elif recon_cmd == "compress-3dgs":
         return _run_with_json_mode(
             _cmd_recon_compress_3dgs,
+            parsed,
+            json_mode,
+            trace_ctx,
+        )
+    elif recon_cmd == "export-gltf-3dgs":
+        return _run_with_json_mode(
+            _cmd_recon_export_gltf_3dgs,
+            parsed,
+            json_mode,
+            trace_ctx,
+        )
+    elif recon_cmd == "convert-3dgs":
+        return _run_with_json_mode(
+            _cmd_recon_convert_3dgs,
             parsed,
             json_mode,
             trace_ctx,
