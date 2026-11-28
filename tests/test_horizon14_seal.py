@@ -7,6 +7,7 @@ from pathlib import Path
 
 import synapse
 from synapse.bench.scenario import list_scenarios
+
 from tools.wire_guard import main as wire_guard_main
 
 
