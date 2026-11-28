@@ -59,6 +59,7 @@ status: active
 | [archive/plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md](archive/plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md) | Guide | active | synapse |
 | [archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md](archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) | Guide | active | synapse |
 | [plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md) | Guide | active | synapse, tech-debt, governance, plan, remediation |
+| [plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md) | Guide | active | synapse, fulgur, caelum-core, aether, reuse, deduplication, plan |
 | [plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) | Guide | active | synapse, traceboard, observability |
 | [archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) | Guide | active | synapse, traceboard, observability, aether, plan, remediation |
 | [SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md](SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) | Guide | active | synapse |
@@ -67,4 +68,4 @@ status: active
 | [SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md](SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) | Guide | active | synapse, testing |
 | [WIRE_CONTRACTS.md](WIRE_CONTRACTS.md) | Guide | active | synapse |
 
-> 本索引由 OKF Index Generator 自动生成，共 55 篇文档。
+> 本索引由 OKF Index Generator 自动生成，共 56 篇文档。

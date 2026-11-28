@@ -7,10 +7,10 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v6.0`（全量统合 **M1–M60** 共 60 大里程碑，包含 Horizon 1–13B 与 Horizon 14 行业前沿全量集成 `M53–M60`）
-- **修订日期**: 2026-11-28
+- **计划版本**: `v6.1`（全量统合 **M1–M60** 已封板里程碑及 **Horizon 15 `M61–M63`** 跨仓能力复用演进蓝图）
+- **修订日期**: 2026-11-29
 - **操作模型标识**: `[gemini4]` / `[gemini3.8]` / `[opus4.6]` / `[gemini4-hydrogen]`
-- **发布状态**: ✅ **`v6.0.0`（Horizon 14 `M53–M60`, `synapse#229 ~ #244`）已全量合入 `main`；9 大行业前沿集成、50 套 `Synapse-Bench` 场景、`wire_guard` 契约扩围与全仓静态/动态门禁全绿封板。**
+- **发布状态**: ✅ **`v6.0.0`（Horizon 14 `M53–M60`, `synapse#229 ~ #244`）已全量合入 `main`；`Horizon 15 (M61–M63)` 跨仓能力复用、上游下沉与去重落地计划已规划就绪。**
 - **前置架构审查与跨文档对齐决议**:
   - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
   - **[docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)**（五条绝对负向红线 `NG-1~NG-5` 与跨仓边界定界）
@@ -41,6 +41,7 @@ stale_after: 2027-11-19T00:00:00Z
   16. ↳ **[PLAN-M51-M52 (Horizon 13B · Post-H10 战略待办收口与 4 轨道行业横向评测)](archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md)**：落实 `REVIEW-POST-HORIZON10` §7.1 5 项战略行动建议（每周真实 CUDA `Wan 2.1`/`LoRA` 烟测、协同 `@aether//style` 激活 `wire_guard --require-style`、`generators`/`models` 遗留包收编入 `bench/`、`SYN-RFC-0061/0062` GPU 生产硬化、4 轨道行业横向评测排行榜与 `Release v5.0.0`）及安全替代 Open PR `#163` 的 Ruff SSOT 同步校验器（`PR-210` ~ `PR-215` ✅ 已完成，`Release v5.0.0` 封板）
   17. ↳ **[PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE (Post-v5.0.0 · Traceboard Python SDK 与可观测性集成)](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)**：在 `aether` 落地统一版本锁步 Python SDK (`aether-traceboard` 收口至 `v0.7.2`, `aether#523–#525`, `#557–#560`, `#569`, `#575`) 与在 `synapse` 落地 `synapse.observability`、CLI `--traceboard`、全链路埋点、Colab/CI、双轨导出及 PR `#212` / `Wave TR-1 ~ TR-3` 全绿整改（`synapse#204–#212`, `#215–#220` ✅ 已合入封板；见 **[整改与硬化落地计划 (`PR-TR01 ~ PR-TR08`)](archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)** ✅ 已完成）
   18. ↳ **[PLAN-M53-M60 (Horizon 14 · 9 大行业前沿集成与 v6.0.0 演进)](plans/PLAN-M53-M60-HORIZON14-INDUSTRY-INTEGRATION.md)**：落地 `Wan2.1-VACE` / `FLF2V` (`synapse#229`)、`NVIDIA DiffusionRenderer` 双轨逆渲染与 8 光照增强 (`synapse#231`, `synapse#238`)、`TRELLIS.2` O-Voxel + `TopologyPolicy` (`synapse#232`, `synapse#238`)、`SAM 2.1` 视频分割与 LoRA 空域门控 (`synapse#235`, `synapse#238`)、`Spatia` 3D 空间记忆 (`synapse#236`, `synapse#237`)、`Mask-Aware LoRA` / `4-bit NF4 QLoRA` / `FrameBucketSampler` 自动调优 (`synapse#239`, `synapse#241`)、`KHR_gaussian_splatting` glTF 2.0 (`.glb`/SPZ) 与 `.ply` 双向转换 (`synapse#240`) 及 `50` 场景 `Synapse-Bench` 封板 `v6.0.0`（`M53–M60` ✅ 已完成，`Release v6.0.0` 封板）
+  19. ↳ **[PLAN-M61-M63 (Horizon 15 · 跨仓能力复用、上游下沉与去重落地)](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md)**：接入 `caelum.Engine` 真 Track-A FGPP + `fgpp.v1` 兼容、Cryptomatte 哈希统一对齐截断 MD5、`caelum.metrics`/`OcioProcessor` 与 `fulgur.RenderGraph` AOV 桥接；推进 `fulgur` `DifferentiableRasterResidualPass` 替代假 `fulgur_slang`、`@aether`/SH 与 `MeshOptimizer`/`FgppPackager`/`caelum::FGPPBatchSession`/`GaussianSplatPass` 跨仓绑定补齐，并锁定 `SYNAPSE-ONLY` 保留边界与双轨 Parity 门禁（`M61–M63` 📋 规划就绪）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -845,6 +846,23 @@ flowchart LR
 | **[`PR-TD06`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td06)** | M54 | 协同上游 `@aether//style` `style_types.h` 落地后在 CI 启用 `wire_guard.py --require-style` 硬校验 | `D-03` | 上游 `@aether//style` (`dervgen/aether#622` + `#638`) | ~120 行 | `wire_guard.py --check --require-aether --require-style` | ✅ 已合入 (`#230`) |
 | **[`PR-TD07`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td07)** | M54 | 归档已完成计划/审计文档至 `docs/archive/` 并收敛 `generators/rasterizer.py` 遗留测试引用 | `D-08`, `D-13` | `PR-TD04..05` | ~150 行 | `check_doc_links.py` 0 断链 | ✅ 已合入 (`#228`) |
 | **`PR-TD08`** | M54+ | Post-Review 全量收口：修复真 `WanTransformer3DModel` 前向适配与分片去重、过程式拓扑焊接 (`is_watertight=1.0`)、50 场景 4 轨道基线、真实 `WAN_MODEL_PATH` 烟测、`bucketing`/`bench_runner`/`wan*`/`metrics`/`model_evaluator` 异常收窄及 `StyleDescriptor` v2.0.0 / brace-depth `wire_guard` 协同 | M54 复审 P0/P1 + `dervgen/aether#638` | `PR-TD01..07`, `dervgen/aether#638` | ~680 行 | `ruff` + `mypy --strict` + `wire_guard --require-style` + `pytest` | ✅ 随本 PR 收口 |
+
+---
+
+### 4.17 Horizon 15：跨仓能力复用、上游下沉与去重落地（M61–M63，共 10 PRs，详见 [PLAN-M61-M63](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md)） 📋 规划就绪
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M61-M63](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md) 查看详情） | 涉及仓库 | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[`PR-RU01`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru01)** | M61 | `prepare_datasets` Track-A 接入 `caelum.Engine` 真路径追踪 + `fgpp.v1` ↔ `v1.0` Schema 兼容，移除失效 `fgpp_exporter` 引用 | `synapse` | `8e1ab4d` | ~320 行 | `--require-real-caelum` 门禁 + `test_caelum_track_a_compat` | 📋 待启动 |
+| **[`PR-RU02`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru02)** | M61 | `entity_hash` 优先委托 `caelum.cryptomatte_name_hash` 且 Python 兜底统一改为标准截断 MD5 | `synapse` | `8e1ab4d` | ~160 行 | Cryptomatte 跨端比特级一致断言 | 📋 待启动 |
+| **[`PR-RU03`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru03)** | M61 | 按需懒加载复用 `caelum.metrics`/`OcioProcessor` 与 `fulgur.RenderGraph.readback_aov_ex`（严格禁 `Backend.NULL`） | `synapse` | `8e1ab4d` | ~340 行 | `Backend.NULL` fail-closed + 0 核心依赖退化验证 | 📋 待启动 |
+| **[`PR-RU04`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru04)** | M62 | 上游导出 `DifferentiableRasterResidualPass` C-ABI/Python；下游消灭假 `import fulgur_slang` 并接入真适配 | `fulgur` + `synapse` | `8e1ab4d` | ~460 行 | 反照率优化双轨收敛对齐 + `strict_backend=True` 门禁 | 📋 待启动 |
+| **[`PR-RU05`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru05)** | M62 | 将 `spherical_harmonics.h` L2 SH 下沉 `@aether`（或 `fulgur` 导出），`recon/delight.py` 接入原生委托 | `aether`/`fulgur` + `synapse` | `8e1ab4d` | ~400 行 | SH 旋转/辐照度双轨误差 `<= 1e-5` | 📋 待启动 |
+| **[`PR-RU06`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru06)** | M62 | 暴露 `MeshOptimizer::simplify` 与 `MeshLoader` 加速 `decimate.py` 与多格式读取（保留 Python QEM Oracle） | `fulgur` + `synapse` | `8e1ab4d` | ~520 行 | QEM 流形/水密/Chamfer 互验 | 📋 待启动 |
+| **[`PR-RU07`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru07)** | M62 | 上游暴露 `fulgur` `Cryptomatte.ID` + `FgppPackager` 与 `caelum::FGPPBatchSession`，支持 Python 无子进程直出 FGPP 序列 | `fulgur` + `caelum-core` + `synapse` | `PR-RU01..02` | ~580 行 | `import_fgpp(..., strict=True)` + `wire_guard` 全绿 | 📋 待启动 |
+| **[`PR-RU08`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru08)** | M62 | 为 `fulgur` `GaussianSplatPass` 补齐外部点云缓冲区上传，接入 `gs_quantizer` 可选 GPU 渲染预览 | `fulgur` + `synapse` | `8e1ab4d` | ~400 行 | 3DGS GPU vs NumPy 预览视觉一致断言 | 📋 待启动 |
+| **[`PR-RU09`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru09)** | M63 | 清理过时跨仓引用与遗留垫片，固化 `SYNAPSE-ONLY`（软光栅/Tracking/TSDF/SPZ/UsdSkel/业务层）保留清单 | `synapse` | `PR-RU01..08` | ~220 行 | `check_doc_links.py` 0 断链 + 过期符号清零 | 📋 待启动 |
+| **[`PR-RU10`](plans/PLAN-M61-M63-UPSTREAM-REUSE-AND-DEDUPLICATION.md#pr-ru10)** | M63 | 落地跨仓原生 vs Python Oracle 全套双轨 Parity 与 Anti-Silent-Fallback 自动化 CI 门禁 | `synapse` | `PR-RU09` | ~320 行 | 4 项全局复用门禁 `G-RU1 ~ G-RU4` 全绿 | 📋 待启动 |
 
 ---
 
