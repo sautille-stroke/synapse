@@ -355,6 +355,7 @@ class TestProfileMapper:
 
     def test_save_profile_json_fallback(self) -> None:
         """save_style_profile_yaml produces a readable file (YAML or JSON)."""
+        pytest.importorskip("yaml", reason="PyYAML not installed")
         desc = StyleDescriptor(exposure_ev=1.5)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "style.yaml"

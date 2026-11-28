@@ -430,6 +430,7 @@ class TestBenchCommands:
 
     @pytest.mark.slow
     def test_bench_export_fgpp_json_mode(self, tmp_path: Path) -> None:
+        pytest.importorskip("OpenEXR", reason="OpenEXR not installed")
         out_dir = tmp_path / "exported_fgpp"
         code, out, err = _capture_main_bench(
             [

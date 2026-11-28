@@ -554,6 +554,7 @@ class TestWanSlidingWindowAndGuards:
     @pytest.mark.slow
     def test_diffusers_wan_backend_initialization_and_mock(self) -> None:
         """PR-139: DiffusersWanBackend exposes model and runs with pre-instantiated pipeline."""
+        pytest.importorskip("torch", reason="torch not installed")
         from synapse.adapters.wan_diffusers import DiffusersWanBackend
 
         # Typed stub pipeline that simulates diffusers WanPipeline interface

@@ -34,6 +34,9 @@ def tmp_bundle_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def fake_weights(tmp_path: Path) -> Path:
     """Create a real safetensors file with valid LoRA weights."""
+    safetensors_numpy = pytest.importorskip(
+        "safetensors.numpy", reason="safetensors not installed"
+    )
     from safetensors.numpy import save_file
 
     p = tmp_path / "weights.safetensors"
@@ -564,6 +567,7 @@ class TestLoRACLI:
 
     def test_lora_train_json(self, tmp_path: Path) -> None:
         """PR-187: default lora train fails closed (exit 50); --mock-backbone runs & trains."""
+        pytest.importorskip("safetensors", reason="safetensors not installed")
         import io
         import sys
 
@@ -700,6 +704,7 @@ class TestLoRACLI:
 
     def test_lora_merge_json(self) -> None:
         """synapse lora merge --json fails honestly with exit code 50."""
+        pytest.importorskip("safetensors", reason="safetensors not installed")
         import io
         import sys
 

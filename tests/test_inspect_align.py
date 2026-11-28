@@ -7,12 +7,6 @@ import math
 import numpy as np
 import pytest
 from synapse.errors import QualityGateError
-from synapse.inspect.align import (
-    align_reference_image_to_mesh,
-    compute_silhouette,
-    compute_silhouette_iou,
-    generate_fibonacci_sphere_cameras,
-)
 from synapse.inspect.schemas import (
     CameraPose,
     DefectAnnotation3D,
@@ -21,6 +15,17 @@ from synapse.inspect.schemas import (
 from synapse.render_core.procedural import (
     generate_humanoid_proxy,
     generate_procedural_mesh,
+)
+
+# align module requires scipy at import time for spatial transforms;
+# guard the import so the rest of the file's tests still run without scipy.
+_scipy = pytest.importorskip("scipy", reason="scipy not installed")
+
+from synapse.inspect.align import (  # noqa: E402
+    align_reference_image_to_mesh,
+    compute_silhouette,
+    compute_silhouette_iou,
+    generate_fibonacci_sphere_cameras,
 )
 
 # ===================================================================

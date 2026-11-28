@@ -128,7 +128,7 @@ class TestFvdVideoBridge:
     @pytest.mark.slow
     def test_r3d18_unmocked_t4_feature_extraction(self) -> None:
         """Verify unmocked PyTorch 3D feature extraction handles fast T=4 and uint8 normalization."""
-        import torch
+        torch = pytest.importorskip("torch", reason="torch not installed")
 
         class Tiny3DCNN(torch.nn.Module):
             def __init__(self) -> None:
@@ -156,7 +156,7 @@ class TestFvdVideoBridge:
     @pytest.mark.slow
     def test_r3d18_unmocked_t16_feature_extraction(self) -> None:
         """Verify unmocked PyTorch 3D feature extraction handles T=16 and uint8 normalization."""
-        import torch
+        torch = pytest.importorskip("torch", reason="torch not installed")
 
         class Tiny3DCNN(torch.nn.Module):
             def __init__(self) -> None:

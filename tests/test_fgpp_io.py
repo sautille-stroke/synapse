@@ -491,6 +491,7 @@ class TestTorchBridge:
         assert cam.cx == pytest.approx(cx, abs=1e-5)
 
     def test_strict_export_rejects_half_overflow_and_read_is_writable(self, tmp_path: Path) -> None:
+        pytest.importorskip("OpenEXR", reason="OpenEXR not installed")
         from synapse.errors import ContractValidationError
         from synapse.fgpp.io import export_fgpp, import_fgpp
 

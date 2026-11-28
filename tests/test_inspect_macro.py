@@ -12,7 +12,12 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from synapse.inspect.macro import (
+import pytest
+
+# macro module requires scipy.ndimage at call time; skip entire file when missing.
+_scipy = pytest.importorskip("scipy", reason="scipy not installed")
+
+from synapse.inspect.macro import (  # noqa: E402
     _sobel_gradient_magnitude,
     _unproject_pixel,
     compute_isotopic_residual_heatmap,
