@@ -8,17 +8,17 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # M51–M52 Post-H10 战略待办收口与 4 轨道行业横向评测计划 (Actionable Horizon-13B Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v4.0`**）
 > - **触发源**:
 >   1. [`REVIEW-POST-HORIZON10-2026-11.md`](../audits/REVIEW-POST-HORIZON10-2026-11.md) §7.1 推荐近期行动（`P0` GPU 烟测、`P1` `@aether//style`、RFC 0061/0062 生产硬化、`P2` 遗留模块清理与 4 轨道横向评测）；
 >   2. 长期挂起的 Open PR `sautille-stroke/synapse#163`（`pyproject.toml` Ruff 扩展全生态 SSOT）；
->   3. [SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) §5 四轨道行业横向对标协议与 [DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](../DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)。
+>   3. [SYN-RFC-0063](../../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) §5 四轨道行业横向对标协议与 [DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md](../../DESIGN_INDUSTRY_GAP_AND_COMPENSATION.md)。
 > - **规划模型**: `[gemini4]`
 > - **当前状态**: ✅ **已完成 (Horizon 13B · M51 PR #196 合入 & M52 `Release v5.0.0` 封板)**
 > - **目标周期**: 2 个里程碑（`M51` – `M52`）、2 个 Execution Waves（`Wave 50` – `Wave 51`）、**6 个原子 PR**（`PR-210` – `PR-215`）
 
 > [!IMPORTANT]
-> **执行铁律（与 [`AGENTS.md`](../../AGENTS.md) 对齐）**：
+> **执行铁律（与 [`AGENTS.md`](../../../AGENTS.md) 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/synapse-wt-prXXX`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. **非服务端铁律 & 单仓自洽铁律**：禁止常驻 HTTP 服务；禁止破坏无父仓库（如公网 GitHub Actions Runner）下的 `ruff` / `mypy` / `pytest` 运行能力。
@@ -76,7 +76,7 @@ flowchart LR
      - 拉起 `DiffusersWanBackend`（`Wan2.1-T2V-1.3B` 最低门槛 / 按 VRAM 自适应选择 `14B`）+ `ControlNeXtPatchifyStem` + `AutoencoderKLWan` 实跑单窗口因果生成；
      - 运行 `StatelessLoRATrainer` 真实梯度步与 `.safetensors` 导出/重载校验；
      - 输出含峰值 VRAM、吞吐、FVD/PSNR/SSIM/Warp 的 JSON 摘要并内嵌看门狗超时熔断与 `runtime.unassign` 钩子。
-  2. 在 [workenv/google-colab/README.md](../../workenv/google-colab/README.md) 与 `workenv/google-colab/synapse_colab_workflow.ipynb` 挂载周级烟测执行按钮/说明；在 `.github/workflows/` 新增按需/周级 `workflow_dispatch` 产物校验工作流（仅做报告归档与 CPU 侧回归，不在公网无卡 Runner 上硬跑大模型）。
+  2. 在 [workenv/google-colab/README.md](../../../workenv/google-colab/README.md) 与 `workenv/google-colab/synapse_colab_workflow.ipynb` 挂载周级烟测执行按钮/说明；在 `.github/workflows/` 新增按需/周级 `workflow_dispatch` 产物校验工作流（仅做报告归档与 CPU 侧回归，不在公网无卡 Runner 上硬跑大模型）。
   3. 新增 `tests/test_gpu_smoke_cli.py`（CPU 下校验 `--dry-run`、结构化 JSON 输出与缺 CUDA 诚实报退出码 `30`）。
 - **`ubuntu24` & `colab-gpu` 验收命令**:
   ```bash
@@ -91,11 +91,11 @@ flowchart LR
 - **来源编号**: `REVIEW-POST-HORIZON10-2026-11.md` §7.1 `P1`, `DESIGN_REVIEW_AND_ALIGNMENT.md` `RV-07`
 - **前置依赖**: 无 · **跨仓前置**: `aether` 上游新建 `style/include/aether/style/style_types.h`（落地 `StyleDescriptor` v2.0.0 字段与常量枚举）
 - **预估体量**: ~320 LOC · **Worktree 分支**: `feat/pr-211-aether-style-cpp-ssot-parity`
-- **现状核查**: 实核 `/Volumes/work/dervgen/aether/style` 尚不存在；[tools/wire_guard.py](../../tools/wire_guard.py#L228-L262) 中跨仓校验逻辑在找不到 `style_types.h` 时打印 `"SKIPPED (upstream @aether//style not present)"`。
+- **现状核查**: 实核 `/Volumes/work/dervgen/aether/style` 尚不存在；[tools/wire_guard.py](../../../tools/wire_guard.py#L228-L262) 中跨仓校验逻辑在找不到 `style_types.h` 时打印 `"SKIPPED (upstream @aether//style not present)"`。
 - **精确改动清单**:
-  1. 升级 [tools/wire_guard.py](../../tools/wire_guard.py)：新增 `--require-style` 开关（与 `--require-aether` 对齐），在 `../aether/style/include/aether/style/style_types.h` 就绪后强制校验 `StyleDescriptor` v2.0.0（`working_colorspace`, `color_temp_kelvin`, `exposure_ev`, `soft_knee_threshold` 等）C++ ↔ Python Pydantic ↔ `schemas/style_profile.v2.0.0.schema.json` 三向逐字段对齐。
+  1. 升级 [tools/wire_guard.py](../../../tools/wire_guard.py)：新增 `--require-style` 开关（与 `--require-aether` 对齐），在 `../aether/style/include/aether/style/style_types.h` 就绪后强制校验 `StyleDescriptor` v2.0.0（`working_colorspace`, `color_temp_kelvin`, `exposure_ev`, `soft_knee_threshold` 等）C++ ↔ Python Pydantic ↔ `schemas/style_profile.v2.0.0.schema.json` 三向逐字段对齐。
   2. 在 `tests/test_cross_repo_contracts.py` 新增 `@pytest.mark.external_data` 跨仓契约测试，断言在同级 `../aether` 存在 `style_types.h` 时 `wire_guard --require-style` 全绿。
-  3. 同步更新 [docs/WIRE_CONTRACTS.md](../WIRE_CONTRACTS.md) 与 [AGENTS.md](../../AGENTS.md) §1 契约表，清除 "`@aether//style` 尚在规划" 标注。
+  3. 同步更新 [docs/WIRE_CONTRACTS.md](../../WIRE_CONTRACTS.md) 与 [AGENTS.md](../../../AGENTS.md) §1 契约表，清除 "`@aether//style` 尚在规划" 标注。
 - **`ubuntu24` 验收命令**:
   ```bash
   /root/venv-synapse/bin/python tools/wire_guard.py --check --require-aether --require-style
@@ -108,9 +108,9 @@ flowchart LR
 - **来源编号**: Open PR `sautille-stroke/synapse#163` (`feat(config): extend central ruff SSOT configuration`)
 - **前置依赖**: 无
 - **预估体量**: ~220 LOC · **Worktree 分支**: `chore/pr-212-ruff-ssot-sync-checker`
-- **现状核查**: Open PR `#163` 尝试直接在 [pyproject.toml](../../pyproject.toml#L140-L159) 添加 `extend = "../rules_dervgen_env/config/ruff.toml"`。但在独立克隆与公网 GitHub Actions Runner 中，父目录不存在 `../rules_dervgen_env/`，直接 `extend` 会导致 `ruff check` 直接报错崩溃（击穿 Gate 3）。
+- **现状核查**: Open PR `#163` 尝试直接在 [pyproject.toml](../../../pyproject.toml#L140-L159) 添加 `extend = "../rules_dervgen_env/config/ruff.toml"`。但在独立克隆与公网 GitHub Actions Runner 中，父目录不存在 `../rules_dervgen_env/`，直接 `extend` 会导致 `ruff check` 直接报错崩溃（击穿 Gate 3）。
 - **精确改动清单**:
-  1. 保持 [pyproject.toml](../../pyproject.toml) 自包含可独立执行（不写入会破坏公网 CI 的强路径 `extend`）；
+  1. 保持 [pyproject.toml](../../../pyproject.toml) 自包含可独立执行（不写入会破坏公网 CI 的强路径 `extend`）；
   2. 新增 `tools/sync_ruff_ssot.py`（支持 `--check` 与 `--sync`）：当同级存在 `../rules_dervgen_env/config/ruff.toml` 时自动比对基线规则子集/目标版本/行宽是否与全生态 SSOT 漂移，缺失父仓时安全跳过（`--require-ssot` 下严格失败）；
   3. 在 `tests/test_pr192_coverage_and_ssot.py` 补充 SSOT 一致性单测并关闭已被安全替代的 PR `#163`。
 - **`ubuntu24` 验收命令**:
@@ -147,9 +147,9 @@ flowchart LR
 - **前置依赖**: `PR-210`
 - **预估体量**: ~440 LOC · **Worktree 分支**: `feat/pr-214-rfc0061-0062-gpu-prod-hardening`
 - **精确改动清单**:
-  1. 硬化 [python/synapse/refine/pipeline.py](../../python/synapse/refine/pipeline.py) 与 `python/synapse/refine/{hand,face}.py`：接入真实 `foundary` / 本地 Diffusers 512×512 局部修补权重（支持 `K=2` 异构候选输入），在 `colab-gpu` 实跑 `MultiModelRefineFusion`（`LAPLACIAN_FREQUENCY` / `CASCADE` / `POISSON_GRADIENT`）+ `ScalpelStitcher` 手术刀缝合并验证环带 `ΔE00 <= 2.0` 与 `anatomical_quality_score` 门禁。
-  2. 硬化 [python/synapse/recon/loop/closed_loop_runner.py](../../python/synapse/recon/loop/closed_loop_runner.py) 与 `forward_guide.py`：在 `colab-gpu` 上接入真实 `DiffusersWanBackend` 实跑 LookDev 预卷（`n_preroll in {0, 4, 8}` + 正片首帧 $\kappa=1.0$ 硬切镜重锚定）+ DrJit/Mitsuba AD（或 `fulgur_slang_ad`）反演并完成手术刀回接闭环。
-  3. 在 [scripts/colab_runner.py](../../scripts/colab_runner.py) 将上述两条非 Mock 生产闭环纳入可断点续跑的验证用例。
+  1. 硬化 [python/synapse/refine/pipeline.py](../../../python/synapse/refine/pipeline.py) 与 `python/synapse/refine/{hand,face}.py`：接入真实 `foundary` / 本地 Diffusers 512×512 局部修补权重（支持 `K=2` 异构候选输入），在 `colab-gpu` 实跑 `MultiModelRefineFusion`（`LAPLACIAN_FREQUENCY` / `CASCADE` / `POISSON_GRADIENT`）+ `ScalpelStitcher` 手术刀缝合并验证环带 `ΔE00 <= 2.0` 与 `anatomical_quality_score` 门禁。
+  2. 硬化 [python/synapse/recon/loop/closed_loop_runner.py](../../../python/synapse/recon/loop/closed_loop_runner.py) 与 `forward_guide.py`：在 `colab-gpu` 上接入真实 `DiffusersWanBackend` 实跑 LookDev 预卷（`n_preroll in {0, 4, 8}` + 正片首帧 $\kappa=1.0$ 硬切镜重锚定）+ DrJit/Mitsuba AD（或 `fulgur_slang_ad`）反演并完成手术刀回接闭环。
+  3. 在 [scripts/colab_runner.py](../../../scripts/colab_runner.py) 将上述两条非 Mock 生产闭环纳入可断点续跑的验证用例。
 - **`ubuntu24` & `colab-gpu` 验收命令**:
   ```bash
   /root/venv-synapse/bin/pytest tests/test_refine_fusion.py tests/test_recon_closed_loop_e2e.py -v
@@ -163,12 +163,12 @@ flowchart LR
 - **前置依赖**: `PR-211`, `PR-212`, `PR-213`, `PR-214`（并可聚合 Horizon 13A `PR-209` 的 40 套数据集）
 - **预估体量**: ~480 LOC · **Worktree 分支**: `feat/pr-215-4track-industry-benchmark-v5-0-0`
 - **精确改动清单**:
-  1. 在 `python/synapse/bench/` 新增 4 轨道横向评测聚合器（对应 [SYN-RFC-0063](../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) §5.1–5.4）：
+  1. 在 `python/synapse/bench/` 新增 4 轨道横向评测聚合器（对应 [SYN-RFC-0063](../../SYN-RFC-0063-TESTING-CORRECTNESS-AND-BENCHMARKS.md) §5.1–5.4）：
      - **赛道 1**：生成式 3D 资产与拓扑重构（`chamfer_mm`, `f_score_1mm`, 流形/欧拉/UV 质量）；
      - **赛道 2**：视频时空连续性与几何可控生成（`fvd`, `temporal_warp_error`, `foot_sliding_cm`）；
      - **赛道 3**：动作捕捉与数字替身动力学（`bone_length_drift_pct`, `volume_breathing_pct`, `silhouette_iou`）；
      - **赛道 4**：物理光影解耦与可微逆向渲染（`depth_rmse_m`, `border_ring_ciede2000`, `albedo_delta_e00`, `light_dir_error_deg`）。
-  2. 升级 [python/synapse/bench/report.py](../../python/synapse/bench/report.py) 支持跨适配器 / 跨模型多维度对比排行表与 JSON/HTML 导出；补齐 CLI `synapse-bench compare` 子命令。
+  2. 升级 [python/synapse/bench/report.py](../../../python/synapse/bench/report.py) 支持跨适配器 / 跨模型多维度对比排行表与 JSON/HTML 导出；补齐 CLI `synapse-bench compare` 子命令。
   3. 跑通全部 16 项反作弊硬门禁 + 远端 GitHub Actions 5/5 Jobs 全绿，更新 `pyproject.toml`、`CHANGELOG.md`、`README.md` 封板发布 **`Release v5.0.0`**。
 - **`ubuntu24` 验收命令**:
   ```bash

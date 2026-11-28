@@ -8,10 +8,10 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # M45–M48 `PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩落地计划 (Actionable Horizon-12 Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v4.0`**）
 > - **跨仓上游总纲**: `dervgen/all-overview#692`（及 `#698` / `#700` / `#702` / `#711`）— `../all-overview/docs/tasks/plan-0100-geometry-compression-repair-inversion-unified-landing.md`（**`PLAN-0100 Wave 4`: `PR-100-14` ~ `PR-100-18` & `PR-100-19` 联合收口**）
 > - **统管规范**:
->   - `RFC 0060 (v2.0 Implementing)` / [SYN-RFC-0060](../SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) / [DESIGN-0060](../DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
+>   - `RFC 0060 (v2.0 Implementing)` / [SYN-RFC-0060](../../SYN-RFC-0060-REAL-VIDEO-TO-3D-DIGITAL-TWIN.md) / [DESIGN-0060](../../DESIGN_REAL_VIDEO_TO_3D_INVERSE_RENDERING.md)
 >   - `RFC 0061 (v1.2 Implementing)` Phase 4（点云 Draco 与 3DGS 球谐量化）
 >   - `RFC 0063 (v2.0 Implementing)` `TASK-0063-09`（`synapse` 逆渲染几何/UV 自愈闭环）
 >   - `RFC 0065 (v2.0 Implementing)` Wave 4（消费 `QuadriFlow`、原生 C++ IK 与 Slang 可微光栅）
@@ -20,7 +20,7 @@ stale_after: 2027-11-19T00:00:00Z
 > - **目标周期**: 4 个里程碑（`M45` – `M48`）、4 个 Execution Waves（`Wave 44` – `Wave 47`）、**10 个原子 PR**（`PR-193` – `PR-202`）
 
 > [!IMPORTANT]
-> **执行铁律（与 [`AGENTS.md`](../../AGENTS.md) 及 `all-overview` `PLAN-0100` 对齐）**：
+> **执行铁律（与 [`AGENTS.md`](../../../AGENTS.md) 及 `all-overview` `PLAN-0100` 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/synapse-wt-prXXX`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. **严格零 Python 生产几何/运动学铁律**：`synapse` 生产反演路径严禁继续用纯 Python 实现替代 C++ 算子；所有生产路径未就绪原生算子时必须 Fail-Closed 返回确定性退出码（`10` / `30` / `50`），严禁静默降级至 Python Oracle（`NEG-100-08`）。
@@ -97,9 +97,9 @@ flowchart LR
 - **来源编号**: `PLAN-0100 PR-100-14`, `R100-F06`, `IMPL-0060 §4.1`
 - **前置依赖**: 无（独立基座）
 - **预估体量**: ~420 LOC · **Worktree 分支**: `feat/pr-193-mp4-demux-and-fgpp-recon`
-- **现状核查**: [python/synapse/cli/_recon.py](../../python/synapse/cli/_recon.py#L37-L48) 目前强制要求 `--video` 指向 `.npy` 数组（`np.load(video_path_raw)`），尚未支持 MP4 等封装视频的按帧流式解码与采样；[python/synapse/pipeline/stages/recon.py](../../python/synapse/pipeline/stages/recon.py#L28-L31) `video_to_3d_invert` Stage 同样仅文档化 `(T,H,W,3) .npy` 输入。
+- **现状核查**: [python/synapse/cli/_recon.py](../../../python/synapse/cli/_recon.py#L37-L48) 目前强制要求 `--video` 指向 `.npy` 数组（`np.load(video_path_raw)`），尚未支持 MP4 等封装视频的按帧流式解码与采样；[python/synapse/pipeline/stages/recon.py](../../../python/synapse/pipeline/stages/recon.py#L28-L31) `video_to_3d_invert` Stage 同样仅文档化 `(T,H,W,3) .npy` 输入。
 - **精确改动清单**:
-  1. 在 `python/synapse/recon/` 新增轻量视频解码工具（或扩展 `python/synapse/recon/io.py` 并在 [python/synapse/cli/_recon.py](../../python/synapse/cli/_recon.py) 接入）：支持 `.mp4` / `.mov` / `.mkv` / 帧目录与 `.npy` 统一读取；函数内懒加载 `av` / `cv2` 或受控 `subprocess` 调用 `ffmpeg`（符合 `AGENTS.md §3.3` 与 Ruff `S603` 规范，缺失解码后端时抛出带 `agent_fix_hint` 的 `SynapseError(ExitCode.RESOURCE_MISSING=20)` 或 `BackendUnavailableError(30)`）。
+  1. 在 `python/synapse/recon/` 新增轻量视频解码工具（或扩展 `python/synapse/recon/io.py` 并在 [python/synapse/cli/_recon.py](../../../python/synapse/cli/_recon.py) 接入）：支持 `.mp4` / `.mov` / `.mkv` / 帧目录与 `.npy` 统一读取；函数内懒加载 `av` / `cv2` 或受控 `subprocess` 调用 `ffmpeg`（符合 `AGENTS.md §3.3` 与 Ruff `S603` 规范，缺失解码后端时抛出带 `agent_fix_hint` 的 `SynapseError(ExitCode.RESOURCE_MISSING=20)` 或 `BackendUnavailableError(30)`）。
   2. 为 `synapse recon invert-video` 及 `video_to_3d_invert` Stage 补齐 `--fps`、`--max-frames`、`--foundary-url` 与 `--backend-mode` (`auto|foundary|oracle`) 参数；将解码后的 RGB、估计深度与 `Cryptomatte.ID`（`UINT32`）持久化为符合 `@aether//fgpp` `fgpp.v1.0` 15 通道（`34 B/px`）的 OpenEXR 序列输出供下游 `fulgur` / `synapse.composite` 消费。
   3. 同步更新 `tests/test_recon_invert_cli.py`：覆盖真实容器视频抽帧（含合成/临时 MP4 或受控解码桩）、无效路径返回退出码 `20` 与非法扩展名/损坏头返回退出码 `10`。
 - **`ubuntu24` 验收命令**:
@@ -114,10 +114,10 @@ flowchart LR
 - **来源编号**: `PLAN-0100 PR-100-14`, `R100-F06`, `IMPL-0060 §4.1-4.2`
 - **前置依赖**: `PR-193` · **跨仓前置**: `foundary` (`internal/service/`, `internal/worker/`) 上线 `dust3r` / `metric3d` / `cotracker3` / `wham` 容器清单
 - **预估体量**: ~480 LOC · **Worktree 分支**: `feat/pr-194-foundary-multimodel-and-scale-anchor`
-- **现状核查**: [python/synapse/bridge/foundary_client.py](../../python/synapse/bridge/foundary_client.py#L36) 当前 `FoundaryRequest.service` 仅允许 `Literal["trellis", "hunyuan3d", "sam2", "gvhmr", "visual_jev"]`，缺失 `dust3r`、`metric3d`、`cotracker3`、`wham`（与 `delight`）；[python/synapse/recon/tracking.py](../../python/synapse/recon/tracking.py) 仅有纯 NumPy Harris + LK 追踪与 PnP。
+- **现状核查**: [python/synapse/bridge/foundary_client.py](../../../python/synapse/bridge/foundary_client.py#L36) 当前 `FoundaryRequest.service` 仅允许 `Literal["trellis", "hunyuan3d", "sam2", "gvhmr", "visual_jev"]`，缺失 `dust3r`、`metric3d`、`cotracker3`、`wham`（与 `delight`）；[python/synapse/recon/tracking.py](../../../python/synapse/recon/tracking.py) 仅有纯 NumPy Harris + LK 追踪与 PnP。
 - **精确改动清单**:
-  1. 扩展 [python/synapse/bridge/foundary_client.py](../../python/synapse/bridge/foundary_client.py)：将 `FoundaryRequest.service` 扩充涵盖 `"sam2"`, `"dust3r"`, `"metric3d"`, `"cotracker3"`, `"wham"`, `"trellis"`, `"hunyuan3d"`, `"gvhmr"`, `"delight"`, `"visual_jev"`；新增异步任务提交/状态轮询（`submit_async` / `poll_job`）、CAS 资产路径引用与幂等键透传，严格经由 `http_security.py` 防 SSRF / DNS Rebinding。
-  2. 在 [python/synapse/recon/tracking.py](../../python/synapse/recon/tracking.py) 接入 `FoundaryTransport` 可选注入：`mode="foundary"` 下调度 `sam2` 掩膜 + `cotracker3` 稠密轨迹 + `dust3r`/`metric3d` 单目米制深度，并通过 `wham` 人体骨盆先验与多帧光束平差恢复真实米制仿射尺度（校验指标目标：SAM2 跨帧跟踪稳定性 `>= 98%`、背景相机重投影误差 `<= 1.2 px`、仿射尺度拟合误差 `<= 3%`）。
+  1. 扩展 [python/synapse/bridge/foundary_client.py](../../../python/synapse/bridge/foundary_client.py)：将 `FoundaryRequest.service` 扩充涵盖 `"sam2"`, `"dust3r"`, `"metric3d"`, `"cotracker3"`, `"wham"`, `"trellis"`, `"hunyuan3d"`, `"gvhmr"`, `"delight"`, `"visual_jev"`；新增异步任务提交/状态轮询（`submit_async` / `poll_job`）、CAS 资产路径引用与幂等键透传，严格经由 `http_security.py` 防 SSRF / DNS Rebinding。
+  2. 在 [python/synapse/recon/tracking.py](../../../python/synapse/recon/tracking.py) 接入 `FoundaryTransport` 可选注入：`mode="foundary"` 下调度 `sam2` 掩膜 + `cotracker3` 稠密轨迹 + `dust3r`/`metric3d` 单目米制深度，并通过 `wham` 人体骨盆先验与多帧光束平差恢复真实米制仿射尺度（校验指标目标：SAM2 跨帧跟踪稳定性 `>= 98%`、背景相机重投影误差 `<= 1.2 px`、仿射尺度拟合误差 `<= 3%`）。
   3. 当生产模式未配置 live `foundary` 端点时严格 Fail-Closed 抛出 `BackendUnavailableError(30)`，严禁静默伪造 `MockFoundaryTransport` 假输出。
   4. 在 `tests/test_recon.py` 与 `tests/test_bridge_and_hitl.py` 新增重底模请求契约、仿射尺度对齐误差 `<= 3%` 与无端点 Fail-Closed 单测。
 - **`ubuntu24` 验收命令**:
@@ -137,8 +137,8 @@ flowchart LR
 - **前置依赖**: `PR-193`, `PR-194`
 - **预估体量**: ~440 LOC · **Worktree 分支**: `feat/pr-195-adaptive-keyframes-and-trellis`
 - **精确改动清单**:
-  1. 在 [python/synapse/recon/multiview.py](../../python/synapse/recon/multiview.py) 新增视点球面覆盖率驱动的自适应关键帧选择算子（基于 `CameraTrajectory` 位姿夹角与遮挡清晰度挑选多视角参考帧），并与 `FoundaryTransport` 对接发起 `trellis` / `hunyuan3d` 高模生成请求。
-  2. 在 [python/synapse/recon/pipeline.py](../../python/synapse/recon/pipeline.py) 串联生成式高模接收与绝对红线 #3 双重校验：必须经由已验证的 Gen-3D 生成输出 + 顶点数 `>= 1500` + 铰接四肢校验（`validate_whitebox_coarseness_floor`）后，方可显式置位 `has_gen3d_highpoly=True`，默认保持 `False` Fail-Closed 拦截 Track B 光滑白模直接反投。
+  1. 在 [python/synapse/recon/multiview.py](../../../python/synapse/recon/multiview.py) 新增视点球面覆盖率驱动的自适应关键帧选择算子（基于 `CameraTrajectory` 位姿夹角与遮挡清晰度挑选多视角参考帧），并与 `FoundaryTransport` 对接发起 `trellis` / `hunyuan3d` 高模生成请求。
+  2. 在 [python/synapse/recon/pipeline.py](../../../python/synapse/recon/pipeline.py) 串联生成式高模接收与绝对红线 #3 双重校验：必须经由已验证的 Gen-3D 生成输出 + 顶点数 `>= 1500` + 铰接四肢校验（`validate_whitebox_coarseness_floor`）后，方可显式置位 `has_gen3d_highpoly=True`，默认保持 `False` Fail-Closed 拦截 Track B 光滑白模直接反投。
   3. 补齐自适应关键帧覆盖均匀性测试与红线 #3 拒绝绕过单元测试（`tests/test_recon_multiview.py`）。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -159,7 +159,7 @@ flowchart LR
   > 2. 同时定义并打通完整 `.fmesh.bin`（`0x48534D46`）往返编码器与 `remediate` 生产调用路径，待上游 `aether` 落地原生 `quadriflow` 或 `Plan B` 自研四边面重拓扑后零改动激活 `G100-10`（`>= 1500` 顶规整四边面、非流形边 `= 0`）。
 - **精确改动清单**:
   1. 新增 `python/synapse/bridge/aether_geo_worker_client.py`：实现 `.fmesh.bin` 读写序列化、参数 JSON 构造、沙箱化子进程执行 `aether_geo_worker`（固定超时与内存边界、非 `shell=True`）、支持 `--algorithm remediate` 与 `--algorithm quadriflow` 双通道。
-  2. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 与 [python/synapse/recon/pipeline.py](../../python/synapse/recon/pipeline.py) 新增 `backend="worker"` 生产路由：在 `remediate` 阶段优先调用 `aether_geo_worker --algorithm remediate` 完成流形清洗与补洞；在 `quad_remesh` 生产态调用 `aether_geo_worker --algorithm quadriflow` 并严格按 `NEG-100-08` 在失败时抛 `50`/`10`。
+  2. 在 [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py) 与 [python/synapse/recon/pipeline.py](../../../python/synapse/recon/pipeline.py) 新增 `backend="worker"` 生产路由：在 `remediate` 阶段优先调用 `aether_geo_worker --algorithm remediate` 完成流形清洗与补洞；在 `quad_remesh` 生产态调用 `aether_geo_worker --algorithm quadriflow` 并严格按 `NEG-100-08` 在失败时抛 `50`/`10`。
   3. 同步在 `tools/import_dag_guard.py` 校验 `bridge/`（Tier 1）与 `recon/`（Tier 2）单向依赖（`recon -> bridge` 合法，零逆边）。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -177,9 +177,9 @@ flowchart LR
 - **来源编号**: `PLAN-0100 PR-100-16`, `R100-F07`, `G100-11`, `NEG-100-08`, `NEG-100-09`
 - **前置依赖**: `PR-194`, `PR-196` · **跨仓前置**: `aether/python/bindings*.cc` 暴露 `two_bone_ik` / `fabrik` / `foot_ik` pybind11 绑定（对齐 `../aether/animation/include/aether/animation/ik/{two_bone_ik.h,fabrik.h}` 与 `../fulgur/engine/animation/src/{foot_ik.cc,ik_solver.cc}`）
 - **预估体量**: ~420 LOC · **Worktree 分支**: `feat/pr-197-cpp-ik-zero-python-bridge`
-- **现状核查**: [python/synapse/recon/kinematics.py](../../python/synapse/recon/kinematics.py#L6-L13) 文档字符串仍误称 `fulgur/engine/animator/` 不存在并声明 Python IK 为唯一实现；实际上 `../fulgur/engine/animation/src/foot_ik.cc` 与 `../aether/animation/include/aether/animation/ik/two_bone_ik.h` 均已存在。
+- **现状核查**: [python/synapse/recon/kinematics.py](../../../python/synapse/recon/kinematics.py#L6-L13) 文档字符串仍误称 `fulgur/engine/animator/` 不存在并声明 Python IK 为唯一实现；实际上 `../fulgur/engine/animation/src/foot_ik.cc` 与 `../aether/animation/include/aether/animation/ik/two_bone_ik.h` 均已存在。
 - **精确改动清单**:
-  1. 清理 [python/synapse/recon/kinematics.py](../../python/synapse/recon/kinematics.py) 过时文档注释；扩展 [python/synapse/bridge/aether_bridge.py](../../python/synapse/bridge/aether_bridge.py) 增加 `has_aether_animation()` / `get_aether_animation()` 探测。
+  1. 清理 [python/synapse/recon/kinematics.py](../../../python/synapse/recon/kinematics.py) 过时文档注释；扩展 [python/synapse/bridge/aether_bridge.py](../../../python/synapse/bridge/aether_bridge.py) 增加 `has_aether_animation()` / `get_aether_animation()` 探测。
   2. 在 `solve_zero_slip_ik` 新增 `backend: Literal["native", "python"] = "native"`：生产默认路径强制委托 C++ IK 核求解（足底滑移 `<= 0.2 cm`）；当 `backend="native"` 且原生扩展不可用时严格抛出 `BackendUnavailableError(30)` / `ExitCode.CONTRACT_ERROR(10)` 阻断静默 Python 回退（`NEG-100-08`）；纯 Python `solve_two_bone_ik` 保留仅作 `tests/` 双轨数学 Oracle 对照。
   3. 强化足滑质检门禁：任何阶段实测 `foot_sliding_cm > 0.5`（`NEG-100-09`）直接阻断晋级并触发 `ExitCode.CIRCUIT_BREAKER = 40`。
 - **`ubuntu24` 验收命令**:
@@ -194,7 +194,7 @@ flowchart LR
 - **前置依赖**: `PR-197` · **跨仓前置**: `fulgur/engine/renderer` 基于 `../fulgur/engine/shader/include/fulgur/shader/slang_compiler.h`（`[Differentiable]` L53-55）落地无头可微光栅残差 Pass 与调用接口
 - **预估体量**: ~460 LOC · **Worktree 分支**: `feat/pr-198-fulgur-slang-diff-raster-loop`
 - **精确改动清单**:
-  1. 在 [python/synapse/recon/loop/mitsuba_optimizer.py](../../python/synapse/recon/loop/mitsuba_optimizer.py) 与 [python/synapse/recon/loop/closed_loop_runner.py](../../python/synapse/recon/loop/closed_loop_runner.py) 扩展 `variant` 调度：支持 `"fulgur_slang_ad"`（生产默认 GPU 可微光栅残差求解，调用 `fulgur` 无头可微渲染后端反向优化骨骼/材质参数），保留 `"analytic_cpu"` 与 `"mitsuba_ad"` 作为高精度对照 Oracle。
+  1. 在 [python/synapse/recon/loop/mitsuba_optimizer.py](../../../python/synapse/recon/loop/mitsuba_optimizer.py) 与 [python/synapse/recon/loop/closed_loop_runner.py](../../../python/synapse/recon/loop/closed_loop_runner.py) 扩展 `variant` 调度：支持 `"fulgur_slang_ad"`（生产默认 GPU 可微光栅残差求解，调用 `fulgur` 无头可微渲染后端反向优化骨骼/材质参数），保留 `"analytic_cpu"` 与 `"mitsuba_ad"` 作为高精度对照 Oracle。
   2. 在 `tests/test_recon_loop_optimizer.py` 新增 Slang AD 后端契约与收敛门禁验证（轮廓 `IoU >= 0.90`、Depth `RMSE <= 0.03 m`、`border_ring_ciede2000 <= 2.0`）。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -207,11 +207,11 @@ flowchart LR
 - **来源编号**: `PLAN-0100 PR-100-17`, `G100-11`, `IMPL-0060 §4.4-4.5`
 - **前置依赖**: `PR-198` · **跨仓前置**: `@aether//geo` 落地 Graph-Cut 视向最优贴图缝合 C++20 算子；`foundary` 上线扩散去光照服务
 - **预估体量**: ~520 LOC · **Worktree 分支**: `feat/pr-199-graphcut-delight-openusd-hitl`
-- **现状核查**: [python/synapse/cli/_recon.py](../../python/synapse/cli/_recon.py#L188-L194) 当前仅调用 `_write_minimal_usda()` 写出 4 行极简引用 OBJ 的文本桩，远未满足 RFC 0058 OpenUSD + OpenPBR + `UsdSkel` 交付规范。
+- **现状核查**: [python/synapse/cli/_recon.py](../../../python/synapse/cli/_recon.py#L188-L194) 当前仅调用 `_write_minimal_usda()` 写出 4 行极简引用 OBJ 的文本桩，远未满足 RFC 0058 OpenUSD + OpenPBR + `UsdSkel` 交付规范。
 - **精确改动清单**:
-  1. 升级 [python/synapse/recon/delight.py](../../python/synapse/recon/delight.py)：新增对 `@aether//geo` Graph-Cut 缝合算子与 `foundary` `delight` 容器服务的接线，实现多视角最优图块切割缝合（接缝 `ΔE00 <= 2.0`）与阴影去除（阴影残留 `<= 3%`）。
+  1. 升级 [python/synapse/recon/delight.py](../../../python/synapse/recon/delight.py)：新增对 `@aether//geo` Graph-Cut 缝合算子与 `foundary` `delight` 容器服务的接线，实现多视角最优图块切割缝合（接缝 `ΔE00 <= 2.0`）与阴影去除（阴影残留 `<= 3%`）。
   2. 新增 `python/synapse/recon/usd_packager.py` 替换 `_write_minimal_usda()` 桩：构建符合 RFC 0058 规范的 OpenUSD (`.usdc`/`.usda`) + OpenPBR (`UsdShadeMaterial` / `UsdPreviewSurface` / `MaterialX`) + `UsdSkel` 骨骼动画资产包，附内置 Schema 与纹理引用完整性校验器。
-  3. 串联 [python/synapse/inspect/jev_critic.py](../../python/synapse/inspect/jev_critic.py)（`VisualJevCritic` 宏微双尺度质检，置信度 `>= 0.85`）与 [python/synapse/bridge/hitl.py](../../python/synapse/bridge/hitl.py) `PersistentHitlLedger`（`> 15 min` 自动触发 RFC 0044 熔断退出码 `40` 并对接 `grand-studio` 精修流）。
+  3. 串联 [python/synapse/inspect/jev_critic.py](../../../python/synapse/inspect/jev_critic.py)（`VisualJevCritic` 宏微双尺度质检，置信度 `>= 0.85`）与 [python/synapse/bridge/hitl.py](../../../python/synapse/bridge/hitl.py) `PersistentHitlLedger`（`> 15 min` 自动触发 RFC 0044 熔断退出码 `40` 并对接 `grand-studio` 精修流）。
 - **`ubuntu24` 验收命令**:
   ```bash
   /root/venv-synapse/bin/pytest tests/test_recon_invert_cli.py tests/test_inspect_jev_critic.py tests/test_bridge_and_hitl.py -v
@@ -244,9 +244,9 @@ flowchart LR
 - **前置依赖**: `PR-199`, `PR-200`
 - **预估体量**: ~380 LOC · **Worktree 分支**: `feat/pr-201-colab-e6-real-video-twin-bench`
 - **精确改动清单**:
-  1. 升级 [scripts/colab_runner.py](../../scripts/colab_runner.py) 新增实验阶段 **`E6`**：在 Google Colab GPU（L4 / A100）上从野生真实 MP4 视频片段起跑（或经受控 `foundary` 容器服务），串联 `PR-193 ~ PR-200` 全流程并校验 `IoU >= 0.90` / `Depth RMSE <= 0.03 m` / `Foot-sliding <= 0.2 cm` / `ΔE00 <= 2.0` / `3DGS 压缩比 >= 70%`。
+  1. 升级 [scripts/colab_runner.py](../../../scripts/colab_runner.py) 新增实验阶段 **`E6`**：在 Google Colab GPU（L4 / A100）上从野生真实 MP4 视频片段起跑（或经受控 `foundary` 容器服务），串联 `PR-193 ~ PR-200` 全流程并校验 `IoU >= 0.90` / `Depth RMSE <= 0.03 m` / `Foot-sliding <= 0.2 cm` / `ΔE00 <= 2.0` / `3DGS 压缩比 >= 70%`。
   2. 严格遵循 Google Drive SSOT V2.0（`/dervgen/work/{user}/synapse/{date}/{job_id}/`）、`SIGTERM` 状态保留断点续跑与 `runtime.unassign` 自动释放铁律。
-  3. 同步更新 [workenv/google-colab/README.md](../../workenv/google-colab/README.md) 与 `.agents/skills/synapse-colab-testing/SKILL.md`。
+  3. 同步更新 [workenv/google-colab/README.md](../../../workenv/google-colab/README.md) 与 `.agents/skills/synapse-colab-testing/SKILL.md`。
 - **`ubuntu24` & `colab-gpu` 验收命令**:
   ```bash
   /root/venv-synapse/bin/pytest tests/test_colab_runner.py -v
@@ -264,7 +264,7 @@ flowchart LR
   1. 在 `tests/test_cross_repo_contracts.py` 与 `tests/test_recon_closed_loop_e2e.py` 固化的 2 项 `PLAN-0100` 强制负向变异测试：
      - **`NEG-100-08`**：强制屏蔽 C++ IK / `aether_geo_worker` 连接时，`ReconPipeline` / `solve_zero_slip_ik` 生产模式必须显式抛出错误并返回非零退出码（`10`/`30`/`50`），严禁静默降级至 Python Oracle；
      - **`NEG-100-09`**：向运动学求解测试注入 `> 0.5 cm` 足底滑动时，门禁 `G100-11` 必须立即拦截并触发退出码 `40`。
-  2. 更新 `README.md`、[docs/ARCHITECTURE.md](../ARCHITECTURE.md) 与 [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) 状态。
+  2. 更新 `README.md`、[docs/ARCHITECTURE.md](../../ARCHITECTURE.md) 与 [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) 状态。
   3. 整理完整实测日志（Commit SHA、Pytest/Mypy/Ruff 输出、`colab-gpu` E6 实测数值）用于回填 `dervgen/all-overview` `IMPL-0060` / `IMPL-0061` / `IMPL-0063` / `IMPL-0065` 与 `PLAN-0100` Wave 4–5 签收。
 - **`ubuntu24` 验收命令**: 全套 16 项门禁 + `python scripts/check_doc_links.py`。
 

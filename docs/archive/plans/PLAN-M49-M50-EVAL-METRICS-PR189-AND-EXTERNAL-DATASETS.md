@@ -8,16 +8,16 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # M49–M50 PR #189 缺陷加固、3D 评估全指标闭环与外部基准数据集落地计划 (Actionable Horizon-13A Blueprint)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) **`v4.0`**）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) **`v4.0`**）
 > - **触发源**:
 >   1. `sautille-stroke/synapse#189`（`45b8461`）源码级深度复核检出的 5 项实证实现缺口；
->   2. [`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) §6.2（P0 感知骨干、P1 曲率与特写、P2 姿态对齐）、§7（外部 3D 数据集 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`）与 §8.1 剩余 Backlog。
+>   2. [`DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](../../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) §6.2（P0 感知骨干、P1 曲率与特写、P2 姿态对齐）、§7（外部 3D 数据集 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`）与 §8.1 剩余 Backlog。
 > - **规划模型**: `[gemini4]`
 > - **当前状态**: ✅ **已完成 (Horizon 13A · M49 PR #191 + M50 PR #192 全部合入闭合)**
 > - **目标周期**: 2 个里程碑（`M49` – `M50`）、2 个并发 Execution Waves（`Wave 48` – `Wave 49`）、**7 个原子 PR**（`PR-203` – `PR-209`）
 
 > [!IMPORTANT]
-> **执行铁律（与 [`AGENTS.md`](../../AGENTS.md) 对齐）**：
+> **执行铁律（与 [`AGENTS.md`](../../../AGENTS.md) 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/synapse-wt-prXXX`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. **零 `import synapse` 副作用 & 懒加载铁律**：`dino_cosine_sim` / `lpips_vgg` 等需 `torch` / `timm` / `torchvision` 的感知骨干指标必须在函数内懒加载，缺失时抛出带 `agent_fix_hint` 的结构化错误；快测（`-m 'not slow'`）保持 `0 torch import` 与单进程 `<= 20s` SLA。
@@ -28,7 +28,7 @@ stale_after: 2027-11-19T00:00:00Z
 
 ## 1. PR #189 源码复核与评估体系缺口盘点
 
-`synapse#189`（`45b8461`）已率先在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 实现 5 项拓扑/UV 指标并接入 [model_evaluator.py](../../python/synapse/inspect/model_evaluator.py#L387-L438)。经逐行源码复核，检出以下 **5 项待加固缺陷** 及 **6 项设计规约 Backlog**，统一归口本计划 `M49–M50` 彻底闭环：
+`synapse#189`（`45b8461`）已率先在 [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py) 实现 5 项拓扑/UV 指标并接入 [model_evaluator.py](../../../python/synapse/inspect/model_evaluator.py#L387-L438)。经逐行源码复核，检出以下 **5 项待加固缺陷** 及 **6 项设计规约 Backlog**，统一归口本计划 `M49–M50` 彻底闭环：
 
 | 来源分类 | 实证定位 (`file:line`) | 问题 / 缺口详情 | 承接 PR |
 |---|---|---|:---:|
@@ -82,14 +82,14 @@ flowchart LR
 - **前置依赖**: 无（基于 `45b8461`）
 - **预估体量**: ~420 LOC · **Worktree 分支**: `fix/pr-203-harden-pr189-topo-uv-metrics`
 - **精确改动清单**:
-  1. 修复 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py)：
+  1. 修复 [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py)：
      - `compute_euler_characteristic`：改用实际引用顶点数 `len(np.unique(f))`（或显式过滤未引用孤立顶点）与纯向量化 `np.unique(..., axis=0)` 边去重，避免孤立点污染 $\chi$。
      - `count_non_manifold_edges`：补齐非单伞扇面（bowtie 顶点）统计选项，并在 `../aether/geo` 与 `aether_bridge` 对接原生加速实现与双轨互验测试（`tests/test_geometry_oracle_parity.py`）。
      - `compute_seam_discontinuity_deg`：通过 3D 顶点位置量化焊接（如 $10^{-6}\text{ m}$ 容差）识别共享空间边但在 UV 空间分裂的真实接缝边，并对比接缝两侧相邻三角形/分裂顶点的法线夹角跳跃均值（不再对比边两端点 `norms[u]` 与 `norms[w]`）。
-  2. 修复 [python/synapse/inspect/model_evaluator.py](../../python/synapse/inspect/model_evaluator.py#L425-L438) 与 [python/synapse/inspect/eval_report.py](../../python/synapse/inspect/eval_report.py#L412-L426)：
+  2. 修复 [python/synapse/inspect/model_evaluator.py](../../../python/synapse/inspect/model_evaluator.py#L425-L438) 与 [python/synapse/inspect/eval_report.py](../../../python/synapse/inspect/eval_report.py#L412-L426)：
      - 无 UV 网格（`uvs is None or len(uvs) == 0`）不再写入 `1.0 / 0.0 / 0.0` 虚假满分，改为跳过或标记未提供 UV（显式记录 `has_uv=False`）；有 `uv_indices` 时透传给 UV 指标函数。
      - 在 `eval_report._append_model_card()` 拓扑摘要表中渲染 `Euler Characteristic` 与 `Non-Manifold Edges` 行，保证 HTML 报告与 `TopologyResult` 数据结构完全对齐。
-  3. 同步 [python/synapse/metrics/profiles.py](../../python/synapse/metrics/profiles.py)：在 `TRACK_A_ASSET` / `RSI_PROMOTION` 等门禁档位中按 `DESIGN §6.2.3` 补全 `uv_area_distortion_ratio` (`<= 1.5`)、`seam_discontinuity_deg` (`<= 5.0`)、`texel_density_variance` (`<= 0.3`) 门禁配置，并在 `tests/test_geometry_advanced_metrics.py` 增加带孤立顶点、真实接缝法线跳变与无 UV 网格的回归测试。
+  3. 同步 [python/synapse/metrics/profiles.py](../../../python/synapse/metrics/profiles.py)：在 `TRACK_A_ASSET` / `RSI_PROMOTION` 等门禁档位中按 `DESIGN §6.2.3` 补全 `uv_area_distortion_ratio` (`<= 1.5`)、`seam_discontinuity_deg` (`<= 5.0`)、`texel_density_variance` (`<= 0.3`) 门禁配置，并在 `tests/test_geometry_advanced_metrics.py` 增加带孤立顶点、真实接缝法线跳变与无 UV 网格的回归测试。
 - **`ubuntu24` 验收命令**:
   ```bash
   /root/venv-synapse/bin/pytest tests/test_geometry_advanced_metrics.py tests/test_model_evaluator.py tests/test_eval_report.py tests/test_geometry_oracle_parity.py -v
@@ -121,10 +121,10 @@ flowchart LR
 - **前置依赖**: `PR-203`
 - **预估体量**: ~420 LOC · **Worktree 分支**: `feat/pr-205-curvature-roughness-and-patch-lpips`
 - **精确改动清单**:
-  1. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 实现：
+  1. 在 [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py) 实现：
      - `compute_discrete_mean_curvature_variance(vertices, faces) -> float`：基于 Cotangent-weight 拉普拉斯算子计算逐顶点离散平均曲率 $H_i = \frac{1}{2 A_i} \|\sum_{j \in \mathcal{N}(i)} (\cot\alpha_{ij} + \cot\beta_{ij})(v_i - v_j)\|$ 并输出方差（门禁 `<= 0.08`）；
      - `compute_surface_roughness_var(vertices, faces) -> float`：基于 1-ring 邻域曲率局部梯度方差度量微表面高频噪声/阶梯伪影（门禁 `<= 0.08`）。
-  2. 在 [python/synapse/inspect/macro.py](../../python/synapse/inspect/macro.py) 实现 `compute_patch_lpips(pred_crop, gt_crop, *, patch_size=512) -> float`（支持自动对齐 512×512 特写局部切片调用 `synapse.metrics.lpips`，门禁 `<= 0.12`）。
+  2. 在 [python/synapse/inspect/macro.py](../../../python/synapse/inspect/macro.py) 实现 `compute_patch_lpips(pred_crop, gt_crop, *, patch_size=512) -> float`（支持自动对齐 512×512 特写局部切片调用 `synapse.metrics.lpips`，门禁 `<= 0.12`）。
   3. 挂载至 `model_evaluator.py`、`eval_report.py` 与 `metrics/profiles.py`（`_METRIC_DIRECTIONS`），并新增高噪声/阶梯扰动球体对比光滑球体的单调差分测试（`tests/test_geometry_advanced_metrics.py` & `tests/test_inspect_macro.py`）。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -138,10 +138,10 @@ flowchart LR
 - **前置依赖**: `PR-203`
 - **预估体量**: ~340 LOC · **Worktree 分支**: `feat/pr-206-pose-alignment-metrics-and-histogram-gate`
 - **精确改动清单**:
-  1. 在 [python/synapse/inspect/align.py](../../python/synapse/inspect/align.py) 实现：
+  1. 在 [python/synapse/inspect/align.py](../../../python/synapse/inspect/align.py) 实现：
      - `compute_add_s_norm(pred_points, gt_points, pred_pose, gt_pose) -> float`：利用最近邻对称点距离归一化物体包围盒直径 $d_{\text{obj}}$ 计算 ADD-S（门禁 `<= 0.05`）；
      - `compute_reprojection_error_px(joints_3d, keypoints_2d, camera_matrix, intrinsics) -> float`：利用标准右手系 `w2c` 投影矩阵与内参计算 2D 骨骼关键点重投影 RMSE 像素误差（门禁 `<= 4.0 px`）。
-  2. 在 [python/synapse/metrics/profiles.py](../../python/synapse/metrics/profiles.py) 补全 `histogram_intersection`（`_HIGHER`）、`add_s_norm`（`_LOWER`）、`reprojection_error_px`（`_LOWER`）的 `TRACK_B_VIDEO` / `TRACK_A_ASSET` / `RSI_PROMOTION` / `RSI_PROMOTION_TARGET` 门禁阈值，并按需同步文档阈值说明以通过 `tests/test_profiles_doc_sync.py`。
+  2. 在 [python/synapse/metrics/profiles.py](../../../python/synapse/metrics/profiles.py) 补全 `histogram_intersection`（`_HIGHER`）、`add_s_norm`（`_LOWER`）、`reprojection_error_px`（`_LOWER`）的 `TRACK_B_VIDEO` / `TRACK_A_ASSET` / `RSI_PROMOTION` / `RSI_PROMOTION_TARGET` 门禁阈值，并按需同步文档阈值说明以通过 `tests/test_profiles_doc_sync.py`。
   3. 在 `tests/test_inspect_align.py` 与 `tests/test_profiles_doc_sync.py` 补齐对称旋转不变性、偏心内参重投影误差与门禁拦截测试。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -158,10 +158,10 @@ flowchart LR
 - **来源编号**: `DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md` §7.2, §7.3, §8.1 (`P1-Data`)
 - **前置依赖**: `PR-203`
 - **预估体量**: ~420 LOC · **Worktree 分支**: `feat/pr-207-external-dataset-contract-and-fallback`
-- **现状核查**: [python/synapse/bench/scenario.py](../../python/synapse/bench/scenario.py#L32-L68) 当前 `AssetSource` 仅定义 `PROCEDURAL`, `KHRONOS`, `OBJAVERSE`, `LOCAL`, `REGISTRY`，且 30 套场景文件全部为 `procedural`；[python/synapse/bench/registry.py](../../python/synapse/bench/registry.py) 缺失多数据源扩展、许可证白名单及拓扑入库预检。
+- **现状核查**: [python/synapse/bench/scenario.py](../../../python/synapse/bench/scenario.py#L32-L68) 当前 `AssetSource` 仅定义 `PROCEDURAL`, `KHRONOS`, `OBJAVERSE`, `LOCAL`, `REGISTRY`，且 30 套场景文件全部为 `procedural`；[python/synapse/bench/registry.py](../../../python/synapse/bench/registry.py) 缺失多数据源扩展、许可证白名单及拓扑入库预检。
 - **精确改动清单**:
-  1. 扩展 [python/synapse/bench/scenario.py](../../python/synapse/bench/scenario.py)：`AssetSource` 增补 `GSO = "gso"`, `ABO = "abo"`, `OMNIOBJECT3D = "omniobject3d"`, `THINGI10K = "thingi10k"`；`Asset` 模型增补 `fallback_procedural: str | None = None`、`physical_scale_m: float | None = None` 与 `asset_id` 兼容别名。
-  2. 升级 [python/synapse/bench/registry.py](../../python/synapse/bench/registry.py) 实现 `DESIGN §7.2` 5 条硬契约：
+  1. 扩展 [python/synapse/bench/scenario.py](../../../python/synapse/bench/scenario.py)：`AssetSource` 增补 `GSO = "gso"`, `ABO = "abo"`, `OMNIOBJECT3D = "omniobject3d"`, `THINGI10K = "thingi10k"`；`Asset` 模型增补 `fallback_procedural: str | None = None`、`physical_scale_m: float | None = None` 与 `asset_id` 兼容别名。
+  2. 升级 [python/synapse/bench/registry.py](../../../python/synapse/bench/registry.py) 实现 `DESIGN §7.2` 5 条硬契约：
      - **许可证白名单**：严格放行 `CC-BY-4.0`, `CC0-1.0`, `CC0`, `Apache-2.0`, `MIT`，拒绝未授权或限制商业许可证；
      - **坐标与尺度归一化**：右手系 Y-up 底面中心对齐 `(0, 0, 0)`，包围球半径归一化至 `[0.8, 1.2]`（或读取 `physical_scale_m`）；
      - **Stage 0 拓扑预过滤**：调用 `validate_mesh_geometry(require_watertight=True)` 校验 2-流形、水密性、零退化面（`Thingi10K` 负样本压力测试显式标记例外）；
@@ -181,7 +181,7 @@ flowchart LR
 - **预估体量**: ~380 LOC · **Worktree 分支**: `feat/pr-208-gso-and-objaverse-scenarios`
 - **精确改动清单**:
   1. 在 `python/synapse/bench/scenarios/` 新增 **6 套标准外部资产场景 JSON**（3 套 `GSO` 扫描物体 + 3 套 `Objaverse-XL` 长尾资产，覆盖 `T1` 静物环绕与 `T2` 动态轨迹，均配 `fallback_procedural` 与 `dino_cosine_sim` 等新期望阈值，总数 `30 -> 36`）。
-  2. 升级 [scripts/prepare_benchmark_assets.py](../../scripts/prepare_benchmark_assets.py) 与 `workenv/google-colab/benchmarks.json`：登记这 6 套 P0 资产的受控镜像地址与 SHA-256 摘要，打通本地 `DERVGEN_OPEN_DATA` 快速路径与缓存落盘。
+  2. 升级 [scripts/prepare_benchmark_assets.py](../../../scripts/prepare_benchmark_assets.py) 与 `workenv/google-colab/benchmarks.json`：登记这 6 套 P0 资产的受控镜像地址与 SHA-256 摘要，打通本地 `DERVGEN_OPEN_DATA` 快速路径与缓存落盘。
   3. 更新 `tests/test_bench.py` 与 `tests/test_pr192_coverage_and_ssot.py` 验证 `ScenarioRegistry.list_scenarios()` 包含至少 6 套 `GSO`/`OBJAVERSE` 外部数据源场景。
 - **`ubuntu24` 验收命令**:
   ```bash
@@ -196,7 +196,7 @@ flowchart LR
 - **预估体量**: ~360 LOC · **Worktree 分支**: `feat/pr-209-abo-thingi10k-40-scenarios-closure`
 - **精确改动清单**:
   1. 在 `python/synapse/bench/scenarios/` 新增 **4 套 P1 外部压力场景 JSON**（2 套 `ABO` PBR 材质真实电商物体 + 1 套 `OmniObject3D` + 1 套 `Thingi10K` 高亏格镂空拓扑压力件，场景库达 **40 套**，正式达成 `DESIGN §8.2` `36~40 套` 目标）。
-  2. 更新 `python/synapse/pipeline/bench_runner.py` 扩展新指标计算挂载与可配置降级，更新 [docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) §6.2–§8.1 全量标记为 `✅ 已完成`。
+  2. 更新 `python/synapse/pipeline/bench_runner.py` 扩展新指标计算挂载与可配置降级，更新 [docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md](../../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) §6.2–§8.1 全量标记为 `✅ 已完成`。
   3. 在 `tests/test_rfc0063_metrics.py` 新增全指标覆核断言：验证 `evaluate_metrics_gate(results, "rsi_promotion")` 对本规划全部新指标维度具备门禁校验且无静默遗漏。
 - **`ubuntu24` 验收命令**:
   ```bash

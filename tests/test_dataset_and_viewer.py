@@ -1,4 +1,4 @@
-"""Unit and integration tests for synapse.models, generators, and viewer."""
+"""Unit and integration tests for synapse.bench, render_core, viewer, and legacy shims."""
 
 import json
 import urllib.error
@@ -7,17 +7,17 @@ from typing import Any
 
 import numpy as np
 import pytest
-from synapse.errors import ContractValidationError, ExitCode
-from synapse.generators.dataset import DatasetConfig, DatasetGenerator
-from synapse.generators.rasterizer import SoftwareRasterizer
-from synapse.generators.visualizer import (
+from synapse.bench.dataset_gen import DatasetConfig, DatasetGenerator
+from synapse.bench.dataset_visualizer import (
     colorize_depth,
     colorize_flow,
     colorize_mask,
     colorize_normal,
     make_contact_sheet,
 )
-from synapse.models import list_builtin_models, load_model
+from synapse.bench.model_loader import list_builtin_models, load_model
+from synapse.errors import ContractValidationError, ExitCode
+from synapse.render_core.rasterizer import SoftwareRasterizer
 from synapse.viewer.server import export_static_html
 
 from scripts.dev_preview_viewer import ViewerServer
@@ -61,7 +61,7 @@ class TestModels:
 
 
 class TestRasterizer:
-    """Test software multi-channel rasterizer."""
+    """Test canonical software multi-channel rasterizer and deprecated legacy shim."""
 
     def test_rasterizer_channels(self) -> None:
         model = load_model("cube", normalize=True, target_radius=1.0)
@@ -70,31 +70,52 @@ class TestRasterizer:
         cameras = generate_cameras(
             CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=128, height=128
         )
-        with pytest.deprecated_call():
-            rasterizer = SoftwareRasterizer(width=128, height=128)
+        rasterizer = SoftwareRasterizer(width=128, height=128)
+        assert model.normals is not None
+        frame = rasterizer.render(
+            vertices=model.vertices,
+            faces=model.faces,
+            normals=model.normals,
+            camera=cameras[1],
+            prev_camera=cameras[0],
+        )
 
-        res = rasterizer.render(model, cameras[1], cameras[0])
+        assert frame.direct_radiance is not None and frame.direct_radiance.shape == (128, 128, 3)
+        assert frame.depth is not None and frame.depth.shape == (128, 128)
+        assert frame.depth.dtype == np.float32
+        assert frame.world_normal is not None and frame.world_normal.shape == (128, 128, 3)
+        assert frame.world_normal.dtype == np.float16
+        assert frame.motion_vector is not None and frame.motion_vector.shape == (128, 128, 2)
+        assert frame.motion_vector.dtype == np.float16
+        assert frame.cryptomatte_id is not None and frame.cryptomatte_id.shape == (128, 128)
+        assert frame.cryptomatte_id.dtype == np.uint32
 
-        assert res.rgb.shape == (128, 128, 3)
-        assert res.rgb.dtype == np.uint8
-        assert res.depth.shape == (128, 128)
-        assert res.depth.dtype == np.float32
-        assert res.world_normal.shape == (128, 128, 3)
-        assert res.world_normal.dtype == np.float32
-        assert res.motion_vector.shape == (128, 128, 2)
-        assert res.motion_vector.dtype == np.float32
-        assert res.mask.shape == (128, 128)
-        assert res.mask.dtype == np.uint8
-
-        # Foreground check
-        fg = res.mask > 0
+        fg = frame.cryptomatte_id > 0
         assert np.any(fg)
-        assert res.depth[fg].min() > 0.5
-        assert res.depth[fg].max() < 10.0
+        assert frame.depth[fg].min() > 0.5
+        assert frame.depth[fg].max() < 10.0
 
-        # Normal unit length check
-        norms = np.linalg.norm(res.world_normal[fg], axis=-1)
+        norms = np.linalg.norm(frame.world_normal[fg].astype(np.float32), axis=-1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-2)
+
+    def test_deprecated_generators_rasterizer_shim(self) -> None:
+        """Deprecated synapse.generators.rasterizer warns with v6.0.0 sunset and delegates."""
+        from synapse.generators import rasterizer as legacy_rasterizer
+        from synapse.render_core.camera import CameraTrajectoryType, generate_cameras
+
+        assert legacy_rasterizer.SUNSET_VERSION == "6.0.0"
+        model = load_model("cube", normalize=True, target_radius=1.0)
+        cameras = generate_cameras(
+            CameraTrajectoryType.ORBIT, num_frames=2, radius=2.5, width=64, height=64
+        )
+        with pytest.deprecated_call(match="v6.0.0"):
+            shim = legacy_rasterizer.SoftwareRasterizer(width=64, height=64)
+
+        res = shim.render(model, cameras[1], cameras[0])
+        assert res.rgb.shape == (64, 64, 3)
+        assert res.rgb.dtype == np.uint8
+        assert res.depth.shape == (64, 64)
+        assert np.any(res.mask > 0)
 
 
 class TestVisualizer:

@@ -27,13 +27,16 @@ if TYPE_CHECKING:
     from synapse.models.asset import ModelAsset
 
 __all__ = [
+    "SUNSET_VERSION",
     "RenderResult",
     "SoftwareRasterizer",
 ]
 
+SUNSET_VERSION = "6.0.0"
+
 _DEPRECATION_MSG = (
-    "synapse.generators.rasterizer is deprecated; use "
-    "synapse.render_core.rasterizer instead.  "
+    "synapse.generators.rasterizer is deprecated and scheduled for removal in "
+    f"v{SUNSET_VERSION}; use synapse.render_core.rasterizer instead.  "
     "See https://github.com/sautille-stroke/synapse/issues/34"
 )
 
