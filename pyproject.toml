@@ -40,7 +40,7 @@ image = [
 ]
 metrics = [
     "scipy>=1.10.0",
-    "scikit-image>=0.20.0",
+    "scikit-image>=0.26.0",
 ]
 gpu = [
     "torch>=2.0.0",
