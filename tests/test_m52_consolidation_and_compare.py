@@ -104,7 +104,8 @@ def test_pr215_four_track_compare_html_cli_and_v5_version(
 ) -> None:
     """PR-215: 4-track leaderboard aggregator, XSS-safe HTML, bench compare CLI, and v5.0.0."""
     assert len(TRACK_DEFINITIONS) == 4
-    assert synapse.__version__ == "5.0.0"
+    major, minor, patch = (int(x) for x in synapse.__version__.split(".")[:3])
+    assert (major, minor, patch) >= (5, 0, 0)
 
     run_a = {
         "adapter_id": "wan21_synapse",

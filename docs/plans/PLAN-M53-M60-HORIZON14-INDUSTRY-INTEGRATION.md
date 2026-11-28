@@ -10,7 +10,7 @@ stale_after: 2028-06-01T00:00:00Z
 > **承接**: `v5.0.0` Horizon 13B 已封板
 > **版本**: `v1.0` · **日期**: 2026-11-28
 > **操作模型标识**: `[opus4.6]` / `[gemini4-hydrogen]`
-> **当前状态**: 🚀 **M53–M59 核心实现与跨管线接线已落地，M60 封板收官 (`v6.0.0`)**
+> **当前状态**: ✅ **`Release v6.0.0` — M53–M60 全量合入 `main`，50 场景 `Synapse-Bench` 与全仓 CI 门禁全绿封板**
 > **设计原则**: 整条流水线是护城河——不烧万卡训底模，做确定性物理与神经渲染的互操作立交桥
 
 ---
@@ -116,10 +116,10 @@ stale_after: 2028-06-01T00:00:00Z
 - `KHR_gaussian_splatting_compression_spz_2` 紧凑 SPZ v2 压缩（3 字节规范化四元数，`>=3x` 压缩比 & `PSNR>=50 dB`）
 - `.ply` ↔ `.glb` / `.s3dgs` / `.npz` 双向转换器与 CLI `export-gltf-3dgs` / `convert-3dgs`
 
-### M60: Bench/文档/封板
+### M60: Bench/文档/封板 (`#242`, `#243`, `#244`)
 - `Synapse-Bench` 扩展至 50 场景（新增 VACE、DiffusionRenderer、TRELLIS.2、SAM2、Spatia 覆盖场景）
 - `INDUSTRY_TRACKING_AND_TRENDS.md` 更新为 `active` 与 Horizon 14 全量记录
-- `wire_guard.py` 扩展 Horizon 14 模块与契约门禁校验 → 封板 `v6.0.0`
+- `wire_guard.py` 扩展 Horizon 14 模块与契约门禁校验 → **`v6.0.0` 封板**
 
 ---
 
