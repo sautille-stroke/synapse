@@ -328,6 +328,11 @@ class MockDiffusionRendererBackend(DiffusionRendererTransport):
         # Lambertian: albedo * max(n·l, 0) + ambient
         ambient = 0.1
         lit = albedo * (n_dot_l + ambient)
+        if environment_map is not None:
+            env = np.asarray(environment_map, dtype=np.float32)
+            if env.ndim == 3 and env.shape[-1] >= 3:
+                tint = np.clip(np.mean(env[..., :3], axis=(0, 1)), 0.1, 3.0)
+                lit = lit * tint.reshape((1, 1, 1, 3))
         lit = np.clip(lit, 0.0, 1.0)
 
         # Convert to uint8 sRGB (approximate gamma)

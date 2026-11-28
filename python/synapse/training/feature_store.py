@@ -387,6 +387,78 @@ class FeatureStoreBuilder:
                 (sample_id, latent, prompt, fgpp_cond, source_sha256),
             )
 
+    def add_relight_augmented_samples(
+        self,
+        sample_id: str,
+        video_frames: np.ndarray,
+        caption: str,
+        *,
+        environment_maps: list[np.ndarray],
+        renderer: Any,
+        gbuffer: Any | None = None,
+        fgpp_cond: np.ndarray | None = None,
+        lighting_labels: list[str] | None = None,
+        camera_matrices: np.ndarray | None = None,
+        source_sha256: str = "",
+    ) -> int:
+        """Augment a training sample under multiple HDR environment maps (PR-221).
+
+        Uses :class:`~synapse.bridge.diffusion_renderer.DiffusionRendererTransport`
+        forward rendering to relight either a supplied ``gbuffer`` or one decomposed
+        via ``renderer.inverse_render(video_frames)``, and ingests each relit variant
+        through the standard quality ingestion gates.
+
+        Args:
+            sample_id: Base sample identifier prefix.
+            video_frames: ``[T, H, W, 3]`` uint8 base video frames.
+            caption: Base caption text.
+            environment_maps: Non-empty list of environment maps (``[H, W, 3]`` float32).
+            renderer: ``DiffusionRendererTransport`` instance (must be available).
+            gbuffer: Optional pre-computed ``GBufferResult``.
+            fgpp_cond: Optional FGPP condition tensor forwarded to ingestion gates.
+            lighting_labels: Optional per-environment caption modifiers.
+            camera_matrices: Optional ``[T, 4, 4]`` matrices for Gate 5.
+            source_sha256: Optional SHA-256 tag.
+
+        Returns:
+            Number of relit samples accepted by the ingestion gates.
+        """
+        if not environment_maps:
+            raise ContractValidationError(
+                "add_relight_augmented_samples requires at least 1 environment map.",
+                agent_fix_hint="Pass a non-empty list of environment_maps.",
+            )
+        if not renderer.is_available():
+            from synapse.errors import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "DiffusionRenderer transport is unavailable for relight augmentation.",
+                agent_fix_hint="Provide MockDiffusionRendererBackend or a connected foundary endpoint.",
+            )
+
+        active_gbuf = gbuffer if gbuffer is not None else renderer.inverse_render(video_frames)
+        accepted = 0
+        for idx, env_map in enumerate(environment_maps):
+            relit = renderer.forward_render(active_gbuf, environment_map=env_map)
+            label = (
+                lighting_labels[idx]
+                if lighting_labels is not None and idx < len(lighting_labels)
+                else f"env_variant_{idx:02d}"
+            )
+            variant_caption = f"{caption}, {label}"
+            before_rej = self.rejected_count
+            self.add_sample(
+                sample_id=f"{sample_id}_relight_{idx:02d}",
+                video_frames=relit.frames_srgb_u8,
+                caption=variant_caption,
+                fgpp_cond=fgpp_cond,
+                camera_matrices=camera_matrices,
+                source_sha256=source_sha256,
+            )
+            if self.rejected_count == before_rej:
+                accepted += 1
+        return accepted
+
     # ── quality ingestion gates ────────────────────────────────────
 
     @staticmethod

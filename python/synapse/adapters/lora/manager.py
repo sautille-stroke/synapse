@@ -287,6 +287,7 @@ class MultiLoRAManager:
         module: Any,
         cryptomatte_ids: np.ndarray | None = None,
         target_entity_ids: set[int] | None = None,
+        sam2_masks: Any | None = None,
     ) -> Iterator[None]:
         """Context manager to attach spatial LoRAPatchHooks with iterative
         Modified Gram-Schmidt orthogonalisation, guaranteeing cleanup on exit.
@@ -295,6 +296,11 @@ class MultiLoRAManager:
         - "identity": foreground mask M_fg (target entities)
         - "style": background mask ~M_fg
         - other: no spatial mask (None)
+
+        Accepts ``cryptomatte_ids``, ``sam2_masks`` (``SAM2SequenceResult``
+        or ``[T, H, W]`` binary array), or both (union) to construct ``M_fg``,
+        enabling LoRA isolation on coarse Track-B whitebox footage without
+        Cryptomatte render passes.
         """
         import torch  # lazy
 
@@ -303,12 +309,25 @@ class MultiLoRAManager:
         attached_hooks: list[tuple[LoRAPatchHook, Any]] = []
 
         try:
-            # Build spatial masks if cryptomatte IDs are present
+            # Build spatial masks from Cryptomatte and/or SAM 2.1 VOS masks
             m_fg: np.ndarray | None = None
             if cryptomatte_ids is not None:
                 if target_entity_ids is None or len(target_entity_ids) == 0:
                     target_entity_ids = {int(v) for v in np.unique(cryptomatte_ids) if int(v) != 0}
                 m_fg = self.build_spatial_lora_masks(cryptomatte_ids, target_entity_ids)
+
+            if sam2_masks is not None:
+                m_sam2 = self.build_spatial_lora_masks_from_sam2(sam2_masks)
+                if m_fg is None:
+                    m_fg = m_sam2
+                elif m_fg.shape == m_sam2.shape:
+                    m_fg = m_fg | m_sam2
+                else:
+                    raise ContractValidationError(
+                        f"SAM2 spatial LoRA mask shape {m_sam2.shape} does not match "
+                        f"Cryptomatte spatial LoRA mask shape {m_fg.shape}.",
+                        agent_fix_hint="Ensure sam2_masks and cryptomatte_ids share matching (T, H, W) dimensions.",
+                    )
 
             # Collect deltas per submodule name across all bundles
             layer_deltas: dict[str, list[tuple[LoRAManifest, np.ndarray, Any]]] = {}
@@ -476,6 +495,53 @@ class MultiLoRAManager:
         b_orth = b_orth - residual_coeff * a_flat
 
         return np.asarray(b_orth.reshape(lora_b_delta.shape).astype(lora_b_delta.dtype))
+
+    @staticmethod
+    def build_spatial_lora_masks_from_sam2(
+        sam2_masks: Any,
+        spatial_block: int = 8,
+    ) -> np.ndarray:
+        """Build latent-grid foreground mask from SAM 2.1 VOS output (PR-227).
+
+        Accepts either a ``SAM2SequenceResult`` or a ``[T, H, W]`` boolean /
+        float numpy array, and downsamples by ``spatial_block`` via block mean
+        (tile active when coverage >= 0.5).
+
+        Args:
+            sam2_masks: ``SAM2SequenceResult`` or ``[T, H, W]`` mask array.
+            spatial_block: Spatial downsample factor matching VAE stride (default 8).
+
+        Returns:
+            Boolean mask ``[T, H_ds, W_ds]`` aligned with latent tokens.
+        """
+        if hasattr(sam2_masks, "frames"):
+            frame_masks = [np.asarray(f.combined_mask, dtype=bool) for f in sam2_masks.frames]
+            if not frame_masks:
+                raise ContractValidationError(
+                    "SAM2SequenceResult contains 0 frames for spatial LoRA gating.",
+                    agent_fix_hint="Provide non-empty SAM 2.1 segmentation results.",
+                )
+            arr = np.stack(frame_masks, axis=0)
+        else:
+            raw = np.asarray(sam2_masks)
+            if raw.ndim != 3:
+                raise ContractValidationError(
+                    f"sam2_masks must be 3-D [T, H, W], got shape {raw.shape}.",
+                    agent_fix_hint="Pass a [T, H, W] SAM2 mask sequence or SAM2SequenceResult.",
+                )
+            arr = raw > 0.5 if np.issubdtype(raw.dtype, np.floating) else raw.astype(bool)
+
+        t, h, w = arr.shape
+        eff_block = spatial_block
+        if h < spatial_block or w < spatial_block:
+            eff_block = max(1, min(spatial_block, h // 2 if h >= 2 else 1, w // 2 if w >= 2 else 1))
+        h_ds = max(h // eff_block, 1)
+        w_ds = max(w // eff_block, 1)
+        if h >= eff_block and w >= eff_block:
+            cropped = arr[:, : h_ds * eff_block, : w_ds * eff_block].astype(np.float32)
+            pooled = cropped.reshape(t, h_ds, eff_block, w_ds, eff_block).mean(axis=(2, 4))
+            return np.asarray(pooled >= 0.5, dtype=bool)
+        return arr[:, :h_ds, :w_ds].astype(bool)
 
     # -- internals -----------------------------------------------------------
 

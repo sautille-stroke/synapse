@@ -74,7 +74,15 @@ def _cmd_recon_invert_video(
         with open(skeleton_path_raw, encoding="utf-8") as _f_skel:
             skeleton_template = _json_skel.load(_f_skel)
 
-    pipe = ReconPipeline(target_quad_faces=target_faces)
+    inverse_backend_raw = getattr(args, "inverse_backend", "classical")
+    inverse_backend_choice = cast(
+        Literal["classical", "diffusion_renderer", "dual_track"],
+        inverse_backend_raw if inverse_backend_raw in ("classical", "diffusion_renderer", "dual_track") else "classical",
+    )
+    pipe = ReconPipeline(
+        target_quad_faces=target_faces,
+        inverse_backend=inverse_backend_choice,
+    )
     result = pipe.run(frames, skeleton_template=skeleton_template, fps=video_meta.fps)
 
     output_info: dict[str, Any] = {
@@ -475,6 +483,12 @@ def register_recon_subparser(
         "--fgpp-out",
         default=None,
         help="Optional output directory to re-export 15-channel FGPP EXR sequence",
+    )
+    recon_invert.add_argument(
+        "--inverse-backend",
+        choices=["classical", "diffusion_renderer", "dual_track"],
+        default="classical",
+        help="Inverse rendering backend for albedo/G-buffer decomposition (default: classical)",
     )
 
     recon_closed_loop = recon_sub.add_parser(

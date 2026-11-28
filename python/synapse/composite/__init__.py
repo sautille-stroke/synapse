@@ -13,6 +13,7 @@ from synapse.composite.detector import (
 from synapse.composite.mask import (
     apply_surgical_mask,
     generate_surgical_mask,
+    generate_surgical_mask_sequence,
 )
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "composite_surgical_sequence",
     "detect_video_artifacts",
     "generate_surgical_mask",
+    "generate_surgical_mask_sequence",
     "laplacian_pyramid_blend",
 ]

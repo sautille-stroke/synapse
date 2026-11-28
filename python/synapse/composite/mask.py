@@ -15,6 +15,7 @@ morphological dilation when available, with a pure-NumPy fallback.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -80,12 +81,13 @@ def generate_surgical_mask(
     motion_scale: float = 1.5,
     max_motion_kernel: int = 32,
     feather_width: float = 6.0,
+    mask_sam2_vos: np.ndarray | None = None,
 ) -> np.ndarray:
     """Generate a motion-adaptive surgical compositing mask.
 
     Implements::
 
-        M_surgical(t) = Dilate_v(t)( M_3D_new(t) ∪ M_SAM2_old(t) )
+        M_surgical(t) = Dilate_v(t)( M_3D_new(t) ∪ M_SAM2_old(t) ∪ M_SAM2_VOS(t) )
 
     Args:
         mask_3d_new: ``[H, W]`` bool array — new 3D-rendered entity
@@ -99,6 +101,8 @@ def generate_surgical_mask(
         max_motion_kernel: Maximum directional kernel length in
             pixels.
         feather_width: Cosine-falloff feather width in pixels.
+        mask_sam2_vos: ``[H, W]`` bool array or ``None`` — SAM 2.1
+            temporally propagated VOS mask fused with Cryptomatte.
 
     Returns:
         ``[H, W]`` float32 alpha mask in ``[0.0, 1.0]``.
@@ -107,6 +111,8 @@ def generate_surgical_mask(
     raw_combined = mask_3d_new.astype(bool).copy()
     if mask_sam2_old is not None:
         raw_combined |= mask_sam2_old.astype(bool)
+    if mask_sam2_vos is not None:
+        raw_combined |= mask_sam2_vos.astype(bool)
     combined = raw_combined.copy()
 
     # 2. Isotropic dilation with circular structuring element.
@@ -182,3 +188,115 @@ def apply_surgical_mask(
     if np.issubdtype(src_dtype, np.integer):
         out = np.clip(out, 0, np.iinfo(src_dtype).max)
     return out.astype(src_dtype)
+
+
+def generate_surgical_mask_sequence(
+    frames_srgb_u8: np.ndarray,
+    masks_3d_new: np.ndarray,
+    *,
+    masks_sam2_old: np.ndarray | None = None,
+    cryptomatte_ids: np.ndarray | None = None,
+    motion_vectors: np.ndarray | None = None,
+    sam2_transport: Any | None = None,
+    prompts_by_segment: dict[int, list[Any]] | None = None,
+    cut_frames: list[int] | None = None,
+    target_instance_ids: set[int] | None = None,
+    dilation_px: int = 4,
+    r_base: int = 8,
+    motion_scale: float = 1.5,
+    max_motion_kernel: int = 32,
+    feather_width: float = 6.0,
+) -> tuple[np.ndarray, int]:
+    """Generate surgical alpha masks over a sequence with SAM 2.1 VOS + cut resets.
+
+    Splits ``frames_srgb_u8`` at sorted ``cut_frames`` so that
+    ``sam2_transport.segment_video`` restarts cleanly at every scene cut, fuses
+    per-frame VOS masks with ``cryptomatte_ids`` via ``fuse_sam2_cryptomatte``,
+    and computes :func:`generate_surgical_mask` per frame.
+
+    Args:
+        frames_srgb_u8: ``[T, H, W, 3]`` uint8 sRGB input video.
+        masks_3d_new: ``[T, H, W]`` bool rendered entity masks.
+        masks_sam2_old: Optional ``[T, H, W]`` bool legacy SAM2 masks.
+        cryptomatte_ids: Optional ``[T, H, W]`` uint32 Cryptomatte IDs.
+        motion_vectors: Optional ``[T, H, W, 2]`` screen-space motion vectors.
+        sam2_transport: Optional :class:`~synapse.bridge.sam2_transport.SAM2Transport`.
+        prompts_by_segment: Optional prompts dict keyed by segment start frame.
+        cut_frames: Optional frame indices marking shot cuts where SAM2 VOS
+            tracking must restart cleanly.
+        target_instance_ids: Optional entity/instance filter passed to Cryptomatte.
+        dilation_px: Fusion dilation radius passed to ``fuse_sam2_cryptomatte``.
+        r_base: Isotropic surgical dilation radius in pixels.
+        motion_scale: Directional motion scaling factor.
+        max_motion_kernel: Max directional dilation kernel length.
+        feather_width: Cosine-falloff edge feathering width.
+
+    Returns:
+        Tuple ``(alpha_sequence, segment_count)`` where ``alpha_sequence`` is
+        ``[T, H, W]`` float32 in ``[0.0, 1.0]`` and ``segment_count`` records
+        how many shot segments SAM2 ran on (0 if ``sam2_transport`` is ``None``).
+    """
+    frames_arr = np.asarray(frames_srgb_u8)
+    m3d = np.asarray(masks_3d_new, dtype=bool)
+    if m3d.ndim != 3:
+        raise ValueError(f"Expected 3-D masks_3d_new [T, H, W], got shape {m3d.shape}.")
+    t_len, h, w = m3d.shape
+    if t_len == 0:
+        return np.empty((0, h, w), dtype=np.float32), 0
+
+    valid_cuts = sorted({c for c in (cut_frames or []) if 0 < c < t_len})
+    boundaries = [0, *valid_cuts, t_len]
+
+    vos_fused = np.zeros((t_len, h, w), dtype=bool)
+    segment_count = 0
+
+    if sam2_transport is not None:
+        from synapse.bridge.sam2_transport import fuse_sam2_cryptomatte
+
+        for seg_idx in range(len(boundaries) - 1):
+            seg_start = boundaries[seg_idx]
+            seg_end = boundaries[seg_idx + 1]
+            seg_video = frames_arr[seg_start:seg_end]
+            seg_prompts = (
+                prompts_by_segment.get(seg_start)
+                if prompts_by_segment is not None
+                else None
+            )
+            seg_result = sam2_transport.segment_video(seg_video, prompts=seg_prompts)
+            segment_count += 1
+            for local_t, f_res in enumerate(seg_result.frames):
+                global_t = seg_start + local_t
+                if global_t >= seg_end:
+                    break
+                sam2_combined = f_res.combined_mask
+                if cryptomatte_ids is not None:
+                    vos_fused[global_t] = fuse_sam2_cryptomatte(
+                        sam2_combined,
+                        cryptomatte_ids[global_t],
+                        target_instance_ids=target_instance_ids,
+                        dilation_px=dilation_px,
+                    )
+                else:
+                    vos_fused[global_t] = sam2_combined
+    elif cryptomatte_ids is not None:
+        if target_instance_ids:
+            vos_fused = np.isin(cryptomatte_ids, list(target_instance_ids))
+        else:
+            vos_fused = cryptomatte_ids > 0
+
+    alphas = np.empty((t_len, h, w), dtype=np.float32)
+    for t in range(t_len):
+        m_old = masks_sam2_old[t] if masks_sam2_old is not None else None
+        mv = motion_vectors[t] if motion_vectors is not None else None
+        m_vos = vos_fused[t] if (sam2_transport is not None or cryptomatte_ids is not None) else None
+        alphas[t] = generate_surgical_mask(
+            m3d[t],
+            mask_sam2_old=m_old,
+            motion_vectors=mv,
+            r_base=r_base,
+            motion_scale=motion_scale,
+            max_motion_kernel=max_motion_kernel,
+            feather_width=feather_width,
+            mask_sam2_vos=m_vos,
+        )
+    return alphas, segment_count
