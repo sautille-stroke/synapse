@@ -831,6 +831,18 @@ flowchart LR
 | **`PR-T11 ~ PR-T12` + Remediation** | `synapse` | Colab/CPU 验证 `--traceboard` 开关、CI 安装整合、双轨 `bench.traceboard_export`、[DESIGN_TRACEBOARD_INTEGRATION](DESIGN_TRACEBOARD_INTEGRATION.md) 及 DAG/真实 `Probe` API 修复 | `synapse#210–#212` | ✅ 已合入 |
 | **`Wave TR-1 ~ TR-3` (`PR-TR01 ~ PR-TR08`)** | `aether` + `synapse` + 跨仓 | 承接 [PR #213 深度评审](audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 全部 20 项发现：`.tbevt` 线格式与 C++↔Py 双向黄金、`aether-traceboard` 洁净发包 (`traceboard-python-v0.1.0`)、`set_fail`/CLI 共享挂载、`step` 与低基数收敛、NVMe 分离、Worker/Scheduler/Refine 富媒体埋点与 10/10 反作弊门禁封板 | `aether#557–#560` · `synapse#215–#218` + `PR-TR08` · `caelum-core#557` · `all-overview#770` | ✅ 已全量合入封板 |
 
+### 4.16 Horizon 14：Post-v5.0.0 全仓技术债务实证核查与收口治理（M53–M54，共 7 PRs，详见 [PLAN-M53-M54](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md)） 📋 待启动
+
+| PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M53-M54](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md) 查看详情） | 对应债务项 | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
+| :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
+| **[`PR-TD01`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td01)** | M53 | 修复 `stages/training.py` 与 `cli/_lora.py` 校验 `--base-model` 后仍强走 `_WhitelistDiT` 玩具模型缺陷并去重 | `D-NEW-1` | `2540b48` | ~320 行 | `test_lora_trainer.py`（无效权重 fail-closed） | 📋 待启动 |
+| **[`PR-TD02`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td02)** | M53 | 对齐 `pyproject.toml` Ruff SSOT 并接入 CI、清理 `foundary_client.py` 过期注释与 `procedural.py` 返回注解 | `D-NEW-2`, `D-11`, `D-05` | `2540b48` | ~180 行 | `ruff check` + `sync_ruff_ssot.py --check` | 📋 待启动 |
+| **[`PR-TD03`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td03)** | M53 | 收紧 `bundle_worker`、`feature_store`、`refine/pipeline`、`cli/_bench` 等高危静默 `except Exception` 吞错 | `D-02` | `2540b48` | ~260 行 | 对应单测 + AST 静默吞错清零 | 📋 待启动 |
+| **[`PR-TD04`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td04)** | M54 | 拆分 `recon/geometry.py` (`2.2K`) 与 `pipeline/bundle_worker.py` (`1.8K`) 巨型单体模块（保持向后兼容重导出） | `D-04` | `PR-TD02/03` | ~480 行 | `import_dag_guard.py`, `mypy --strict`, 全量 `pytest` | 📋 待启动 |
+| **[`PR-TD05`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td05)** | M54 | 补齐 `run_gpu_smoke.py` 真实 `Diffusers + LoRA` 导出链路并产出首份 4 轨道基线对比报告 | `D-01`, `D-09/10` | `PR-TD01` | ~360 行 | `run_gpu_smoke.py` + `synapse bench compare` | 📋 待启动 |
+| **[`PR-TD06`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td06)** | M54 | 协同上游 `@aether//style` `style_types.h` 落地后在 CI 启用 `wire_guard.py --require-style` 硬校验 | `D-03` | 上游 `@aether//style` | ~120 行 | `wire_guard.py --check --require-aether --require-style` | 📋 待启动 |
+| **[`PR-TD07`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td07)** | M54 | 归档已完成计划/审计文档至 `docs/archive/` 并收敛 `generators/rasterizer.py` 遗留测试引用 | `D-08`, `D-13` | `PR-TD04..06` | ~150 行 | `check_doc_links.py` 0 断链 | 📋 待启动 |
+
 ---
 
 ## 5. 全局关键风险与防御机制矩阵 (Master Risk Register)
