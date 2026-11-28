@@ -70,12 +70,24 @@ class LoRATrainConfig(BaseModel):
     gradient_checkpointing: bool = False
     warmup_steps: int = Field(default=0, ge=0)
     save_every_steps: int = Field(default=0, ge=0)
+    mask_aware: bool = False
+    mask_background_weight: float = Field(default=0.0, ge=0.0, le=1.0)
+    use_qlora: bool = False
+    quantization_bits: Literal[4, 8, 16, 32] = 16
+    qlora_block_size: int = Field(default=64, ge=4)
 
     @field_validator("rank")
     @classmethod
     def _rank_power_of_two(cls, v: int) -> int:
         if v & (v - 1) != 0:
             raise ValueError(f"rank must be a power of 2, got {v}")
+        return v
+
+    @field_validator("qlora_block_size")
+    @classmethod
+    def _block_size_even(cls, v: int) -> int:
+        if v % 2 != 0:
+            raise ValueError(f"qlora_block_size must be even, got {v}")
         return v
 
 
@@ -142,11 +154,27 @@ def _get_lora_linear_class() -> type:
     return _lora_linear_cls
 
 
+def _is_lora_adapter(mod: Any) -> bool:
+    """Return True for LoRALinear or QLoRALinear adapter modules."""
+    if getattr(mod, "is_qlora_linear", False):
+        return True
+    LoRALinear = _get_lora_linear_class()
+    return isinstance(mod, LoRALinear)
+
+
+def _count_total_logical_params(module: Any) -> int:
+    """Count Parameter numels plus frozen QLoRA quantized base weight numels."""
+    total = sum(p.numel() for p in module.parameters())
+    for child in module.modules():
+        if getattr(child, "is_qlora_linear", False):
+            total += int(getattr(child, "weight_numel", 0))
+    return int(total)
+
+
 @contextmanager
 def _disable_lora_adapters(module: Any) -> Iterator[None]:
     """Context manager that temporarily disables LoRA adapters for reference forward pass."""
-    LoRALinear = _get_lora_linear_class()
-    lora_modules = [m for m in module.modules() if isinstance(m, LoRALinear)]
+    lora_modules = [m for m in module.modules() if _is_lora_adapter(m)]
     prev_states = [bool(getattr(m, "lora_enabled", True)) for m in lora_modules]
     try:
         for m in lora_modules:
@@ -239,6 +267,7 @@ class StatelessLoRATrainer:
         self._geometry_probe: Any = None
         self._last_module: Any = None
         self._last_sampled_t: Any = None
+        self._last_mask_coverage: float | None = None
         self._flow_matching_loss = FlowMatchingLoss()
         self._edge_preserving_loss = EdgePreservingLoss()
         self._normal_reconstruction_loss = NormalReconstructionLoss()
@@ -278,7 +307,7 @@ class StatelessLoRATrainer:
             else:
                 param.requires_grad = False
 
-        total = sum(p.numel() for p in module.parameters())
+        total = _count_total_logical_params(module)
         trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
         ratio = trainable / max(total, 1)
 
@@ -324,7 +353,7 @@ class StatelessLoRATrainer:
         # Collect names of already-wrapped inner .orig modules so we never re-wrap them
         wrapped_orig_names: set[str] = set()
         for name, child in module.named_modules():
-            if isinstance(child, LoRALinear):
+            if _is_lora_adapter(child):
                 wrapped_orig_names.add(f"{name}.orig" if name else "orig")
 
         for name, child in list(module.named_modules()):
@@ -332,14 +361,30 @@ class StatelessLoRATrainer:
                 continue
             if not isinstance(child, torch.nn.Linear):
                 continue
-            if isinstance(child, LoRALinear):
+            if _is_lora_adapter(child):
                 continue
             if any(fnmatch.fnmatch(name, pat) or pat in name for pat in target_patterns):
-                lora = LoRALinear(
-                    child,
-                    rank=self._config.rank,
-                    alpha=self._config.alpha,
-                )
+                if self._config.use_qlora:
+                    from synapse.training.qlora import create_qlora_linear
+
+                    q_bits = (
+                        4
+                        if self._config.quantization_bits in (16, 32)
+                        else self._config.quantization_bits
+                    )
+                    lora = create_qlora_linear(
+                        child,
+                        rank=self._config.rank,
+                        alpha=self._config.alpha,
+                        block_size=self._config.qlora_block_size,
+                        quantization_bits=q_bits,
+                    )
+                else:
+                    lora = LoRALinear(
+                        child,
+                        rank=self._config.rank,
+                        alpha=self._config.alpha,
+                    )
                 replacements.append((name, lora))
                 injected += 1
 
@@ -371,7 +416,7 @@ class StatelessLoRATrainer:
             )
 
         if self._config.max_trainable_ratio is not None:
-            total = sum(p.numel() for p in module.parameters())
+            total = _count_total_logical_params(module)
             trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
             ratio = trainable / max(total, 1)
             if ratio > self._config.max_trainable_ratio:
@@ -383,7 +428,7 @@ class StatelessLoRATrainer:
         # Log injection stats to Traceboard
         probe = get_probe()
         if probe is not None and probe.active:
-            total = sum(p.numel() for p in module.parameters())
+            total = _count_total_logical_params(module)
             trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
             probe.log_scalar("train/lora_injected_layers", float(injected))
             probe.log_scalar("train/total_params", float(total))
@@ -465,10 +510,9 @@ class StatelessLoRATrainer:
         }
 
         if target_mod is not None:
-            LoRALinear = _get_lora_linear_class()
             lora_state: dict[str, Any] = {}
             for name, child in target_mod.named_modules():
-                if isinstance(child, LoRALinear):
+                if _is_lora_adapter(child):
                     lora_a: Any = getattr(child, "lora_A")
                     lora_b: Any = getattr(child, "lora_B")
                     lora_state[f"{name}.lora_A"] = lora_a.data.detach().cpu().clone()
@@ -525,10 +569,9 @@ class StatelessLoRATrainer:
         # Restore LoRA adapter weights
         lora_state = state.get("lora_state_dict")
         if isinstance(lora_state, dict):
-            LoRALinear = _get_lora_linear_class()
             with torch.no_grad():
                 for name, child in module.named_modules():
-                    if isinstance(child, LoRALinear):
+                    if _is_lora_adapter(child):
                         lora_a: Any = getattr(child, "lora_A")
                         lora_b: Any = getattr(child, "lora_B")
                         key_a = f"{name}.lora_A"
@@ -730,6 +773,8 @@ class StatelessLoRATrainer:
             probe.log_scalar("train/loss", result["loss"], step=step)
             probe.log_scalar("train/step", float(step), step=step)
             probe.log_scalar("train/lr_multiplier", lr_mult, step=step)
+            if self._last_mask_coverage is not None:
+                probe.log_scalar("train/mask_coverage", self._last_mask_coverage, step=step)
             if self._config.loss_mode == "dpo":
                 probe.log_scalar("train/dpo_beta", self._config.dpo_beta, step=step)
 
@@ -751,11 +796,10 @@ class StatelessLoRATrainer:
         """
         from safetensors.torch import save_file
 
-        LoRALinear = _get_lora_linear_class()
         lora_state: dict[str, Any] = {}
 
         for name, child in module.named_modules():
-            if isinstance(child, LoRALinear):
+            if _is_lora_adapter(child):
                 lora_a: Any = getattr(child, "lora_A")
                 lora_b: Any = getattr(child, "lora_B")
                 # Export both canonical PEFT keys (.weight) and short keys for compatibility
@@ -767,6 +811,8 @@ class StatelessLoRATrainer:
             "rank": str(self._config.rank),
             "alpha": str(self._config.alpha),
             "target_modules": ",".join(self._target_patterns),
+            "use_qlora": str(self._config.use_qlora).lower(),
+            "mask_aware": str(self._config.mask_aware).lower(),
         }
 
         out = Path(path)
@@ -838,12 +884,55 @@ class StatelessLoRATrainer:
                 return module(x)
             raise
 
+    @staticmethod
+    def _extract_foreground_mask_for_loss(
+        batch: dict[str, Any],
+        target_latent: Any,
+    ) -> tuple[Any | None, float | None]:
+        """Resolve a normalized foreground mask and coverage fraction for masked SFT loss."""
+        import torch
+
+        for key in ("mask", "foreground_mask", "sam2_mask"):
+            if key in batch and batch[key] is not None:
+                m = torch.as_tensor(
+                    batch[key], dtype=torch.float32, device=target_latent.device
+                ).clamp(0.0, 1.0)
+                return m, float(m.mean().item())
+
+        fgpp_raw = batch.get("fgpp_cond")
+        if fgpp_raw is None:
+            return None, None
+
+        fgpp = torch.as_tensor(
+            fgpp_raw, dtype=torch.float32, device=target_latent.device
+        )
+        if fgpp.ndim == 4:
+            fgpp = fgpp.unsqueeze(0)
+        if fgpp.ndim != 5:
+            return None, None
+
+        if fgpp.shape[-1] == 15:
+            raw_mask = (fgpp[..., 14] > 0).float().unsqueeze(1)
+        elif fgpp.shape[1] == 7:
+            raw_mask = (fgpp[:, 0:1] > 0).float()
+        else:
+            return None, None
+
+        if raw_mask.shape[2:] != target_latent.shape[2:] and raw_mask.shape[2] >= 4:
+            mask_ds = _temporal_compress_and_spatial_ds(
+                raw_mask, target_latent.device
+            )
+            mask_bin = (mask_ds > 0.25).float()
+        else:
+            mask_bin = raw_mask
+        return mask_bin, float(mask_bin.mean().item())
+
     def _sft_step(
         self,
         module: Any,
         batch: dict[str, Any],
     ) -> Any:
-        """Compute flow-matching SFT loss with optional edge and normal losses."""
+        """Compute flow-matching SFT loss with optional mask-aware weighting, edge, and normal losses."""
         x_1 = batch["latent"]
         x_0 = batch["noise"]
         t = self._sample_timesteps(x_1, batch)
@@ -852,7 +941,19 @@ class StatelessLoRATrainer:
         batch["t"] = t
         x_t = (1.0 - t) * x_0 + t * x_1
         v_pred = self._call_module(module, x_t, batch)
-        loss = self._flow_matching_loss(v_pred, x_1, x_0)
+        sft_mask: Any | None = None
+        if self._config.mask_aware:
+            sft_mask, mask_cov = self._extract_foreground_mask_for_loss(batch, x_1)
+            self._last_mask_coverage = mask_cov
+        else:
+            self._last_mask_coverage = None
+        loss = self._flow_matching_loss(
+            v_pred,
+            x_1,
+            x_0,
+            mask=sft_mask,
+            background_weight=self._config.mask_background_weight,
+        )
 
         # Auto-extract depth and normal from fgpp_cond if separate keys missing
         if (

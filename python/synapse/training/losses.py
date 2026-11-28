@@ -28,6 +28,40 @@ from synapse.observability import get_probe
 # ===================================================================
 
 
+def _align_mask_for_loss(mask: Any, target: Any, torch_mod: Any) -> Any:
+    """Broadcast or pool *mask* into a float32 tensor in [0, 1] matching *target*."""
+    m = torch_mod.as_tensor(mask, dtype=torch_mod.float32, device=target.device)
+    m = m.clamp(0.0, 1.0)
+    if m.shape == target.shape:
+        return m
+
+    if m.ndim == target.ndim - 1:
+        if (
+            target.ndim >= 3
+            and m.shape[0] == target.shape[0]
+            and m.shape[1:] == target.shape[2:]
+        ):
+            m = m.unsqueeze(1)
+        elif m.shape == target.shape[1:]:
+            m = m.unsqueeze(0)
+        else:
+            m = m.unsqueeze(1)
+
+    while m.ndim < target.ndim:
+        m = m.unsqueeze(0)
+
+    if m.ndim == 5 and m.shape[2:] != target.shape[2:]:
+        m = torch_mod.nn.functional.adaptive_avg_pool3d(m, target.shape[2:])
+    elif m.ndim == 4 and m.shape[2:] != target.shape[2:]:
+        m = torch_mod.nn.functional.adaptive_avg_pool2d(m, target.shape[2:])
+    elif m.ndim == 3 and m.shape[1:] != target.shape[1:]:
+        m = torch_mod.nn.functional.adaptive_avg_pool2d(
+            m.unsqueeze(1), target.shape[1:]
+        ).squeeze(1)
+
+    return m.clamp(0.0, 1.0)
+
+
 class FlowMatchingLoss:
     """Rectified flow velocity field MSE (differentiable).
 
@@ -44,13 +78,18 @@ class FlowMatchingLoss:
         v_pred: Any,
         x_1: Any,
         x_0: Any,
+        mask: Any | None = None,
+        background_weight: float = 0.0,
     ) -> Any:
-        """Compute flow-matching MSE loss.
+        """Compute flow-matching MSE loss with optional spatial mask weighting.
 
         Args:
             v_pred: Predicted velocity field (torch.Tensor).
             x_1: Target sample (noise-free data), same shape.
             x_0: Source sample (pure noise), same shape.
+            mask: Optional foreground spatial/spatiotemporal mask in ``[0, 1]``.
+            background_weight: Weight multiplier assigned to background
+                regions where ``mask == 0`` (default ``0.0``).
 
         Returns:
             Scalar torch.Tensor loss (retains grad).
@@ -61,7 +100,17 @@ class FlowMatchingLoss:
         x_1 = torch.as_tensor(x_1).float()
         x_0 = torch.as_tensor(x_0).float()
         target = x_1 - x_0
-        return torch.mean((v_pred - target) ** 2)
+        diff_sq = (v_pred - target) ** 2
+        if mask is None:
+            return torch.mean(diff_sq)
+
+        aligned = _align_mask_for_loss(mask, diff_sq, torch)
+        bg_w = max(float(background_weight), 0.0)
+        weights = (aligned * (1.0 - bg_w) + bg_w).expand_as(diff_sq)
+        denom = weights.sum()
+        weighted_mean = (diff_sq * weights).sum() / denom.clamp(min=1e-8)
+        zero_guard = (diff_sq * 0.0).sum()
+        return torch.where(denom > 1e-8, weighted_mean, zero_guard)
 
 
 class EdgePreservingLoss:
@@ -387,28 +436,40 @@ def flow_matching_loss(
     v_pred: np.ndarray,
     x_1: np.ndarray,
     x_0: np.ndarray,
+    mask: np.ndarray | None = None,
+    background_weight: float = 0.0,
 ) -> float:
     """Rectified flow velocity field mean squared error (numpy).
 
     Computes::
 
-        E[||v_pred - (x_1 - x_0)||_2^2]
+        E[w * ||v_pred - (x_1 - x_0)||_2^2]
 
-    Args:
-        v_pred: Predicted velocity field, any shape.
-        x_1: Target sample (noise-free data), same shape.
-        x_0: Source sample (pure noise), same shape.
-
-    Returns:
-        Scalar MSE loss value.
+    where ``w = 1`` inside *mask* and ``w = background_weight`` outside.
     """
     v_pred = np.asarray(v_pred, dtype=np.float64)
     x_1 = np.asarray(x_1, dtype=np.float64)
     x_0 = np.asarray(x_0, dtype=np.float64)
 
     target = x_1 - x_0
-    diff = v_pred - target
-    return float(np.mean(diff**2))
+    diff_sq = (v_pred - target) ** 2
+    if mask is None:
+        return float(np.mean(diff_sq))
+
+    m = np.clip(np.asarray(mask, dtype=np.float64), 0.0, 1.0)
+    if m.ndim == diff_sq.ndim - 1:
+        if diff_sq.ndim >= 3 and m.shape[0] == diff_sq.shape[0] and m.shape[1:] == diff_sq.shape[2:]:
+            m = np.expand_dims(m, axis=1)
+        elif m.shape == diff_sq.shape[1:]:
+            m = np.expand_dims(m, axis=0)
+    while m.ndim < diff_sq.ndim:
+        m = np.expand_dims(m, axis=0)
+    bg_w = max(float(background_weight), 0.0)
+    weights = np.broadcast_to(m * (1.0 - bg_w) + bg_w, diff_sq.shape)
+    denom = float(weights.sum())
+    if denom <= 1e-8:
+        return 0.0
+    return float((diff_sq * weights).sum() / denom)
 
 
 def latent_edge_alignment_loss(
