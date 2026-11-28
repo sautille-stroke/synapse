@@ -199,6 +199,75 @@ def _verify_safetensors_reload(ckpt_path: Path) -> dict[str, Any]:
     }
 
 
+def _run_lora_smoke_stage(
+    *,
+    wan_model_path: str | Path | None,
+    device: Any,
+    tmp_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any], float]:
+    """Run Stage 3 (LoRA inject/grad step) & Stage 4 (SafeTensors reload).
+
+    Uses ``load_real_dit_backbone`` when *wan_model_path* contains a Diffusers
+    ``config.json`` and falls back explicitly to ``build_mock_dit_backbone``
+    only when no model directory is provided (marking ``backbone_kind`` honestly).
+    """
+    import torch
+    from synapse.training.backbone import (
+        build_mock_dit_backbone,
+        load_real_dit_backbone,
+        resolve_target_modules,
+    )
+    from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
+
+    cfg = LoRATrainConfig(category="style", rank=8, alpha=8.0)
+    trainer = StatelessLoRATrainer(cfg)
+
+    if wan_model_path is not None:
+        backbone = load_real_dit_backbone(wan_model_path, device=str(device))
+        backbone_kind = "real"
+        cfg_obj = getattr(backbone, "config", None)
+        in_channels = int(getattr(cfg_obj, "in_channels", 16) or 16)
+        text_dim = int(getattr(cfg_obj, "text_dim", 64) or getattr(cfg_obj, "cross_attention_dim", 64) or 64)
+        sample_batch: dict[str, Any] = {
+            "latent": torch.randn(1, in_channels, 2, 8, 8, device=device),
+            "noise": torch.randn(1, in_channels, 2, 8, 8, device=device),
+            "encoder_hidden_states": torch.randn(1, 2, text_dim, device=device),
+        }
+    else:
+        backbone = build_mock_dit_backbone(dim=16).to(device)
+        backbone_kind = "mock"
+        sample_batch = {
+            "latent": torch.randn(1, 4, 16, device=device),
+            "noise": torch.randn(1, 4, 16, device=device),
+        }
+
+    targets = resolve_target_modules(backbone, "style")
+    injected = trainer.inject_lora(backbone, targets)
+    if injected <= 0:
+        raise ContractValidationError(
+            f"LoRA injection matched 0 layers on {backbone_kind} DiT backbone.",
+            agent_fix_hint="Verify target_modules match backbone layer names.",
+        )
+    trainer.freeze_backbone(backbone)
+    step_res = trainer.train_step(backbone, sample_batch, step=0)
+    loss_val = float(step_res.get("loss", 0.0))
+    if not math.isfinite(loss_val):
+        raise ContractValidationError(
+            f"LoRA training step produced non-finite loss: {loss_val}",
+            agent_fix_hint="Inspect learning rate or batch inputs.",
+        )
+
+    grad_stage = {
+        "status": "passed",
+        "backbone_kind": backbone_kind,
+        "injected_layers": int(injected),
+        "loss": loss_val,
+    }
+    ckpt_path = trainer.export_checkpoint(backbone, tmp_dir / "smoke_lora.safetensors")
+    reload_stage = _verify_safetensors_reload(ckpt_path)
+    return grad_stage, reload_stage, loss_val
+
+
 def run_gpu_smoke(
     *,
     dry_run: bool = False,
@@ -254,11 +323,6 @@ def run_gpu_smoke(
     try:
         import torch
         from synapse.adapters.wan_diffusers import _build_controlnext_patchify_stem
-        from synapse.training.backbone import (
-            build_mock_dit_backbone,
-            resolve_target_modules,
-        )
-        from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
 
         stages: dict[str, dict[str, Any]] = {}
         device = _select_torch_device()
@@ -279,39 +343,24 @@ def run_gpu_smoke(
             "output_shape": list(stem_out.shape),
         }
 
-        # Stage 3: LoRA injection + backbone freeze + StatelessLoRATrainer grad step on DiT backbone
-        cfg = LoRATrainConfig(category="style", rank=8, alpha=8.0)
-        trainer = StatelessLoRATrainer(cfg)
-        backbone = build_mock_dit_backbone(dim=16).to(device)
-        targets = resolve_target_modules(backbone, "style")
-        injected = trainer.inject_lora(backbone, targets)
-        if injected <= 0:
-            raise ContractValidationError(
-                "LoRA injection matched 0 layers on mock DiT backbone.",
-                agent_fix_hint="Verify target_modules match backbone layer names.",
+        # Stages 3 & 4: Real (when WAN_MODEL_PATH has config.json) or explicit mock DiT LoRA train + reload
+        train_wan_path = (
+            Path(resolved_wan_path)
+            if resolved_wan_path
+            and (
+                (Path(resolved_wan_path) / "transformer" / "config.json").is_file()
+                or (Path(resolved_wan_path) / "config.json").is_file()
             )
-        trainer.freeze_backbone(backbone)
-        batch = {
-            "latent": torch.randn(1, 4, 16, device=device),
-            "noise": torch.randn(1, 4, 16, device=device),
-        }
-        step_res = trainer.train_step(backbone, batch, step=0)
-        loss_val = float(step_res.get("loss", 0.0))
-        if not math.isfinite(loss_val):
-            raise ContractValidationError(
-                f"LoRA training step produced non-finite loss: {loss_val}",
-                agent_fix_hint="Inspect learning rate or batch inputs.",
-            )
-        stages["stateless_lora_trainer_grad_step"] = {
-            "status": "passed",
-            "injected_layers": int(injected),
-            "loss": loss_val,
-        }
-
-        # Stage 4: SafeTensors LoRA export + reload parity check
+            else None
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
-            ckpt_path = trainer.export_checkpoint(backbone, Path(tmp_dir) / "smoke_lora.safetensors")
-            stages["safetensors_export_reload"] = _verify_safetensors_reload(ckpt_path)
+            grad_stage, reload_stage, loss_val = _run_lora_smoke_stage(
+                wan_model_path=train_wan_path,
+                device=device,
+                tmp_dir=Path(tmp_dir),
+            )
+            stages["stateless_lora_trainer_grad_step"] = grad_stage
+            stages["safetensors_export_reload"] = reload_stage
 
         peak_vram_gb = round(torch.cuda.max_memory_allocated(0) / (1024**3), 4)
 

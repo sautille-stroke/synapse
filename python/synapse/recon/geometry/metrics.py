@@ -5,12 +5,15 @@ Pure-Python Ground Truth Oracle metrics extracted from ``synapse.recon.geometry`
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 import numpy as np
 
 from synapse.recon.geometry.topology import compute_normals
 from synapse.recon.geometry.uv import _compute_face_normals
+
+logger = logging.getLogger(__name__)
 
 
 def compute_euler_characteristic(vertices: np.ndarray, faces: np.ndarray) -> int:
@@ -83,8 +86,8 @@ def count_non_manifold_edges(vertices: np.ndarray, faces: np.ndarray) -> int:
             v_arr = np.ascontiguousarray(vertices, dtype=np.float64)
             f_arr = np.ascontiguousarray(f, dtype=np.int64)
             return int(geo.count_non_manifold_edges(v_arr, f_arr))
-        except Exception:
-            pass
+        except (RuntimeError, TypeError, ValueError, AttributeError) as exc:
+            logger.debug("aether_geo count_non_manifold_edges failed, falling back to Python: %s", exc)
 
     edge_face_count: dict[tuple[int, int], int] = defaultdict(int)
     directed_half_edges: set[tuple[int, int]] = set()

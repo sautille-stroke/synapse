@@ -147,6 +147,47 @@ class MeshData:
         return self.export_obj(path)
 
 
+def weld_positional_topology(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    tol: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weld positionally coincident vertices to recover manifold/watertight topology.
+
+    Useful when rendering meshes duplicate corners for UV seams or sharp normals
+    (such as a 24-vertex unit cube or a UV-seam sphere). Degenerate triangles
+    whose welded vertex indices collide are dropped automatically.
+    """
+    verts = np.asarray(vertices, dtype=np.float32)
+    tris = np.asarray(faces, dtype=np.int32)
+    if len(verts) == 0 or len(tris) == 0:
+        return verts.copy(), tris.copy()
+
+    inv_tol = 1.0 / max(float(tol), 1e-12)
+    quantized = np.round(verts.astype(np.float64) * inv_tol).astype(np.int64)
+    key_to_new: dict[tuple[int, int, int], int] = {}
+    remap = np.empty(len(verts), dtype=np.int32)
+    unique_verts: list[np.ndarray] = []
+
+    for old_idx in range(len(verts)):
+        key = (int(quantized[old_idx, 0]), int(quantized[old_idx, 1]), int(quantized[old_idx, 2]))
+        new_idx = key_to_new.get(key)
+        if new_idx is None:
+            new_idx = len(unique_verts)
+            key_to_new[key] = new_idx
+            unique_verts.append(verts[old_idx])
+        remap[old_idx] = new_idx
+
+    topo_verts = np.vstack(unique_verts).astype(np.float32)
+    topo_faces = remap[tris]
+    valid = (
+        (topo_faces[:, 0] != topo_faces[:, 1])
+        & (topo_faces[:, 1] != topo_faces[:, 2])
+        & (topo_faces[:, 0] != topo_faces[:, 2])
+    )
+    return topo_verts, np.ascontiguousarray(topo_faces[valid], dtype=np.int32)
+
+
 def load_obj(path: str | Path) -> MeshData:
     """Parse a Wavefront OBJ file into a :class:`MeshData` (pure Python)."""
     p = Path(path)

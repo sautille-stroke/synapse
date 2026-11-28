@@ -147,8 +147,9 @@ def test_td05_gpu_smoke_stages_align_and_safetensors_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """PR-TD05: run_gpu_smoke stages align 1:1 with planned_stages and verify SafeTensors reload."""
-    torch = pytest.importorskip("torch")
+    pytest.importorskip("torch")
     pytest.importorskip("safetensors")
+    import torch
     monkeypatch.delenv("WAN_MODEL_PATH", raising=False)
 
     out_json = tmp_path / "smoke_cuda.json"
@@ -169,6 +170,7 @@ def test_td05_gpu_smoke_stages_align_and_safetensors_reload(
     assert payload["stages"]["diffusers_wan_backend_single_window"]["status"] == "skipped_no_weights"
     assert payload["stages"]["controlnext_patchify_stem_forward"]["status"] == "passed"
     assert payload["stages"]["stateless_lora_trainer_grad_step"]["status"] == "passed"
+    assert payload["stages"]["stateless_lora_trainer_grad_step"]["backbone_kind"] == "mock"
     assert payload["stages"]["stateless_lora_trainer_grad_step"]["injected_layers"] > 0
     assert payload["stages"]["safetensors_export_reload"]["status"] == "passed"
     assert payload["stages"]["safetensors_export_reload"]["num_tensors"] >= 2
@@ -218,8 +220,103 @@ def test_td05_gpu_smoke_with_wan_weights_runs_diffusers_and_refine(
     assert stage_res["refinement_patches"] >= 1
 
 
+def test_td05_gpu_smoke_uses_real_backbone_when_wan_weights_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When WAN_MODEL_PATH has transformer config.json, Stage 3 loads & trains real backbone."""
+    pytest.importorskip("torch")
+    pytest.importorskip("safetensors")
+    import sys
+    import types
+
+    import torch
+
+    from scripts.run_gpu_smoke import run_gpu_smoke
+
+    model_dir = tmp_path / "wan_real_ckpt"
+    (model_dir / "transformer").mkdir(parents=True)
+    (model_dir / "transformer" / "config.json").write_text(
+        '{"_class_name": "WanTransformer3DModel", "in_channels": 4, "text_dim": 32}',
+        encoding="utf-8",
+    )
+
+    class _FakeWanBackend:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def submit(self, _payload: Any, config: Any) -> Any:
+            import numpy as np
+
+            rng = np.random.default_rng(7)
+            return rng.integers(
+                32,
+                224,
+                size=(config.num_frames, config.height, config.width, 3),
+                dtype=np.uint8,
+            )
+
+    class _TinyRealWan(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.config = types.SimpleNamespace(in_channels=4, text_dim=32)
+            self.blocks = torch.nn.ModuleList(
+                [
+                    torch.nn.ModuleDict(
+                        {
+                            "attn2": torch.nn.ModuleDict(
+                                {"to_k": torch.nn.Linear(16, 16), "to_v": torch.nn.Linear(32, 16)}
+                            ),
+                            "ffn": torch.nn.ModuleDict({"proj": torch.nn.Linear(16, 16)}),
+                        }
+                    )
+                ]
+            )
+
+        def forward(
+            self,
+            hidden_states: Any,
+            timestep: Any,
+            encoder_hidden_states: Any,
+            return_dict: bool = True,
+        ) -> Any:
+            _ = timestep
+            orig_shape = hidden_states.shape
+            h = hidden_states.reshape(orig_shape[0], -1, 16)
+            blk: Any = self.blocks[0]
+            out = (
+                h
+                + blk["attn2"]["to_k"](h)
+                + blk["attn2"]["to_v"](encoder_hidden_states)
+                .mean(dim=1, keepdim=True)
+                .expand(-1, h.shape[1], -1)
+            ).reshape(orig_shape)
+            return types.SimpleNamespace(sample=out) if return_dict else (out,)
+
+    class _WanLoader:
+        @staticmethod
+        def from_pretrained(_model_dir: str, **_kwargs: Any) -> torch.nn.Module:
+            return _TinyRealWan()
+
+    monkeypatch.setenv("WAN_MODEL_PATH", str(model_dir))
+    monkeypatch.setattr("synapse.adapters.wan_diffusers.DiffusersWanBackend", _FakeWanBackend)
+    monkeypatch.setitem(sys.modules, "diffusers", types.SimpleNamespace(WanTransformer3DModel=_WanLoader))
+
+    with (
+        mock.patch(
+            "scripts.run_gpu_smoke._probe_gpu",
+            return_value={"cuda_available": True, "device_name": "MockCUDA-L4", "vram_gb": 24.0},
+        ),
+        mock.patch("scripts.run_gpu_smoke._select_torch_device", return_value=torch.device("cpu")),
+        mock.patch("torch.cuda.max_memory_allocated", return_value=3 * 1024**3),
+    ):
+        summary = run_gpu_smoke(wan_model_path=model_dir)
+    assert summary["status"] == "PASS"
+    assert summary["stages"]["stateless_lora_trainer_grad_step"]["backbone_kind"] == "real"
+
+
 def test_td05_four_track_baseline_artifacts_and_generator(tmp_path: Path) -> None:
-    """PR-TD05: checked-in 40-scenario baseline & generator work cleanly with compare_runs."""
+    """PR-TD05: checked-in 50-scenario baseline & generator work cleanly with compare_runs."""
     from synapse.bench.compare import compare_runs
 
     from scripts.run_4track_baseline import generate_four_track_baseline
@@ -234,8 +331,9 @@ def test_td05_four_track_baseline_artifacts_and_generator(tmp_path: Path) -> Non
         assert p.is_file(), f"Missing versioned baseline artifact: {p}"
 
     clean_data = json.loads(clean_json.read_text(encoding="utf-8"))
-    assert clean_data["scenario_count"] == 40
-    assert len(clean_data["reports"]) == 40
+    assert clean_data["scenario_count"] == 50
+    assert len(clean_data["reports"]) == 50
+    assert clean_data["metrics"]["is_watertight"] == 1.0
 
     rep = compare_runs([clean_json, perturbed_json])
     assert rep.overall_winner == "mock_clean"

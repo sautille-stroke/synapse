@@ -1050,6 +1050,22 @@ class TestAetherStyleContract:
         assert "ACEScg" in header_text
         assert 'kCurrentSchemaVersion = "2.0.0"' in header_text
 
+        style_dir = style_header.parent
+        for required_hdr in (
+            "style_validator.h",
+            "style_interpolator.h",
+            "style_json.h",
+            "style_migrator.h",
+            "style_registry.h",
+        ):
+            assert (style_dir / required_hdr).is_file(), (
+                f"Expected DESIGN-0043-01 header missing: {style_dir / required_hdr}"
+            )
+        validator_text = (style_dir / "style_validator.h").read_text(encoding="utf-8")
+        assert "saturation_boost, -1.0f, 2.0f" in validator_text
+        interp_text = (style_dir / "style_interpolator.h").read_text(encoding="utf-8")
+        assert "lerpColorOklab" in interp_text
+
         fgpp_header = aether_root / "fgpp" / "include" / "aether" / "fgpp" / "fgpp_types.h"
         cmd = [
             sys.executable,

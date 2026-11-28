@@ -221,6 +221,14 @@ def load_model(
             faces=pm.faces.astype(np.int32),
             normals=pm.normals.astype(np.float32),
             uvs=pm.uvs.astype(np.float32) if pm.uvs is not None else None,
+            topology_vertices=(
+                pm.topology_vertices.astype(np.float32)
+                if pm.topology_vertices is not None
+                else None
+            ),
+            topology_faces=(
+                pm.topology_faces.astype(np.int32) if pm.topology_faces is not None else None
+            ),
         )
         return asset.normalize(target_radius) if normalize else asset
 

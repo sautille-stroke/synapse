@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         "--limit",
         type=int,
         default=None,
-        help="Optional scenario count cap (default: all 40 scenarios).",
+        help="Optional scenario count cap (default: all 50 built-in scenarios).",
     )
     parser.add_argument(
         "--json",

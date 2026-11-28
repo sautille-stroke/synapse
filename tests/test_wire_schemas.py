@@ -10,6 +10,7 @@ Validates:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from unittest import mock
@@ -376,6 +377,7 @@ class TestCppHeaderExtendedValidation:
         """Tampered PixelType enum value in C++ header is caught."""
         content = aether_header_path.read_text(encoding="utf-8")
         tampered_content = content.replace("Uint32 = 0", "Uint32 = 99")
+        assert tampered_content != content
         temp_header = tmp_path / "fgpp_types.h"
         temp_header.write_text(tampered_content, encoding="utf-8")
 
@@ -389,10 +391,13 @@ class TestCppHeaderExtendedValidation:
     ) -> None:
         """Tampered channel PixelType in getAlphabeticalEXRChannelSpecs is caught."""
         content = aether_header_path.read_text(encoding="utf-8")
-        tampered_content = content.replace(
-            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,',
-            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Float,',
+        tampered_content = re.sub(
+            r'("Cryptomatte\.ID",\s*ChannelNames::kCryptomatteId,\s*0u,\s*)PixelType::Uint32',
+            r"\1PixelType::Float",
+            content,
+            count=1,
         )
+        assert tampered_content != content
         temp_header = tmp_path / "fgpp_types.h"
         temp_header.write_text(tampered_content, encoding="utf-8")
 
@@ -406,10 +411,13 @@ class TestCppHeaderExtendedValidation:
     ) -> None:
         """Tampered allow_spatial_filtering flag in C++ header is caught."""
         content = aether_header_path.read_text(encoding="utf-8")
-        tampered_content = content.replace(
-            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,\n       false}',
-            '{"Cryptomatte.ID", ChannelNames::kCryptomatteId, 0u, PixelType::Uint32,\n       true}',
+        tampered_content = re.sub(
+            r'("Cryptomatte\.ID",\s*ChannelNames::kCryptomatteId,\s*0u,\s*PixelType::Uint32,\s*)false(\s*\})',
+            r"\1true\2",
+            content,
+            count=1,
         )
+        assert tampered_content != content
         temp_header = tmp_path / "fgpp_types.h"
         temp_header.write_text(tampered_content, encoding="utf-8")
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import struct
 import zlib
 from collections import Counter
@@ -56,6 +57,8 @@ from synapse.recon.geometry import (
     surface_roughness_var,
 )
 from synapse.render_core.mesh import MeshData, load_obj
+
+logger = logging.getLogger(__name__)
 
 
 def _build_gate_profiles() -> dict[str, dict[str, tuple[float, str]]]:
@@ -479,6 +482,7 @@ def evaluate_single_model(
             num_views,
         )
     except Exception as exc:
+        logger.warning("Failed to render orbit views for %s: %s", effective_name, exc)
         if log_fn:
             log_fn(f"  Warning: failed to render orbit views for {effective_name}: {exc}")
         pred_rgb = np.empty((0, resolution, resolution, 3), dtype=np.uint8)
@@ -546,6 +550,7 @@ def evaluate_single_model(
                     )
                     metrics["histogram_intersection"] = histogram_intersection(hist_ref, hist_pred)
             except Exception as exc:
+                logger.warning("Failed to compute multi-view comparison for %s: %s", effective_name, exc)
                 if log_fn:
                     log_fn(
                         f"  Warning: failed to compute multi-view comparison for {effective_name}: {exc}"
@@ -642,6 +647,7 @@ def evaluate_3d_models_directory(
                     if ref_path.stem not in reference_meshes:
                         reference_meshes[ref_path.stem] = loaded
                 except Exception as exc:
+                    logger.warning("Failed to load reference mesh %s: %s", ref_path.name, exc)
                     if log_fn:
                         log_fn(f"  Warning: failed to load reference mesh {ref_path.name}: {exc}")
 

@@ -451,7 +451,8 @@ class DiffusersWanBackend(WanBackendTransport):
                 gen_device = "cpu" if str(pipe_device) == "cpu" else pipe_device
             generator = torch.Generator(device=gen_device)
             generator.manual_seed(config.seed)
-        except Exception:
+        except (RuntimeError, TypeError, ValueError) as exc:
+            logger.debug("Fallback to unseeded generator for device fallback: %s", exc)
             generator = None
 
         # Decide output type: latent for intermediate windows, np for final

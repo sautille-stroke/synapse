@@ -35,8 +35,10 @@ __all__ = [
     "DIFFUSERS_WAN_CATEGORY_TARGETS",
     "build_mock_dit_backbone",
     "load_real_dit_backbone",
+    "prepare_lora_training_batch",
     "resolve_target_modules",
     "resolve_training_backbone",
+    "run_lora_shard_training",
 ]
 
 CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
@@ -310,3 +312,61 @@ def resolve_target_modules(
     if has_diffusers_wan and not has_wan_custom:
         return list(DIFFUSERS_WAN_CATEGORY_TARGETS.get(category, ["blocks.*.ffn.*"]))
     return list(CATEGORY_DEFAULT_TARGETS.get(category, ["blocks.*.ffn.*"]))
+
+
+def prepare_lora_training_batch(sample: dict[str, Any], torch_mod: Any) -> dict[str, Any]:
+    """Build a flow-matching training batch from an ``iter_feature_shards`` sample.
+
+    Propagates ``prompt`` and 3D ``encoder_hidden_states`` ``[B, L, D]`` plus
+    optional ``fgpp_cond`` so Diffusers ``WanTransformer3DModel`` and mock
+    backbones consume identical shard batches without silent parameter drops.
+    """
+    latent = torch_mod.as_tensor(sample["latent"], dtype=torch_mod.float32)
+    noise = torch_mod.randn_like(latent)
+    batch: dict[str, Any] = {
+        "latent": latent.unsqueeze(0),
+        "noise": noise.unsqueeze(0),
+    }
+
+    prompt_raw = sample.get("prompt")
+    if prompt_raw is not None:
+        prompt_t = torch_mod.as_tensor(prompt_raw, dtype=torch_mod.float32)
+        batch["prompt"] = prompt_t.unsqueeze(0) if prompt_t.ndim == 1 else prompt_t
+        enc = prompt_t
+        while enc.ndim < 3:
+            enc = enc.unsqueeze(0)
+        batch["encoder_hidden_states"] = enc
+
+    fgpp_raw = sample.get("fgpp_cond")
+    if fgpp_raw is not None:
+        batch["fgpp_cond"] = torch_mod.as_tensor(fgpp_raw, dtype=torch_mod.float32).unsqueeze(0)
+    return batch
+
+
+def run_lora_shard_training(
+    trainer: Any,
+    model: Any,
+    shard_paths: list[Path],
+    max_steps: int,
+) -> tuple[int, float]:
+    """Cycle WebDataset feature shards for *max_steps* and return ``(steps, final_loss)``."""
+    import torch
+
+    from synapse.training.feature_store import iter_feature_shards
+
+    cached_samples = list(iter_feature_shards(shard_paths))
+    if not cached_samples:
+        raise AssetNotFoundError(
+            "No valid samples found in feature shards.",
+            agent_fix_hint="Run 'synapse lora prepare-data' first to populate valid .tar shards.",
+        )
+
+    steps = 0
+    final_loss = 0.0
+    while steps < max_steps:
+        sample = cached_samples[steps % len(cached_samples)]
+        batch = prepare_lora_training_batch(sample, torch)
+        result = trainer.train_step(model, batch, steps)
+        final_loss = float(result["loss"])
+        steps += 1
+    return steps, final_loss

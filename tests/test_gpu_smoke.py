@@ -14,12 +14,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-torch = pytest.importorskip("torch", reason="torch not installed")
+pytestmark = [pytest.mark.gpu_smoke, pytest.mark.slow, pytest.mark.platform_specific]
 
-pytestmark = [pytest.mark.gpu_smoke, pytest.mark.slow]
 
-_CUDA_AVAILABLE = torch.cuda.is_available()
-_skip_no_cuda = pytest.mark.skipif(not _CUDA_AVAILABLE, reason="No CUDA device")
+def _has_cuda() -> bool:
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        return False
+
+
+_skip_no_cuda = pytest.mark.skipif(not _has_cuda(), reason="No CUDA device")
 
 
 # ---------------------------------------------------------------------------
@@ -34,10 +41,11 @@ class TestDiffusionRendererGPUSmoke:
         from synapse.bridge.diffusion_renderer import MockDiffusionRendererBackend
 
         backend = MockDiffusionRendererBackend()
-        gbuffer = np.random.rand(4, 512, 512, 3).astype(np.float32)
-        result = backend.forward(gbuffer)
-        assert result is not None
-        assert result.shape[0] == gbuffer.shape[0]
+        frames = np.random.randint(0, 255, (4, 64, 64, 3), dtype=np.uint8)
+        gbuffer = backend.inverse_render(frames)
+        relit = backend.forward_render(gbuffer)
+        assert gbuffer.depth.shape == frames.shape[:3]
+        assert relit.frames_srgb_u8.shape == frames.shape
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +56,13 @@ class TestTrellis2GPUSmoke:
 
     @_skip_no_cuda
     def test_trellis2_mock_reconstruction(self) -> None:
-        from synapse.recon.trellis2 import TopologyPolicy, Trellis2Transport
+        from synapse.recon.trellis2 import MockTrellis2Backend, TopologyPolicy
 
-        transport = Trellis2Transport(backend="mock")
-        images = np.random.rand(4, 512, 512, 3).astype(np.float32)
-        mesh = transport.reconstruct(images, topology_policy=TopologyPolicy.PERMISSIVE)
-        assert mesh is not None
-        assert mesh.num_vertices > 0
+        backend = MockTrellis2Backend()
+        images = np.random.randint(0, 255, (4, 64, 64, 3), dtype=np.uint8)
+        result = backend.reconstruct(images, topology_hint=TopologyPolicy.PERMISSIVE)
+        assert result is not None
+        assert len(result.mesh.vertices) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -65,14 +73,22 @@ class TestSAM2GPUSmoke:
 
     @_skip_no_cuda
     def test_sam2_mock_segmentation(self) -> None:
-        from synapse.bridge.sam2_transport import MockSAM2Backend, SAM2Transport
+        from synapse.bridge.sam2_transport import (
+            MockSAM2Backend,
+            SAM2Prompt,
+            SAM2PromptType,
+        )
 
         backend = MockSAM2Backend()
-        transport = SAM2Transport(backend=backend)
-        frames = np.random.randint(0, 255, (8, 256, 256, 3), dtype=np.uint8)
-        masks = transport.segment_video(frames, prompt_points=[(128, 128)])
-        assert masks is not None
-        assert masks.shape[0] == frames.shape[0]
+        frames = np.random.randint(0, 255, (8, 64, 64, 3), dtype=np.uint8)
+        prompt = SAM2Prompt(
+            prompt_type=SAM2PromptType.POINT,
+            points=np.array([[32.0, 32.0]], dtype=np.float32),
+            point_labels=np.array([1], dtype=np.int32),
+        )
+        result = backend.segment_video(frames, prompts=[prompt])
+        assert result is not None
+        assert len(result.frames) == frames.shape[0]
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +99,11 @@ class TestQLoRAGPUSmoke:
 
     @_skip_no_cuda
     def test_nf4_quantize_dequantize_cuda_roundtrip(self) -> None:
-        from synapse.training.qlora import dequantize_nf4_blockwise, quantize_nf4_blockwise
+        import torch
+        from synapse.training.qlora import (
+            dequantize_nf4_blockwise,
+            quantize_nf4_blockwise,
+        )
 
         x = torch.randn(256, 256, device="cuda", dtype=torch.float32)
         quant = quantize_nf4_blockwise(x)
@@ -98,9 +118,11 @@ class TestQLoRAGPUSmoke:
 
     @_skip_no_cuda
     def test_qlora_linear_forward_backward(self) -> None:
+        import torch
         from synapse.training.qlora import create_qlora_linear
 
-        linear = create_qlora_linear(128, 64, rank=16, device="cuda")
+        base_linear = torch.nn.Linear(128, 64, device="cuda")
+        linear = create_qlora_linear(base_linear, rank=16, alpha=32.0)
         assert linear is not None
         x = torch.randn(4, 128, device="cuda", requires_grad=False)
         y = linear(x)

@@ -12,7 +12,7 @@ stale_after: 2027-11-28T00:00:00Z
 > - **核查基线**: `main` @ `2540b48`（post `v5.0.0`，含 Traceboard 整改封板）
 > - **核查日期**: `2026-11-28`
 > - **规划模型**: `[gemini4-hydrogen]`
-> - **当前状态**: ✅ **Horizon 14 (M53–M54) 7/7 PRs (`PR-TD01 ~ PR-TD07`) 已全量合入封板（含上游 `dervgen/aether#622` 落地 `@aether//style` 后启用 `PR-TD06`）**
+> - **当前状态**: ✅ **Horizon 14 (M53–M54) 8/8 PRs (`PR-TD01 ~ PR-TD08`) 已完成整改与闭环（上游 `dervgen/aether#622` 与 `#638` 落地 `@aether//style` v2 全能力 + `PR-TD06` / `PR-TD08` 双端协同）**
 > - **前置基线**: [`REVIEW-POST-HORIZON10-2026-11.md`](../archive/audits/REVIEW-POST-HORIZON10-2026-11.md) · [`PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md`](../archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) · [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
 
 > [!IMPORTANT]
@@ -155,7 +155,7 @@ flowchart LR
 - **防静默失败三问**: `run_gpu_smoke.py` 实跑输出阶段的真实状态与 `planned_stages` 1:1 匹配；`colab-gpu` 实跑产出的 4 轨道对比 HTML/JSON 可被 `compare_runs()` 校验通过。
 
 <a id="pr-td06"></a>
-### `PR-TD06`: 协同 `@aether//style` 落地并启用 CI `--require-style` 硬门禁 ✅ 已落地 (`dervgen/aether#622`)
+### `PR-TD06`: 协同 `@aether//style` 落地并启用 CI `--require-style` 硬门禁 ✅ 已落地 (`dervgen/aether#622` + `#638`)
 - **对应债务**: `D-03` (`P1`, 跨仓协同)
 - **前置跨仓依赖**: `dervgen/aether` 落地 `` `style/include/aether/style/style_types.h` ``（含 `StyleDescriptor` v2.0.0 全字段）。
 - **预估体量**: ~120 LOC · **Worktree 分支**: `feat/td06-enable-ci-require-style`
@@ -173,6 +173,18 @@ flowchart LR
   2. 将 [`tests/test_dataset_and_viewer.py`](../../tests/test_dataset_and_viewer.py#L11-L20) 中对 `synapse.generators.*` 的直接导入拆分为默认测 `synapse.bench.*` / `synapse.render_core.*` 与显式测试弃用兼容层的独立用例；明确 [`generators/rasterizer.py`](../../python/synapse/generators/rasterizer.py) 的 `v6.0.0` 下线清单。
   3. 全量运行 `python scripts/check_doc_links.py` 确认 **0 断链**。
 - **防静默失败三问**: `check_doc_links.py` 0 断链；`docs/plans/` 仅保留活跃或待执行计划。
+
+---
+
+### `PR-TD08`: Post-Review 实缺陷修复与 `@aether//style` v2 全能力协同 ✅ 已随整改 PR 收口
+
+- **整改动因**: `M53–M54` 交付复审检出四项可复现尾项（真实 `WanTransformer3DModel` 前向参数与输出解包缺口、过程式原型网格 UV 拆点导致 `is_watertight = 0.3333`、4 轨道基线仅 30 场景且 GPU 烟测 `--base-model` 未接实权重路径、`PR-TD06` CI `--require-style` 在外部仓库检出失败时静默跳过）以及上游 `@aether//style` 缺失 `StyleRegistry` / JSON / 迁移器 / OKLab 运行时实现。
+- **核心改动**:
+  1. 抽取 `prepare_lora_training_batch` / `run_lora_shard_training` 并完善 `_call_module` 对 `encoder_hidden_states`、`return_dict=False` 与 `.sample` 的调度及 fail-closed 契约；
+  2. 为过程式封闭几何建立空间焊接 `topology_vertices`/`topology_faces`（`cube`/`sphere`/`cylinder`/`torus`/`cone`），并在 `ModelAsset.normalize()` 与 `to_mesh_data()` 全链透传，`is_watertight` 恢复 `1.0`；
+  3. 重算 `data/baselines/synapse_bench_4track/` 为 `50` 场景基线；升级 `scripts/run_gpu_smoke.py` 在设置 `WAN_MODEL_PATH` 时加载真实 DiT 权重并记录 `backbone_kind`；
+  4. 收窄并记录 `bucketing.py`、`bench_runner.py`、`wan.py`、`wan_diffusers.py`、`metrics.py`、`model_evaluator.py` 残余宽泛异常；
+  5. 对齐 Python `StyleDescriptor.schema_version = "2.0.0"`、`schemas/style_profile.v2.0.0.schema.json`、`docs/WIRE_CONTRACTS.md`、花括号深度解析版 `tools/wire_guard.py`，并在 CI 对缺失同级 `aether` 触发警告标记（协同上游 `dervgen/aether#638`）。
 
 ---
 

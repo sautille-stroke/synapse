@@ -38,6 +38,7 @@ class StyleDescriptor(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True, "extra": "forbid"}
 
+    schema_version: str = "2.0.0"
     working_colorspace: str = "ACEScg"
     color_temp_kelvin: float = Field(default=6500.0, ge=1000.0, le=40000.0)
     tint: float = Field(default=0.0, ge=-100.0, le=100.0)
