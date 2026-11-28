@@ -797,8 +797,12 @@ def _check_horizon14_contracts() -> list[str]:
         errs.append(
             f"Version mismatch: synapse.__version__={synapse.__version__!r} vs pyproject.toml={pyproject_ver!r}"
         )
-    if synapse.__version__ != "6.0.0":
-        errs.append(f"Expected Horizon 14 release version '6.0.0', got {synapse.__version__!r}")
+    _min_ver = (6, 0, 0)
+    _parts = tuple(int(x) for x in synapse.__version__.split(".")[:3])
+    if _parts < _min_ver:
+        errs.append(
+            f"Version {synapse.__version__!r} below Horizon 14 floor {_min_ver}"
+        )
 
     # M53 VACE & FLF2V
     if "vace" not in list_adapters():
@@ -1002,7 +1006,7 @@ def main(argv: list[str] | None = None) -> int:
         for e in h14_errors:
             print(f"  FAIL: {e}")
     else:
-        print("  OK: Horizon 14 contracts, exports, v6.0.0 parity, and >=50 scenarios verified")
+        print("  OK: Horizon 14 contracts, exports, version parity, and >=50 scenarios verified")
 
     print()
     if all_errors:

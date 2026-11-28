@@ -66,6 +66,30 @@ class TestFrameBucketing:
         sampler_drop = FrameBucketSampler(samples, batch_size=2, drop_last=True)
         assert len(sampler_drop) == 2
 
+    def test_sampler_oversized_batch_yields_single_partial_batch(self) -> None:
+        """batch_size > bucket population should yield one partial batch per bucket."""
+        samples = [
+            FrameBucketSample("only0", 480, 848, 49),
+            FrameBucketSample("only1", 720, 1280, 97),
+        ]
+        sampler = FrameBucketSampler(samples, batch_size=64, drop_last=False)
+        batches = list(sampler)
+        assert len(batches) == 2  # one per bucket
+        for b in batches:
+            assert len(b.sample_ids) == 1
+
+    def test_sampler_oversized_batch_drop_last_yields_nothing(self) -> None:
+        """batch_size > every bucket → drop_last=True should yield zero batches."""
+        samples = [FrameBucketSample("x", 480, 848, 49)]
+        sampler = FrameBucketSampler(samples, batch_size=4, drop_last=True)
+        assert len(sampler) == 0
+        assert list(sampler) == []
+
+    def test_sampler_empty_input(self) -> None:
+        """Empty sample list should produce zero batches without errors."""
+        sampler = FrameBucketSampler([], batch_size=2)
+        assert len(sampler) == 0
+
 
 class TestAutoTuneLoRAConfig:
     """Tests for VRAM-aware LoRA auto-tuning & CLI exposure."""
@@ -95,6 +119,16 @@ class TestAutoTuneLoRAConfig:
         assert isinstance(cfg, LoRATrainConfig)
         assert cfg.rank == 64
         assert cfg.warmup_steps == high.warmup_steps
+
+    def test_auto_tune_no_gpu_raises_without_explicit_vram(self) -> None:
+        """When no CUDA device and no --vram-gb, auto_tune must raise ValueError."""
+        from synapse.training.bucketing import detect_cuda_vram_gb
+
+        detected = detect_cuda_vram_gb()
+        if detected == 0.0:
+            # CPU-only host: should raise because detect returns 0
+            with pytest.raises(ValueError, match="vram_gb must be positive"):
+                auto_tune_lora_config("identity", dataset_size=10)
 
     def test_cli_lora_train_help_and_autotune_flags(
         self,
@@ -131,3 +165,18 @@ class TestAutoTuneLoRAConfig:
         assert rc == 0
         payload = json.loads(capsys.readouterr().out)
         assert payload["status"] == "ok"
+
+    def test_cli_triple_flag_combo_argparse_no_torch(self) -> None:
+        """--auto-tune + --mask-aware + --use-qlora must not conflict at argparse level."""
+        with pytest.raises(SystemExit) as se:
+            main_synapse([
+                "lora", "train",
+                "--auto-tune", "--mask-aware", "--use-qlora",
+                "--vram-gb", "24",
+                "--config", '{"category":"style","max_steps":1}',
+                "--output", "/tmp/nonexistent",
+                "--mock-backbone",
+                "--help",
+            ])
+        # --help triggers SystemExit(0); if flags conflicted, argparse would exit(2)
+        assert se.value.code == 0
