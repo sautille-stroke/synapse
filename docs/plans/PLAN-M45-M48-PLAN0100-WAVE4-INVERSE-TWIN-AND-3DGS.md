@@ -159,7 +159,7 @@ flowchart LR
   > 2. 同时定义并打通完整 `.fmesh.bin`（`0x48534D46`）往返编码器与 `remediate` 生产调用路径，待上游 `aether` 落地原生 `quadriflow` 或 `Plan B` 自研四边面重拓扑后零改动激活 `G100-10`（`>= 1500` 顶规整四边面、非流形边 `= 0`）。
 - **精确改动清单**:
   1. 新增 `python/synapse/bridge/aether_geo_worker_client.py`：实现 `.fmesh.bin` 读写序列化、参数 JSON 构造、沙箱化子进程执行 `aether_geo_worker`（固定超时与内存边界、非 `shell=True`）、支持 `--algorithm remediate` 与 `--algorithm quadriflow` 双通道。
-  2. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry.py) 与 [python/synapse/recon/pipeline.py](../../python/synapse/recon/pipeline.py) 新增 `backend="worker"` 生产路由：在 `remediate` 阶段优先调用 `aether_geo_worker --algorithm remediate` 完成流形清洗与补洞；在 `quad_remesh` 生产态调用 `aether_geo_worker --algorithm quadriflow` 并严格按 `NEG-100-08` 在失败时抛 `50`/`10`。
+  2. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 与 [python/synapse/recon/pipeline.py](../../python/synapse/recon/pipeline.py) 新增 `backend="worker"` 生产路由：在 `remediate` 阶段优先调用 `aether_geo_worker --algorithm remediate` 完成流形清洗与补洞；在 `quad_remesh` 生产态调用 `aether_geo_worker --algorithm quadriflow` 并严格按 `NEG-100-08` 在失败时抛 `50`/`10`。
   3. 同步在 `tools/import_dag_guard.py` 校验 `bridge/`（Tier 1）与 `recon/`（Tier 2）单向依赖（`recon -> bridge` 合法，零逆边）。
 - **`ubuntu24` 验收命令**:
   ```bash

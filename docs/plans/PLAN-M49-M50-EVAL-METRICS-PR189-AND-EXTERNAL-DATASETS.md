@@ -28,7 +28,7 @@ stale_after: 2027-11-19T00:00:00Z
 
 ## 1. PR #189 源码复核与评估体系缺口盘点
 
-`synapse#189`（`45b8461`）已率先在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry.py#L1640-L1887) 实现 5 项拓扑/UV 指标并接入 [model_evaluator.py](../../python/synapse/inspect/model_evaluator.py#L387-L438)。经逐行源码复核，检出以下 **5 项待加固缺陷** 及 **6 项设计规约 Backlog**，统一归口本计划 `M49–M50` 彻底闭环：
+`synapse#189`（`45b8461`）已率先在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 实现 5 项拓扑/UV 指标并接入 [model_evaluator.py](../../python/synapse/inspect/model_evaluator.py#L387-L438)。经逐行源码复核，检出以下 **5 项待加固缺陷** 及 **6 项设计规约 Backlog**，统一归口本计划 `M49–M50` 彻底闭环：
 
 | 来源分类 | 实证定位 (`file:line`) | 问题 / 缺口详情 | 承接 PR |
 |---|---|---|:---:|
@@ -82,7 +82,7 @@ flowchart LR
 - **前置依赖**: 无（基于 `45b8461`）
 - **预估体量**: ~420 LOC · **Worktree 分支**: `fix/pr-203-harden-pr189-topo-uv-metrics`
 - **精确改动清单**:
-  1. 修复 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry.py#L1640-L1886)：
+  1. 修复 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py)：
      - `compute_euler_characteristic`：改用实际引用顶点数 `len(np.unique(f))`（或显式过滤未引用孤立顶点）与纯向量化 `np.unique(..., axis=0)` 边去重，避免孤立点污染 $\chi$。
      - `count_non_manifold_edges`：补齐非单伞扇面（bowtie 顶点）统计选项，并在 `../aether/geo` 与 `aether_bridge` 对接原生加速实现与双轨互验测试（`tests/test_geometry_oracle_parity.py`）。
      - `compute_seam_discontinuity_deg`：通过 3D 顶点位置量化焊接（如 $10^{-6}\text{ m}$ 容差）识别共享空间边但在 UV 空间分裂的真实接缝边，并对比接缝两侧相邻三角形/分裂顶点的法线夹角跳跃均值（不再对比边两端点 `norms[u]` 与 `norms[w]`）。
@@ -121,7 +121,7 @@ flowchart LR
 - **前置依赖**: `PR-203`
 - **预估体量**: ~420 LOC · **Worktree 分支**: `feat/pr-205-curvature-roughness-and-patch-lpips`
 - **精确改动清单**:
-  1. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry.py) 实现：
+  1. 在 [python/synapse/recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 实现：
      - `compute_discrete_mean_curvature_variance(vertices, faces) -> float`：基于 Cotangent-weight 拉普拉斯算子计算逐顶点离散平均曲率 $H_i = \frac{1}{2 A_i} \|\sum_{j \in \mathcal{N}(i)} (\cot\alpha_{ij} + \cot\beta_{ij})(v_i - v_j)\|$ 并输出方差（门禁 `<= 0.08`）；
      - `compute_surface_roughness_var(vertices, faces) -> float`：基于 1-ring 邻域曲率局部梯度方差度量微表面高频噪声/阶梯伪影（门禁 `<= 0.08`）。
   2. 在 [python/synapse/inspect/macro.py](../../python/synapse/inspect/macro.py) 实现 `compute_patch_lpips(pred_crop, gt_crop, *, patch_size=512) -> float`（支持自动对齐 512×512 特写局部切片调用 `synapse.metrics.lpips`，门禁 `<= 0.12`）。

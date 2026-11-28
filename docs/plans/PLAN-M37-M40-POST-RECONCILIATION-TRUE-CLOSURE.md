@@ -232,7 +232,7 @@ flowchart LR
 - **预估体量**: ~520 LOC · **Worktree 分支**: `fix/pr-163-mc-weld-xatlas-quad-and-tracking`
 - **精确改动清单**:
   1. 修复 [multiview.py](../../python/synapse/recon/multiview.py) 向 `aether_geo.marching_cubes` 传正确 `(nz, ny, nx)` 轴序、翻转 CCW 外向绕序并执行顶点焊接，同步接入 Visual Hull（解除 `32^3` 上限）；修正相机围绕注视点张角与 `np.roll` 边界泄漏。
-  2. 修复 [recon/geometry.py](../../python/synapse/recon/geometry.py) 接收 xatlas `original_vertex_map` 同步拆点保 UV、补齐 QEM 减面与全网格一致水密细分（消 T-junction）、缓存 ICP KD-Tree 并修复 `N == M` 跳过 ICP 问题。
+  2. 修复 [recon/geometry.py](../../python/synapse/recon/geometry/__init__.py) 接收 xatlas `original_vertex_map` 同步拆点保 UV、补齐 QEM 减面与全网格一致水密细分（消 T-junction）、缓存 ICP KD-Tree 并修复 `N == M` 跳过 ICP 问题。
   3. 修复 [tracking.py](../../python/synapse/recon/tracking.py) 单应/基础矩阵纯旋转判据、相邻帧共享 3D 点尺度恢复、透传 `visibility` 与 `kinematics.py` 峰值滑移门禁。
 - **`ubuntu24` 验收命令**: `pytest tests/test_recon.py tests/test_recon_multiview.py tests/test_geometry_*.py -v`。
 

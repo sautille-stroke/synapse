@@ -36,7 +36,7 @@ stale_after: 2027-11-19T00:00:00Z
 1. **`FGPP v1.0` 跨仓线格式零漂移**：`tools/wire_guard.py --check` 针对 `../aether/fgpp/include/aether/fgpp/fgpp_types.h` 的 15 标量通道、`34 B/px` 布局与 `Cryptomatte.ID` (`UINT32` 逐 bit 保留) 校验 100% 通过。
 2. **重型可选依赖严格零顶层引入**：全仓 32,290 行 `python/synapse` 经 AST 全量扫描，`torch`、`openexr`、`cv2`、`trimesh`、`mitsuba` 顶层导入数为 **0**，且公共函数返回类型注解覆盖率达 **99.15% (`699/705`)**。
 3. **Agent-Native 确定性错误分类体系**：[errors.py](../../../python/synapse/errors.py) 与 [telemetry.py](../../../python/synapse/telemetry.py) 统一实现了 `ExitCode`（`0/10/20/30/40/50`）、`agent_fix_hint` 与 W3C `TraceContext`。
-4. **双轨 Tier-0 自包含几何内核**：`csrc/geometry/`（`@aether//math` `DVec3`）与 Python Oracle [recon/geometry.py](../../../python/synapse/recon/geometry.py) 形成双轨互验，摆脱对外部 `vg-core` 的编译期强绑定。
+4. **双轨 Tier-0 自包含几何内核**：`csrc/geometry/`（`@aether//math` `DVec3`）与 Python Oracle [recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py) 形成双轨互验，摆脱对外部 `vg-core` 的编译期强绑定。
 5. **领域解耦的 Stage Adapter**：通过 `python/synapse/pipeline/stages/` 注册模式，避免下游领域包直接依赖 `synapse.pipeline`。
 
 ### 1.3 全库健康度多维评分卡
