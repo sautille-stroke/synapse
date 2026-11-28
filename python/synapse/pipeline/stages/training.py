@@ -15,6 +15,10 @@ from synapse.pipeline.bundle_worker import (
     BundleManifest,
     register_stage,
 )
+from synapse.training.backbone import (
+    resolve_target_modules,
+    resolve_training_backbone,
+)
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LinearProjectionEncoder,
@@ -177,100 +181,19 @@ def handle_lora_train(
     base_model_path = params.get("base_model")
     use_mock_backbone = bool(params.get("mock_backbone", False))
 
-    if not base_model_path and not use_mock_backbone:
-        from synapse.errors import ExitCode, SynapseError
+    model, backbone_kind = resolve_training_backbone(
+        base_model_path=base_model_path,
+        mock_backbone=use_mock_backbone,
+        model_dim=model_dim,
+    )
+    resolved_targets = resolve_target_modules(
+        model,
+        config.category,
+        explicit_targets=list(target_modules) if target_modules else None,
+    )
 
-        raise SynapseError(
-            "lora_train requires a real base_model path (or explicit mock_backbone=True for testing).",
-            ExitCode.NOT_IMPLEMENTED,
-            agent_fix_hint=(
-                "Provide manifest.params['base_model'] pointing to a pretrained DiT checkpoint, "
-                "or set manifest.params['mock_backbone']=True for synthetic verification."
-            ),
-        )
-
-    class _WhitelistDiT(torch.nn.Module):
-        """Mock Wan DiT backbone with all 4 attention/FFN blocks wired in forward()."""
-
-        def __init__(self, dim: int) -> None:
-            super().__init__()
-            self._dim = dim
-            self.blocks = torch.nn.ModuleList([
-                torch.nn.ModuleDict({
-                    "spatial_attn": torch.nn.ModuleDict({
-                        "to_q": torch.nn.Linear(dim, dim),
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "cross_attn": torch.nn.ModuleDict({
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "temporal_attn": torch.nn.ModuleDict({
-                        "to_q": torch.nn.Linear(dim, dim),
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "ffn": torch.nn.ModuleDict({
-                        "linear": torch.nn.Linear(dim, dim),
-                    }),
-                }),
-            ])
-            self.out = torch.nn.Linear(dim, dim)
-
-        def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
-            orig_shape = x.shape
-            if x.shape[-1] == self._dim:
-                h = x
-                adapted = False
-            else:
-                flat = x.reshape(orig_shape[0], -1)
-                n_feat = flat.shape[1]
-                pad = (self._dim - (n_feat % self._dim)) % self._dim
-                if pad > 0:
-                    flat = torch.nn.functional.pad(flat, (0, pad))
-                h = flat.reshape(orig_shape[0], -1, self._dim)
-                adapted = True
-
-            for block in self.blocks:
-                blk: Any = block
-                sp = (
-                    blk["spatial_attn"]["to_q"](h)
-                    + blk["spatial_attn"]["to_k"](h)
-                    + blk["spatial_attn"]["to_v"](h)
-                ) / 3.0
-                h = h + sp
-                cr = (
-                    blk["cross_attn"]["to_k"](h) + blk["cross_attn"]["to_v"](h)
-                ) / 2.0
-                h = h + cr
-                tm = (
-                    blk["temporal_attn"]["to_q"](h)
-                    + blk["temporal_attn"]["to_k"](h)
-                    + blk["temporal_attn"]["to_v"](h)
-                ) / 3.0
-                h = h + tm
-                h = h + blk["ffn"]["linear"](h)
-            out = self.out(h)
-            if adapted:
-                n_orig = int(np.prod(orig_shape[1:]))
-                return out.reshape(orig_shape[0], -1)[:, :n_orig].reshape(orig_shape)
-            return out
-
-    # Infer target_modules aligned with LoRAManifest regex whitelist + fnmatch
-    if not target_modules:
-        _CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
-            "style": ["blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v", "blocks.*.ffn.*"],
-            "identity": ["blocks.*.spatial_attn.*", "blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v"],
-            "control": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
-            "whitebox": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
-            "motion": ["blocks.*.temporal_attn.*"],
-        }
-        target_modules = _CATEGORY_DEFAULT_TARGETS.get(config.category, ["blocks.*.ffn.*"])
-
-    model = _WhitelistDiT(model_dim)
     trainer = StatelessLoRATrainer(config)
-    trainer.inject_lora(model, target_modules)
+    trainer.inject_lora(model, resolved_targets)
     trainer.freeze_backbone(model)
     trainer.enable_gradient_checkpointing(model)
 
@@ -314,6 +237,8 @@ def handle_lora_train(
         "steps_completed": step,
         "final_loss": final_loss,
         "weights_path": str(weights_path),
+        "backbone_kind": backbone_kind,
+        "mock_backbone": backbone_kind == "mock",
     }
 
 

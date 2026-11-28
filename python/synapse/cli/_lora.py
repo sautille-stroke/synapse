@@ -125,25 +125,19 @@ def _cmd_lora_train(
     # --base-model or explicit --mock-backbone is provided.
     base_model = getattr(args, "base_model", None)
     use_mock_backbone = bool(getattr(args, "mock_backbone", False))
-    if not base_model and not use_mock_backbone:
-        raise SynapseError(
-            "Production LoRA training requires --base-model (or pass --mock-backbone "
-            "explicitly for synthetic verification).",
-            ExitCode.NOT_IMPLEMENTED,
-            agent_fix_hint=(
-                "Pass --base-model <path-to-wan-dit> for real training, or "
-                "--mock-backbone to run the synthetic 4-block DiT training smoke loop."
-            ),
-        )
-    if base_model and not Path(base_model).exists():
-        raise AssetNotFoundError(
-            f"Base model path not found: {base_model}",
-            agent_fix_hint="Provide a valid local checkpoint directory via --base-model.",
-        )
+
+    from synapse.training.backbone import (
+        resolve_target_modules,
+        resolve_training_backbone,
+    )
+
+    model, backbone_kind = resolve_training_backbone(
+        base_model_path=base_model,
+        mock_backbone=use_mock_backbone,
+    )
 
     # Wire to StatelessLoRATrainer
     try:
-        import numpy as np
         import torch
     except ImportError as err:
         from synapse.errors import BackendUnavailableError
@@ -160,91 +154,28 @@ def _cmd_lora_train(
 
     # Read shards if provided
     shards_dir_str = getattr(args, "shards_dir", None)
+    if backbone_kind == "real" and not shards_dir_str:
+        raise AssetNotFoundError(
+            "Real --base-model training requires --shards-dir with pre-encoded training shards.",
+            agent_fix_hint="Run 'synapse lora prepare-data' first and pass --shards-dir <dir>.",
+        )
+    if shards_dir_str and not Path(shards_dir_str).is_dir():
+        raise AssetNotFoundError(
+            f"Shards directory not found: {shards_dir_str}",
+            agent_fix_hint="Provide a valid --shards-dir created by 'synapse lora prepare-data'.",
+        )
+
     output_dir = Path(getattr(args, "output", "output/weights"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     trainer = StatelessLoRATrainer(validated)
 
-    # Build DiT model with all 4 attention/FFN blocks wired into forward()
-    class _WhitelistDiT(torch.nn.Module):
-        """Mock Wan DiT backbone with all 4 attention/FFN blocks wired in forward()."""
-
-        def __init__(self, dim: int = 64) -> None:
-            super().__init__()
-            self._dim = dim
-            self.blocks = torch.nn.ModuleList([
-                torch.nn.ModuleDict({
-                    "spatial_attn": torch.nn.ModuleDict({
-                        "to_q": torch.nn.Linear(dim, dim),
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "cross_attn": torch.nn.ModuleDict({
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "temporal_attn": torch.nn.ModuleDict({
-                        "to_q": torch.nn.Linear(dim, dim),
-                        "to_k": torch.nn.Linear(dim, dim),
-                        "to_v": torch.nn.Linear(dim, dim),
-                    }),
-                    "ffn": torch.nn.ModuleDict({
-                        "linear": torch.nn.Linear(dim, dim),
-                    }),
-                }),
-            ])
-            self.out = torch.nn.Linear(dim, dim)
-
-        def forward(self, x: Any, t: Any = None, **kwargs: Any) -> Any:
-            orig_shape = x.shape
-            if x.shape[-1] == self._dim:
-                h = x
-                adapted = False
-            else:
-                flat = x.reshape(orig_shape[0], -1)
-                n_feat = flat.shape[1]
-                pad = (self._dim - (n_feat % self._dim)) % self._dim
-                if pad > 0:
-                    flat = torch.nn.functional.pad(flat, (0, pad))
-                h = flat.reshape(orig_shape[0], -1, self._dim)
-                adapted = True
-
-            for block in self.blocks:
-                blk: Any = block
-                sp = (
-                    blk["spatial_attn"]["to_q"](h)
-                    + blk["spatial_attn"]["to_k"](h)
-                    + blk["spatial_attn"]["to_v"](h)
-                ) / 3.0
-                h = h + sp
-                cr = (
-                    blk["cross_attn"]["to_k"](h) + blk["cross_attn"]["to_v"](h)
-                ) / 2.0
-                h = h + cr
-                tm = (
-                    blk["temporal_attn"]["to_q"](h)
-                    + blk["temporal_attn"]["to_k"](h)
-                    + blk["temporal_attn"]["to_v"](h)
-                ) / 3.0
-                h = h + tm
-                h = h + blk["ffn"]["linear"](h)
-            out = self.out(h)
-            if adapted:
-                n_orig = int(np.prod(orig_shape[1:]))
-                return out.reshape(orig_shape[0], -1)[:, :n_orig].reshape(orig_shape)
-            return out
-
-    # Align target_modules with LoRAManifest regex whitelist AND fnmatch patterns
-    _CATEGORY_DEFAULT_TARGETS: dict[str, list[str]] = {
-        "style": ["blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v", "blocks.*.ffn.*"],
-        "identity": ["blocks.*.spatial_attn.*", "blocks.*.cross_attn.to_k", "blocks.*.cross_attn.to_v"],
-        "control": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
-        "whitebox": ["blocks.*.spatial_attn.*", "blocks.*.ffn.*"],
-        "motion": ["blocks.*.temporal_attn.*"],
-    }
-
-    model = _WhitelistDiT()
-    target_modules = _CATEGORY_DEFAULT_TARGETS.get(validated.category, ["blocks.*.ffn.*"])
+    explicit_targets = config_dict.get("target_modules")
+    target_modules = resolve_target_modules(
+        model,
+        validated.category,
+        explicit_targets=list(explicit_targets) if isinstance(explicit_targets, list) else None,
+    )
     trainer.inject_lora(model, target_modules)
     trainer.freeze_backbone(model)
 
@@ -288,7 +219,8 @@ def _cmd_lora_train(
         "weights_path": str(weights_path),
         "steps_completed": steps_completed,
         "final_loss": final_loss,
-        "mock_backbone": use_mock_backbone,
+        "backbone_kind": backbone_kind,
+        "mock_backbone": backbone_kind == "mock",
         "config": validated.model_dump(),
     }
 
