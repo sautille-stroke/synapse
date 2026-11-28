@@ -81,11 +81,15 @@ def _coerce_sample_descriptor(idx: int, item: Any) -> FrameBucketSample:
     if isinstance(item, FrameBucketSample):
         return item
     if isinstance(item, dict):
+        raw_frames = item.get("num_frames")
+        if raw_frames is None:
+            raw_frames = item.get("frames", 1)
+        frames_val = 1 if raw_frames is None else int(raw_frames)
         return FrameBucketSample(
             sample_id=str(item.get("sample_id", f"sample_{idx}")),
             height=int(item["height"]),
             width=int(item["width"]),
-            num_frames=int(item.get("num_frames", item.get("frames", 1))),
+            num_frames=frames_val,
             payload=item,
         )
     if isinstance(item, (tuple, list)) and len(item) >= 3:
