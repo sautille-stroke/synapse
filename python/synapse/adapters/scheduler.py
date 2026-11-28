@@ -389,6 +389,13 @@ class ScheduledWindow:
             discontinuity requiring re-anchoring.
         reanchor_requests: List of ``ReanchorRequest`` within the
             window bounds.
+        anchor_first_frame: Optional frame index to use as the
+            First-Last-Frame (FLF2V) anchor at the start of this
+            window.  Set by ``ConditionScheduler.schedule()`` when a
+            discontinuity occurs at the window boundary.
+        anchor_last_frame: Optional frame index to use as the FLF2V
+            anchor at the end of this window (last ground-truth
+            keyframe before the next cut).
     """
 
     window: WindowSlice
@@ -397,6 +404,8 @@ class ScheduledWindow:
     reanchor_requests: list[ReanchorRequest] = field(
         default_factory=list,
     )
+    anchor_first_frame: int | None = None
+    anchor_last_frame: int | None = None
 
 
 # -----------------------------------------------------------------------
@@ -501,12 +510,31 @@ class ConditionScheduler:
             has_discontinuity = any(
                 r.frame_index in detector_flagged_frames for r in window_reanchors
             )
+
+            # FLF2V anchor computation: when a discontinuity occurs
+            # at or near the window boundary, set anchor_first_frame
+            # to the first frame after the cut, and anchor_last_frame
+            # to the last frame before the cut.
+            flf_first: int | None = None
+            flf_last: int | None = None
+            if has_discontinuity and window_reanchors:
+                # Find the earliest discontinuity in this window
+                earliest_cut = min(
+                    (r.frame_index for r in window_reanchors if r.frame_index in detector_flagged_frames),
+                    default=None,
+                )
+                if earliest_cut is not None:
+                    flf_first = earliest_cut
+                    flf_last = max(earliest_cut - 1, w.start)
+
             scheduled.append(
                 ScheduledWindow(
                     window=w,
                     window_index=idx,
                     needs_reanchor=has_discontinuity,
                     reanchor_requests=window_reanchors,
+                    anchor_first_frame=flf_first,
+                    anchor_last_frame=flf_last,
                 )
             )
             if tb_active:
