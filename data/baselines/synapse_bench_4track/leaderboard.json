@@ -1,0 +1,147 @@
+{
+  "overall_winner": "mock_clean",
+  "track_winners": {
+    "track1_3d_assets": "mock_clean",
+    "track2_video_continuity": "mock_clean",
+    "track3_kinematics_mocap": "mock_clean",
+    "track4_inverse_rendering": "mock_clean"
+  },
+  "rows": [
+    {
+      "model_name": "mock_clean",
+      "overall_score": 0.299266,
+      "track_scores": {
+        "track1_3d_assets": {
+          "score": 0.777778,
+          "metrics": {
+            "chamfer_mm": 0.0,
+            "f_score_1mm": 1.0,
+            "is_watertight": 0.333333
+          }
+        },
+        "track2_video_continuity": {
+          "score": 0.0,
+          "metrics": {
+            "temporal_warp_error": 0.08836
+          }
+        },
+        "track3_kinematics_mocap": {
+          "score": 0.354466,
+          "metrics": {
+            "silhouette_iou": 0.354466
+          }
+        },
+        "track4_inverse_rendering": {
+          "score": 0.064819,
+          "metrics": {
+            "border_ring_ciede2000": 13.115849,
+            "light_dir_error_deg": 39.166262
+          }
+        }
+      },
+      "raw_metrics": {
+        "chamfer_mm": 0.0,
+        "f_score_1mm": 1.0,
+        "is_watertight": 0.333333,
+        "flicker_score": 0.06670989692211152,
+        "temporal_warp_error": 0.08835966350070945,
+        "silhouette_iou": 0.35446572891141676,
+        "psnr_db": 20.575717498684618,
+        "ssim": 0.26312135189578983,
+        "ciede2000": 12.375960303303946,
+        "border_ring_ciede2000": 13.115848526983854,
+        "style_color_de": 13.115848526983854,
+        "lpips": 0.10229177521327659,
+        "light_dir_error_deg": 39.166262231909506,
+        "style_color_temp": 6575.731375439161
+      }
+    },
+    {
+      "model_name": "mock_perturbed_baseline",
+      "overall_score": 0.091277,
+      "track_scores": {
+        "track1_3d_assets": {
+          "score": 0.0,
+          "metrics": {
+            "chamfer_mm": 47.511498,
+            "f_score_1mm": 0.0,
+            "is_watertight": 0.0
+          }
+        },
+        "track2_video_continuity": {
+          "score": 0.0,
+          "metrics": {
+            "temporal_warp_error": 0.097637
+          }
+        },
+        "track3_kinematics_mocap": {
+          "score": 0.300287,
+          "metrics": {
+            "silhouette_iou": 0.300287
+          }
+        },
+        "track4_inverse_rendering": {
+          "score": 0.064819,
+          "metrics": {
+            "border_ring_ciede2000": 13.695308,
+            "light_dir_error_deg": 39.166262
+          }
+        }
+      },
+      "raw_metrics": {
+        "chamfer_mm": 47.511498,
+        "f_score_1mm": 0.0,
+        "is_watertight": 0.0,
+        "flicker_score": 0.07043294077739119,
+        "temporal_warp_error": 0.0976367222469913,
+        "silhouette_iou": 0.3002865477224603,
+        "psnr_db": 15.290751934994253,
+        "ssim": 0.11867990694251063,
+        "ciede2000": 14.269694842592873,
+        "border_ring_ciede2000": 13.695307916222978,
+        "style_color_de": 13.695307916222978,
+        "lpips": 0.11323596302346055,
+        "light_dir_error_deg": 39.166262231909506,
+        "style_color_temp": 6406.707049041737
+      }
+    }
+  ],
+  "tracks": {
+    "track1_3d_assets": {
+      "title": "Track 1: Generative 3D Assets & Topology",
+      "metrics": [
+        "chamfer_mm",
+        "f_score_1mm",
+        "uv_stretch",
+        "is_watertight"
+      ]
+    },
+    "track2_video_continuity": {
+      "title": "Track 2: Video Spatio-Temporal Continuity",
+      "metrics": [
+        "fvd",
+        "temporal_warp_error",
+        "foot_sliding_cm"
+      ]
+    },
+    "track3_kinematics_mocap": {
+      "title": "Track 3: Kinematics & Volumetric Rigging",
+      "metrics": [
+        "bone_length_drift_pct",
+        "volume_breathing_pct",
+        "silhouette_iou"
+      ]
+    },
+    "track4_inverse_rendering": {
+      "title": "Track 4: Physical Relighting & Inverse Rendering",
+      "metrics": [
+        "depth_rmse_m",
+        "border_ring_ciede2000",
+        "albedo_delta_e00",
+        "light_dir_error_deg"
+      ]
+    }
+  },
+  "scenario_count": 40,
+  "elapsed_sec": 8.4012
+}
