@@ -54,7 +54,7 @@ mesh = [
     "trimesh>=4.0.0",
 ]
 invrender = [
-    "mitsuba>=3.5.0",
+    "mitsuba>=3.9.1",
     "drjit>=0.4.5",
 ]
 jit = [
