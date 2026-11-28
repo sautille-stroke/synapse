@@ -165,6 +165,10 @@ class SpatialMemory:
         """Number of distinct frames ingested so far."""
         return len(self._ingested_frames)
 
+    def has_frame(self, frame_index: int) -> bool:
+        """Return ``True`` if *frame_index* has already been ingested."""
+        return frame_index in self._ingested_frames
+
     # -- Core: ingest a frame ---------------------------------------------
 
     def ingest_frame(

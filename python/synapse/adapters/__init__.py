@@ -53,6 +53,7 @@ from synapse.adapters.scheduler import (
     compute_latent_flow_operator,
     cross_dissolve_pixels,
     fuse_overlapping_latents,
+    inject_spatial_memory_control,
 )
 from synapse.adapters.spatial_memory import (
     SpatialMemory,
@@ -127,6 +128,7 @@ __all__ = [
     "degrade_fgpp_for_blackbox",
     "depth_to_world_points",
     "fuse_overlapping_latents",
+    "inject_spatial_memory_control",
     "list_adapters",
     "patch_wan_adapter_with_lora",
     "register_adapter",
