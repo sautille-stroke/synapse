@@ -108,7 +108,7 @@ jobs:
       - name: Wire guard (with aether header parity)
         if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse
-        run: python tools/wire_guard.py --check --require-aether
+        run: python tools/wire_guard.py --check --require-aether --require-style
 
       - name: Wire guard (internal + JSON schemas)
         if: steps.checkout-aether.outcome != 'success'
