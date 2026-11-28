@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from synapse.observability import TraceSession
 from synapse.training import (
     CATEGORY_DEFAULT_TARGETS,
     NF4_CODEBOOK,
@@ -182,6 +181,7 @@ class TestTrainerMaskAwareAndQLoRAIntegration:
     def test_qlora_and_mask_aware_training_cycle_and_checkpoint(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         torch = pytest.importorskip("torch")
         model = build_mock_dit_backbone(dim=64)
@@ -218,15 +218,28 @@ class TestTrainerMaskAwareAndQLoRAIntegration:
             "fgpp_cond": fgpp,
         }
 
-        sess = TraceSession(run_name="test-m58-qlora", metrics_dir=tmp_path / "trace")
-        with sess:
-            res = trainer.train_step(model, batch, step=1)
+        logged_scalars: list[tuple[str, float, int | None]] = []
+
+        class _RecordingProbe:
+            active: bool = True
+
+            def set_step(self, step: int) -> None:
+                _ = step
+
+            def log_scalar(
+                self, name: str, value: float, step: int | None = None
+            ) -> None:
+                logged_scalars.append((name, float(value), step))
+
+        monkeypatch.setattr(
+            "synapse.training.trainer.get_probe", lambda: _RecordingProbe()
+        )
+        res = trainer.train_step(model, batch, step=1)
         assert np.isfinite(res["loss"])
 
-        metrics_jsonl = list((tmp_path / "trace").glob("*.jsonl"))
-        assert len(metrics_jsonl) == 1
-        content = metrics_jsonl[0].read_text(encoding="utf-8")
-        assert "train/mask_coverage" in content
+        cov_entries = [v for k, v, _ in logged_scalars if k == "train/mask_coverage"]
+        assert len(cov_entries) == 1
+        assert cov_entries[0] == pytest.approx(0.5, abs=1e-4)
 
         ckpt_path = tmp_path / "resume" / "trainer.pt"
         saved_step_path = trainer.save_state_dict(ckpt_path, module=model)
