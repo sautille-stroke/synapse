@@ -21,8 +21,6 @@ from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.metrics.image_quality import psnr_db
 from synapse.recon.gs_quantizer import (
     GaussianSplatCloud,
-    _pack_smallest_three_quats,
-    _unpack_smallest_three_quats,
     dequantize_3dgs,
     load_s3dgs,
     quantize_3dgs,
@@ -147,6 +145,25 @@ def _compute_preview_psnr(orig: GaussianSplatCloud, decoded: GaussianSplatCloud)
 # ---------------------------------------------------------------------------
 
 
+def _pack_spz_quats_3b(rots_wxyz: np.ndarray) -> np.ndarray:
+    """Pack unit quaternions (WXYZ) into 3 int8 bytes by folding w >= 0."""
+    q = _normalize_quats_wxyz(rots_wxyz)
+    flip = np.where(q[:, 0:1] < 0.0, -1.0, 1.0).astype(np.float32)
+    q_pos = q * flip
+    xyz = np.clip(np.rint(q_pos[:, 1:4] * 127.0), -127.0, 127.0)
+    return np.asarray(xyz, dtype=np.int8)
+
+
+def _unpack_spz_quats_3b(packed: np.ndarray) -> np.ndarray:
+    """Reconstruct normalized WXYZ quaternions from 3 int8 XYZ components."""
+    xyz = packed.astype(np.float32) / 127.0
+    sq = np.sum(xyz * xyz, axis=-1, keepdims=True)
+    over = sq > 1.0
+    xyz = np.where(over, xyz / np.sqrt(np.maximum(sq, 1e-8)), xyz)
+    w = np.sqrt(np.maximum(1.0 - np.sum(xyz * xyz, axis=-1, keepdims=True), 0.0))
+    return _normalize_quats_wxyz(np.concatenate([w, xyz], axis=-1))
+
+
 def encode_spz_payload(cloud: GaussianSplatCloud) -> bytes:
     """Encode a :class:`GaussianSplatCloud` into compact SPZ v2 bytes."""
     n = cloud.num_gaussians
@@ -154,7 +171,7 @@ def encode_spz_payload(cloud: GaussianSplatCloud) -> bytes:
     sh_deg = _infer_sh_degree(k_rest)
 
     q_xyz, xyz_min, xyz_span = _quantize_affine_uint16(cloud.xyz)
-    q_rots = _pack_smallest_three_quats(_normalize_quats_wxyz(cloud.rotations))
+    q_rots = _pack_spz_quats_3b(cloud.rotations)
     q_sh_dc, dc_min, dc_span = _quantize_affine_uint8(cloud.sh_dc)
     q_scales, sc_min, sc_span = _quantize_affine_uint8(cloud.scales)
     q_opac, op_min, op_span = _quantize_affine_uint8(cloud.opacities)
@@ -186,7 +203,7 @@ def encode_spz_payload(cloud: GaussianSplatCloud) -> bytes:
         [
             bounds_bytes,
             np.ascontiguousarray(q_xyz).tobytes(),
-            np.ascontiguousarray(q_rots.astype("<u4")).tobytes(),
+            np.ascontiguousarray(q_rots).tobytes(),
             np.ascontiguousarray(q_sh_dc).tobytes(),
             np.ascontiguousarray(q_scales).tobytes(),
             np.ascontiguousarray(q_opac).tobytes(),
@@ -229,7 +246,7 @@ def decode_spz_payload(payload: bytes) -> GaussianSplatCloud:
 
     offset = bounds_size
     n_xyz = n * 3 * 2
-    n_rot = n * 4
+    n_rot = n * 3
     n_dc = n * 3
     n_sc = n * 3
     n_op = n
@@ -244,7 +261,7 @@ def decode_spz_payload(payload: bytes) -> GaussianSplatCloud:
 
     q_xyz = np.frombuffer(raw_body, dtype="<u2", count=n * 3, offset=offset).reshape(n, 3)
     offset += n_xyz
-    q_rots = np.frombuffer(raw_body, dtype="<u4", count=n, offset=offset)
+    q_rots = np.frombuffer(raw_body, dtype=np.int8, count=n * 3, offset=offset).reshape(n, 3)
     offset += n_rot
     q_dc = np.frombuffer(raw_body, dtype=np.uint8, count=n * 3, offset=offset).reshape(n, 3)
     offset += n_dc
@@ -265,7 +282,7 @@ def decode_spz_payload(payload: bytes) -> GaussianSplatCloud:
         sh_dc=_dequantize_affine_uint8(q_dc, dc_min, dc_span).astype(np.float32),
         sh_rest=sh_rest,
         scales=_dequantize_affine_uint8(q_sc, sc_min, sc_span).astype(np.float32),
-        rotations=_unpack_smallest_three_quats(q_rots),
+        rotations=_unpack_spz_quats_3b(q_rots),
         opacities=_dequantize_affine_uint8(q_op, op_min, op_span).astype(np.float32),
     )
 
