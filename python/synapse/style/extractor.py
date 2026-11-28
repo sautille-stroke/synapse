@@ -13,22 +13,15 @@ from __future__ import annotations
 import numpy as np
 
 from synapse.fgpp.frame import FGPPSequence
-from synapse.style.aces_color import linear_srgb_to_acescg, srgb_to_linear
+from synapse.style.aces_color import _M_SRGB_TO_XYZ, linear_srgb_to_acescg, srgb_to_linear
 from synapse.style.descriptor import StyleDescriptor
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-# sRGB → XYZ matrix (Rec. 709 primaries, D65) for chromaticity estimation
-_M_LINEAR_TO_XYZ: np.ndarray = np.array(
-    [
-        [0.4124564, 0.3575761, 0.1804375],
-        [0.2126729, 0.7151522, 0.0721750],
-        [0.0193339, 0.1191920, 0.9503041],
-    ],
-    dtype=np.float64,
-)
+# sRGB → XYZ matrix (Rec. 709 primaries, D65) — canonical SSOT in aces_color.
+_M_LINEAR_TO_XYZ: np.ndarray = _M_SRGB_TO_XYZ
 
 
 def _estimate_cct_mccamy(rgb_linear: np.ndarray) -> float:

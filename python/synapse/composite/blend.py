@@ -37,6 +37,7 @@ from synapse.render_core.pyramid import (
 )
 from synapse.style.aces_color import (
     acescg_to_linear_srgb,
+    cielab_to_srgb,
     linear_srgb_to_acescg,
     linear_to_srgb,
     rgb_to_cielab,
@@ -281,8 +282,8 @@ def border_ring_lab_match(
         # Full affine: x' = (x - inner_mean) * scale + outer_mean
         result_lab[inner_band, ch] = (inner_lab[:, ch] - inner_mean) * scale + outer_mean
 
-    # Convert back: LAB → linear → sRGB.
-    result_srgb = _lab_to_srgb_float(result_lab)
+    # Convert back: LAB → linear → sRGB (delegate to canonical aces_color path).
+    result_srgb = cielab_to_srgb(result_lab)
 
     # Merge: apply full LAB correction across the outer 75% of inner_band and
     # smoothstep-feather across the innermost 25% into the untouched core so
@@ -322,46 +323,10 @@ def border_ring_lab_match(
 def _lab_to_srgb_float(lab: np.ndarray) -> np.ndarray:
     """Convert CIE L*a*b* back to sRGB [0, 1].
 
-    Inverse of ``rgb_to_cielab(srgb_to_linear(x))``.
+    .. deprecated:: Use :func:`synapse.style.aces_color.cielab_to_srgb` instead.
+       This wrapper is retained only for backward compatibility.
     """
-    L = lab[..., 0]
-    a = lab[..., 1]
-    b = lab[..., 2]
-
-    # D65 white point
-    Xn, Yn, Zn = 0.95047, 1.00000, 1.08883
-
-    fy = (L + 16.0) / 116.0
-    fx = a / 500.0 + fy
-    fz = fy - b / 200.0
-
-    delta = 6.0 / 29.0
-
-    x = np.where(fx > delta, fx**3, 3.0 * delta**2 * (fx - 4.0 / 29.0))
-    y = np.where(fy > delta, fy**3, 3.0 * delta**2 * (fy - 4.0 / 29.0))
-    z = np.where(fz > delta, fz**3, 3.0 * delta**2 * (fz - 4.0 / 29.0))
-
-    x *= Xn
-    y *= Yn
-    z *= Zn
-
-    xyz = np.stack([x, y, z], axis=-1)
-
-    # XYZ → linear sRGB  (inverse of _M_SRGB_TO_XYZ)
-    M_XYZ_TO_SRGB = np.array(
-        [
-            [3.2404542, -1.5371385, -0.4985314],
-            [-0.9692660, 1.8760108, 0.0415560],
-            [0.0556434, -0.2040259, 1.0572252],
-        ],
-        dtype=np.float64,
-    )
-
-    linear_rgb = xyz @ M_XYZ_TO_SRGB.T
-    linear_rgb = np.clip(linear_rgb, 0.0, None)
-
-    srgb = linear_to_srgb(linear_rgb)
-    return np.asarray(np.clip(srgb, 0.0, 1.0))
+    return cielab_to_srgb(lab)
 
 
 # ---------------------------------------------------------------------------

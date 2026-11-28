@@ -393,3 +393,36 @@ def native_compute_ciede2000(pred: np.ndarray, gt: np.ndarray) -> float | None:
         return float(mod.compute_ciede2000(p, g))
     except Exception:
         return None
+
+
+def native_compute_chamfer(
+    points_a: np.ndarray,
+    points_b: np.ndarray,
+    reduction: str = "mean",
+) -> float | None:
+    """Compute Chamfer distance via aether_metrics.compute_chamfer_distance if available.
+
+    Returns distance in millimetres (consistent with synapse convention), or None
+    when the native extension is not installed.
+
+    ``aether_metrics.ChamferResult`` additionally provides ``hausdorff_mm`` and
+    ``normal_angle_rmse_deg`` but only the scalar Chamfer distance is returned here.
+    """
+    mod = get_aether_metrics()
+    if mod is None:
+        return None
+
+    a = np.asarray(points_a, dtype=np.float64)
+    b = np.asarray(points_b, dtype=np.float64)
+
+    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != 3 or b.shape[1] != 3:
+        return None
+
+    try:
+        result = mod.compute_chamfer_distance(a, b, reduction=reduction)
+        # Result may be a scalar or a ChamferResult dict with 'chamfer_mm' key.
+        if isinstance(result, dict):
+            return float(result.get("chamfer_mm", result.get("chamfer", 0.0)))
+        return float(result)
+    except Exception:
+        return None

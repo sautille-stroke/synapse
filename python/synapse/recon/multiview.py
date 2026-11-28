@@ -885,7 +885,34 @@ class MultiViewInitializer:
             + np.array([0.5, 0.5, 0.5]) * effective_voxel
         )
 
-        verts, faces = _marching_cubes(sdf, effective_voxel, mc_origin, isovalue=0.0)
+        # Prefer C++20 marching cubes from aether_geo if available
+        try:
+            from synapse.bridge.aether_bridge import get_aether_geo
+
+            _cg_hull = get_aether_geo()
+            if _cg_hull is not None and hasattr(_cg_hull, "marching_cubes"):
+                # C++ marching_cubes expects Z-major layout (nz, ny, nx).
+                sdf_zyx = np.ascontiguousarray(np.transpose(sdf, (2, 1, 0)))
+                mc_result = _cg_hull.marching_cubes(
+                    sdf_zyx, 0.0, effective_voxel, mc_origin.tolist(),
+                )
+                if isinstance(mc_result, dict):
+                    verts = np.asarray(mc_result["vertices"], dtype=np.float32)
+                    faces = np.asarray(mc_result["faces"], dtype=np.int32)
+                else:
+                    verts, faces = mc_result
+                    verts = np.asarray(verts, dtype=np.float32)
+                    faces = np.asarray(faces, dtype=np.int32)
+                # Flip winding CW → CCW and weld duplicate vertices
+                if verts.ndim == 2 and verts.shape[1] == 3 and len(faces) > 0:
+                    if faces.ndim == 2 and faces.shape[1] == 3:
+                        faces = faces[:, [0, 2, 1]]
+                    if len(verts) > 0:
+                        verts, faces = _weld_vertices(verts, faces, epsilon=effective_voxel * 1e-4)
+            else:
+                verts, faces = _marching_cubes(sdf, effective_voxel, mc_origin, isovalue=0.0)
+        except (AttributeError, Exception):
+            verts, faces = _marching_cubes(sdf, effective_voxel, mc_origin, isovalue=0.0)
 
         if verts.size == 0 or faces.size == 0:
             raise ContractValidationError(
