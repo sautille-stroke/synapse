@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -33,7 +34,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -316,8 +319,14 @@ class BundleManifest(BaseModel):
         if isinstance(scene_spec_raw, dict):
             try:
                 scene_spec = SceneSpec.model_validate(scene_spec_raw)
-            except Exception:
-                scene_spec = None
+            except ValidationError as exc:
+                raise ContractValidationError(
+                    f"Invalid scene_spec in RFC 0039 JobBundle: {exc}",
+                    agent_fix_hint=(
+                        "Fix scene_spec field types (resolution, frame_range, "
+                        "crop_window, target_crypto_ids)."
+                    ),
+                ) from exc
 
             for k, v in scene_spec_raw.items():
                 if isinstance(v, str):
@@ -360,8 +369,13 @@ class BundleManifest(BaseModel):
         if isinstance(output_sink_raw, dict):
             try:
                 output_sink = OutputSink.model_validate(output_sink_raw)
-            except Exception:
-                output_sink = None
+            except ValidationError as exc:
+                raise ContractValidationError(
+                    f"Invalid output_sink in RFC 0039 JobBundle: {exc}",
+                    agent_fix_hint=(
+                        "Fix output_sink field types (format, channels, write_capability)."
+                    ),
+                ) from exc
 
             # Only extract values that look like file paths, not format
             # strings like "mp4" or channel lists
@@ -400,8 +414,8 @@ class BundleManifest(BaseModel):
                     params.setdefault("engine_version", engine_spec.version)
                 if engine_spec.mode:
                     params.setdefault("engine_mode", engine_spec.mode)
-            except Exception:
-                pass  # Non-critical: best-effort engine metadata
+            except ValidationError as exc:
+                logger.warning("Ignoring malformed optional EngineSpec metadata: %s", exc)
 
         # Parse HardwareBudget if present
         hw_budget_raw = raw.get("hardware_budget", {}) or {}
@@ -409,8 +423,11 @@ class BundleManifest(BaseModel):
         if isinstance(hw_budget_raw, dict) and hw_budget_raw:
             try:
                 hardware_budget = HardwareBudget.model_validate(hw_budget_raw)
-            except Exception:
-                pass  # Fall back to defaults
+            except ValidationError as exc:
+                logger.warning(
+                    "Invalid optional HardwareBudget (%s); falling back to defaults.",
+                    exc,
+                )
 
         # Extract traceparent from raw, payload or env
         traceparent = (

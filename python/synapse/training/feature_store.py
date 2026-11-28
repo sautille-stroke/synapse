@@ -785,9 +785,18 @@ def iter_feature_shards(
                 if "latent.npy" in parts and "prompt.npy" in parts and "meta.json" in parts:
                     try:
                         meta_obj = json.loads(parts["meta.json"].decode("utf-8"))
-                        needs_fgpp = "fgpp_cond_shape" in meta_obj
-                    except Exception:
-                        needs_fgpp = False
+                    except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+                        raise ContractValidationError(
+                            f"Corrupt meta.json in shard for sample '{matched_sid}': {exc}",
+                            agent_fix_hint="Re-encode feature shards with valid UTF-8 JSON meta.json.",
+                        ) from exc
+                    if not isinstance(meta_obj, dict):
+                        raise ContractValidationError(
+                            f"Expected JSON object in meta.json for sample '{matched_sid}', "
+                            f"got {type(meta_obj).__name__}.",
+                            agent_fix_hint="Ensure meta.json encodes a JSON dictionary.",
+                        )
+                    needs_fgpp = "fgpp_cond_shape" in meta_obj
                     if not needs_fgpp or "fgpp_cond.npy" in parts:
                         completed_parts = pending.pop(matched_sid)
                         sample = _assemble_sample(matched_sid, completed_parts)

@@ -10,12 +10,15 @@ they are discoverable by the ``JobBundleWorker``.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from synapse.pipeline.bundle_worker import BundleManifest, register_stage
+
+logger = logging.getLogger(__name__)
 
 
 @register_stage("video_to_3d_invert")
@@ -54,10 +57,11 @@ def handle_video_to_3d_invert(
                 try:
                     frame = import_fgpp(exr_file)
                     fgpp_conditioning[exr_file.stem] = frame
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Skipping unreadable FGPP EXR '%s': %s", exr_file, exc)
                     continue
-        except ImportError:
-            pass
+        except ImportError as exc:
+            logger.debug("FGPP EXR import skipped (OpenEXR unavailable): %s", exc)
 
     # Load skeleton template — Redline #3 fail-closed
     skeleton_template = None
