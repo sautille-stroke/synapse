@@ -29,6 +29,7 @@ class UsdPackageSpec:
     fps: float = 30.0
     roughness_default: float = 0.45
     metallic_default: float = 0.0
+    opacity_default: float = 1.0
 
 
 @dataclass
@@ -178,6 +179,7 @@ def build_rfc0058_usda(
             '                custom token config:openpbrVersion = "1.0"',
             f"                float inputs:roughness = {cfg.roughness_default:.4f}",
             f"                float inputs:metallic = {cfg.metallic_default:.4f}",
+            f"                float inputs:opacity = {cfg.opacity_default:.4f}",
         ]
     )
     if "albedo" in rel_textures:
@@ -192,6 +194,11 @@ def build_rfc0058_usda(
             f'                normal3f inputs:normal.connect = '
             f'</{safe_name}/Looks/OpenPBRMaterial/NormalTexture.outputs:rgb>'
         )
+    if "opacity" in rel_textures:
+        lines.append(
+            f'                float inputs:opacity.connect = '
+            f'</{safe_name}/Looks/OpenPBRMaterial/OpacityTexture.outputs:r>'
+        )
     lines.extend(
         [
             "                token outputs:surface",
@@ -204,6 +211,7 @@ def build_rfc0058_usda(
         ("normal", "NormalTexture"),
         ("roughness", "RoughnessTexture"),
         ("metallic", "MetallicTexture"),
+        ("opacity", "OpacityTexture"),
     ):
         if role in rel_textures:
             lines.extend(
