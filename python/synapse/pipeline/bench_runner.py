@@ -1267,8 +1267,7 @@ def _compute_metrics(
                     gt_ld = np.asarray(gt_style.key_light_dir_world, dtype=np.float64)
             except Exception as exc:
                 logger.warning(
-                    "GT light direction extraction failed for scenario '%s': %s",
-                    scenario.id,
+                    "GT light direction extraction failed: %s",
                     exc,
                 )
 
