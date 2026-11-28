@@ -248,6 +248,7 @@ class TestTrainerMaskAwareAndQLoRAIntegration:
 
         trainer2 = StatelessLoRATrainer(cfg)
         model2 = build_mock_dit_backbone(dim=64)
+        trainer2.freeze_backbone(model2)
         trainer2.inject_lora(model2, targets)
         restored_step = trainer2.load_state_dict(saved_step_path, model2)
         assert restored_step == 1
