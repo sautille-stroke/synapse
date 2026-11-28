@@ -113,6 +113,22 @@ def _cmd_lora_train(
             ),
         )
 
+    if bool(getattr(args, "auto_tune", False)):
+        from synapse.training.bucketing import auto_tune_lora_config
+
+        rec = auto_tune_lora_config(
+            config_dict["category"],
+            vram_gb=getattr(args, "vram_gb", None),
+        )
+        tuned = rec.to_config_dict()
+        for key, val in tuned.items():
+            config_dict.setdefault(key, val)
+    if bool(getattr(args, "mask_aware", False)):
+        config_dict["mask_aware"] = True
+    if bool(getattr(args, "use_qlora", False)):
+        config_dict["use_qlora"] = True
+        config_dict.setdefault("quantization_bits", 4)
+
     try:
         validated = LoRATrainConfig(**config_dict)
     except Exception as exc:
@@ -493,6 +509,30 @@ def register_lora_subparser(
         action="store_true",
         default=False,
         help="Explicitly allow synthetic 4-block mock DiT backbone for testing",
+    )
+    lora_train.add_argument(
+        "--auto-tune",
+        action="store_true",
+        default=False,
+        help="Auto-tune LoRA rank (32-64), LR schedule, and QLoRA from VRAM budget",
+    )
+    lora_train.add_argument(
+        "--vram-gb",
+        type=float,
+        default=None,
+        help="Override GPU VRAM budget in GiB for --auto-tune decisions",
+    )
+    lora_train.add_argument(
+        "--mask-aware",
+        action="store_true",
+        default=False,
+        help="Enable foreground mask-aware flow-matching loss weighting",
+    )
+    lora_train.add_argument(
+        "--use-qlora",
+        action="store_true",
+        default=False,
+        help="Enable 4-bit NF4 QLoRA frozen base weight quantization",
     )
 
     lora_eval = lora_sub.add_parser(

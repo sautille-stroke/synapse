@@ -17,6 +17,16 @@ from synapse.training.backbone import (
     resolve_target_modules,
     resolve_training_backbone,
 )
+from synapse.training.bucketing import (
+    AutoTuneRecommendation,
+    FrameBucketBatch,
+    FrameBucketKey,
+    FrameBucketSample,
+    FrameBucketSampler,
+    auto_tune_lora_config,
+    detect_cuda_vram_gb,
+    snap_to_frame_bucket,
+)
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LatentEncoderProtocol,
@@ -84,6 +94,14 @@ __all__ = [
     "create_qlora_linear",
     "LoRATrainConfig",
     "StatelessLoRATrainer",
+    "AutoTuneRecommendation",
+    "FrameBucketBatch",
+    "FrameBucketKey",
+    "FrameBucketSample",
+    "FrameBucketSampler",
+    "auto_tune_lora_config",
+    "detect_cuda_vram_gb",
+    "snap_to_frame_bucket",
     "LoRAGateThresholds",
     "LoRAEvaluationReport",
     "package_and_gate_lora_bundle",
