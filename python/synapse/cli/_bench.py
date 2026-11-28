@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from synapse.cli.common import (
     Any,
     AssetNotFoundError,
@@ -10,6 +12,8 @@ from synapse.cli.common import (
     _run_with_json_mode,
     argparse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _cmd_bench_list(args: argparse.Namespace) -> dict[str, Any]:
@@ -109,8 +113,13 @@ def _cmd_bench_run(args: argparse.Namespace) -> dict[str, Any]:
                 sc = load_scenario(r.scenario_name)
                 if hasattr(sc, "asset") and hasattr(sc.asset, "id"):
                     source_model = AssetRegistry().resolve(sc.asset.id)
-            except Exception:
-                pass
+            except (AssetNotFoundError, KeyError, OSError, ValueError) as exc:
+                logger.warning(
+                    "Could not resolve source model for scenario '%s' (%s); "
+                    "falling back to 'cube'.",
+                    r.scenario_name,
+                    exc,
+                )
             if source_model is None or not source_model.is_file():
                 from synapse.bench.registry import AssetRegistry
 

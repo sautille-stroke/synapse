@@ -12,12 +12,15 @@ RFC 0044 Appendix E:
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
 
 from synapse.errors import QualityGateError
 from synapse.inspect.schemas import CameraPose
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # Fibonacci sphere camera generation
@@ -173,8 +176,13 @@ def compute_silhouette(
         mask_u8 = np.zeros((H, W), dtype=np.uint8)
         cv2.fillPoly(mask_u8, list(tri_pts), 1)
         return mask_u8.astype(bool)
-    except (ImportError, Exception):
+    except ImportError:
         pass
+    except Exception as exc:
+        logger.warning(
+            "cv2.fillPoly rasterization failed (%s); falling back to software Z-buffer.",
+            exc,
+        )
 
     depth_buf = np.full((H, W), np.inf, dtype=np.float64)
     mask = np.zeros((H, W), dtype=bool)

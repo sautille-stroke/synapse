@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from synapse.errors import AssetNotFoundError
 from synapse.observability import get_probe, traceboard_stage
 
 logger = logging.getLogger(__name__)
@@ -283,7 +284,12 @@ class BenchPipelineRunner:
             try:
                 ap = registry.resolve(asset_obj)
                 return load_mesh(str(ap), normalize=True)
-            except Exception:
+            except (AssetNotFoundError, KeyError, OSError, ValueError) as exc:
+                logger.debug(
+                    "AssetRegistry miss for '%s' (%s); loading directly as mesh path.",
+                    asset_obj,
+                    exc,
+                )
                 return load_mesh(asset_obj, normalize=True)
 
         mesh = _load_asset_mesh(scenario.asset)
@@ -1259,8 +1265,12 @@ def _compute_metrics(
                     gt_srgb_arr = np.stack(gt_srgb_frames_for_style, axis=0)
                     gt_style = extract_style_fgpp_intrinsic(gt_srgb_arr, fgpp_seq_for_style)
                     gt_ld = np.asarray(gt_style.key_light_dir_world, dtype=np.float64)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "GT light direction extraction failed for scenario '%s': %s",
+                    scenario.id,
+                    exc,
+                )
 
         if gt_ld is not None:
             # Extract predicted light direction from generated video frames;
@@ -1386,7 +1396,8 @@ def _try_load_exr_sequence(fgpp_dir: Path, channel_prefix: str) -> np.ndarray | 
         try:
             data = np.load(str(npy_path))
             frames.append(np.asarray(data))
-        except Exception:
+        except (OSError, ValueError) as exc:
+            logger.warning("Skipping unreadable FGPP frame '%s': %s", npy_path, exc)
             continue
 
     if frames:

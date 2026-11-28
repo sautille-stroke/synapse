@@ -423,7 +423,19 @@ class LocalRefinementPipeline:
                                         patch = np.asarray(outs["refined_patch"], dtype=np.float32)
                                         if patch.shape == roi_smoothed.crop_acescg.shape:
                                             remote_cands.append(patch)
-                                except Exception:
+                                except CircuitBreakerError:
+                                    raise
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Foundary '%s' refinement candidate failed "
+                                        "(region=%s, frame=%d): %s",
+                                        svc,
+                                        roi.region.name,
+                                        t,
+                                        exc,
+                                    )
+                                    if self.strict:
+                                        raise
                                     continue
                             if len(remote_cands) >= 2:
                                 cands = remote_cands

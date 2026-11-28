@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Literal, cast
 
@@ -19,6 +20,8 @@ from synapse.cli.common import (
     json,
     sys,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _cmd_recon_invert_video(
@@ -107,7 +110,11 @@ def _cmd_recon_invert_video(
                     output_dir=str(output_dir / "textures"),
                 )
                 output_info["pbr_textures_dir"] = str(output_dir / "textures")
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "PBR texture extraction failed (%s); falling back to raw albedo.npy.",
+                    exc,
+                )
                 # Fallback: save raw albedo npy
                 np.save(str(output_dir / "albedo.npy"), result.delight.albedo)
                 output_info["albedo_npy"] = str(output_dir / "albedo.npy")
@@ -196,7 +203,8 @@ def _load_fgpp_exr_dir(fgpp_dir: Path) -> dict[str, Any]:
         try:
             frame = import_fgpp(exr_file)
             result[exr_file.stem] = frame
-        except Exception:
+        except Exception as exc:
+            logger.warning("Skipping unreadable FGPP EXR '%s': %s", exr_file, exc)
             continue
     return result
 
