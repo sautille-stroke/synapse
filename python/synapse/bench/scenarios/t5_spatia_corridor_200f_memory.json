@@ -1,0 +1,52 @@
+{
+  "id": "t5_spatia_corridor_200f_memory",
+  "tier": "T5",
+  "description": "200-frame long-corridor dolly walkthrough testing Spatia persistent 3D point-cloud memory & re-projection consistency.",
+  "tags": [
+    "horizon14",
+    "spatia",
+    "spatial_memory",
+    "200-frame",
+    "e2e"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "dolly",
+  "camera_params": {
+    "start_distance": 7.0,
+    "end_distance": 1.8,
+    "elevation_deg": 8.0,
+    "azimuth_deg": 10.0,
+    "num_frames": 200,
+    "fps": 24
+  },
+  "conditions": {
+    "spatial_memory": true,
+    "scene_type": "multi_object",
+    "objects": [
+      "cube",
+      "sphere",
+      "cylinder"
+    ]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 23.0,
+    "ssim": 0.82,
+    "temporal_warp_error": 0.06,
+    "flicker_score": 0.04
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}

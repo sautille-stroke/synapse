@@ -1,0 +1,43 @@
+{
+  "id": "t3_sam2_vos_zero_cryptomatte",
+  "tier": "T3",
+  "description": "SAM 2.1 VOS instance mask tracking without Cryptomatte IDs driving MultiLoRAManager spatial gating.",
+  "tags": [
+    "horizon14",
+    "sam2",
+    "vos",
+    "lora_gating"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "pan",
+  "camera_params": {
+    "distance": 4.0,
+    "elevation_deg": 12.0,
+    "azimuth_start_deg": -35.0,
+    "azimuth_end_deg": 35.0,
+    "num_frames": 49,
+    "fps": 24
+  },
+  "conditions": {
+    "sam2_vos": true,
+    "cryptomatte_available": false
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.5,
+    "psnr_db": 24.0,
+    "ssim": 0.83,
+    "flicker_score": 0.04
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

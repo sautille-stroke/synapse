@@ -1,0 +1,44 @@
+{
+  "id": "t4_diffrenderer_dual_track_split",
+  "tier": "T4",
+  "description": "Dual-track neural DiffusionRenderer vs classical inverse rendering agreement under high-contrast split lighting.",
+  "tags": [
+    "horizon14",
+    "diffusion_renderer",
+    "dual_track",
+    "inverse_rendering"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cylinder",
+    "license": "MIT"
+  },
+  "camera_type": "fixed",
+  "camera_params": {
+    "distance": 3.5,
+    "elevation_deg": 15.0,
+    "azimuth_deg": 25.0,
+    "num_frames": 49,
+    "fps": 24
+  },
+  "conditions": {
+    "style": "high_contrast_split",
+    "inverse_backend": "dual_track",
+    "key_fill_ratio": 8.0
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.0,
+    "psnr_db": 23.5,
+    "ssim": 0.83,
+    "style_color_de": 9.5
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

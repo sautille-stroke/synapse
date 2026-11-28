@@ -18,9 +18,9 @@ class TestBenchFullSuite:
     """Validate that every built-in scenario executes cleanly end-to-end."""
 
     def test_scenario_count(self) -> None:
-        """Suite must contain at least 16 scenarios (30 total in standard suite)."""
-        assert len(_SCENARIO_NAMES) >= 16, (
-            f"Expected at least 16 scenarios, found {len(_SCENARIO_NAMES)}"
+        """Suite must contain at least 50 scenarios (Horizon 14 target)."""
+        assert len(_SCENARIO_NAMES) >= 50, (
+            f"Expected at least 50 scenarios, found {len(_SCENARIO_NAMES)}"
         )
 
     @pytest.mark.parametrize("scenario_name", _SCENARIO_NAMES)

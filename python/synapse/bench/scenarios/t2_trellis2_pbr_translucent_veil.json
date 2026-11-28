@@ -1,0 +1,40 @@
+{
+  "id": "t2_trellis2_pbr_translucent_veil",
+  "tier": "T2",
+  "description": "TRELLIS.2 PBR + metallic/roughness/opacity double-sided thin geometry verification along elevation arc.",
+  "tags": [
+    "horizon14",
+    "trellis2",
+    "open_surface",
+    "pbr_opacity"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "torus",
+    "license": "MIT"
+  },
+  "camera_type": "arc",
+  "camera_params": {
+    "radius": 3.0,
+    "azimuth_deg": 0.0,
+    "elevation_start_deg": -5.0,
+    "elevation_end_deg": 65.0,
+    "num_frames": 49
+  },
+  "conditions": {
+    "topology_policy": "open_surface_allowed",
+    "pbr_metallic_roughness": true
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 5.0,
+    "psnr_db": 24.5,
+    "ssim": 0.85
+  },
+  "validates_stages": [
+    2,
+    3
+  ],
+  "temporal_mode": "continuous_clip"
+}
