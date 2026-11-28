@@ -62,7 +62,7 @@ jit = [
 ]
 train = [
     "safetensors>=0.4.0",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.4",
     "webdataset>=0.2.86",
 ]
 traceboard = [
