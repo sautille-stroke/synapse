@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Bazel (when aether is available)
         if: steps.checkout-aether.outcome == 'success'
-        uses: bazel-contrib/setup-bazel@0.14.0
+        uses: bazel-contrib/setup-bazel@0.19.2
         with:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}-pyfast
@@ -218,7 +218,7 @@ jobs:
 
       - name: Install Bazel (when aether is available)
         if: steps.checkout-aether.outcome == 'success'
-        uses: bazel-contrib/setup-bazel@0.14.0
+        uses: bazel-contrib/setup-bazel@0.19.2
         with:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}-pyslow
@@ -283,7 +283,7 @@ jobs:
 
       - name: Install Bazel
         if: steps.checkout-aether.outcome == 'success'
-        uses: bazel-contrib/setup-bazel@0.14.0
+        uses: bazel-contrib/setup-bazel@0.19.2
         with:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
@@ -321,7 +321,7 @@ jobs:
 
       - name: Install Bazel
         if: steps.checkout-aether.outcome == 'success'
-        uses: bazel-contrib/setup-bazel@0.14.0
+        uses: bazel-contrib/setup-bazel@0.19.2
         with:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
