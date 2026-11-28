@@ -154,7 +154,17 @@ def check_ruff_ssot_parity(
         errors.append(
             f"line-length drift: local={local_cfg['line_length']} vs ssot={ssot_cfg['line_length']}"
         )
-    missing_rules = [r for r in ssot_cfg["select"] if r not in local_cfg["select"]]
+    def _is_rule_covered(rule: str, selected: list[str]) -> bool:
+        for sel in selected:
+            if rule == sel:
+                return True
+            if sel.isalpha() and rule.startswith(sel) and rule[len(sel) :].isdigit():
+                return True
+        return False
+
+    missing_rules = [
+        r for r in ssot_cfg["select"] if not _is_rule_covered(r, local_cfg["select"])
+    ]
     if missing_rules:
         errors.append(f"Missing SSOT lint.select rule(s) in pyproject.toml: {missing_rules}")
 

@@ -323,7 +323,8 @@ class DiffusersWanBackend(WanBackendTransport):
         with torch.no_grad():
             projected_ctrl = stem(control_tensor) * self._control_scale  # [1, hidden_dim, tau, H', W']
 
-        def _hook(module: Any, input: Any, output: Any) -> Any:
+        def _hook(module: Any, inputs: Any, output: Any) -> Any:
+            _ = (module, inputs)
             # Adapt projected control spatially & batch-wise (CFG B=2 broadcast)
             nonlocal projected_ctrl
             if isinstance(output, tuple):

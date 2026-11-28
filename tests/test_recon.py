@@ -522,7 +522,7 @@ class TestReconTrackingAndTrajectory:
         tracks, vis = solve_point_tracks(frames, num_points=64)
         assert tracks.shape == (10, 64, 2)
         assert vis.shape == (10, 64)
-        assert (vis == True).all()
+        assert vis.all()
 
     def test_solve_camera_trajectory(self) -> None:
         """Camera trajectory solver outputs valid 6-DoF extrinsics."""

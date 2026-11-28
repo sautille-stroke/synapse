@@ -89,7 +89,7 @@ class EdgePreservingLoss:
             Scalar torch.Tensor loss (retains grad).
         """
         import torch
-        import torch.nn.functional as F
+        import torch.nn.functional as torch_f
 
         z = torch.as_tensor(z_pred, dtype=torch.float32)
         d = torch.as_tensor(depth_latent, dtype=torch.float32)
@@ -112,14 +112,14 @@ class EdgePreservingLoss:
         else:
             raise ValueError(f"Unsupported tensor ndim {z.ndim} for EdgePreservingLoss")
 
-        grad_z = self._sobel_magnitude_batch(z_batch, F)
-        grad_d = self._sobel_magnitude_batch(d_batch, F)
+        grad_z = self._sobel_magnitude_batch(z_batch, torch_f)
+        grad_d = self._sobel_magnitude_batch(d_batch, torch_f)
         return torch.mean(torch.abs(grad_z - grad_d))
 
     @staticmethod
     def _sobel_magnitude_batch(
         x: Any,
-        F: Any,
+        functional_mod: Any,
     ) -> Any:
         """Compute Sobel gradient magnitude on [N, 1, H, W] via conv2d."""
         import torch
@@ -147,9 +147,9 @@ class EdgePreservingLoss:
             .unsqueeze(0)
         )
 
-        x_pad = F.pad(x, (1, 1, 1, 1), mode="replicate")
-        gx = F.conv2d(x_pad, sobel_x, padding=0)
-        gy = F.conv2d(x_pad, sobel_y, padding=0)
+        x_pad = functional_mod.pad(x, (1, 1, 1, 1), mode="replicate")
+        gx = functional_mod.conv2d(x_pad, sobel_x, padding=0)
+        gy = functional_mod.conv2d(x_pad, sobel_y, padding=0)
         mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
         return mag
 
@@ -157,7 +157,7 @@ class EdgePreservingLoss:
     def _sobel_magnitude(
         cls,
         img: Any,
-        F: Any,
+        functional_mod: Any,
     ) -> Any:
         """Backward-compatible helper for 2D inputs."""
         import torch
@@ -167,7 +167,7 @@ class EdgePreservingLoss:
             img_t = img_t.unsqueeze(0).unsqueeze(0)
         elif img_t.ndim == 3:
             img_t = img_t.unsqueeze(0)
-        mag = cls._sobel_magnitude_batch(img_t, F)
+        mag = cls._sobel_magnitude_batch(img_t, functional_mod)
         return mag.squeeze(0).squeeze(0)
 
 

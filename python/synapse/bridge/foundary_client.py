@@ -6,9 +6,9 @@ endpoint.  This module defines the Pydantic request/response envelope
 models and two transport implementations:
 
 - :class:`MockFoundaryTransport` — returns dummy success for testing.
-- :class:`HttpFoundaryTransport` — placeholder for real HTTP calls;
-  raises :class:`~synapse.errors.BackendUnavailableError` when invoked
-  without a live endpoint.
+- :class:`HttpFoundaryTransport` — live HTTP transport for foundary container
+  endpoints; raises :class:`~synapse.errors.BackendUnavailableError` when
+  invoked without a configured/reachable endpoint.
 """
 
 from __future__ import annotations
@@ -282,7 +282,7 @@ class MockFoundaryTransport(FoundaryTransport):
 
 
 # -----------------------------------------------------------------------
-# HTTP transport — production placeholder
+# HTTP transport — live foundary container endpoint
 # -----------------------------------------------------------------------
 
 

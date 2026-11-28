@@ -86,6 +86,10 @@ jobs:
         working-directory: synapse
         run: ruff check python/ tests/ scripts/ tools/
 
+      - name: Ruff SSOT parity check
+        working-directory: synapse
+        run: python tools/sync_ruff_ssot.py --check
+
       - name: Mypy strict (207+ source files)
         working-directory: synapse
         run: |
