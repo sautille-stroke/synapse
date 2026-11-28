@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from synapse.errors import AssetNotFoundError, ContractValidationError
-from synapse.metrics.image_quality import compute_psnr
+from synapse.metrics.image_quality import psnr_db
 from synapse.recon.gs_quantizer import (
     GaussianSplatCloud,
     _pack_smallest_three_quats,
@@ -130,7 +130,7 @@ def _normalize_quats_wxyz(rots: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(arr, axis=-1, keepdims=True)
     safe = np.where(norms > 1e-8, norms, 1.0)
     out = np.where(norms > 1e-8, arr / safe, np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32))
-    return out.astype(np.float32)
+    return np.asarray(out, dtype=np.float32)
 
 
 def _compute_preview_psnr(orig: GaussianSplatCloud, decoded: GaussianSplatCloud) -> float:
@@ -138,7 +138,7 @@ def _compute_preview_psnr(orig: GaussianSplatCloud, decoded: GaussianSplatCloud)
     img_b = render_3dgs_preview(decoded, width=64, height=64)
     if np.allclose(img_a, img_b, atol=1e-6):
         return 99.0
-    psnr = float(compute_psnr(img_a, img_b, data_range=1.0))
+    psnr = float(psnr_db(img_b, img_a, data_range=1.0))
     return min(psnr, 99.0) if np.isfinite(psnr) else 99.0
 
 
@@ -434,7 +434,7 @@ def export_gltf_gaussian_splat(
 
     decoded = load_gltf_gaussian_splat(out)
     psnr = _compute_preview_psnr(cloud, decoded)
-    raw_bytes = cloud.raw_bytes
+    raw_bytes = cloud.raw_bytes()
     encoded_bytes = out.stat().st_size
     ratio = float(raw_bytes) / float(max(encoded_bytes, 1))
     report = GltfSplatExportReport(
