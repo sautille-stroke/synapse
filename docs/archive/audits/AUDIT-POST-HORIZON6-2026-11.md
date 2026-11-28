@@ -183,7 +183,7 @@ stale_after: 2027-11-19T00:00:00Z
 - **修复建议**: 删除 Fail-Open 捕获（改为有效最小 `.safetensors` 单测夹具）并校验 `LoRAManifest`；修复 `losses.py` 数值与 4D/5D 维度并真实接入 `trainer`；常驻 `fp32` LoRA 权重、传参签名自省注入 `(timestep, prompt, fgpp_cond)` 与严格 `eval()` 参考推理。
 
 #### `[H7-P0-08]` `recon` 核心三处崩溃/恒等退化：`_world_to_tangent_space` 恒返 `[0,0,1]`、`ClosedLoopRunner` 漏裁预卷、`_marching_cubes_naive` 轴错位致慢测必败 (`PR-99`)
-- **精确位置**: [python/synapse/recon/loop/texture_extractor.py](../../../python/synapse/recon/loop/texture_extractor.py#L195-L216)；[python/synapse/recon/loop/closed_loop_runner.py](../../../python/synapse/recon/loop/closed_loop_runner.py#L194-L260)；[python/synapse/recon/multiview.py](../../../python/synapse/recon/multiview.py#L50-L133,L479,L576)；[python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry.py#L398-L432)
+- **精确位置**: [python/synapse/recon/loop/texture_extractor.py](../../../python/synapse/recon/loop/texture_extractor.py#L195-L216)；[python/synapse/recon/loop/closed_loop_runner.py](../../../python/synapse/recon/loop/closed_loop_runner.py#L194-L260)；[python/synapse/recon/multiview.py](../../../python/synapse/recon/multiview.py#L50-L133,L479,L576)；[python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py)
 - **实证与根因**:
   1. `texture_extractor.py:195-210` 用被查询的扰动法线 `n` 自身构造正交切空间基 $(T, B)$，故 `n · T ≡ 0, n · B ≡ 0, n · n ≡ 1`，对一切输入法线恒返 `[0, 0, 1]`（单测仅喂 `[0, 0, 1]` 导致假绿）；
   2. `ClosedLoopRunner.run()` 漏调 `extract_main_take` 对 `n_preroll > 0` / 补齐 `4k+1` 帧做裁切，直接在形状不匹配下传入 `mitsuba_optimizer.py` 崩溃，且误将第 0 帧屏幕空间法线当成 UV 法线贴图；

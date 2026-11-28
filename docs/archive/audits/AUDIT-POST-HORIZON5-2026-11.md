@@ -163,7 +163,7 @@ stale_after: 2027-11-19T00:00:00Z
   - [python/synapse/recon/tracking.py:16-133](../../../python/synapse/recon/tracking.py#L16-L133)
   - [python/synapse/recon/multiview.py:115-117, 429, 522](../../../python/synapse/recon/multiview.py#L115-L522)
   - [python/synapse/pipeline/stages/recon.py:64-65](../../../python/synapse/pipeline/stages/recon.py#L64-L65)
-  - [python/synapse/inspect/geometry_gate.py:125-180](../../../python/synapse/inspect/geometry_gate.py#L125-L180) · [python/synapse/recon/geometry.py:292-394](../../../python/synapse/recon/geometry.py#L292-L394)
+  - [python/synapse/inspect/geometry_gate.py:125-180](../../../python/synapse/inspect/geometry_gate.py#L125-L180) · [python/synapse/recon/geometry.py:292-394](../../../python/synapse/recon/geometry/__init__.py)
 - **代码实证与根因**:
   - `decompose_intrinsic()` 与 `delight_multiview_albedo()`（`delight.py:185, 288`）都将 `rad` 同时作为 `albedo` 与 `radiance` 传入 `delight(rad, norm, rad)`（本质计算 `rad / rad == 1.0`，高光与阴影 100% 原封不动），对 2D 视角图片不做相机反投 UV 直接平均，还对 `max > 1.5` 的线性 HDR 浮点输入执行 `/ 255.0` 压黑，并用 `A * (I / A) == I` 计算恒零 $\Delta E$ 残差；
   - `solve_point_tracks()` 使用全局 R/G 强度均值差代替真实点追踪；`tracking.py` 输出 `c2w` 而 `multiview.py` 当作 `w2c`；空体素 Marching Cubes 返回 `zeros((3,3))` 退化面；`stages/recon.py:64` 仅写盘 `vertices` 丢失 `faces`；`geometry_gate.py:125-180` 访问 `_c_geometry` 返回字典的 `.is_manifold` 属性触发 `AttributeError` 后静默回退 Python；`quad_remesh` 对奇数剩余三角形生成 `[a,b,c,c]` 非流形退化边。

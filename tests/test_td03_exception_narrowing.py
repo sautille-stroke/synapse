@@ -46,7 +46,7 @@ def test_bundle_worker_logs_malformed_optional_engine_and_budget(
         "engine": {"name": 123},
         "hardware_budget": {"free_vram_gb": "not-a-float"},
     }
-    with caplog.at_level(logging.WARNING, logger="synapse.pipeline.bundle_worker"):
+    with caplog.at_level(logging.WARNING, logger="synapse.pipeline"):
         manifest = BundleManifest.from_rfc0039_job_bundle(bundle)
     assert manifest.job_id == "job-td03-opt-warn"
     assert "EngineSpec" in caplog.text

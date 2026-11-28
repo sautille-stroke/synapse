@@ -265,7 +265,7 @@ flowchart LR
     - `checkDegenerateFaces` 与 `checkSelfIntersections`：对 `verts_per_face > 3` 的多边形/四边面按统一三角扇 `(f[0], f[k], f[k+1])`（`k = 1 .. verts_per_face - 2`）完整展开所有子三角形，彻底消除 Quad 第二三角形 `(f[0], f[2], f[3])` 漏检盲区；
     - 优化内部拓扑校验路径，提取共享边表辅助函数避免 `checkWatertight` 重复调用 `checkManifold` 造成的 3× 边哈希表重建；
     - 为 `bindings.cc` 全量 6 个纯 C++ 导出函数挂载 `py::call_guard<py::gil_scoped_release>()`（在完成 Numpy Buffer 解析与验证后或无 Python 对象操作区间释放 GIL）。
-  - `[MODIFY]` [python/synapse/inspect/geometry_gate.py](../../../python/synapse/inspect/geometry_gate.py) · [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry.py)
+  - `[MODIFY]` [python/synapse/inspect/geometry_gate.py](../../../python/synapse/inspect/geometry_gate.py) · [python/synapse/recon/geometry.py](../../../python/synapse/recon/geometry/__init__.py)
     - `geometry_gate.py`（`backend="native"`）改为单次调用已存在但此前闲置的 `_cg.validate_mesh_geometry(...)` 聚合入口，将 FFI 往返次数从 5 次降至 1 次；同步校准 Python Oracle 中 Quad/N-gon 行为并在 `test_geometry_oracle_parity.py` 新增四边面退化/自交双轨互验测试。
 - **`ubuntu24` 验收命令与门禁断言**:
   ```bash
