@@ -38,7 +38,7 @@ stale_after: 2027-11-19T00:00:00Z
 |:-----|:-----|:-----|
 | [`docs/DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md`](../DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC.md) | **新建** (+347) | 3D 生成模型质量提升方法论与训练数据工程规范 |
 | [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | 修改 (+59/-4) | 新增 Tier 0 确定性几何门禁、脱耦自包含架构边界 |
-| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](../archive/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 修改 (+1/-1) | 更新自包含架构引用 |
+| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 修改 (+1/-1) | 更新自包含架构引用 |
 | [`AGENTS.md`](../../AGENTS.md) | 修改 (+1/-1) | 添加文档导航条目 |
 
 ### 核心内容
@@ -327,7 +327,7 @@ Result:   739 passed, 2 skipped, 0 failures ✅
 |:-----|:---------|
 | [`AGENTS.md`](../../AGENTS.md) | 添加文档导航条目 |
 | [`docs/DESIGN_3D_INSPECTION_AND_REFINEMENT.md`](../DESIGN_3D_INSPECTION_AND_REFINEMENT.md) | Tier 0 门禁、Pydantic 契约、CLI 参数与跨仓边界对齐 |
-| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](../archive/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 架构引用与双轨几何核说明更新 |
+| [`docs/plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md`](plans/PLAN-M6-M7-INSPECTION-AND-RSI-FLYWHEEL.md) | 架构引用与双轨几何核说明更新 |
 
 ---
 

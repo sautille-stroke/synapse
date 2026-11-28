@@ -12,8 +12,8 @@ stale_after: 2027-11-28T00:00:00Z
 > - **核查基线**: `main` @ `2540b48`（post `v5.0.0`，含 Traceboard 整改封板）
 > - **核查日期**: `2026-11-28`
 > - **规划模型**: `[gemini4-hydrogen]`
-> - **当前状态**: 📋 **待启动（Horizon 14: `M53–M54`, `PR-TD01` ~ `PR-TD07`, 2 Execution Waves）**
-> - **前置基线**: [`REVIEW-POST-HORIZON10-2026-11.md`](../audits/REVIEW-POST-HORIZON10-2026-11.md) · [`PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md`](PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) · [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
+> - **当前状态**: 🚧 **Wave 52 + Wave 53 本仓 6 PRs (`PR-TD01 ~ PR-TD05`, `PR-TD07`) 已落地合入 (`#223–#227` + 本 PR)；仅剩跨仓 `PR-TD06` 待上游 `dervgen/aether` 落地 `@aether//style` 后启用**
+> - **前置基线**: [`REVIEW-POST-HORIZON10-2026-11.md`](../archive/audits/REVIEW-POST-HORIZON10-2026-11.md) · [`PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md`](../archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) · [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
 
 > [!IMPORTANT]
 > **执行铁律（与 [`AGENTS.md`](../../AGENTS.md) 对齐）**：
@@ -46,7 +46,7 @@ stale_after: 2027-11-28T00:00:00Z
 |:---:|---|---|
 | **D-11** | `HttpFoundaryTransport` 仍是 placeholder | **❌ 误判（仅注释过期）**：[`foundary_client.py`](../../python/synapse/bridge/foundary_client.py#L317-L520) 仅第 `9`、`285` 行 docstring 遗留 `placeholder` 字样；实际已实现 `is_available`、`submit`（`safe_urlopen` SSRF 防护、`Idempotency-Key`、`traceparent`、502/503/504 退避重试）、`submit_job`、`poll_job` 与 `list_serving_recipes`。 |
 | **D-08** | `generators/` 与 `models/` 均为待清遗留 shim | **⚠️ 半误判**：[`generators/dataset.py`](../../python/synapse/generators/dataset.py) 与 [`generators/visualizer.py`](../../python/synapse/generators/visualizer.py) 已在 `PR #197` 转为零警告 shim，仅 [`generators/rasterizer.py`](../../python/synapse/generators/rasterizer.py)（138 行）保留旧包装类；而 [`models/asset.py`](../../python/synapse/models/asset.py) 与 [`models/loader.py`](../../python/synapse/models/loader.py) **并非 shim**，而是被 [`bench/dataset_gen.py`](../../python/synapse/bench/dataset_gen.py#L21-L22) 和 [`bench/model_loader.py`](../../python/synapse/bench/model_loader.py#L15-L16) 依赖的真实实现。 |
-| **D-12** | Traceboard 刚落地仍在连续打补丁 | **⚠️ 过时**：`#214–#221` 系按 [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 推进的 8-PR 整改闭环，已在 `#219–#221` 收官并通过 CI 真 `.tbevt` 校验。 |
+| **D-12** | Traceboard 刚落地仍在连续打补丁 | **⚠️ 过时**：`#214–#221` 系按 [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 推进的 8-PR 整改闭环，已在 `#219–#221` 收官并通过 CI 真 `.tbevt` 校验。 |
 | **D-05/06/07** | `37` `type: ignore`、`13` `noqa`、`24` `DEPRECATED` | **⚠️ 夸大/非真债**：`type: ignore` 集中于 `argparse._SubParsersAction`、optional imports 和 `camera.py` kwargs 强转（仅 [`procedural.py`](../../python/synapse/render_core/procedural.py#L72) 返回类型漏写 `\| None`）；`noqa` 属合理豁免；`24` 处 deprecated 含 docstring 与过渡 shim 说明。 |
 | **D-15** | `observability.py` no-op 造成盲区 | **❌ 非债务**：按 `AGENTS.md` 懒加载可选 `[traceboard]` extra 设计，CI 在装包路径执行完整端到端二进制校验。 |
 

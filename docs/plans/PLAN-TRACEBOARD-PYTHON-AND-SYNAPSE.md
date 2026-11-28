@@ -16,7 +16,7 @@ stale_after: 2027-11-26T00:00:00Z
 
 > [!NOTE]
 > **Remediation & Post-Review Hardening (`2026-11-26`)**:
-> 此前于 [REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 检出的 20 项缺陷（`6×P0` · `9×P1` · `5×P2`）已按 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部整改完成并通过 `Gate TB-1 ~ TB-10` 封板验收：
+> 此前于 [REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md](../archive/audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 检出的 20 项缺陷（`6×P0` · `9×P1` · `5×P2`）已按 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md) 全部整改完成并通过 `Gate TB-1 ~ TB-10` 封板验收：
 > - **Layer 0 (`dervgen/aether`)**: `aether#557` (`PR-TR01`) · `aether#558` (`PR-TR02`) · `aether#560` (`PR-TR03`) · `aether#569`（安全硬化）· `aether#575`（统一锁步版本并发布 `v0.7.2` Release）
 > - **Layer 2 (`sautille-stroke/synapse`)**: `synapse#215`–`#219` (`PR-TR04`–`PR-TR08`) · `synapse#220`（Post-Review 硬化）+ 统一 `aether-traceboard>=0.7.2` 版本对齐
 > - **跨仓协同**: `dervgen/caelum-core#557` · `dervgen/all-overview#770` (`DUP-17` 双向黄金测试门禁)
@@ -240,7 +240,7 @@ flowchart TD
 
 ## 6. 实测验证矩阵与复现指令 (Verification Ledger)
 
-> 完整 10 项反作弊封板门禁 (`Gate TB-1` ~ `Gate TB-10`) 与跨仓整改台账见 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md#gate-tb-closure)。以下保留常用复现命令：
+> 完整 10 项反作弊封板门禁 (`Gate TB-1` ~ `Gate TB-10`) 与跨仓整改台账见 [PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md#gate-tb-closure)。以下保留常用复现命令：
 
 | 仓库 / 检查项 | 执行环境 | 命令摘要 | 状态 |
 |---|---|---|---|

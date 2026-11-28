@@ -8,15 +8,15 @@ stale_after: 2027-11-25T00:00:00Z
 ---
 # Traceboard Python SDK 与 Synapse 可观测性深度整改与硬化落地计划 (`Actionable Remediation Blueprint`)
 
-> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) §4.15）
+> - **计划版本**: `v1.0`（对应主总纲 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md) §4.15）
 > - **触发源**: [`REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md`](../audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md)（检出 **20 项缺陷**：`6×P0` 阻断 · `9×P1` 高危 · `5×P2` 中优先级）
-> - **前置基线**: [`PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`](PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) (`synapse#204–#213` @ `1e3ad5f`, `aether#523–#525` @ `ca2cbff4`)
+> - **前置基线**: [`PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) (`synapse#204–#213` @ `1e3ad5f`, `aether#523–#525` @ `ca2cbff4`)
 > - **执行模型**: `[gemini4-hydrogen]`
 > - **当前状态**: ✅ **全量落地封板（Wave TR-1 ~ TR-3 共 8 PR + 2 跨仓协同 PR 已合入，`traceboard-python-v0.1.0` 已发布，10/10 反作弊门禁全绿）**
 > - **目标周期**: 3 个里程碑（`M-T5` – `M-T7`）、3 个 Execution Waves（`Wave TR-1` – `Wave TR-3`）、**8 个原子 PR**（`PR-TR01` – `PR-TR08`）
 
 > [!IMPORTANT]
-> **执行铁律（与 [`AGENTS.md`](../../AGENTS.md) 对齐）**：
+> **执行铁律（与 [`AGENTS.md`](../../../AGENTS.md) 对齐）**：
 > 1. 所有改动必须走 Git Worktree（`/tmp/<repo>-wt-<branch>`）→ 分支 → PR → Squash Merge → 清理 Worktree，严禁直接 push `main`。
 > 2. Commit 与 PR 标题必须携带模型标识 `[<model-tag>]`，PR 正文首行必须声明 ``> **Operated by**: `<model-tag>` ``。
 > 3. **双向跨语言真值铁律**：禁止继续用“Python 自写自读自验”替代跨语言校验；`.tbevt` 线格式必须经 C++ GTest 读入 Python 产物 + Python 读入 C++ `FileCollector` 产物双向字节验证。
@@ -253,11 +253,11 @@ flowchart LR
      - 将 SHA-256 校验与 E1–E5 主循环统一包裹在 `try...finally:` 中，保证无论成功、`return 20` 早退或异常均触发 `shutdown_traceboard(status=...)` 落盘 `RUN_END`；
      - 为 E1–E5 分别包裹 `traceboard_stage(f"cpu_verify/{exp}")` 并记录分实验耗时。
   3. **测试硬化与 CI `.tbevt` 端到端校验**：
-     - 修复 [tests/test_traceboard_export.py](../../tests/test_traceboard_export.py) 第 215 行永真断言 `assert isinstance(result, bool)` -> `assert result is False`；
-     - 修复 [tests/test_observability.py](../../tests/test_observability.py) 第 483 行裸二进制 CRC 扫描切片为 Spec 对齐的 `body_end = body_start + payload_len`；
+     - 修复 [tests/test_traceboard_export.py](../../../tests/test_traceboard_export.py) 第 215 行永真断言 `assert isinstance(result, bool)` -> `assert result is False`；
+     - 修复 [tests/test_observability.py](../../../tests/test_observability.py) 第 483 行裸二进制 CRC 扫描切片为 Spec 对齐的 `body_end = body_start + payload_len`；
      - 将 `test_training_traceboard.py`、`test_rsi_recon_traceboard.py`、`test_adapters_style_traceboard.py` 中的裸 `MagicMock()` 全部替换为 `MagicMock(spec=ProbeProtocol)`；
      - 新增真实 SDK E2E 测试文件 `tests/test_bench_runner_traceboard.py`：实跑 `BenchPipelineRunner` 通过 / 运行异常 / 质量门禁失败三态，并验证 `synapse bench --traceboard` / `synapse --traceboard` / `synapse bench run --traceboard` 全矩阵 CLI 产物与 `CRC-32`；
-     - 在 [.github/workflows/ci.yml](../../.github/workflows/ci.yml) `python-fast` 增加执行 `synapse bench run --scenario turntable_hero --adapter mock --traceboard /tmp/ci-tblog`、用 `aether_traceboard.reader.read_file` 校验非空且 0 CRC 错误、并 `actions/upload-artifact` 归档 `.tbevt` 的步骤（同时顺带清理 `tests/test_wave4_rfc0060_rfc0061_parity.py` 3 项未标 `@pytest.mark.external_data` 的公网 CI 遗留失败）。
+     - 在 [.github/workflows/ci.yml](../../../.github/workflows/ci.yml) `python-fast` 增加执行 `synapse bench run --scenario turntable_hero --adapter mock --traceboard /tmp/ci-tblog`、用 `aether_traceboard.reader.read_file` 校验非空且 0 CRC 错误、并 `actions/upload-artifact` 归档 `.tbevt` 的步骤（同时顺带清理 `tests/test_wave4_rfc0060_rfc0061_parity.py` 3 项未标 `@pytest.mark.external_data` 的公网 CI 遗留失败）。
 - **验收命令**：
   ```bash
   SYNAPSE_CI_STRICT_DEPS=1 pytest tests/test_observability.py tests/test_traceboard_export.py tests/test_bench_runner_traceboard.py tests/test_training_traceboard.py tests/test_rsi_recon_traceboard.py tests/test_adapters_style_traceboard.py -v
@@ -299,8 +299,8 @@ flowchart LR
 - **精确改动清单**：
   1. **执行并逐项验收 §5 全部 10 项反作弊门禁 (`TB-1` ~ `TB-10`)**，保存 `ubuntu24` 与 GitHub Actions 双端实测日志。
   2. **文档对齐更新 (`synapse`)**：
-     - 更新 [`DESIGN_TRACEBOARD_INTEGRATION.md`](../DESIGN_TRACEBOARD_INTEGRATION.md)：补充完整 **Tag Taxonomy 规范表**、**Step 单调递增规约**、**W3C `traceparent` 关联字段**、**Fail-Safe 异常隔离边界**与 **Colab NVMe-First 同步架构**；
-     - 更新 [`PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`](PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) 与 [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)：核销整改完成状态并移除旧 `Conditional Hold` 警示，修正 Reviewer Quickstart 实跑命令。
+     - 更新 [`DESIGN_TRACEBOARD_INTEGRATION.md`](../../DESIGN_TRACEBOARD_INTEGRATION.md)：补充完整 **Tag Taxonomy 规范表**、**Step 单调递增规约**、**W3C `traceparent` 关联字段**、**Fail-Safe 异常隔离边界**与 **Colab NVMe-First 同步架构**；
+     - 更新 [`PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md`](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) 与 [`IMPLEMENTATION_PLAN.md`](../../IMPLEMENTATION_PLAN.md)：核销整改完成状态并移除旧 `Conditional Hold` 警示，修正 Reviewer Quickstart 实跑命令。
   3. **跨仓生态协同**：
      - 在 `dervgen/aether` 推送 `traceboard-python-v0.1.0`（或 `v0.1.1`）Tag 触发已修复的发布工作流，校验 GitHub Release 产物与 DervGen 内部源（`files.dervgen.com`）可用；
      - 在 `caelum-core` 发起迁移 Issue / PR，将 `caelum-core/tests/helpers/traceboard_integration.py` 从已废弃的 `from traceboard import Probe`（`probe.scalar()` / `probe.image()` / `probe.close()`）统一迁移至 `aether-traceboard` v0.1 API；

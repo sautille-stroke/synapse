@@ -12,7 +12,7 @@ stale_after: 2027-11-19T00:00:00Z
 - **审计日期**: `2026-11-21`
 - **操作模型标识**: `[opus4.6]`
 - **关联演进计划**: [docs/plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md](../plans/PLAN-M37-M40-POST-RECONCILIATION-TRUE-CLOSURE.md)（Horizon 10: `M37–M40` / `PR-153 ~ PR-172`）
-- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)（`v3.9`）
+- **关联总计划**: [docs/IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md)（`v3.9`）
 - **前序审计链**: [AUDIT-POST-HORIZON9-2026-11.md](AUDIT-POST-HORIZON9-2026-11.md)（触发 H10 的审计报告）
 
 ---

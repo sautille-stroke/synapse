@@ -13,9 +13,9 @@ stale_after: 2027-11-25T00:00:00Z
 - **评审日期**: `2026-11-25`
 - **操作模型标识**: `[gemini4-neon]`
 - **关联文档**:
-  - 被评审基线：[PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) · [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md)
+  - 被评审基线：[PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) · [DESIGN_TRACEBOARD_INTEGRATION.md](../../DESIGN_TRACEBOARD_INTEGRATION.md)
   - 整改落地计划：[PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md](../plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
-  - 全局实施总纲：[IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) · [REVIEW-POST-HORIZON10-2026-11.md](REVIEW-POST-HORIZON10-2026-11.md)
+  - 全局实施总纲：[IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md) · [REVIEW-POST-HORIZON10-2026-11.md](REVIEW-POST-HORIZON10-2026-11.md)
 
 ---
 
@@ -57,12 +57,12 @@ stale_after: 2027-11-25T00:00:00Z
 
 ## 2. 三大深层系统性根因 (Root Cause Analysis)
 
-1. **同源闭环验证盲区（Python 自写自读自验）**：`aether/traceboard/python` 中写入侧（`file_collector.py`）、读取侧（`reader.py`）、黄金生成器（`generate_python_golden.py`）、校验脚本（`verify_golden.py`）、Golden 单测（`test_golden.py`）、SDK 单测（`test_file_collector.py`, `test_reader.py`）以及 `synapse` 的 [test_observability.py](../../tests/test_observability.py) 第 483 行，**全链条共享了同一个错误的 `body_len = tag_len + payload_len` 假设**。因缺乏 **C++ ↔ Python 双向交叉读写 Golden 测试**，154 项 SDK 测试全部以自身 Bug 为真值跑绿。
+1. **同源闭环验证盲区（Python 自写自读自验）**：`aether/traceboard/python` 中写入侧（`file_collector.py`）、读取侧（`reader.py`）、黄金生成器（`generate_python_golden.py`）、校验脚本（`verify_golden.py`）、Golden 单测（`test_golden.py`）、SDK 单测（`test_file_collector.py`, `test_reader.py`）以及 `synapse` 的 [test_observability.py](../../../tests/test_observability.py) 第 483 行，**全链条共享了同一个错误的 `body_len = tag_len + payload_len` 假设**。因缺乏 **C++ ↔ Python 双向交叉读写 Golden 测试**，154 项 SDK 测试全部以自身 Bug 为真值跑绿。
 2. **门禁剧场回潮（无 `spec` `MagicMock` + `continue-on-error` + `|| true` + 永真断言）**：与 H10 审计（[REVIEW-POST-HORIZON10-2026-11.md](REVIEW-POST-HORIZON10-2026-11.md) §2.2）点名治理的反模式完全一致：
    - 无约束 `MagicMock()` 不仅掩盖了 PR `#212` 修复的 `log_table`/`log_artifact` 签名错误，也掩盖了本次检出的 `BenchPipelineRunner` 调用 `stage.set_fail(reason)`（`TRB-P0-03`）必现 `TypeError`；
    - `traceboard-python-publish.yml:66` 配置 `mypy --strict` + `continue-on-error: true` 使 4 项严格类型错误绕过 CI；
    - `traceboard-python-publish.yml:131` 配置 `twine upload ... || true` 静默吞掉上传失败；
-   - [test_traceboard_export.py](../../tests/test_traceboard_export.py) 第 215 行写 `assert isinstance(result, bool)` 永真断言掩盖了降级路径无效的测试漏洞。
+   - [test_traceboard_export.py](../../../tests/test_traceboard_export.py) 第 215 行写 `assert isinstance(result, bool)` 永真断言掩盖了降级路径无效的测试漏洞。
 3. **契约先行与洁净运行时脱节**：`aether-traceboard` 未对照 `wire_format_spec.md` 与 C++ `probe.cc`/`file_collector.cc` 做字段与并发安全逐项对账，也未在仅安装 wheel + `numpy` 的洁净 venv 中做冒烟导入测试，导致未声明运行期依赖 `typing_extensions`、路径穿越、同秒覆写文件与多写线程竞态直接合入 `main`。
 
 ---
@@ -77,12 +77,12 @@ stale_after: 2027-11-25T00:00:00Z
 - **Python 侧缺陷位置**：
   - `aether/traceboard/python/aether_traceboard/file_collector.py:79-91`：仅写入 `payload_len = len(payload)`（遗漏 `+ tag_len`）；
   - `aether/traceboard/python/aether_traceboard/reader.py:88-90`：错按 `body_len = tag_len + payload_len` 切片；
-  - 同源污染扩展到 `generate_python_golden.py:64`、`verify_golden.py:235`、`test_golden.py:315`、`test_file_collector.py:95`、`test_reader.py:33`、提交入库的 `python_reference.tbevt`（1,567 B），以及 `synapse` 的 [test_observability.py](../../tests/test_observability.py) 第 483 行。
+  - 同源污染扩展到 `generate_python_golden.py:64`、`verify_golden.py:235`、`test_golden.py:315`、`test_file_collector.py:95`、`test_reader.py:33`、提交入库的 `python_reference.tbevt`（1,567 B），以及 `synapse` 的 [test_observability.py](../../../tests/test_observability.py) 第 483 行。
 - **后果**：C++ 读取器与 Go Ingest Server 解析 Python SDK 写出的任意 `.tbevt` 文件时，会把 payload 末尾 `tagLength` 个字节误吞或当成下一条 RecordHeader 导致 **100% CRC-32 校验失败或解析脱轨**；反之 Python `read_events()` 读入 C++ 写出的 `.tbevt` 文件也会多读 `tagLength` 字节导致 **整条文件链错位**。
 - **改进建议**：
   1. 修正 `FileCollector._write_record()` 为 `payload_length = tag_len + len(payload)`；
   2. 修正 `reader.py` 为 `body_len = payload_len`，并校核 `if tag_len > payload_len: break`；
-  3. 同步修正 `generate_python_golden.py`、`verify_golden.py`、`test_golden.py`、`test_file_collector.py`、`test_reader.py` 与 `synapse` [test_observability.py](../../tests/test_observability.py)，重新生成 `python_reference.tbevt`；
+  3. 同步修正 `generate_python_golden.py`、`verify_golden.py`、`test_golden.py`、`test_file_collector.py`、`test_reader.py` 与 `synapse` [test_observability.py](../../../tests/test_observability.py)，重新生成 `python_reference.tbevt`；
   4. **强制补建 C++ ↔ Python 双向交叉读写 Golden Gate**：新增 C++ GTest 读入 Python `python_reference.tbevt`，以及 Python `read_events()` 读入 C++ `FileCollector` 产物文件的双向互验。
 
 ### `TRB-P0-02` [aether] 洁净环境 `import` 必崩（漏 `typing_extensions` 依赖）、Wheel 污染 `tests` 包及 4 项 `mypy --strict` 隐匿错误
@@ -100,7 +100,7 @@ stale_after: 2027-11-25T00:00:00Z
 ### `TRB-P0-03` [synapse] `BenchPipelineRunner` 在异常/门禁失败路径调用 `stage.set_fail(reason)` 必现 `TypeError` 崩溃
 
 - **缺陷位置**：
-  - [bench_runner.py](../../python/synapse/pipeline/bench_runner.py) 第 199 行 `stage.set_fail(report.error)` 与第 204 行 `stage.set_fail("gate_failed")`；
+  - [bench_runner.py](../../../python/synapse/pipeline/bench_runner.py) 第 199 行 `stage.set_fail(report.error)` 与第 204 行 `stage.set_fail("gate_failed")`；
   - 对比真实 `aether/traceboard/python/aether_traceboard/probe.py:419-421` 定义：`def set_fail(self) -> None:`（**不接收任何位置参数**）。
 - **后果**：一旦通过 CLI/Colab 开启 `--traceboard`，**任何场景发生运行错误或质量门禁不通过时**（最需要可观测性定位故障的时刻），`run_scenario()` 在退出阶段会直接抛出 `TypeError: StageContext.set_fail() takes 1 positional argument but 2 were given`，中断整个 `run_all()` 批量评测循环并绕过报告归档！此前因缺少 `BenchPipelineRunner` 的 Traceboard 失败路径单测与 E2E，该 Bug 逃逸了 PR `#212`。
 - **改进建议**：
@@ -111,15 +111,15 @@ stale_after: 2027-11-25T00:00:00Z
 ### `TRB-P0-04` [synapse] CLI `--traceboard` 挂载位置错位、空命令句柄泄漏且丢失 `trace_id`/失败状态
 
 - **缺陷位置**：
-  - [cli/\_app.py](../../python/synapse/cli/_app.py) 第 68 行与第 187 行仅在顶层 `parser` 挂载 `add_traceboard_args(parser)`，未进入子命令共享的 `json_parent`（[cli/common.py](../../python/synapse/cli/common.py) 第 62–76 行）；
-  - [cli/\_app.py](../../python/synapse/cli/_app.py) 第 100–122 行 & 第 210–232 行：先调用 `init_traceboard(...)`，遇到 `parsed.command is None` 时直接 `return 0`，跳过第 168–170 / 234–238 行的 `try...finally: shutdown_traceboard()`；
+  - [cli/\_app.py](../../../python/synapse/cli/_app.py) 第 68 行与第 187 行仅在顶层 `parser` 挂载 `add_traceboard_args(parser)`，未进入子命令共享的 `json_parent`（[cli/common.py](../../../python/synapse/cli/common.py) 第 62–76 行）；
+  - [cli/\_app.py](../../../python/synapse/cli/_app.py) 第 100–122 行 & 第 210–232 行：先调用 `init_traceboard(...)`，遇到 `parsed.command is None` 时直接 `return 0`，跳过第 168–170 / 234–238 行的 `try...finally: shutdown_traceboard()`；
   - 第 104 / 214 行 `run_name` 自带 `_{int(time.time())}` 与 `FileCollector` 自带 `.{ts}.tbevt` 产生双时间戳冗余；未传入 `trace_ctx.trace_id`；在异常/非零退出码时仍以默认 `status="finished"` 结束 run。
 - **实测后果**：
   - 按 `PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md` §6 原文命令执行 `synapse bench --traceboard /tmp/tblog list` 直接触发 `SynapseArgumentParser.error()` 返回退出码 `10`（`invalid choice: '/tmp/tblog'`）；`synapse bench list --traceboard /tmp/tblog` 报 `unrecognized arguments`；
   - 无子命令调用 `synapse --traceboard /tmp/tblog` 泄漏未关闭文件句柄，且不会写入 `RUN_END`；
   - 在测试或嵌套进程内调用 `main_synapse()`/`main_bench()`（未传 `--traceboard`）也会无条件在 `finally` 执行 `shutdown_traceboard()` 误关外层调用方已初始化的 Probe。
 - **改进建议**：
-  1. 在 [cli/common.py](../../python/synapse/cli/common.py) 提供共享 `common_parent`（使用 `default=argparse.SUPPRESS`），同时注册 `--json` 与 `--traceboard LOG_DIR`，挂载到顶层与所有域子解析器，确保前置、中置、后置写法全部兼容；
+  1. 在 [cli/common.py](../../../python/synapse/cli/common.py) 提供共享 `common_parent`（使用 `default=argparse.SUPPRESS`），同时注册 `--json` 与 `--traceboard LOG_DIR`，挂载到顶层与所有域子解析器，确保前置、中置、后置写法全部兼容；
   2. 仅在 `parsed.command is not None` 后初始化 Traceboard，并用局部变量 `started_traceboard = True` 控制 `finally:` 中的 `shutdown_traceboard(status="finished" if rc == 0 else "failed")`；
   3. 向 `init_traceboard(..., trace_id=trace_ctx.trace_id)` 透传 W3C 追踪上下文，打通 `synapse` 结构化日志与 Traceboard 运行流关联。
 
@@ -130,7 +130,7 @@ stale_after: 2027-11-25T00:00:00Z
 | # | 事件类型 | Spec / C++ `probe.cc` 真值 | Python 当前实现问题 |
 | :---: | :--- | :--- | :--- |
 | 1 | `STAGE_END` (`243`) | `probe.cc:917`：`{"status": 2}` | `probe.py:454` 与 `generate_python_golden.py:175` 写 `"_status"`，多出前导下划线，C++/Go 读不到状态码 |
-| 2 | `ARTIFACT` (`6`) | Spec §6.4.3 & `probe.cc:774-775`：`{"filename", "mime_type", "size_bytes"}` | `generate_python_golden.py:155` 写 `{"filename", "mime", "size"}`；`Probe.log_artifact` 未自动补齐 `"size_bytes": len(blob)`，导致 [report.py](../../python/synapse/bench/report.py) 第 370 行漏传 `size_bytes` |
+| 2 | `ARTIFACT` (`6`) | Spec §6.4.3 & `probe.cc:774-775`：`{"filename", "mime_type", "size_bytes"}` | `generate_python_golden.py:155` 写 `{"filename", "mime", "size"}`；`Probe.log_artifact` 未自动补齐 `"size_bytes": len(blob)`，导致 [report.py](../../../python/synapse/bench/report.py) 第 370 行漏传 `size_bytes` |
 | 3 | `TABLE` (`5`) | Spec §6.4.2 & `probe.cc:742`：单元格为字符串数组 `[][]string`；标准 RFC 8259 JSON（无 `NaN`/`Inf`） | `probe.py:306` 与 `generate_python_golden.py:150` 允许 `float`/`int` 混入，且 `event.py` 全局 `json.dumps()` 未禁用 `allow_nan=False`，一旦含 `NaN`/`Inf` 会写出非标 JSON 导致 Go `encoding/json` 解析失败 |
 | 4 | `COMPARISON` (`4`) | `probe.cc:655-698`：含 `width/height/channels/format/thresholds`；按 `_min`/`_max`/上界指标集合自动计算 `pass`；无 `diff_image` 时**省略** `diff_image_tag` | `probe.py:292` 在 `passed=None` 时直接盲置 `True`，彻底忽略传入的 `thresholds`；第 285 行无 `diff_image` 时写 `"diff_image_tag": ""`；`generate_python_golden.py:136-144` 缺 `width/height/channels/format/thresholds` |
 | 5 | `RUN_START` / `CONFIG` / `SERIES_GROUP` | Spec §6.9 强要求 `CONFIG`/`RUN_START` 所有值必须为 JSON 字符串；Spec §6.4.4 `SERIES_GROUP` 含 `"steps"` 数组 | `event.py` `pack_run_start`/`pack_config` 未做 `str()` 强转；`generate_python_golden.py:164-167` `SERIES_GROUP` 缺少 `"steps"` |
@@ -179,53 +179,53 @@ stale_after: 2027-11-25T00:00:00Z
 
 ### `TRB-P1-04` [synapse] `synapse.observability` 初始化残留坏状态、缺锁保护与埋点无异常隔离
 
-- **缺陷位置**：[observability.py](../../python/synapse/observability.py) 第 86–146 行及全库 14 处业务埋点
+- **缺陷位置**：[observability.py](../../../python/synapse/observability.py) 第 86–146 行及全库 14 处业务埋点
   1. **失败路径残留坏单例**：第 103 行先赋值全局 `_probe = ProbeCls()`，再于第 104–108 行构造 `FileCollector` 与调 `begin_run()`。若 `log_dir` 不可写或 `begin_run()` 抛异常，第 112–117 行虽捕获异常返回 `None`，却**把半初始化/未关闭的 `_probe` 留在了全局变量中**，导致后续所有 `get_probe()` 拿到坏 Probe 并持续报错或泄漏文件句柄；
   2. **缺锁保护**：`init_traceboard()` / `shutdown_traceboard()` 无 `threading.Lock`；
   3. **`shutdown_traceboard()` 缺少运行状态参数**：无法向 `probe.end_run(status=...)` 透传 `"finished"` / `"failed"` / `"cancelled"`；
-  4. **业务埋点未做 Fail-Safe 隔离**：14 处源码埋点直接调用 `probe.log_scalar(...)` / `traceboard_stage(...)`（如 [bench_runner.py](../../python/synapse/pipeline/bench_runner.py)、[trainer.py](../../python/synapse/training/trainer.py)），若 Traceboard I/O（磁盘满、权限变动、非有限值序列化等）抛异常会直接打断核心渲染/训练/评测业务；
+  4. **业务埋点未做 Fail-Safe 隔离**：14 处源码埋点直接调用 `probe.log_scalar(...)` / `traceboard_stage(...)`（如 [bench_runner.py](../../../python/synapse/pipeline/bench_runner.py)、[trainer.py](../../../python/synapse/training/trainer.py)），若 Traceboard I/O（磁盘满、权限变动、非有限值序列化等）抛异常会直接打断核心渲染/训练/评测业务；
   5. **双全局状态边界**：`synapse.observability._probe` 与 `aether_traceboard.get_probe()` 为两份独立全局实例，需在文档与 API 层面明确禁止混用（或统一桥接）。
 - **改进建议**：先在局部变量构建 `probe`、加锁并在 `begin_run()` 成功后原子提交 `_probe = probe`（失败时显式回收关闭）；为 `shutdown_traceboard(status: str = "finished")` 增加状态入参；在 `traceboard_stage()` 与新增 `safe_log_*` 辅助中隔离日志异常，确保可观测性故障零影响主流程。
 
 ### `TRB-P1-05` [synapse] 训练与课程模块缺失 `step` 递增且存在重复日志
 
 - **缺陷位置**：
-  - [trainer.py](../../python/synapse/training/trainer.py) 第 497–500 行（`save_state_dict`）与第 719–725 行（`train_step(..., step=...)`）：虽然拿到了训练 `step`，但从未调用 `probe.set_step(step)` 也未向 `log_scalar(..., step=step)` 传参；
-  - [losses.py](../../python/synapse/training/losses.py) 第 364–373 行（`DiffusionDPOLoss.__call__`）：依赖当前步数但 `trainer` 未先 `set_step`；
-  - [curriculum.py](../../python/synapse/rsi/curriculum.py) 第 251–262 行（`sample_scenarios(..., round_idx=...)`）与第 330–341 行（`plan_round()`）：未传 `step=round_idx`，且 `plan_round()` 在调用 `self._sampler.sample_scenarios()` 后**原样重复写了一遍完全相同的 `round_idx`/`num_scenarios`/`factor_distribution` 事件**。
+  - [trainer.py](../../../python/synapse/training/trainer.py) 第 497–500 行（`save_state_dict`）与第 719–725 行（`train_step(..., step=...)`）：虽然拿到了训练 `step`，但从未调用 `probe.set_step(step)` 也未向 `log_scalar(..., step=step)` 传参；
+  - [losses.py](../../../python/synapse/training/losses.py) 第 364–373 行（`DiffusionDPOLoss.__call__`）：依赖当前步数但 `trainer` 未先 `set_step`；
+  - [curriculum.py](../../../python/synapse/rsi/curriculum.py) 第 251–262 行（`sample_scenarios(..., round_idx=...)`）与第 330–341 行（`plan_round()`）：未传 `step=round_idx`，且 `plan_round()` 在调用 `self._sampler.sample_scenarios()` 后**原样重复写了一遍完全相同的 `round_idx`/`num_scenarios`/`factor_distribution` 事件**。
 - **后果**：多步训练/多轮课程博弈的所有 `train/loss`、`train/dpo_preferred_err`、`rsi/curriculum/*` 全部塌缩在 `step=0`，Traceboard 时间序列图退化为单点垂直堆叠。
 - **改进建议**：在 `train_step()` 与 `save_state_dict()` 显式调用 `probe.set_step(step)` 与传参 `step=step`；在 `curriculum.py:sample_scenarios()` 传 `step=round_idx` 并删除 `plan_round()` 中的重复埋点块。
 
 ### `TRB-P1-06` [synapse] 高基数 ID 拼接 Tag 造成 Tag 空间爆炸
 
 - **缺陷位置**：
-  - [dual_verifier.py](../../python/synapse/rsi/dual_verifier.py) 第 382–394 & 471–472 行：`rsi/verifier/physics_passed/{sample_id}`、`rsi/verifier/{check_name}/{sample_id}`、`rsi/verifier/failures/{sample_id}`、`rsi/verifier/prm_score/{sample_id}`、`rsi/verifier/verdict/{sample_id}`；
-  - [jev_critic.py](../../python/synapse/inspect/jev_critic.py) 第 579–598 行：`inspect/jev/{asset_id}/overall_quality` 等与 `inspect/jev/{asset_id}/defects`。
+  - [dual_verifier.py](../../../python/synapse/rsi/dual_verifier.py) 第 382–394 & 471–472 行：`rsi/verifier/physics_passed/{sample_id}`、`rsi/verifier/{check_name}/{sample_id}`、`rsi/verifier/failures/{sample_id}`、`rsi/verifier/prm_score/{sample_id}`、`rsi/verifier/verdict/{sample_id}`；
+  - [jev_critic.py](../../../python/synapse/inspect/jev_critic.py) 第 579–598 行：`inspect/jev/{asset_id}/overall_quality` 等与 `inspect/jev/{asset_id}/defects`。
 - **后果**：每验证 1,000 个样本或质检 500 个 3D 资产就会衍生数千上万个单点孤立 Tag，无法按指标聚合趋势曲线，且会撑爆前端看板侧边栏与查询索引。
 - **改进建议**：收敛为**低基数固定指标 Tag + 单调递增 `step`**（如 `rsi/verifier/prm_score`、`inspect/jev/overall_quality`），并将每个 `sample_id` / `asset_id` 明细汇总或追加进结构化 `TABLE`（如 `rsi/verifier/verdicts`、`inspect/jev/defects`）。
 
 ### `TRB-P1-07` [synapse] Bench 实时埋点与离线导出 Schema 分裂、逻辑重复及资源泄漏
 
 - **缺陷位置**：
-  - **两套命名空间互不兼容**：[bench_runner.py](../../python/synapse/pipeline/bench_runner.py) 第 186–194 行写入扁平 `bench/{scenario}/{metric|timing}`（且未过滤 `NaN`/`Inf`），而 [traceboard_export.py](../../python/synapse/bench/traceboard_export.py) 第 97–127 行写入 `scenario/{scenario}/metrics|timing/{key}` + `summary/*` + `pillar/*`，导致 `--traceboard` 实时输出与离线导出报告无法在 Traceboard 看板同图对比；
-  - **DRY 违反**：`traceboard_export.py:144-219` 整段复制了 [report.py](../../python/synapse/bench/report.py) 第 377–455 行的 `_compute_pillar_scores`（已有两处独立维护风险）；
+  - **两套命名空间互不兼容**：[bench_runner.py](../../../python/synapse/pipeline/bench_runner.py) 第 186–194 行写入扁平 `bench/{scenario}/{metric|timing}`（且未过滤 `NaN`/`Inf`），而 [traceboard_export.py](../../../python/synapse/bench/traceboard_export.py) 第 97–127 行写入 `scenario/{scenario}/metrics|timing/{key}` + `summary/*` + `pillar/*`，导致 `--traceboard` 实时输出与离线导出报告无法在 Traceboard 看板同图对比；
+  - **DRY 违反**：`traceboard_export.py:144-219` 整段复制了 [report.py](../../../python/synapse/bench/report.py) 第 377–455 行的 `_compute_pillar_scores`（已有两处独立维护风险）；
   - **Docstring 与实现不符 + FD 泄漏**：`traceboard_export.py:37` 声称 "one stage per scenario"，实际并未创建任何 `begin_stage`；且 `close_on_finish=False` 分支直接返回 `True` 并丢弃局部变量 `probe` 引用，导致未关闭的 `FileCollector` 文件描述符泄漏。
 - **改进建议**：将 `report.py` 的 4 支柱得分算法提升为公开 SSOT 函数供 `traceboard_export.py` 复用；统一两轨 Tag 规范（`bench/scenario/{name}/metrics/{k}` 等）与 `NaN` 过滤；在 `traceboard_export.py` 按场景真实打开 `begin_stage`，并移除悬空 `close_on_finish=False`（或改返回已关闭 `.tbevt` 文件路径 / 支持注入外部 `Probe`）。
 
 ### `TRB-P1-08` [synapse] `colab_runner.py` 违反存储分离铁律与 `run_cpu_verification.py` 缺失 `finally` 刷盘
 
 - **缺陷位置**：
-  - [colab_runner.py](../../scripts/colab_runner.py) 第 846 行：当 `job_dir` 位于 Google Drive FUSE（`/content/drive/MyDrive/dervgen/...`）时，直接向 Drive FUSE 路径写高频 append-only `.tbevt` 违反 `AGENTS.md` §2 与 `.agents/skills/google-colab-environment/SKILL.md`「计算在 NVMe `/content/`，完成后再持久化回 Drive」铁律（FUSE 断流易损毁尾部记录）；第 811–813 行 `--help` 文案承诺记录 `"GPU profile, and experiment results"`，但代码**从未记录 GPU 配置与各实验指标/Stage**；异常与 SIGTERM 抢占退出路径也未上报 `"failed"` / `"cancelled"` 状态；
-  - [run_cpu_verification.py](../../scripts/run_cpu_verification.py) 第 505–620 行：E1–E5 验证主体与 `shutdown_traceboard()` 未放入 `try...finally`，任一实验异常或 SHA-256 校验失败（第 542、550 行 `return 20`）会直接跳过 `shutdown_traceboard()`，且全程未创建 E1–E5 分实验 stage 与分阶段耗时。
+  - [colab_runner.py](../../../scripts/colab_runner.py) 第 846 行：当 `job_dir` 位于 Google Drive FUSE（`/content/drive/MyDrive/dervgen/...`）时，直接向 Drive FUSE 路径写高频 append-only `.tbevt` 违反 `AGENTS.md` §2 与 `.agents/skills/google-colab-environment/SKILL.md`「计算在 NVMe `/content/`，完成后再持久化回 Drive」铁律（FUSE 断流易损毁尾部记录）；第 811–813 行 `--help` 文案承诺记录 `"GPU profile, and experiment results"`，但代码**从未记录 GPU 配置与各实验指标/Stage**；异常与 SIGTERM 抢占退出路径也未上报 `"failed"` / `"cancelled"` 状态；
+  - [run_cpu_verification.py](../../../scripts/run_cpu_verification.py) 第 505–620 行：E1–E5 验证主体与 `shutdown_traceboard()` 未放入 `try...finally`，任一实验异常或 SHA-256 校验失败（第 542、550 行 `return 20`）会直接跳过 `shutdown_traceboard()`，且全程未创建 E1–E5 分实验 stage 与分阶段耗时。
 - **改进建议**：`colab_runner.py` 在 `/content/work/{job_id}/traceboard/` 写入 `.tbevt` 并在每次实验 checkpoint 及 `finally` 刷盘后原子同步回 `{job_dir}/traceboard/`，补齐 `gpu_profile` 配置与 `colab/{exp}` stage 埋点；`run_cpu_verification.py` 用 `try...finally` 保证无论成功或早退（`20`/异常）均执行 `shutdown_traceboard(status=...)` 并记录分实验 stage 耗时。
 
 ### `TRB-P1-09` [synapse] 测试覆盖盲区（无 `spec` Mock、永真断言、缺 Bench 失败路径与 CI 产物校验）
 
 - **缺陷位置**：
-  1. [test_traceboard_export.py](../../tests/test_traceboard_export.py) 第 214–215 行 `test_returns_false_when_not_installed` 写永真断言 `assert isinstance(result, bool)`（`True` 和 `False` 都通过！）；
-  2. [test_training_traceboard.py](../../tests/test_training_traceboard.py)、[test_rsi_recon_traceboard.py](../../tests/test_rsi_recon_traceboard.py)、[test_adapters_style_traceboard.py](../../tests/test_adapters_style_traceboard.py) 全部使用裸 `MagicMock()` 而无 `spec`，无法在缺少真实 SDK 时拦截类似 `TRB-P0-03` 的签名错误；
+  1. [test_traceboard_export.py](../../../tests/test_traceboard_export.py) 第 214–215 行 `test_returns_false_when_not_installed` 写永真断言 `assert isinstance(result, bool)`（`True` 和 `False` 都通过！）；
+  2. [test_training_traceboard.py](../../../tests/test_training_traceboard.py)、[test_rsi_recon_traceboard.py](../../../tests/test_rsi_recon_traceboard.py)、[test_adapters_style_traceboard.py](../../../tests/test_adapters_style_traceboard.py) 全部使用裸 `MagicMock()` 而无 `spec`，无法在缺少真实 SDK 时拦截类似 `TRB-P0-03` 的签名错误；
   3. **0 项** `BenchPipelineRunner` Traceboard 埋点单测与真 SDK 失败路径测试；
-  4. [.github/workflows/ci.yml](../../.github/workflows/ci.yml) 未增加运行 `synapse --traceboard ... bench run` 并校验产出 `.tbevt` 完整性与上传 artifact 的 CI 步骤（另记录：公网 Runner `python-fast` 上 `tests/test_wave4_rfc0060_rfc0061_parity.py` 存在 3 项 `#203` 既有未标 `@pytest.mark.external_data` 的原生扩展失败，需独立止血使 CI 全绿）。
+  4. [.github/workflows/ci.yml](../../../.github/workflows/ci.yml) 未增加运行 `synapse --traceboard ... bench run` 并校验产出 `.tbevt` 完整性与上传 artifact 的 CI 步骤（另记录：公网 Runner `python-fast` 上 `tests/test_wave4_rfc0060_rfc0061_parity.py` 存在 3 项 `#203` 既有未标 `@pytest.mark.external_data` 的原生扩展失败，需独立止血使 CI 全绿）。
 - **改进建议**：消除永真断言；定义 `ProbeProtocol` / `StageProtocol` 并将测试 mock 切换为 `MagicMock(spec=...)`；补全 `BenchPipelineRunner` 三态 E2E、`StatelessLoRATrainer` 多步 `step` 递增验证以及 CI `.tbevt` 产线校验与 artifact 归档。
 
 ---
@@ -236,28 +236,28 @@ stale_after: 2027-11-25T00:00:00Z
 
 | 文档路径 | 原文陈述 | 实际代码 / 工具验证真值 | 整改要求 |
 | :--- | :--- | :--- | :--- |
-| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §6 (L266) | `synapse bench --traceboard /tmp/tblog list` | `argparse` 报 `invalid choice: '/tmp/tblog'` 退出码 `10` | 修复 CLI 共享参数后再验证并修正示例 |
-| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §3.1 (L129) | 导出 `Record`, `FileHeader`, `read_file`, `read_events` | `aether_traceboard/__init__.py` `__all__` **未导出**这 4 项，`FileHeader`/`read_file` **尚未实现** | `PR-TR02` 补齐实现与导出 |
-| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §0 (L29) | `aether`: 154 passed · `mypy --strict` 0 错 | `aether_traceboard` 在 `ubuntu24` 实测 `mypy --strict` **报 4 errors** | `PR-TR03` 清零报错并去除 CI `continue-on-error` |
+| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §6 (L266) | `synapse bench --traceboard /tmp/tblog list` | `argparse` 报 `invalid choice: '/tmp/tblog'` 退出码 `10` | 修复 CLI 共享参数后再验证并修正示例 |
+| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §3.1 (L129) | 导出 `Record`, `FileHeader`, `read_file`, `read_events` | `aether_traceboard/__init__.py` `__all__` **未导出**这 4 项，`FileHeader`/`read_file` **尚未实现** | `PR-TR02` 补齐实现与导出 |
+| [PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md](../../plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md) §0 (L29) | `aether`: 154 passed · `mypy --strict` 0 错 | `aether_traceboard` 在 `ubuntu24` 实测 `mypy --strict` **报 4 errors** | `PR-TR03` 清零报错并去除 CI `continue-on-error` |
 | `aether/traceboard/python/README.md` (L3, L25, L91, L106) | 引用 `../../docs/traceboard_architecture.md`、`../../docs/wire_format_spec.md`、`server/`、`https://npm.pkg.github.com/` | 上述路径（相对位置多了一层 `../`）与 `server/` 目录**均不存在**，且 GitHub Packages 不支持 npm registry 托管 Python wheel | `PR-TR03` 修正为 `../docs/wire_format_spec.md` 与真实分发地址 |
 | `aether/traceboard/python/pyproject.toml` (L41) | `Documentation = .../traceboard/docs/traceboard_architecture.md` | 该文档不存在（存在的是 `wire_format_spec.md`） | `PR-TR03` 修正为 `wire_format_spec.md` |
 | `aether/traceboard/docs/wire_format_spec.md` (L81, L560) | 指向 `../python/traceboard/probe.py`、`../python/traceboard/event.py` | 实际包目录为 `../python/aether_traceboard/` | `PR-TR03` 同步路径 |
 
 ### `TRB-P2-02` 脚本与主 CLI `--traceboard` 形态统一
 
-- [scripts/colab_runner.py](../../scripts/colab_runner.py) 与 [scripts/run_cpu_verification.py](../../scripts/run_cpu_verification.py) 当前为布尔开关，而主 CLI 为 `--traceboard LOG_DIR`。建议统一升级为 `--traceboard [LOG_DIR]`（`nargs="?"`, `const="__AUTO__"`, `default=None`）：不传路径时延续当前默认目录，传入路径时尊重用户指定目录，兼顾自动化脚本易用性与 CI/自动化目录可控性。
+- [scripts/colab_runner.py](../../../scripts/colab_runner.py) 与 [scripts/run_cpu_verification.py](../../../scripts/run_cpu_verification.py) 当前为布尔开关，而主 CLI 为 `--traceboard LOG_DIR`。建议统一升级为 `--traceboard [LOG_DIR]`（`nargs="?"`, `const="__AUTO__"`, `default=None`）：不传路径时延续当前默认目录，传入路径时尊重用户指定目录，兼顾自动化脚本易用性与 CI/自动化目录可控性。
 
 ### `TRB-P2-03` 核心缺失链路与富媒体事件（`IMAGE` / `COMPARISON` / `HISTOGRAM`）零使用
 
 当前 9 子系统埋点几乎全部停留在标量与零星文本/表格，Traceboard 专为渲染/视觉生成设计的 **`IMAGE`、`COMPARISON`、`HISTOGRAM`、`SERIES_GROUP` 四大核心能力在 `synapse` 中使用率为 0%**：
-1. **`synapse worker run --bundle`（RFC 0039 生产入口）零埋点**：[bundle_worker.py](../../python/synapse/pipeline/bundle_worker.py) 未支持从 `JobBundle` 或环境变量读取 `traceboard_dir`，生产容器单步 GPU 任务无法产出 `.tbevt`；
-2. **`ConditionScheduler`（97 帧因果滑窗）零埋点**：[scheduler.py](../../python/synapse/adapters/scheduler.py) 缺失切窗索引、重叠帧相位、`shot_cut` 触发率与窗耗时埋点；
+1. **`synapse worker run --bundle`（RFC 0039 生产入口）零埋点**：[bundle_worker.py](../../../python/synapse/pipeline/bundle_worker.py) 未支持从 `JobBundle` 或环境变量读取 `traceboard_dir`，生产容器单步 GPU 任务无法产出 `.tbevt`；
+2. **`ConditionScheduler`（97 帧因果滑窗）零埋点**：[scheduler.py](../../../python/synapse/adapters/scheduler.py) 缺失切窗索引、重叠帧相位、`shot_cut` 触发率与窗耗时埋点；
 3. **RFC 0061 局部修补前后对比未接 `log_comparison`**：`synapse.refine` 最适合通过 `probe.log_comparison(before, after, metrics, thresholds)` 产出可视化 A/B 对比（需限制分辨率上限与抽帧开关以防 `.tbevt` 体积膨胀）；
 4. **`bench_runner` 关键帧与深度残差分布**：在显式开启时抽样记录关键帧 `log_image` 与深度误差 `log_histogram`；`compare_runs` / `render_comparison_html` 补记 4 轨道对比 HTML artifact。
 
 ### `TRB-P2-04` 架构设计文档补强
 
-- [DESIGN_TRACEBOARD_INTEGRATION.md](../DESIGN_TRACEBOARD_INTEGRATION.md) 需补充：**Tag 命名规范（Tag Taxonomy & 低基数约束）**、**Step 单调性规约**、**W3C `traceparent` 与 `runId` 关联规范**、**非阻塞 Fail-Safe 异常边界**以及 **Colab NVMe-First 同步策略**。
+- [DESIGN_TRACEBOARD_INTEGRATION.md](../../DESIGN_TRACEBOARD_INTEGRATION.md) 需补充：**Tag 命名规范（Tag Taxonomy & 低基数约束）**、**Step 单调性规约**、**W3C `traceparent` 与 `runId` 关联规范**、**非阻塞 Fail-Safe 异常边界**以及 **Colab NVMe-First 同步策略**。
 
 ### `TRB-P2-05` 跨仓生态协同项
 
