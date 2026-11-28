@@ -40,6 +40,7 @@ FOUNDARY_SERVICE_NAMES: tuple[str, ...] = (
     "metric3d",
     "wham",
     "intrinsic_image",
+    "diffusion_renderer",
 )
 
 FoundaryServiceName = Literal[
@@ -59,6 +60,7 @@ FoundaryServiceName = Literal[
     "metric3d",
     "wham",
     "intrinsic_image",
+    "diffusion_renderer",
 ]
 
 
