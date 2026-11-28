@@ -422,7 +422,10 @@ def native_compute_chamfer(
         result = mod.compute_chamfer_distance(a, b, reduction=reduction)
         # Result may be a scalar or a ChamferResult dict with 'chamfer_mm' key.
         if isinstance(result, dict):
-            return float(result.get("chamfer_mm", result.get("chamfer", 0.0)))
+            raw_val = result.get("chamfer_mm")
+            if raw_val is None:
+                raw_val = result.get("chamfer")
+            return float(0.0 if raw_val is None else raw_val)
         return float(result)
     except Exception:
         return None
