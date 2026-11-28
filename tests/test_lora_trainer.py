@@ -1408,7 +1408,7 @@ class TestPRTD01BackboneLoading:
         stage_out = root / "stage_weights"
         manifest = BundleManifest(
             job_id="td01-stage",
-            closure_type="lora_train",
+            stage="lora_train",
             inputs={"shards_dir": str(shards_dir)},
             outputs={"weights_dir": str(stage_out)},
             params={
