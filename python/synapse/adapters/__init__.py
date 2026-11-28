@@ -54,6 +54,13 @@ from synapse.adapters.scheduler import (
     cross_dissolve_pixels,
     fuse_overlapping_latents,
 )
+from synapse.adapters.spatial_memory import (
+    SpatialMemory,
+    SpatialMemoryConfig,
+    SpatialPointCloud,
+    compute_reference_consistency_score,
+    depth_to_world_points,
+)
 
 # Import vace module to trigger @register_adapter side-effect.
 from synapse.adapters.vace import (
@@ -97,6 +104,9 @@ __all__ = [
     "ReanchorRequest",
     "ScheduledWindow",
     "SeedanceAdapter",
+    "SpatialMemory",
+    "SpatialMemoryConfig",
+    "SpatialPointCloud",
     "VaceAdapter",
     "VaceBackendTransport",
     "VaceTaskMode",
@@ -111,9 +121,11 @@ __all__ = [
     "WanBackendTransport",
     "WindowSlice",
     "compute_latent_flow_operator",
+    "compute_reference_consistency_score",
     "create_adapter",
     "cross_dissolve_pixels",
     "degrade_fgpp_for_blackbox",
+    "depth_to_world_points",
     "fuse_overlapping_latents",
     "list_adapters",
     "patch_wan_adapter_with_lora",
