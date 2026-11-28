@@ -37,6 +37,16 @@ from synapse.training.losses import (
     latent_edge_alignment_loss,
     normal_reconstruction_loss,
 )
+from synapse.training.bucketing import (
+    AutoTuneRecommendation,
+    FrameBucketBatch,
+    FrameBucketKey,
+    FrameBucketSample,
+    FrameBucketSampler,
+    auto_tune_lora_config,
+    detect_cuda_vram_gb,
+    snap_to_frame_bucket,
+)
 from synapse.training.packager import (
     LoRAEvaluationReport,
     LoRAGateThresholds,
@@ -84,6 +94,14 @@ __all__ = [
     "create_qlora_linear",
     "LoRATrainConfig",
     "StatelessLoRATrainer",
+    "AutoTuneRecommendation",
+    "FrameBucketBatch",
+    "FrameBucketKey",
+    "FrameBucketSample",
+    "FrameBucketSampler",
+    "auto_tune_lora_config",
+    "detect_cuda_vram_gb",
+    "snap_to_frame_bucket",
     "LoRAGateThresholds",
     "LoRAEvaluationReport",
     "package_and_gate_lora_bundle",

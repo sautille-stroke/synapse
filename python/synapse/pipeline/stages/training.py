@@ -134,8 +134,18 @@ def handle_lora_train(
                 "Provide train_config={'category': 'style', ...} in bundle_manifest.json params."
             ),
         )
+    resolved_cfg = dict(raw_cfg)
+    if bool(params.get("auto_tune", False)):
+        from synapse.training.bucketing import auto_tune_lora_config
+
+        rec = auto_tune_lora_config(
+            resolved_cfg["category"],
+            vram_gb=params.get("vram_gb"),
+        )
+        for key, val in rec.to_config_dict().items():
+            resolved_cfg.setdefault(key, val)
     try:
-        config = LoRATrainConfig(**raw_cfg)
+        config = LoRATrainConfig(**resolved_cfg)
     except Exception as exc:
         raise ContractValidationError(
             f"Invalid LoRATrainConfig in lora_train stage: {exc}",
