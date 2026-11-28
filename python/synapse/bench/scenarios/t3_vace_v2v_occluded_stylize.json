@@ -1,0 +1,47 @@
+{
+  "id": "t3_vace_v2v_occluded_stylize",
+  "tier": "T3",
+  "description": "Wan2.1-VACE video-to-video (V2V) restyling under multi-object cube/cylinder occlusion.",
+  "tags": [
+    "horizon14",
+    "vace",
+    "v2v",
+    "occlusion"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "cube",
+    "license": "MIT"
+  },
+  "camera_type": "arc",
+  "camera_params": {
+    "radius": 3.5,
+    "azimuth_deg": 15.0,
+    "elevation_start_deg": 0.0,
+    "elevation_end_deg": 55.0,
+    "num_frames": 49
+  },
+  "conditions": {
+    "vace_mode": "v2v",
+    "condition_mode": "vcu_unified",
+    "scene_type": "multi_object",
+    "objects": [
+      "cube",
+      "cylinder"
+    ]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 6.5,
+    "psnr_db": 23.5,
+    "ssim": 0.83,
+    "flicker_score": 0.04
+  },
+  "validates_stages": [
+    2,
+    3,
+    4
+  ],
+  "temporal_mode": "continuous_clip"
+}

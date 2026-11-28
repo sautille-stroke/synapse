@@ -1,0 +1,51 @@
+{
+  "id": "t5_sam2_vos_cut_reanchor_97f",
+  "tier": "T5",
+  "description": "97-frame multi-cut SAM 2.1 VOS restart fused with Cryptomatte and FLF2V scene-cut boundary anchoring.",
+  "tags": [
+    "horizon14",
+    "sam2",
+    "vos",
+    "scene_cut",
+    "97-frame",
+    "e2e"
+  ],
+  "asset": {
+    "source": "procedural",
+    "id": "humanoid_53",
+    "license": "MIT"
+  },
+  "camera_type": "orbit",
+  "camera_params": {
+    "radius": 3.5,
+    "elevation_deg": 15.0,
+    "num_frames": 97,
+    "fps": 24,
+    "azimuth_range_deg": 270
+  },
+  "conditions": {
+    "sam2_vos": true,
+    "flf2v_cut_anchor": true,
+    "scene_cuts": [
+      32,
+      64
+    ]
+  },
+  "width": 1024,
+  "height": 1024,
+  "expected": {
+    "chamfer_mm": 7.0,
+    "psnr_db": 23.5,
+    "ssim": 0.83,
+    "temporal_warp_error": 0.05,
+    "flicker_score": 0.03
+  },
+  "validates_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "temporal_mode": "continuous_clip"
+}
