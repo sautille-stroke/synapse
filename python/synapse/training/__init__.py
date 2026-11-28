@@ -17,6 +17,16 @@ from synapse.training.backbone import (
     resolve_target_modules,
     resolve_training_backbone,
 )
+from synapse.training.bucketing import (
+    AutoTuneRecommendation,
+    FrameBucketBatch,
+    FrameBucketKey,
+    FrameBucketSample,
+    FrameBucketSampler,
+    auto_tune_lora_config,
+    detect_cuda_vram_gb,
+    snap_to_frame_bucket,
+)
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LatentEncoderProtocol,
@@ -36,16 +46,6 @@ from synapse.training.losses import (
     flow_matching_loss,
     latent_edge_alignment_loss,
     normal_reconstruction_loss,
-)
-from synapse.training.bucketing import (
-    AutoTuneRecommendation,
-    FrameBucketBatch,
-    FrameBucketKey,
-    FrameBucketSample,
-    FrameBucketSampler,
-    auto_tune_lora_config,
-    detect_cuda_vram_gb,
-    snap_to_frame_bucket,
 )
 from synapse.training.packager import (
     LoRAEvaluationReport,
