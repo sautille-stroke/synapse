@@ -1258,3 +1258,204 @@ class TestPR186CheckpointAndLossHardening:
         assert trainer2._geometry_probe is not None
         torch.testing.assert_close(trainer2._geometry_probe._conv.weight, orig_probe_w)
 
+
+@pytest.mark.slow
+class TestPRTD01BackboneLoading:
+    """PR-TD01: Real --base-model loading fails closed and never falls back to _WhitelistDiT."""
+
+    def test_resolve_training_backbone_rejects_ambiguous_or_invalid(
+        self, tmp_path: Any
+    ) -> None:
+        from pathlib import Path
+
+        from synapse.errors import (
+            AssetNotFoundError,
+            BackendUnavailableError,
+            ContractValidationError,
+            SynapseError,
+        )
+        from synapse.training.backbone import resolve_training_backbone
+
+        base = Path(str(tmp_path))
+
+        # Neither base_model nor mock_backbone -> exit 50
+        with pytest.raises(SynapseError) as exc_50:
+            resolve_training_backbone(base_model_path=None, mock_backbone=False)
+        assert exc_50.value.exit_code == 50
+
+        # Both specified -> exit 10
+        with pytest.raises(ContractValidationError):
+            resolve_training_backbone(base_model_path=base, mock_backbone=True)
+
+        # Nonexistent base_model -> exit 20
+        with pytest.raises(AssetNotFoundError):
+            resolve_training_backbone(base_model_path=base / "missing_ckpt", mock_backbone=False)
+
+        # Directory without config.json -> exit 10 (never falls back to _WhitelistDiT)
+        empty_dir = base / "empty_ckpt"
+        empty_dir.mkdir()
+        with pytest.raises(ContractValidationError):
+            resolve_training_backbone(base_model_path=empty_dir, mock_backbone=False)
+
+        # Malformed config.json -> exit 10
+        bad_cfg_dir = base / "bad_cfg"
+        bad_cfg_dir.mkdir()
+        (bad_cfg_dir / "config.json").write_text("{not-json", encoding="utf-8")
+        with pytest.raises(ContractValidationError):
+            resolve_training_backbone(base_model_path=bad_cfg_dir, mock_backbone=False)
+
+        # Valid config.json without diffusers -> exit 30 (unless diffusers installed)
+        valid_dir = base / "valid_cfg"
+        (valid_dir / "transformer").mkdir(parents=True)
+        (valid_dir / "transformer" / "config.json").write_text(
+            '{"_class_name": "WanTransformer3DModel"}', encoding="utf-8"
+        )
+        import sys
+        from unittest import mock
+
+        with mock.patch.dict(sys.modules, {"diffusers": None}):
+            with pytest.raises(BackendUnavailableError) as exc_diff:
+                resolve_training_backbone(base_model_path=valid_dir, mock_backbone=False)
+        import importlib.util
+
+        if importlib.util.find_spec("torch") is not None:
+            assert "diffusers" in str(exc_diff.value)
+
+    def test_stage_and_cli_train_real_loaded_backbone(
+        self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Both handle_lora_train and CLI lora train use the loaded real model, not _WhitelistDiT."""
+        pytest.importorskip("torch")
+        import io
+        import json
+        import sys
+        import types
+        from pathlib import Path
+
+        import torch
+        from synapse.cli import main_synapse
+        from synapse.pipeline.bundle_worker import BundleManifest
+        from synapse.pipeline.stages.training import handle_lora_train
+        from synapse.training.feature_store import (
+            FeatureStoreBuilder,
+            LinearProjectionEncoder,
+            LinearProjectionTextEncoder,
+        )
+
+        root = Path(str(tmp_path))
+        shards_dir = root / "shards"
+        builder = FeatureStoreBuilder(LinearProjectionEncoder(), LinearProjectionTextEncoder())
+        frames = np.full((4, 32, 32, 3), 120, dtype=np.uint8)
+        builder.add_sample("sample_0000", frames, "sks character studio")
+        builder.build_shards(shards_dir)
+
+        ckpt_dir = root / "wan_ckpt"
+        (ckpt_dir / "transformer").mkdir(parents=True)
+        (ckpt_dir / "transformer" / "config.json").write_text(
+            '{"_class_name": "WanTransformer3DModel"}', encoding="utf-8"
+        )
+
+        loaded_calls: list[str] = []
+
+        class _DiffusersWanStub(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.blocks = torch.nn.ModuleList(
+                    [
+                        torch.nn.ModuleDict(
+                            {
+                                "attn1": torch.nn.ModuleDict(
+                                    {
+                                        "to_q": torch.nn.Linear(64, 64),
+                                        "to_k": torch.nn.Linear(64, 64),
+                                        "to_v": torch.nn.Linear(64, 64),
+                                    }
+                                ),
+                                "attn2": torch.nn.ModuleDict(
+                                    {
+                                        "to_k": torch.nn.Linear(64, 64),
+                                        "to_v": torch.nn.Linear(64, 64),
+                                    }
+                                ),
+                                "ffn": torch.nn.ModuleDict(
+                                    {"proj": torch.nn.Linear(64, 64)}
+                                ),
+                            }
+                        )
+                    ]
+                )
+
+            def forward(self, x: Any, t: Any = None) -> Any:
+                _ = t
+                orig_shape = x.shape
+                h = x.reshape(orig_shape[0], -1, 64)
+                blk: Any = self.blocks[0]
+                h = h + blk["attn2"]["to_k"](h) + blk["attn2"]["to_v"](h)
+                h = h + blk["ffn"]["proj"](h)
+                return h.reshape(orig_shape)
+
+        class _WanLoader:
+            @staticmethod
+            def from_pretrained(model_dir: str, **kwargs: Any) -> torch.nn.Module:
+                _ = kwargs
+                loaded_calls.append(model_dir)
+                return _DiffusersWanStub()
+
+        fake_diffusers = types.SimpleNamespace(WanTransformer3DModel=_WanLoader)
+        monkeypatch.setitem(sys.modules, "diffusers", fake_diffusers)
+
+        # 1. Stage handler uses real loaded DiffusersWanStub (attn2, NOT cross_attn)
+        stage_out = root / "stage_weights"
+        manifest = BundleManifest(
+            job_id="td01-stage",
+            stage="lora_train",
+            inputs={"shards_dir": str(shards_dir)},
+            outputs={"weights_dir": str(stage_out)},
+            params={
+                "base_model": str(ckpt_dir),
+                "train_config": {"category": "style", "rank": 4, "max_steps": 2},
+            },
+        )
+        res = handle_lora_train(manifest)
+        assert res["backbone_kind"] == "real"
+        assert res["mock_backbone"] is False
+        assert loaded_calls == [str(ckpt_dir / "transformer")]
+
+        from safetensors.numpy import load_file
+
+        stage_weights = load_file(str(stage_out / "adapter_model.safetensors"))
+        assert any("attn2.to_k" in k for k in stage_weights), (
+            f"Expected Diffusers attn2 keys from real backbone, got {list(stage_weights)}"
+        )
+        assert not any("cross_attn" in k for k in stage_weights)
+
+        # 2. CLI handler uses real loaded DiffusersWanStub as well
+        cli_out = root / "cli_weights"
+        old = sys.stdout
+        sys.stdout = buf = io.StringIO()
+        try:
+            rc = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--base-model",
+                    str(ckpt_dir),
+                    "--shards-dir",
+                    str(shards_dir),
+                    "--output",
+                    str(cli_out),
+                    "--config",
+                    '{"category": "style", "rank": 4, "max_steps": 2}',
+                ]
+            )
+        finally:
+            sys.stdout = old
+        assert rc == 0
+        cli_payload = json.loads(buf.getvalue())
+        assert cli_payload["backbone_kind"] == "real"
+        assert cli_payload["mock_backbone"] is False
+        assert len(loaded_calls) == 2
+        cli_weights = load_file(str(cli_out / "adapter_model.safetensors"))
+        assert any("attn2.to_k" in k for k in cli_weights)
+

@@ -9,6 +9,14 @@ Submodules:
 
 from __future__ import annotations
 
+from synapse.training.backbone import (
+    CATEGORY_DEFAULT_TARGETS,
+    DIFFUSERS_WAN_CATEGORY_TARGETS,
+    build_mock_dit_backbone,
+    load_real_dit_backbone,
+    resolve_target_modules,
+    resolve_training_backbone,
+)
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LatentEncoderProtocol,
@@ -40,6 +48,12 @@ from synapse.training.trainer import (
 )
 
 __all__ = [
+    "CATEGORY_DEFAULT_TARGETS",
+    "DIFFUSERS_WAN_CATEGORY_TARGETS",
+    "build_mock_dit_backbone",
+    "load_real_dit_backbone",
+    "resolve_target_modules",
+    "resolve_training_backbone",
     "FeatureStoreBuilder",
     "LatentEncoderProtocol",
     "LinearProjectionEncoder",

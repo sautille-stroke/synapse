@@ -613,6 +613,30 @@ class TestLoRACLI:
         parsed = json.loads(buf2.getvalue())
         assert parsed["status"] == "ok"
         assert parsed["steps_completed"] == 3
+        assert parsed["backbone_kind"] == "mock"
+        assert parsed["mock_backbone"] is True
+
+        # 3. Reject passing --base-model and --mock-backbone simultaneously (exit 10)
+        old = sys.stdout
+        sys.stdout = buf3 = io.StringIO()
+        try:
+            code3 = main_synapse(
+                [
+                    "--json",
+                    "lora",
+                    "train",
+                    "--base-model",
+                    str(tmp_path),
+                    "--mock-backbone",
+                    "--config",
+                    '{"category": "style"}',
+                ]
+            )
+        finally:
+            sys.stdout = old
+        assert code3 == 10
+        parsed3 = json.loads(buf3.getvalue())
+        assert parsed3["exit_code"] == 10
         from safetensors.numpy import load_file
 
         weights = load_file(str(out_dir / "adapter_model.safetensors"))
