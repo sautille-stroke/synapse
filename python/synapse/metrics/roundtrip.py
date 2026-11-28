@@ -108,8 +108,9 @@ def chamfer_mm(
     if len(a) == 0 or len(b) == 0:
         return float("nan")
 
-    from synapse.bridge.aether_bridge import get_aether_geo
+    from synapse.bridge.aether_bridge import get_aether_geo, native_compute_chamfer
 
+    # Try aether_geo first (full geometry module)
     geo = get_aether_geo()
     if geo is not None:
         try:
@@ -118,6 +119,11 @@ def chamfer_mm(
             raise
         except Exception:
             pass
+
+    # Try aether_metrics (lighter metrics-only module with Hausdorff bonus)
+    native_cd = native_compute_chamfer(a, b, reduction=reduction)
+    if native_cd is not None:
+        return native_cd
 
     # Pure NumPy fallback via _nearest_neighbor_distances
     d_a2b = _nearest_neighbor_distances(a, b) * 1000.0  # m -> mm
