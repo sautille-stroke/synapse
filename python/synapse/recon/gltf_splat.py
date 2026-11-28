@@ -104,7 +104,7 @@ def _quantize_affine_uint8(arr: np.ndarray) -> tuple[np.ndarray, float, float]:
 
 
 def _dequantize_affine_uint8(q: np.ndarray, vmin: float, span: float) -> np.ndarray:
-    return (q.astype(np.float32) / 255.0) * span + vmin
+    return np.asarray((q.astype(np.float32) / 255.0) * span + vmin, dtype=np.float32)
 
 
 def _quantize_affine_uint16(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -122,7 +122,7 @@ def _dequantize_affine_uint16(
     vmin: np.ndarray,
     span: np.ndarray,
 ) -> np.ndarray:
-    return (q.astype(np.float32) / 65535.0) * span + vmin
+    return np.asarray((q.astype(np.float32) / 65535.0) * span + vmin, dtype=np.float32)
 
 
 def _normalize_quats_wxyz(rots: np.ndarray) -> np.ndarray:
