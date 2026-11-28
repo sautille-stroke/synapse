@@ -13,19 +13,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import jsonschema  # type: ignore[import-untyped]
 import numpy as np
 import pydantic
 import pytest
 from hypothesis import given, settings
-from hypothesis import strategies as st
-from synapse.adapters.lora.manifest import LoRAManifest
-from synapse.bench.bundle_exporter import InspectionBundleManifest
-from synapse.fgpp.frame import CameraConvention, CameraParams, FGPPFrame
-from synapse.fgpp.io import sanitize_fgpp_frame
-from synapse.inspect.geometry_gate import validate_mesh_geometry
-from synapse.inspect.schemas import DefectAnnotation3D, InspectionReport
-from synapse.pipeline.bundle_worker import BundleManifest
+
+jsonschema = pytest.importorskip("jsonschema", reason="jsonschema not installed")
+from hypothesis import strategies as st  # noqa: E402
+from synapse.adapters.lora.manifest import LoRAManifest  # noqa: E402
+from synapse.bench.bundle_exporter import InspectionBundleManifest  # noqa: E402
+from synapse.fgpp.frame import CameraConvention, CameraParams, FGPPFrame  # noqa: E402
+from synapse.fgpp.io import sanitize_fgpp_frame  # noqa: E402
+from synapse.inspect.geometry_gate import validate_mesh_geometry  # noqa: E402
+from synapse.inspect.schemas import DefectAnnotation3D, InspectionReport  # noqa: E402
+from synapse.pipeline.bundle_worker import BundleManifest  # noqa: E402
 
 pytestmark = pytest.mark.slow
 

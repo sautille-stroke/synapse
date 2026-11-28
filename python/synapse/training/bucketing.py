@@ -255,8 +255,13 @@ class AutoTuneRecommendation:
         )
 
 
-def detect_cuda_vram_gb(default_gb: float = 24.0) -> float:
-    """Detect device 0 VRAM capacity in GiB cleanly without raising on CPU hosts."""
+def detect_cuda_vram_gb(default_gb: float | None = None) -> float:
+    """Detect device 0 VRAM capacity in GiB cleanly without raising on CPU hosts.
+
+    When no CUDA device is available and *default_gb* is ``None``, returns
+    ``0.0`` so that callers can distinguish "no GPU detected" from a real
+    capacity.  Pass a positive *default_gb* to override the fallback.
+    """
     try:
         import torch
 
@@ -265,7 +270,7 @@ def detect_cuda_vram_gb(default_gb: float = 24.0) -> float:
             return round(float(props.total_memory) / float(1024**3), 2)
     except Exception:
         pass
-    return float(default_gb)
+    return float(default_gb) if default_gb is not None else 0.0
 
 
 def auto_tune_lora_config(
@@ -278,7 +283,10 @@ def auto_tune_lora_config(
     """Recommend rank 32-64, warmup+cosine LR, QLoRA, and bucket limits from VRAM & data."""
     vram = float(vram_gb) if vram_gb is not None else detect_cuda_vram_gb()
     if vram <= 0.0:
-        raise ValueError(f"vram_gb must be positive, got {vram}")
+        raise ValueError(
+            f"vram_gb must be positive, got {vram}. "
+            "No CUDA device detected; pass --vram-gb explicitly."
+        )
     n_samples = max(int(dataset_size), 1)
 
     if vram <= 48.0:

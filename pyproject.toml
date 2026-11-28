@@ -89,6 +89,7 @@ python_files = ["test_*.py"]
 addopts = "-p no:asyncio -p no:anyio -p no:hypothesispytest -p no:cacheprovider"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu_smoke: marks tests requiring a CUDA GPU (deselect with '-m \"not gpu_smoke\"')",
     "external_data: marks tests requiring external sibling repos or pre-exported datasets",
     "platform_specific: marks tests restricted to specific operating systems",
 ]
