@@ -42,6 +42,13 @@ from synapse.training.packager import (
     LoRAGateThresholds,
     package_and_gate_lora_bundle,
 )
+from synapse.training.qlora import (
+    NF4_CODEBOOK,
+    NF4QuantizedTensor,
+    create_qlora_linear,
+    dequantize_nf4_blockwise,
+    quantize_nf4_blockwise,
+)
 from synapse.training.trainer import (
     LoRATrainConfig,
     StatelessLoRATrainer,
@@ -70,6 +77,11 @@ __all__ = [
     "latent_edge_alignment_loss",
     "normal_reconstruction_loss",
     "diffusion_dpo_loss",
+    "NF4_CODEBOOK",
+    "NF4QuantizedTensor",
+    "quantize_nf4_blockwise",
+    "dequantize_nf4_blockwise",
+    "create_qlora_linear",
     "LoRATrainConfig",
     "StatelessLoRATrainer",
     "LoRAGateThresholds",
