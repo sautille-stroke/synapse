@@ -34,7 +34,7 @@ def tmp_bundle_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def fake_weights(tmp_path: Path) -> Path:
     """Create a real safetensors file with valid LoRA weights."""
-    safetensors_numpy = pytest.importorskip(
+    pytest.importorskip(
         "safetensors.numpy", reason="safetensors not installed"
     )
     from safetensors.numpy import save_file

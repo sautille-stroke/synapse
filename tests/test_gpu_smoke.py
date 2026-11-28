@@ -73,7 +73,11 @@ class TestSAM2GPUSmoke:
 
     @_skip_no_cuda
     def test_sam2_mock_segmentation(self) -> None:
-        from synapse.bridge.sam2_transport import MockSAM2Backend, SAM2Prompt, SAM2PromptType
+        from synapse.bridge.sam2_transport import (
+            MockSAM2Backend,
+            SAM2Prompt,
+            SAM2PromptType,
+        )
 
         backend = MockSAM2Backend()
         frames = np.random.randint(0, 255, (8, 64, 64, 3), dtype=np.uint8)
@@ -96,8 +100,10 @@ class TestQLoRAGPUSmoke:
     @_skip_no_cuda
     def test_nf4_quantize_dequantize_cuda_roundtrip(self) -> None:
         import torch
-
-        from synapse.training.qlora import dequantize_nf4_blockwise, quantize_nf4_blockwise
+        from synapse.training.qlora import (
+            dequantize_nf4_blockwise,
+            quantize_nf4_blockwise,
+        )
 
         x = torch.randn(256, 256, device="cuda", dtype=torch.float32)
         quant = quantize_nf4_blockwise(x)
@@ -113,7 +119,6 @@ class TestQLoRAGPUSmoke:
     @_skip_no_cuda
     def test_qlora_linear_forward_backward(self) -> None:
         import torch
-
         from synapse.training.qlora import create_qlora_linear
 
         base_linear = torch.nn.Linear(128, 64, device="cuda")
