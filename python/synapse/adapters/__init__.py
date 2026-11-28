@@ -55,6 +55,16 @@ from synapse.adapters.scheduler import (
     fuse_overlapping_latents,
 )
 
+# Import vace module to trigger @register_adapter side-effect.
+from synapse.adapters.vace import (
+    ConditionMode,
+    MockVaceBackend,
+    VaceAdapter,
+    VaceBackendTransport,
+    VaceTaskMode,
+    VCUPayload,
+)
+
 # Import wan module to trigger @register_adapter side-effect.
 from synapse.adapters.wan import (
     FoundaryHttpTransport,
@@ -87,6 +97,12 @@ __all__ = [
     "ReanchorRequest",
     "ScheduledWindow",
     "SeedanceAdapter",
+    "VaceAdapter",
+    "VaceBackendTransport",
+    "VaceTaskMode",
+    "VCUPayload",
+    "ConditionMode",
+    "MockVaceBackend",
     "VeoAdapter",
     "VideoGenerationConfig",
     "VideoModelAdapter",
