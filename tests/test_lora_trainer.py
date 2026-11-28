@@ -1209,11 +1209,11 @@ class TestPR186CheckpointAndLossHardening:
         """Constant non-zero 2D image must have near-zero Sobel gradient at borders."""
         pytest.importorskip("torch")
         import torch
-        import torch.nn.functional as F
+        import torch.nn.functional as torch_f
         from synapse.training.losses import EdgePreservingLoss
 
         flat = torch.full((1, 1, 8, 8), 5.0, dtype=torch.float32)
-        mag = EdgePreservingLoss._sobel_magnitude_batch(flat, F)
+        mag = EdgePreservingLoss._sobel_magnitude_batch(flat, torch_f)
         assert float(mag.max().item()) < 1e-3
 
     def test_auto_instantiated_geometry_probe_and_checkpoint_roundtrip(

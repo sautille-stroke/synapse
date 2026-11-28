@@ -103,12 +103,12 @@ class LoRAPatchHook:
 
         def _hook(
             mod: Any,
-            input: Any,
+            inputs: Any,
             output: torch.Tensor,
         ) -> torch.Tensor:
             # x @ delta^T gives the LoRA contribution
             # Simple additive: add delta applied to input
-            inp = input[0] if isinstance(input, tuple) else input
+            inp = inputs[0] if isinstance(inputs, tuple) else inputs
             # Cast input to match delta dtype for the matmul
             inp_cast = inp.to(dtype=_delta_cast.dtype)
             lora_contrib = inp_cast @ _delta_cast.T

@@ -148,17 +148,23 @@ line-length = 100
 exclude = ["._*"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF", "W", "PT", "S108", "S202", "S301", "S310", "S602", "S603"]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "T20", "RUF", "PT", "S108", "S202", "S301", "S310", "S602", "S603"]
 ignore = [
-    "E712",
+    "E501",
     "B007", "B009", "B010",
+    "N803", "N806",
     "SIM102", "SIM105", "SIM108", "SIM117", "SIM118", "SIM300",
     "UP006", "UP007", "UP015", "UP035",
     "RUF001", "RUF002", "RUF003", "RUF005", "RUF015", "RUF022", "RUF043", "RUF046", "RUF059",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/*" = ["E402", "S603"]
-"tests/*" = ["S108", "S301", "S310", "S602", "S603", "PT004", "PT011", "PT012", "PT018"]
-"tools/*" = ["S310"]
+"scripts/*" = ["E402", "S603", "T201"]
+"scripts/dev_preview_viewer.py" = ["E402", "S603", "T201", "A002"]
+"tests/*" = ["S108", "S301", "S310", "S602", "S603", "PT004", "PT011", "PT012", "PT018", "T201"]
+"tests/test_wan_anchor_and_gates.py" = ["S108", "S301", "S310", "S602", "S603", "PT004", "PT011", "PT012", "PT018", "T201", "A002"]
+"tools/*" = ["S310", "T201"]
 "python/synapse/*" = ["S310"]
+"python/synapse/cli/*" = ["S310", "T201"]
+"python/synapse/pipeline/bundle_worker.py" = ["S310", "T201"]
+"python/synapse/inspect/flywheel_exporter.py" = ["S310", "A002"]

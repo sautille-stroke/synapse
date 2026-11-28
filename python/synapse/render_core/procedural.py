@@ -58,7 +58,7 @@ class ProceduralMesh(MeshData):
         )
 
 
-def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]:
+def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any] | None:
     """Delegate primitive mesh generation to @aether//geo via aether_geo if available.
 
     Falls back to pure NumPy generation when aether_geo is not installed.
@@ -69,7 +69,7 @@ def _create_primitive_mesh(primitive_type: str, **kwargs: Any) -> dict[str, Any]
     if geo is not None:
         result: dict[str, Any] = geo.create_primitive_mesh(primitive_type, **kwargs)
         return result
-    return None  # type: ignore[return-value]
+    return None
 
 
 # ---------------------------------------------------------------------------
