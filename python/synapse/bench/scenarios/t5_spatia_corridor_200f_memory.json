@@ -1,12 +1,12 @@
 {
   "id": "t5_spatia_corridor_200f_memory",
   "tier": "T5",
-  "description": "200-frame long-corridor dolly walkthrough testing Spatia persistent 3D point-cloud memory & re-projection consistency.",
+  "description": "201-frame (4k+1 aligned 200+ frame) long-corridor dolly walkthrough testing Spatia persistent 3D point-cloud memory & re-projection consistency.",
   "tags": [
     "horizon14",
     "spatia",
     "spatial_memory",
-    "200-frame",
+    "201-frame",
     "e2e"
   ],
   "asset": {
@@ -20,7 +20,7 @@
     "end_distance": 1.8,
     "elevation_deg": 8.0,
     "azimuth_deg": 10.0,
-    "num_frames": 200,
+    "num_frames": 201,
     "fps": 24
   },
   "conditions": {
