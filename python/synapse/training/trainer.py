@@ -839,6 +839,25 @@ class StatelessLoRATrainer:
             t = t.unsqueeze(-1)
         return t
 
+    @staticmethod
+    def _unwrap_model_output(output: Any) -> Any:
+        """Unwrap Diffusers ModelOutput (.sample) or tuple outputs into raw Tensor."""
+        if hasattr(output, "sample"):
+            return output.sample
+        if isinstance(output, tuple) and len(output) > 0:
+            return output[0]
+        return output
+
+    @staticmethod
+    def _normalize_encoder_hidden_states(val: Any) -> Any:
+        """Normalize prompt embeddings to 3D ``[B, L, D]`` for DiT cross-attention."""
+        if not hasattr(val, "ndim"):
+            return val
+        normalized = val
+        while normalized.ndim < 3:
+            normalized = normalized.unsqueeze(0)
+        return normalized
+
     @classmethod
     def _call_module(
         cls,
@@ -850,38 +869,61 @@ class StatelessLoRATrainer:
         """Call module with signature-based argument routing.
 
         Adapts ``batch["t"]`` to 1D ``[B]`` when the target accepts a
-        scalar timestep parameter. Transparently passes
-        ``encoder_hidden_states`` for Diffusers-style UNets/DiTs.
-        Only catches ``TypeError`` / ``ValueError`` from signature
-        mismatch, never from internal forward bugs.
+        scalar timestep parameter. Transparently maps ``encoder_hidden_states``
+        (with fallback from ``batch["prompt"]``), passes ``return_dict=False``
+        and unwraps ``ModelOutput.sample`` / tuple outputs for Diffusers-style
+        UNets/DiTs. Only catches ``TypeError`` / ``ValueError`` from optional
+        signature mismatch, never hiding required input contract errors.
         """
         import inspect
 
+        _ = is_ref
         target = getattr(module, "forward", module)
+        sig = inspect.signature(target)
+        kwargs: dict[str, Any] = {}
+        first_param = next(iter(sig.parameters), None)
+        for param_name, param in sig.parameters.items():
+            if param_name == first_param:
+                # Primary latent/noisy sample `x` is always passed positionally.
+                continue
+            if param_name in ("t", "timestep", "timesteps") and "t" in batch:
+                t_val = batch["t"]
+                # Adapt multi-dim t to 1D [B] for Diffusers compatibility
+                if hasattr(t_val, "ndim") and t_val.ndim > 1:
+                    t_val = t_val.reshape(t_val.shape[0], -1).mean(dim=-1)
+                kwargs[param_name] = t_val
+            elif param_name in ("prompt", "caption", "text_embeddings") and "prompt" in batch:
+                kwargs[param_name] = batch["prompt"]
+            elif param_name == "encoder_hidden_states":
+                if "encoder_hidden_states" in batch and batch["encoder_hidden_states"] is not None:
+                    kwargs[param_name] = cls._normalize_encoder_hidden_states(
+                        batch["encoder_hidden_states"]
+                    )
+                elif "prompt" in batch and batch["prompt"] is not None:
+                    kwargs[param_name] = cls._normalize_encoder_hidden_states(batch["prompt"])
+                elif param.default is inspect.Parameter.empty:
+                    raise ContractValidationError(
+                        "Backbone forward() requires 'encoder_hidden_states', but neither "
+                        "'encoder_hidden_states' nor 'prompt' was provided in the training batch.",
+                        agent_fix_hint=(
+                            "Include 'encoder_hidden_states' or 'prompt' tensors in batch, or build "
+                            "batches via prepare_lora_training_batch()."
+                        ),
+                    )
+            elif param_name in ("fgpp_cond", "cond", "conditions") and "fgpp_cond" in batch:
+                kwargs[param_name] = batch["fgpp_cond"]
+            elif param_name in ("fgpp_cond", "cond", "conditions") and "conditions" in batch:
+                kwargs[param_name] = batch["conditions"]
+            elif param_name == "return_dict":
+                kwargs[param_name] = False
+
         try:
-            sig = inspect.signature(target)
-            kwargs: dict[str, Any] = {}
-            for param_name in sig.parameters:
-                if param_name in ("t", "timestep", "timesteps") and "t" in batch:
-                    t_val = batch["t"]
-                    # Adapt multi-dim t to 1D [B] for Diffusers compatibility
-                    if hasattr(t_val, "ndim") and t_val.ndim > 1:
-                        t_val = t_val.reshape(t_val.shape[0], -1).mean(dim=-1)
-                    kwargs[param_name] = t_val
-                elif param_name in ("prompt", "caption", "text_embeddings") and "prompt" in batch:
-                    kwargs[param_name] = batch["prompt"]
-                elif param_name == "encoder_hidden_states" and "encoder_hidden_states" in batch:
-                    kwargs[param_name] = batch["encoder_hidden_states"]
-                elif param_name in ("fgpp_cond", "cond", "conditions") and "fgpp_cond" in batch:
-                    kwargs[param_name] = batch["fgpp_cond"]
-                elif param_name in ("fgpp_cond", "cond", "conditions") and "conditions" in batch:
-                    kwargs[param_name] = batch["conditions"]
-            return module(x, **kwargs)
+            return cls._unwrap_model_output(module(x, **kwargs))
         except (ValueError, TypeError) as exc:
-            # Only catch argument-binding issues, re-raise internal TypeError
+            # Only recover when optional kwargs mismatch; never silence internal forward bugs.
             msg = str(exc)
-            if "argument" in msg.lower() or "unexpected" in msg.lower() or "missing" in msg.lower():
-                return module(x)
+            if kwargs and ("unexpected" in msg.lower() or "got an unexpected keyword" in msg.lower()):
+                return cls._unwrap_model_output(module(x))
             raise
 
     @staticmethod

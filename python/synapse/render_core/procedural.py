@@ -17,7 +17,7 @@ import numpy as np
 if TYPE_CHECKING:
     pass
 
-from synapse.render_core.mesh import MeshData
+from synapse.render_core.mesh import MeshData, weld_positional_topology
 
 
 class ProceduralMeshType(StrEnum):
@@ -55,6 +55,9 @@ class ProceduralMesh(MeshData):
             normals=self.normals,
             uvs=self.uvs,
             base_color=self.base_color,
+            topology_vertices=self.topology_vertices,
+            topology_faces=self.topology_faces,
+            is_normalized=self.is_normalized,
         )
 
 
@@ -497,20 +500,35 @@ _NP_GENERATORS: dict[str, Callable[..., dict[str, Any]]] = {
 }
 
 
+def _build_closed_procedural_mesh(
+    name: str,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    normals: np.ndarray,
+    uvs: np.ndarray | None,
+) -> ProceduralMesh:
+    """Construct a closed ProceduralMesh with welded topological vertices/faces for watertight checks."""
+    topo_v, topo_f = weld_positional_topology(vertices, faces)
+    return ProceduralMesh(
+        name=name,
+        vertices=vertices,
+        faces=faces,
+        normals=normals,
+        uvs=uvs,
+        topology_vertices=topo_v,
+        topology_faces=topo_f,
+        mesh_type=name,
+    )
+
+
 def _generate_cube(size: float = 1.0, **kwargs: Any) -> ProceduralMesh:
     """Unit cube centered at origin."""
     d = _create_primitive_mesh("cube", size=size, **kwargs)
     if d is None:
         d = _np_generate_cube(size=size)
-    return ProceduralMesh(
-        name="cube",
-        vertices=d["vertices"],
-        faces=d["faces"],
-        normals=d["normals"],
-        uvs=d["uvs"],
-        mesh_type="cube",
+    return _build_closed_procedural_mesh(
+        "cube", d["vertices"], d["faces"], d["normals"], d["uvs"]
     )
-
 
 
 def _generate_sphere(
@@ -522,28 +540,15 @@ def _generate_sphere(
     """UV sphere centered at origin with pole degenerate face removal."""
     d = _create_primitive_mesh("sphere", radius=radius, segments=segments, rings=rings, **kwargs)
     if d is not None:
-        # Post-process native output: remove degenerate faces at poles and weld pole vertices
         verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
-        return ProceduralMesh(
-            name="sphere",
-            vertices=verts,
-            faces=faces,
-            normals=d["normals"],
-            uvs=d["uvs"],
-            mesh_type="sphere",
+        return _build_closed_procedural_mesh(
+            "sphere", verts, faces, d["normals"], d["uvs"]
         )
-    # NumPy fallback
     d = _np_generate_sphere(radius=radius, segments=segments, rings=rings)
     verts, faces = _remove_degenerate_sphere_faces(d["vertices"], d["faces"])
-    return ProceduralMesh(
-        name="sphere",
-        vertices=verts,
-        faces=faces,
-        normals=d["normals"],
-        uvs=d["uvs"],
-        mesh_type="sphere",
+    return _build_closed_procedural_mesh(
+        "sphere", verts, faces, d["normals"], d["uvs"]
     )
-
 
 
 def _generate_cylinder(
@@ -556,15 +561,9 @@ def _generate_cylinder(
     d = _create_primitive_mesh("cylinder", radius=radius, height=height, segments=segments, **kwargs)
     if d is None:
         d = _np_generate_cylinder(radius=radius, height=height, segments=segments)
-    return ProceduralMesh(
-        name="cylinder",
-        vertices=d["vertices"],
-        faces=d["faces"],
-        normals=d["normals"],
-        uvs=d["uvs"],
-        mesh_type="cylinder",
+    return _build_closed_procedural_mesh(
+        "cylinder", d["vertices"], d["faces"], d["normals"], d["uvs"]
     )
-
 
 
 def _generate_torus(
@@ -590,13 +589,8 @@ def _generate_torus(
             major_segments=major_segments,
             minor_segments=minor_segments,
         )
-    return ProceduralMesh(
-        name="torus",
-        vertices=d["vertices"],
-        faces=d["faces"],
-        normals=d["normals"],
-        uvs=d["uvs"],
-        mesh_type="torus",
+    return _build_closed_procedural_mesh(
+        "torus", d["vertices"], d["faces"], d["normals"], d["uvs"]
     )
 
 
@@ -645,25 +639,13 @@ def _generate_cone(
         **kwargs,
     )
     if d is not None:
-        # Post-process: weld apex/base caps for watertightness
         verts, faces = _weld_cone_caps(d["vertices"], d["faces"])
-        return ProceduralMesh(
-            name="cone",
-            vertices=verts,
-            faces=faces,
-            normals=d["normals"],
-            uvs=d["uvs"],
-            mesh_type="cone",
+        return _build_closed_procedural_mesh(
+            "cone", verts, faces, d["normals"], d["uvs"]
         )
-    # NumPy fallback (already watertight by construction)
     d = _np_generate_cone(radius=radius, height=height, segments=segments)
-    return ProceduralMesh(
-        name="cone",
-        vertices=d["vertices"],
-        faces=d["faces"],
-        normals=d["normals"],
-        uvs=d["uvs"],
-        mesh_type="cone",
+    return _build_closed_procedural_mesh(
+        "cone", d["vertices"], d["faces"], d["normals"], d["uvs"]
     )
 
 

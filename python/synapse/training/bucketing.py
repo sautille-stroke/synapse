@@ -12,12 +12,15 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 import math
 import random
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from synapse.training.trainer import LoRATrainConfig
@@ -262,15 +265,16 @@ def detect_cuda_vram_gb(default_gb: float | None = None) -> float:
     ``0.0`` so that callers can distinguish "no GPU detected" from a real
     capacity.  Pass a positive *default_gb* to override the fallback.
     """
+    fallback_gb = float(default_gb) if default_gb is not None else 0.0
     try:
         import torch
 
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
             return round(float(props.total_memory) / float(1024**3), 2)
-    except Exception:
-        pass
-    return float(default_gb) if default_gb is not None else 0.0
+    except (ImportError, RuntimeError, AttributeError, AssertionError) as exc:
+        logger.debug("CUDA VRAM probe unavailable, using default %.1f GiB: %s", fallback_gb, exc)
+    return fallback_gb
 
 
 def auto_tune_lora_config(

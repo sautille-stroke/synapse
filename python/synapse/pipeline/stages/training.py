@@ -18,13 +18,13 @@ from synapse.pipeline.bundle_worker import (
 from synapse.training.backbone import (
     resolve_target_modules,
     resolve_training_backbone,
+    run_lora_shard_training,
 )
 from synapse.training.feature_store import (
     FeatureStoreBuilder,
     LinearProjectionEncoder,
     LinearProjectionTextEncoder,
     format_structured_caption,
-    iter_feature_shards,
 )
 from synapse.training.packager import package_and_gate_lora_bundle
 from synapse.training.trainer import LoRATrainConfig, StatelessLoRATrainer
@@ -175,9 +175,11 @@ def handle_lora_train(
             agent_fix_hint="Run lora_preencode to generate .tar shards first.",
         )
 
-    # Build DiT model with whitelist-compatible block architecture
+    # Verify PyTorch availability before building DiT model
+    import importlib
+
     try:
-        import torch
+        importlib.import_module("torch")
     except ImportError as exc:
         from synapse.errors import BackendUnavailableError
 
@@ -211,29 +213,7 @@ def handle_lora_train(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Training loop over shard data — cycle shards until config.max_steps is reached
-    step = 0
-    final_loss = 0.0
-    cached_samples = list(iter_feature_shards(shard_paths))
-    if not cached_samples:
-        from synapse.errors import AssetNotFoundError
-
-        raise AssetNotFoundError(
-            f"No valid samples found in shards under {shards_dir}",
-            agent_fix_hint="Re-run lora_preencode to populate valid training shards.",
-        )
-
-    while step < config.max_steps:
-        sample = cached_samples[step % len(cached_samples)]
-        latent = torch.as_tensor(sample["latent"], dtype=torch.float32)
-        noise = torch.randn_like(latent)
-        batch: dict[str, Any] = {"latent": latent.unsqueeze(0), "noise": noise.unsqueeze(0)}
-        if sample.get("fgpp_cond") is not None:
-            batch["fgpp_cond"] = torch.as_tensor(
-                sample["fgpp_cond"], dtype=torch.float32,
-            ).unsqueeze(0)
-        result = trainer.train_step(model, batch, step)
-        final_loss = result["loss"]
-        step += 1
+    step, final_loss = run_lora_shard_training(trainer, model, shard_paths, config.max_steps)
 
     trainer.flush_gradients(model)
 

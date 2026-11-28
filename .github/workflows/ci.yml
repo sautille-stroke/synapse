@@ -120,7 +120,9 @@ jobs:
       - name: Wire guard (internal + JSON schemas)
         if: steps.checkout-aether.outcome != 'success'
         working-directory: synapse
-        run: python tools/wire_guard.py --check
+        run: |
+          echo "::warning::Skipping '--require-style' and '@aether' header parity because sibling 'dervgen/aether' checkout failed (configure DERVGEN_PAT to enforce cross-repo parity in CI)."
+          python tools/wire_guard.py --check
 
       - name: Import DAG guard
         working-directory: synapse

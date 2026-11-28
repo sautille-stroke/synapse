@@ -6,6 +6,11 @@
   "type": "object",
   "required": ["working_colorspace"],
   "properties": {
+    "schema_version": {
+      "type": "string",
+      "default": "2.0.0",
+      "description": "StyleDescriptor wire contract semantic version."
+    },
     "working_colorspace": {
       "type": "string",
       "default": "ACEScg",

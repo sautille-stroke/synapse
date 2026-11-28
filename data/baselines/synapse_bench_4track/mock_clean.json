@@ -6,11 +6,11 @@
     32
   ],
   "num_frames": 4,
-  "scenario_count": 40,
+  "scenario_count": 50,
   "metrics": {
     "chamfer_mm": 0.0,
     "f_score_1mm": 1.0,
-    "is_watertight": 0.333333
+    "is_watertight": 1.0
   },
   "reports": [
     {
@@ -32,11 +32,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.04587502917274833,
-        "fgpp_load_ms": 17.70100003341213,
-        "generate_ms": 3.8620830164290965,
-        "metrics_ms": 15.066708030644804,
-        "total_ms": 36.71324998140335
+        "scenario_load_ms": 0.06075005512684584,
+        "fgpp_load_ms": 19.970875000581145,
+        "generate_ms": 53.02966700401157,
+        "metrics_ms": 17.447291989810765,
+        "total_ms": 90.5531250173226
       },
       "num_frames": 4,
       "resolution": [
@@ -129,11 +129,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.08254195563495159,
-        "fgpp_load_ms": 3.2520410022698343,
-        "generate_ms": 0.31525001395493746,
-        "metrics_ms": 11.130292026791722,
-        "total_ms": 14.809792046435177
+        "scenario_load_ms": 0.10208302410319448,
+        "fgpp_load_ms": 3.5390000557526946,
+        "generate_ms": 0.3277090145274997,
+        "metrics_ms": 12.265166966244578,
+        "total_ms": 16.274458961561322
       },
       "num_frames": 4,
       "resolution": [
@@ -219,11 +219,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.0801669666543603,
-        "fgpp_load_ms": 17.109582957345992,
-        "generate_ms": 0.2934169606305659,
-        "metrics_ms": 11.693249980453402,
-        "total_ms": 29.205334023572505
+        "scenario_load_ms": 0.12383400462567806,
+        "fgpp_load_ms": 18.40220799203962,
+        "generate_ms": 0.33950002398341894,
+        "metrics_ms": 12.557499983813614,
+        "total_ms": 31.461000035051256
       },
       "num_frames": 4,
       "resolution": [
@@ -315,11 +315,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.09866600157693028,
-        "fgpp_load_ms": 19.526874995790422,
-        "generate_ms": 0.2977919648401439,
-        "metrics_ms": 12.482165999244899,
-        "total_ms": 32.43474999908358
+        "scenario_load_ms": 0.12379197869449854,
+        "fgpp_load_ms": 20.87070798734203,
+        "generate_ms": 0.3393749939277768,
+        "metrics_ms": 16.7721250327304,
+        "total_ms": 38.14770799363032
       },
       "num_frames": 4,
       "resolution": [
@@ -411,11 +411,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.10300002759322524,
-        "fgpp_load_ms": 103.1004170072265,
-        "generate_ms": 0.3273329930379987,
-        "metrics_ms": 12.071749952156097,
-        "total_ms": 115.6341249588877
+        "scenario_load_ms": 0.13862497871741652,
+        "fgpp_load_ms": 115.31616700813174,
+        "generate_ms": 0.34804100869223475,
+        "metrics_ms": 12.910249992273748,
+        "total_ms": 128.75458295457065
       },
       "num_frames": 4,
       "resolution": [
@@ -501,11 +501,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12383301509544253,
-        "fgpp_load_ms": 102.6523329783231,
-        "generate_ms": 0.3196669858880341,
-        "metrics_ms": 12.295999971684068,
-        "total_ms": 115.42799999006093
+        "scenario_load_ms": 0.1294169924221933,
+        "fgpp_load_ms": 108.37704100413248,
+        "generate_ms": 0.3519160090945661,
+        "metrics_ms": 12.761624995619059,
+        "total_ms": 121.6581659973599
       },
       "num_frames": 4,
       "resolution": [
@@ -597,11 +597,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11079199612140656,
-        "fgpp_load_ms": 103.91612496459857,
-        "generate_ms": 0.3373749786987901,
-        "metrics_ms": 12.283042015042156,
-        "total_ms": 116.68033298337832
+        "scenario_load_ms": 0.13333297101780772,
+        "fgpp_load_ms": 109.37812505289912,
+        "generate_ms": 0.34433399559929967,
+        "metrics_ms": 12.742458027787507,
+        "total_ms": 122.6412919932045
       },
       "num_frames": 4,
       "resolution": [
@@ -693,11 +693,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11929200263693929,
-        "fgpp_load_ms": 100.77112499857321,
-        "generate_ms": 0.3356249653734267,
-        "metrics_ms": 11.940583004616201,
-        "total_ms": 113.19887498393655
+        "scenario_load_ms": 0.1692090299911797,
+        "fgpp_load_ms": 113.93674998544157,
+        "generate_ms": 0.3490410163067281,
+        "metrics_ms": 12.27783301146701,
+        "total_ms": 126.7806250252761
       },
       "num_frames": 4,
       "resolution": [
@@ -789,11 +789,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11045899009332061,
-        "fgpp_load_ms": 111.77191598108038,
-        "generate_ms": 0.32354198629036546,
-        "metrics_ms": 11.927583022043109,
-        "total_ms": 124.16566599858925
+        "scenario_load_ms": 0.16175000928342342,
+        "fgpp_load_ms": 113.36350004421547,
+        "generate_ms": 0.33912499202415347,
+        "metrics_ms": 12.504707963671535,
+        "total_ms": 126.40979199204594
       },
       "num_frames": 4,
       "resolution": [
@@ -867,6 +867,102 @@
       }
     },
     {
+      "scenario_name": "t1_trellis2_open_surface_leaf",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.07757720351219177,
+        "temporal_warp_error": 0.10543046227332582,
+        "silhouette_iou": 0.6397711766691511,
+        "psnr_db": 21.573059329060904,
+        "ssim": 0.4652905772245193,
+        "ciede2000": 10.9889218042356,
+        "border_ring_ciede2000": 13.14773792733207,
+        "style_color_de": 13.14773792733207,
+        "lpips": 0.09006026748989523,
+        "light_dir_error_deg": 44.334617785671064,
+        "style_color_temp": 6522.511160487589,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13224995927885175,
+        "fgpp_load_ms": 110.60187499970198,
+        "generate_ms": 0.40370802162215114,
+        "metrics_ms": 13.732624996919185,
+        "total_ms": 124.91029198281467
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.10543046227332582,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.07757720351219177,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.6397711766691511,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.14773792733207,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.334617785671064,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 21.573059329060904,
+            "threshold": 25.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.4652905772245193,
+            "threshold": 0.86,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 4.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
       "scenario_name": "t2_ext_abo_metal_lamp",
       "adapter_id": "mock",
       "metrics": {
@@ -885,11 +981,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12425001477822661,
-        "fgpp_load_ms": 10.687375033739954,
-        "generate_ms": 0.29566697776317596,
-        "metrics_ms": 11.469874996691942,
-        "total_ms": 22.606124985031784
+        "scenario_load_ms": 0.1456249738112092,
+        "fgpp_load_ms": 11.69687497895211,
+        "generate_ms": 0.32699998700991273,
+        "metrics_ms": 12.4464170075953,
+        "total_ms": 24.65679100714624
       },
       "num_frames": 4,
       "resolution": [
@@ -982,11 +1078,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.09791698539629579,
-        "fgpp_load_ms": 3.3614590065553784,
-        "generate_ms": 0.2839590306393802,
-        "metrics_ms": 11.424958007410169,
-        "total_ms": 15.19412500783801
+        "scenario_load_ms": 0.1527089625597,
+        "fgpp_load_ms": 3.440292028244585,
+        "generate_ms": 0.31083403155207634,
+        "metrics_ms": 12.127666035667062,
+        "total_ms": 16.069083008915186
       },
       "num_frames": 4,
       "resolution": [
@@ -1073,11 +1169,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.07666699821129441,
-        "fgpp_load_ms": 3.3534999820403755,
-        "generate_ms": 0.27849996695294976,
-        "metrics_ms": 11.26374996965751,
-        "total_ms": 14.998833008576185
+        "scenario_load_ms": 0.13537501217797399,
+        "fgpp_load_ms": 3.5183329600840807,
+        "generate_ms": 0.30941597651690245,
+        "metrics_ms": 12.110874988138676,
+        "total_ms": 16.109374992083758
       },
       "num_frames": 4,
       "resolution": [
@@ -1164,11 +1260,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.07787504000589252,
-        "fgpp_load_ms": 3.2202500151470304,
-        "generate_ms": 0.27704198146238923,
-        "metrics_ms": 11.557416000869125,
-        "total_ms": 15.158207970671356
+        "scenario_load_ms": 0.1247500185854733,
+        "fgpp_load_ms": 3.3815839560702443,
+        "generate_ms": 0.31637499341741204,
+        "metrics_ms": 12.047042022459209,
+        "total_ms": 15.909416950307786
       },
       "num_frames": 4,
       "resolution": [
@@ -1255,11 +1351,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.07970898877829313,
-        "fgpp_load_ms": 111.0213749925606,
-        "generate_ms": 0.3196660545654595,
-        "metrics_ms": 12.369875039439648,
-        "total_ms": 123.82120901020244
+        "scenario_load_ms": 0.12674997560679913,
+        "fgpp_load_ms": 116.47983297007158,
+        "generate_ms": 0.3565410152077675,
+        "metrics_ms": 12.527499988209456,
+        "total_ms": 129.5300829806365
       },
       "num_frames": 4,
       "resolution": [
@@ -1352,11 +1448,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.13045902596786618,
-        "fgpp_load_ms": 99.97691598255187,
-        "generate_ms": 0.3174999728798866,
-        "metrics_ms": 11.681333009619266,
-        "total_ms": 112.13779100216925
+        "scenario_load_ms": 0.13516697799786925,
+        "fgpp_load_ms": 105.23558297427371,
+        "generate_ms": 0.35641604335978627,
+        "metrics_ms": 12.303666968364269,
+        "total_ms": 118.0664169951342
       },
       "num_frames": 4,
       "resolution": [
@@ -1448,11 +1544,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.1224580337293446,
-        "fgpp_load_ms": 250.80183299724013,
-        "generate_ms": 0.3249580040574074,
-        "metrics_ms": 11.853499978315085,
-        "total_ms": 263.1361670210026
+        "scenario_load_ms": 0.13050000416114926,
+        "fgpp_load_ms": 268.4850830119103,
+        "generate_ms": 0.34012499963864684,
+        "metrics_ms": 12.160500045865774,
+        "total_ms": 281.15283395163715
       },
       "num_frames": 4,
       "resolution": [
@@ -1550,11 +1646,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12420798884704709,
-        "fgpp_load_ms": 250.98458299180493,
-        "generate_ms": 0.33554196124896407,
-        "metrics_ms": 11.905374994967133,
-        "total_ms": 263.38575000409037
+        "scenario_load_ms": 0.1330000231973827,
+        "fgpp_load_ms": 259.5882499590516,
+        "generate_ms": 0.3437920240685344,
+        "metrics_ms": 12.249833031091839,
+        "total_ms": 272.354583023116
       },
       "num_frames": 4,
       "resolution": [
@@ -1658,11 +1754,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.13391696847975254,
-        "fgpp_load_ms": 254.83112497022375,
-        "generate_ms": 0.3301670076325536,
-        "metrics_ms": 11.643874982837588,
-        "total_ms": 266.9739999691956
+        "scenario_load_ms": 0.14083401765674353,
+        "fgpp_load_ms": 263.1130410009064,
+        "generate_ms": 0.44425000669434667,
+        "metrics_ms": 11.94737502373755,
+        "total_ms": 275.68525000242516
       },
       "num_frames": 4,
       "resolution": [
@@ -1766,11 +1862,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12891599908471107,
-        "fgpp_load_ms": 250.04670798080042,
-        "generate_ms": 0.33245899248868227,
-        "metrics_ms": 11.888334003742784,
-        "total_ms": 262.43174995761365
+        "scenario_load_ms": 0.13399997260421515,
+        "fgpp_load_ms": 258.67158302571625,
+        "generate_ms": 0.33712497679516673,
+        "metrics_ms": 12.219374999403954,
+        "total_ms": 271.4034169912338
       },
       "num_frames": 4,
       "resolution": [
@@ -1874,11 +1970,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.13145897537469864,
-        "fgpp_load_ms": 15.03316598245874,
-        "generate_ms": 0.29033300234004855,
-        "metrics_ms": 11.592125054448843,
-        "total_ms": 27.079207997303456
+        "scenario_load_ms": 0.13991701416671276,
+        "fgpp_load_ms": 15.39416698506102,
+        "generate_ms": 0.3048329963348806,
+        "metrics_ms": 12.100833002477884,
+        "total_ms": 27.97454100800678
       },
       "num_frames": 4,
       "resolution": [
@@ -1970,11 +2066,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.09754201164469123,
-        "fgpp_load_ms": 2.864625013899058,
-        "generate_ms": 0.27795898495242,
-        "metrics_ms": 11.367583007086068,
-        "total_ms": 14.63412499288097
+        "scenario_load_ms": 0.10779203148558736,
+        "fgpp_load_ms": 2.9160419944673777,
+        "generate_ms": 0.29570801416411996,
+        "metrics_ms": 11.453499959316105,
+        "total_ms": 14.802624995354563
       },
       "num_frames": 4,
       "resolution": [
@@ -2048,6 +2144,198 @@
       }
     },
     {
+      "scenario_name": "t2_trellis2_pbr_translucent_veil",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.14729036390781403,
+        "temporal_warp_error": 0.09609460192091358,
+        "silhouette_iou": 0.3794701087881238,
+        "psnr_db": 20.760270462899847,
+        "ssim": 0.31685263881470305,
+        "ciede2000": 12.152098760910398,
+        "border_ring_ciede2000": 13.0973831862887,
+        "style_color_de": 13.0973831862887,
+        "lpips": 0.09511209536796869,
+        "light_dir_error_deg": 44.30139753319979,
+        "style_color_temp": 6785.55706417315,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.09420799324288964,
+        "fgpp_load_ms": 109.96054200222716,
+        "generate_ms": 0.3465830232016742,
+        "metrics_ms": 12.130040966439992,
+        "total_ms": 122.56508396239951
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "torus",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09609460192091358,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.14729036390781403,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3794701087881238,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.0973831862887,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.30139753319979,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.760270462899847,
+            "threshold": 24.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.31685263881470305,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 5.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t2_vace_r2v_identity_orbit",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.056505363434553146,
+        "temporal_warp_error": 0.08751303332470528,
+        "silhouette_iou": 0.1312244490951208,
+        "psnr_db": 20.671858283717924,
+        "ssim": 0.14266265919050314,
+        "ciede2000": 12.868741705364302,
+        "border_ring_ciede2000": 13.136079945385877,
+        "style_color_de": 13.136079945385877,
+        "lpips": 0.10564655776027146,
+        "light_dir_error_deg": 44.31816397120085,
+        "style_color_temp": 6541.622703683157,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13379199663177133,
+        "fgpp_load_ms": 267.740709008649,
+        "generate_ms": 0.46612496953457594,
+        "metrics_ms": 12.101209023967385,
+        "total_ms": 280.47929098829627
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08751303332470528,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.056505363434553146,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.1312244490951208,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.136079945385877,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.31816397120085,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.671858283717924,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.14266265919050314,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
       "scenario_name": "t3_cube_behind_cylinder",
       "adapter_id": "mock",
       "metrics": {
@@ -2066,11 +2354,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.08162501035258174,
-        "fgpp_load_ms": 14.962457993533462,
-        "generate_ms": 0.29033300234004855,
-        "metrics_ms": 11.866457993164659,
-        "total_ms": 27.22762495977804
+        "scenario_load_ms": 0.13695802772417665,
+        "fgpp_load_ms": 15.666082967072725,
+        "generate_ms": 0.3073749830946326,
+        "metrics_ms": 12.015084037557244,
+        "total_ms": 28.159832989331335
       },
       "num_frames": 4,
       "resolution": [
@@ -2162,11 +2450,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.09062496246770024,
-        "fgpp_load_ms": 3.3350420417264104,
-        "generate_ms": 0.28358399868011475,
-        "metrics_ms": 11.449083976913244,
-        "total_ms": 15.186374948825687
+        "scenario_load_ms": 0.12283399701118469,
+        "fgpp_load_ms": 3.452667035162449,
+        "generate_ms": 0.30504202004522085,
+        "metrics_ms": 12.352624966297299,
+        "total_ms": 16.26870798645541
       },
       "num_frames": 4,
       "resolution": [
@@ -2253,11 +2541,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.07858301978558302,
-        "fgpp_load_ms": 106.85191699303687,
-        "generate_ms": 0.3232909948565066,
-        "metrics_ms": 12.369667005259544,
-        "total_ms": 119.65375003637746
+        "scenario_load_ms": 0.11595903197303414,
+        "fgpp_load_ms": 112.41329199401662,
+        "generate_ms": 0.3422500449232757,
+        "metrics_ms": 12.575709028169513,
+        "total_ms": 125.48316601896659
       },
       "num_frames": 4,
       "resolution": [
@@ -2350,11 +2638,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.1277499832212925,
-        "fgpp_load_ms": 107.14362503495067,
-        "generate_ms": 0.3181659849360585,
-        "metrics_ms": 11.864833009894937,
-        "total_ms": 119.48608397506177
+        "scenario_load_ms": 0.1259999698959291,
+        "fgpp_load_ms": 113.13270800746977,
+        "generate_ms": 0.3409580094739795,
+        "metrics_ms": 12.288415979128331,
+        "total_ms": 125.92379201669246
       },
       "num_frames": 4,
       "resolution": [
@@ -2447,11 +2735,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11170801008120179,
-        "fgpp_load_ms": 252.8612079913728,
-        "generate_ms": 0.3297080402262509,
-        "metrics_ms": 11.9162910268642,
-        "total_ms": 265.25179197778925
+        "scenario_load_ms": 0.12512499233707786,
+        "fgpp_load_ms": 268.23454204713926,
+        "generate_ms": 0.34258299274370074,
+        "metrics_ms": 12.47504202183336,
+        "total_ms": 281.21637500589713
       },
       "num_frames": 4,
       "resolution": [
@@ -2549,11 +2837,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12137496378272772,
-        "fgpp_load_ms": 13.672291999682784,
-        "generate_ms": 0.30824996065348387,
-        "metrics_ms": 11.603583989199251,
-        "total_ms": 25.73491696966812
+        "scenario_load_ms": 0.13533298624679446,
+        "fgpp_load_ms": 14.380791981238872,
+        "generate_ms": 0.31354196835309267,
+        "metrics_ms": 11.668749968521297,
+        "total_ms": 26.53174998704344
       },
       "num_frames": 4,
       "resolution": [
@@ -2621,6 +2909,102 @@
       }
     },
     {
+      "scenario_name": "t3_sam2_vos_zero_cryptomatte",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.10543028265237808,
+        "temporal_warp_error": 0.09055462970116072,
+        "silhouette_iou": 0.05762072822649078,
+        "psnr_db": 20.62757427683851,
+        "ssim": 0.07075937544722863,
+        "ciede2000": 12.97003115668055,
+        "border_ring_ciede2000": 6.620094027476413,
+        "style_color_de": 6.620094027476413,
+        "lpips": 0.11028872698570297,
+        "light_dir_error_deg": 44.30650541331321,
+        "style_color_temp": 6631.342312289345,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.29624998569488525,
+        "fgpp_load_ms": 176.88679200364277,
+        "generate_ms": 0.3399580018594861,
+        "metrics_ms": 11.55516697326675,
+        "total_ms": 189.11549996118993
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09055462970116072,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.10543028265237808,
+            "threshold": 0.04,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.05762072822649078,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 6.620094027476413,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.30650541331321,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.62757427683851,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.07075937544722863,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
       "scenario_name": "t3_stacked_objects",
       "adapter_id": "mock",
       "metrics": {
@@ -2639,11 +3023,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.08658302249386907,
-        "fgpp_load_ms": 78.7885410245508,
-        "generate_ms": 0.32175000524148345,
-        "metrics_ms": 11.86270802281797,
-        "total_ms": 91.08841698616743
+        "scenario_load_ms": 0.1294999965466559,
+        "fgpp_load_ms": 81.69274998363107,
+        "generate_ms": 0.33616600558161736,
+        "metrics_ms": 11.966125050093979,
+        "total_ms": 94.18137499596924
       },
       "num_frames": 4,
       "resolution": [
@@ -2735,11 +3119,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.1057919580489397,
-        "fgpp_load_ms": 138.25579197145998,
-        "generate_ms": 0.3719169762916863,
-        "metrics_ms": 12.645624985452741,
-        "total_ms": 151.4178339857608
+        "scenario_load_ms": 0.27941697044298053,
+        "fgpp_load_ms": 137.76545895962045,
+        "generate_ms": 0.34370901994407177,
+        "metrics_ms": 12.085125024896115,
+        "total_ms": 150.5188750452362
       },
       "num_frames": 4,
       "resolution": [
@@ -2813,6 +3197,198 @@
       }
     },
     {
+      "scenario_name": "t3_vace_mv2v_inpaint_prop",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.08105554431676865,
+        "temporal_warp_error": 0.07871839698253565,
+        "silhouette_iou": 0.30010093959005457,
+        "psnr_db": 20.85846773860373,
+        "ssim": 0.23868403516823933,
+        "ciede2000": 12.274501962922223,
+        "border_ring_ciede2000": 13.10305782724073,
+        "style_color_de": 13.10305782724073,
+        "lpips": 0.10047321220301819,
+        "light_dir_error_deg": 44.318819544643425,
+        "style_color_temp": 6678.592387766041,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.1604999997653067,
+        "fgpp_load_ms": 96.64529102155939,
+        "generate_ms": 0.3409170312806964,
+        "metrics_ms": 12.271333951503038,
+        "total_ms": 109.45770901162177
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "torus",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.07871839698253565,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.08105554431676865,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.30010093959005457,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.10305782724073,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.318819544643425,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.85846773860373,
+            "threshold": 24.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.23868403516823933,
+            "threshold": 0.84,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t3_vace_v2v_occluded_stylize",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.09765741974115372,
+        "temporal_warp_error": 0.09113076395925923,
+        "silhouette_iou": 0.20494615527421575,
+        "psnr_db": 20.76932395770633,
+        "ssim": 0.21153004787026067,
+        "ciede2000": 12.582698006754203,
+        "border_ring_ciede2000": 13.13753052903408,
+        "style_color_de": 13.13753052903408,
+        "lpips": 0.10507726155801762,
+        "light_dir_error_deg": 44.46157397145162,
+        "style_color_temp": 7019.699390029487,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13008300447836518,
+        "fgpp_load_ms": 15.539457963313907,
+        "generate_ms": 0.3196659963577986,
+        "metrics_ms": 12.50962499761954,
+        "total_ms": 28.534665994811803
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.09113076395925923,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.09765741974115372,
+            "threshold": 0.04,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.20494615527421575,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.13753052903408,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.46157397145162,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.76932395770633,
+            "threshold": 23.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.21153004787026067,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.5,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
       "scenario_name": "t4_ambient_only_soft",
       "adapter_id": "mock",
       "metrics": {
@@ -2831,11 +3407,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.13749999925494194,
-        "fgpp_load_ms": 109.35612500179559,
-        "generate_ms": 0.3760000108741224,
-        "metrics_ms": 12.122915999498218,
-        "total_ms": 122.03545804368332
+        "scenario_load_ms": 0.1230830093845725,
+        "fgpp_load_ms": 107.80037502991036,
+        "generate_ms": 0.3400000277906656,
+        "metrics_ms": 11.693499982357025,
+        "total_ms": 119.99262502649799
       },
       "num_frames": 4,
       "resolution": [
@@ -2915,11 +3491,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.15824998263269663,
-        "fgpp_load_ms": 2.6629999629221857,
-        "generate_ms": 0.3434169921092689,
-        "metrics_ms": 11.938291019760072,
-        "total_ms": 15.144917008001357
+        "scenario_load_ms": 0.11895899660885334,
+        "fgpp_load_ms": 2.149041974917054,
+        "generate_ms": 0.31712499912828207,
+        "metrics_ms": 11.693042004480958,
+        "total_ms": 14.310209022369236
       },
       "num_frames": 4,
       "resolution": [
@@ -3005,11 +3581,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.15266600530594587,
-        "fgpp_load_ms": 3.837375028524548,
-        "generate_ms": 0.3595410380512476,
-        "metrics_ms": 12.276957975700498,
-        "total_ms": 16.671375022269785
+        "scenario_load_ms": 0.10612496407702565,
+        "fgpp_load_ms": 3.143874986562878,
+        "generate_ms": 0.2984579768963158,
+        "metrics_ms": 11.896791984327137,
+        "total_ms": 15.47691598534584
       },
       "num_frames": 4,
       "resolution": [
@@ -3077,6 +3653,192 @@
       }
     },
     {
+      "scenario_name": "t4_diffrenderer_dual_track_split",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.029192015528678894,
+        "temporal_warp_error": 0.06986570837756921,
+        "silhouette_iou": 0.2936116387203812,
+        "psnr_db": 20.96623141313871,
+        "ssim": 0.2281465690840592,
+        "ciede2000": 12.191687902244032,
+        "border_ring_ciede2000": 13.112696801402546,
+        "style_color_de": 13.112696801402546,
+        "lpips": 0.10374827369136239,
+        "light_dir_error_deg": 44.142323694772266,
+        "style_color_temp": 6374.228347947641,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.1181670231744647,
+        "fgpp_load_ms": 14.886624994687736,
+        "generate_ms": 0.3187909605912864,
+        "metrics_ms": 11.708000034559518,
+        "total_ms": 27.06904202932492
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cylinder",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.06986570837756921,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.029192015528678894,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.2936116387203812,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.112696801402546,
+            "threshold": 9.5,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.142323694772266,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.96623141313871,
+            "threshold": 23.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.2281465690840592,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t4_diffrenderer_relight_studio",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.045502740889787674,
+        "temporal_warp_error": 0.08673322701181119,
+        "silhouette_iou": 0.5913228785984036,
+        "psnr_db": 21.495048922838805,
+        "ssim": 0.433350502840061,
+        "ciede2000": 11.05976240455444,
+        "border_ring_ciede2000": 13.081880533729704,
+        "style_color_de": 13.081880533729704,
+        "lpips": 0.08956765199541075,
+        "light_dir_error_deg": 44.28333267459388,
+        "style_color_temp": 6580.611528732367,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.11270900722593069,
+        "fgpp_load_ms": 108.49691700423136,
+        "generate_ms": 0.3340000403113663,
+        "metrics_ms": 12.577165965922177,
+        "total_ms": 121.5557079995051
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "sphere",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08673322701181119,
+            "threshold": 0.02,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.045502740889787674,
+            "threshold": 0.025,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.5913228785984036,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.081880533729704,
+            "threshold": 9.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.28333267459388,
+            "threshold": 10.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 21.495048922838805,
+            "threshold": 23.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.433350502840061,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          }
+        ]
+      }
+    },
+    {
       "scenario_name": "t4_ext_thingi10k_lattice_stress",
       "adapter_id": "mock",
       "metrics": {
@@ -3095,11 +3857,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.16487500397488475,
-        "fgpp_load_ms": 102.37254196545109,
-        "generate_ms": 0.34537503961473703,
-        "metrics_ms": 12.029542005620897,
-        "total_ms": 114.94974995730445
+        "scenario_load_ms": 0.13466697419062257,
+        "fgpp_load_ms": 99.98550004092976,
+        "generate_ms": 0.3309160238131881,
+        "metrics_ms": 11.798374995123595,
+        "total_ms": 112.28195898002014
       },
       "num_frames": 4,
       "resolution": [
@@ -3186,11 +3948,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.14304200885817409,
-        "fgpp_load_ms": 104.95370900025591,
-        "generate_ms": 0.36095798714086413,
-        "metrics_ms": 12.117791979108006,
-        "total_ms": 117.61379102244973
+        "scenario_load_ms": 0.12400001287460327,
+        "fgpp_load_ms": 108.96741697797552,
+        "generate_ms": 0.34779199631884694,
+        "metrics_ms": 12.882917013484985,
+        "total_ms": 122.35687498468906
       },
       "num_frames": 4,
       "resolution": [
@@ -3276,11 +4038,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12824998702853918,
-        "fgpp_load_ms": 105.52054201252759,
-        "generate_ms": 0.32650004141032696,
-        "metrics_ms": 12.106375012081116,
-        "total_ms": 118.11279196990654
+        "scenario_load_ms": 0.1294999965466559,
+        "fgpp_load_ms": 108.93345798831433,
+        "generate_ms": 0.33733301097527146,
+        "metrics_ms": 12.50062498729676,
+        "total_ms": 121.93620798643678
       },
       "num_frames": 4,
       "resolution": [
@@ -3366,11 +4128,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11999998241662979,
-        "fgpp_load_ms": 99.16087501915172,
-        "generate_ms": 0.32895797630771995,
-        "metrics_ms": 11.991958948783576,
-        "total_ms": 111.63337499601766
+        "scenario_load_ms": 0.13958301860839128,
+        "fgpp_load_ms": 105.63962499145418,
+        "generate_ms": 0.34024997148662806,
+        "metrics_ms": 12.809082982130349,
+        "total_ms": 118.96837502717972
       },
       "num_frames": 4,
       "resolution": [
@@ -3456,11 +4218,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.11779199121519923,
-        "fgpp_load_ms": 138.876958983019,
-        "generate_ms": 0.3488750080578029,
-        "metrics_ms": 11.972375039476901,
-        "total_ms": 151.35291701881215
+        "scenario_load_ms": 0.12829102342948318,
+        "fgpp_load_ms": 153.84845895459875,
+        "generate_ms": 0.5659169983118773,
+        "metrics_ms": 12.584416021127254,
+        "total_ms": 167.17320901807398
       },
       "num_frames": 4,
       "resolution": [
@@ -3552,11 +4314,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.12208404950797558,
-        "fgpp_load_ms": 254.87879099091515,
-        "generate_ms": 0.3329160390421748,
-        "metrics_ms": 11.960582982283086,
-        "total_ms": 267.32883299700916
+        "scenario_load_ms": 0.13649999164044857,
+        "fgpp_load_ms": 286.44320799503475,
+        "generate_ms": 0.5005840212106705,
+        "metrics_ms": 12.099790968932211,
+        "total_ms": 299.2200829903595
       },
       "num_frames": 4,
       "resolution": [
@@ -3654,11 +4416,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.1194999786093831,
-        "fgpp_load_ms": 3.107291995547712,
-        "generate_ms": 0.29033300234004855,
-        "metrics_ms": 11.504416004754603,
-        "total_ms": 15.055875002872199
+        "scenario_load_ms": 0.13749999925494194,
+        "fgpp_load_ms": 3.194166987668723,
+        "generate_ms": 0.30520802829414606,
+        "metrics_ms": 11.763832997530699,
+        "total_ms": 15.435542038176209
       },
       "num_frames": 4,
       "resolution": [
@@ -3744,11 +4506,11 @@
         "normal_angular_error_deg": "N/A (not_produced)"
       },
       "timings": {
-        "scenario_load_ms": 0.10424997890368104,
-        "fgpp_load_ms": 56.906084006186575,
-        "generate_ms": 0.37220900412648916,
-        "metrics_ms": 11.483667010907084,
-        "total_ms": 68.89966601738706
+        "scenario_load_ms": 0.11895899660885334,
+        "fgpp_load_ms": 58.34941699868068,
+        "generate_ms": 0.3535409923642874,
+        "metrics_ms": 11.559124977793545,
+        "total_ms": 70.41770801879466
       },
       "num_frames": 4,
       "resolution": [
@@ -3816,6 +4578,198 @@
             "metric_name": "chamfer_mm",
             "measured": NaN,
             "threshold": 6.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_sam2_vos_cut_reanchor_97f",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.04261276498436928,
+        "temporal_warp_error": 0.08181175832008998,
+        "silhouette_iou": 0.11714144091232778,
+        "psnr_db": 20.68281753171913,
+        "ssim": 0.12948206593944098,
+        "ciede2000": 12.879521920414337,
+        "border_ring_ciede2000": 13.134348929039426,
+        "style_color_de": 13.134348929039426,
+        "lpips": 0.10704551835957317,
+        "light_dir_error_deg": 44.27359663185106,
+        "style_color_temp": 6636.305469878573,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.13529200805351138,
+        "fgpp_load_ms": 260.42512501589954,
+        "generate_ms": 0.339541002176702,
+        "metrics_ms": 12.22358294762671,
+        "total_ms": 273.16216699546203
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "humanoid_53",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.08181175832008998,
+            "threshold": 0.05,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.04261276498436928,
+            "threshold": 0.03,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.11714144091232778,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.134348929039426,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.27359663185106,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 20.68281753171913,
+            "threshold": 23.5,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.12948206593944098,
+            "threshold": 0.83,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
+            "direction": "lower_is_better"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_name": "t5_spatia_corridor_200f_memory",
+      "adapter_id": "mock",
+      "metrics": {
+        "flicker_score": 0.1776166409254074,
+        "temporal_warp_error": 0.07282533366980143,
+        "silhouette_iou": 0.3408051042041859,
+        "psnr_db": 21.32536032765524,
+        "ssim": 0.2970477572698796,
+        "ciede2000": 11.647167529516217,
+        "border_ring_ciede2000": 13.135993452829808,
+        "style_color_de": 13.135993452829808,
+        "lpips": 0.1014265759504238,
+        "light_dir_error_deg": 44.321032222458086,
+        "style_color_temp": 6897.43754826952,
+        "depth_rmse_m": "N/A (not_produced)",
+        "normal_angular_error_deg": "N/A (not_produced)"
+      },
+      "timings": {
+        "scenario_load_ms": 0.12866599718108773,
+        "fgpp_load_ms": 91.17508301278576,
+        "generate_ms": 0.35933300387114286,
+        "metrics_ms": 12.794332986231893,
+        "total_ms": 104.49491703184322
+      },
+      "num_frames": 4,
+      "resolution": [
+        32,
+        32
+      ],
+      "seed": 42,
+      "error": null,
+      "external_dataset_meta": {
+        "asset_id": "cube",
+        "source": "procedural",
+        "fallback_used": false,
+        "stage0_passed": true,
+        "license": "MIT",
+        "up_axis": "Y",
+        "dataset_category": ""
+      },
+      "gate_verdict": {
+        "passed": false,
+        "profile": "track_b_video",
+        "violations": [
+          {
+            "metric_name": "temporal_warp_error",
+            "measured": 0.07282533366980143,
+            "threshold": 0.06,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "flicker_score",
+            "measured": 0.1776166409254074,
+            "threshold": 0.04,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "silhouette_iou",
+            "measured": 0.3408051042041859,
+            "threshold": 0.85,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "border_ring_ciede2000",
+            "measured": 13.135993452829808,
+            "threshold": 3.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "light_dir_error_deg",
+            "measured": 44.321032222458086,
+            "threshold": 20.0,
+            "direction": "lower_is_better"
+          },
+          {
+            "metric_name": "psnr_db",
+            "measured": 21.32536032765524,
+            "threshold": 23.0,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "ssim",
+            "measured": 0.2970477572698796,
+            "threshold": 0.82,
+            "direction": "higher_is_better"
+          },
+          {
+            "metric_name": "chamfer_mm",
+            "measured": NaN,
+            "threshold": 7.0,
             "direction": "lower_is_better"
           }
         ]

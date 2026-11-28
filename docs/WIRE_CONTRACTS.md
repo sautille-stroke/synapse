@@ -113,6 +113,7 @@ y_{\text{knee}} + \frac{y - y_{\text{knee}}}{1.0 + \frac{y - y_{\text{knee}}}{1.
 
 | 字段名 | 类型 | 默认值 / 范围 | 语义说明 |
 | :--- | :--- | :--- | :--- |
+| `schema_version` | `str` | `"2.0.0"` | Wire 协议语义版本号（与 `@aether//style` `kCurrentSchemaVersion` 对齐） |
 | `working_colorspace` | `str` | `"ACEScg"` | 工作色彩空间标识（必须为 `ACEScg`） |
 | `color_temp_kelvin` | `float` | `6500.0` (`[1000, 40000]`) | 相关色温（开尔文） |
 | `tint` | `float` | `0.0` (`[-1.0, 1.0]`) | 绿-品红偏色补偿 |

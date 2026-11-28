@@ -48,6 +48,11 @@ class ModelAsset(MeshData):
 
         scale = target_radius / radius
         norm_vertices = ((self.vertices - center) * scale).astype(np.float32)
+        topo_vertices = (
+            ((self.topology_vertices - center) * scale).astype(np.float32)
+            if self.topology_vertices is not None
+            else None
+        )
 
         return ModelAsset(
             name=self.name,
@@ -56,6 +61,9 @@ class ModelAsset(MeshData):
             normals=self.normals.copy(),
             uvs=self.uvs.copy() if self.uvs is not None else None,
             base_color=self.base_color.copy() if self.base_color is not None else None,
+            topology_vertices=topo_vertices,
+            topology_faces=self.topology_faces.copy() if self.topology_faces is not None else None,
+            is_normalized=True,
             vertex_colors=self.vertex_colors.copy() if self.vertex_colors is not None else None,
             base_color_texture=self.base_color_texture,
             normal_texture=self.normal_texture,
@@ -82,6 +90,9 @@ class ModelAsset(MeshData):
             normals=self.normals,
             uvs=self.uvs,
             base_color=self.vertex_colors[:, :3] if self.vertex_colors is not None else self.base_color,
+            topology_vertices=self.topology_vertices,
+            topology_faces=self.topology_faces,
+            is_normalized=self.is_normalized,
         )
 
     def get_summary(self) -> dict[str, Any]:

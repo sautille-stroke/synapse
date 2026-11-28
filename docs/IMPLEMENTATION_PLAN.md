@@ -833,7 +833,7 @@ flowchart LR
 | **`PR-T11 ~ PR-T12` + Remediation** | `synapse` | Colab/CPU 验证 `--traceboard` 开关、CI 安装整合、双轨 `bench.traceboard_export`、[DESIGN_TRACEBOARD_INTEGRATION](DESIGN_TRACEBOARD_INTEGRATION.md) 及 DAG/真实 `Probe` API 修复 | `synapse#210–#212` | ✅ 已合入 |
 | **`Wave TR-1 ~ TR-3` (`PR-TR01 ~ PR-TR08`)** | `aether` + `synapse` + 跨仓 | 承接 [PR #213 深度评审](archive/audits/REVIEW-PR213-TRACEBOARD-INTEGRATION-2026-11.md) 全部 20 项发现：`.tbevt` 线格式与 C++↔Py 双向黄金、`aether-traceboard` 洁净发包 (`traceboard-python-v0.1.0`)、`set_fail`/CLI 共享挂载、`step` 与低基数收敛、NVMe 分离、Worker/Scheduler/Refine 富媒体埋点与 10/10 反作弊门禁封板 | `aether#557–#560` · `synapse#215–#218` + `PR-TR08` · `caelum-core#557` · `all-overview#770` | ✅ 已全量合入封板 |
 
-### 4.16 Horizon 14：Post-v5.0.0 全仓技术债务实证核查与收口治理（M53–M54，共 7 PRs，详见 [PLAN-M53-M54](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md)） ✅ 7/7 已全量合入封板
+### 4.16 Horizon 14：Post-v5.0.0 全仓技术债务实证核查与收口治理（M53–M54，共 8 PRs，详见 [PLAN-M53-M54](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md)） ✅ 8/8 已全量合入收口
 
 | PR 编号 | 阶段 | 核心交付摘要（点击跳转 [PLAN-M53-M54](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md) 查看详情） | 对应债务项 | 前置依赖 | 预估规模 | 验收门禁 | 状态 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :--- | :---: |
@@ -842,8 +842,9 @@ flowchart LR
 | **[`PR-TD03`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td03)** | M53 | 收紧 `bundle_worker`、`feature_store`、`refine/pipeline`、`cli/_bench` 等高危静默 `except Exception` 吞错 | `D-02` | `2540b48` | ~260 行 | 对应单测 + AST 静默吞错清零 | ✅ 已合入 (`#224`) |
 | **[`PR-TD04`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td04)** | M54 | 拆分 `recon/geometry/` (`2.2K`) 与 `pipeline/bundle_worker.py` (`1.8K`) 巨型单体模块（保持向后兼容重导出） | `D-04` | `PR-TD02/03` | ~480 行 | `import_dag_guard.py`, `mypy --strict`, 全量 `pytest` | ✅ 已合入 (`#226`) |
 | **[`PR-TD05`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td05)** | M54 | 补齐 `run_gpu_smoke.py` 真实 `Diffusers + LoRA` 导出链路并产出首份 4 轨道基线对比报告 | `D-01`, `D-09/10` | `PR-TD01` | ~360 行 | `run_gpu_smoke.py` + `synapse bench compare` | ✅ 已合入 (`#227`) |
-| **[`PR-TD06`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td06)** | M54 | 协同上游 `@aether//style` `style_types.h` 落地后在 CI 启用 `wire_guard.py --require-style` 硬校验 | `D-03` | 上游 `@aether//style` (`dervgen/aether#622`) | ~120 行 | `wire_guard.py --check --require-aether --require-style` | ✅ 已落地 (本 PR) |
+| **[`PR-TD06`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td06)** | M54 | 协同上游 `@aether//style` `style_types.h` 落地后在 CI 启用 `wire_guard.py --require-style` 硬校验 | `D-03` | 上游 `@aether//style` (`dervgen/aether#622` + `#638`) | ~120 行 | `wire_guard.py --check --require-aether --require-style` | ✅ 已合入 (`#230`) |
 | **[`PR-TD07`](plans/PLAN-M53-M54-TECH-DEBT-VERIFICATION-AND-REMEDIATION.md#pr-td07)** | M54 | 归档已完成计划/审计文档至 `docs/archive/` 并收敛 `generators/rasterizer.py` 遗留测试引用 | `D-08`, `D-13` | `PR-TD04..05` | ~150 行 | `check_doc_links.py` 0 断链 | ✅ 已合入 (`#228`) |
+| **`PR-TD08`** | M54+ | Post-Review 全量收口：修复真 `WanTransformer3DModel` 前向适配与分片去重、过程式拓扑焊接 (`is_watertight=1.0`)、50 场景 4 轨道基线、真实 `WAN_MODEL_PATH` 烟测、`bucketing`/`bench_runner`/`wan*`/`metrics`/`model_evaluator` 异常收窄及 `StyleDescriptor` v2.0.0 / brace-depth `wire_guard` 协同 | M54 复审 P0/P1 + `dervgen/aether#638` | `PR-TD01..07`, `dervgen/aether#638` | ~680 行 | `ruff` + `mypy --strict` + `wire_guard --require-style` + `pytest` | ✅ 随本 PR 收口 |
 
 ---
 

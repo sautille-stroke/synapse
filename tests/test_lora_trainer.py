@@ -1311,9 +1311,9 @@ class TestPRTD01BackboneLoading:
             '{"_class_name": "WanTransformer3DModel"}', encoding="utf-8"
         )
         import sys
-        from unittest import mock
 
-        with mock.patch.dict(sys.modules, {"diffusers": None}):
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setitem(sys.modules, "diffusers", None)
             with pytest.raises(BackendUnavailableError) as exc_diff:
                 resolve_training_backbone(base_model_path=valid_dir, mock_backbone=False)
         import importlib.util
@@ -1458,4 +1458,114 @@ class TestPRTD01BackboneLoading:
         assert len(loaded_calls) == 2
         cli_weights = load_file(str(cli_out / "adapter_model.safetensors"))
         assert any("attn2.to_k" in k for k in cli_weights)
+
+    def test_real_diffusers_wan_signature_forwards_encoder_hidden_states_and_unwraps_sample(
+        self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PR-TD01 review fix: handles real WanTransformer3DModel(hidden_states, timestep, encoder_hidden_states) & ModelOutput."""
+        pytest.importorskip("torch")
+        import sys
+        import types
+        from pathlib import Path
+
+        import torch
+        from synapse.pipeline.bundle_worker import BundleManifest
+        from synapse.pipeline.stages.training import handle_lora_train
+        from synapse.training.feature_store import (
+            FeatureStoreBuilder,
+            LinearProjectionEncoder,
+            LinearProjectionTextEncoder,
+        )
+
+        root = Path(str(tmp_path))
+        shards_dir = root / "shards"
+        builder = FeatureStoreBuilder(LinearProjectionEncoder(), LinearProjectionTextEncoder())
+        frames = np.full((4, 32, 32, 3), 120, dtype=np.uint8)
+        builder.add_sample("sample_0000", frames, "sks hero studio")
+        builder.build_shards(shards_dir)
+
+        ckpt_dir = root / "wan_real_sig_ckpt"
+        (ckpt_dir / "transformer").mkdir(parents=True)
+        (ckpt_dir / "transformer" / "config.json").write_text(
+            '{"_class_name": "WanTransformer3DModel"}', encoding="utf-8"
+        )
+
+        observed: list[tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], bool]] = []
+
+        class _ExactDiffusersWan(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.blocks = torch.nn.ModuleList(
+                    [
+                        torch.nn.ModuleDict(
+                            {
+                                "attn2": torch.nn.ModuleDict(
+                                    {
+                                        "to_k": torch.nn.Linear(64, 64),
+                                        "to_v": torch.nn.Linear(64, 64),
+                                    }
+                                ),
+                                "ffn": torch.nn.ModuleDict(
+                                    {"proj": torch.nn.Linear(64, 64)}
+                                ),
+                            }
+                        )
+                    ]
+                )
+                self.txt_proj = torch.nn.Linear(512, 64)
+
+            def forward(
+                self,
+                hidden_states: Any,
+                timestep: Any,
+                encoder_hidden_states: Any,
+                return_dict: bool = True,
+            ) -> Any:
+                observed.append(
+                    (
+                        tuple(hidden_states.shape),
+                        tuple(timestep.shape),
+                        tuple(encoder_hidden_states.shape),
+                        return_dict,
+                    )
+                )
+                assert encoder_hidden_states.ndim == 3
+                orig_shape = hidden_states.shape
+                h = hidden_states.reshape(orig_shape[0], -1, 64)
+                txt = self.txt_proj(encoder_hidden_states)
+                blk: Any = self.blocks[0]
+                h = h + blk["attn2"]["to_k"](h) + blk["attn2"]["to_v"](txt.expand(-1, h.shape[1], -1))
+                out = (h + blk["ffn"]["proj"](h)).reshape(orig_shape)
+                if return_dict:
+                    return types.SimpleNamespace(sample=out)
+                return (out,)
+
+        class _WanLoader:
+            @staticmethod
+            def from_pretrained(_model_dir: str, **kwargs: Any) -> torch.nn.Module:
+                _ = kwargs
+                return _ExactDiffusersWan()
+
+        monkeypatch.setitem(
+            sys.modules, "diffusers", types.SimpleNamespace(WanTransformer3DModel=_WanLoader)
+        )
+
+        out_dir = root / "real_sig_weights"
+        res = handle_lora_train(
+            BundleManifest(
+                job_id="td01-exact-diffusers-sig",
+                stage="lora_train",
+                inputs={"shards_dir": str(shards_dir)},
+                outputs={"weights_dir": str(out_dir)},
+                params={
+                    "base_model": str(ckpt_dir),
+                    "train_config": {"category": "style", "rank": 4, "max_steps": 2},
+                },
+            )
+        )
+        assert res["backbone_kind"] == "real"
+        assert len(observed) == 2
+        assert all(enc_shape == (1, 1, 512) for _, _, enc_shape, _ in observed)
+        assert all(len(ts_shape) == 1 for _, ts_shape, _, _ in observed)
+        assert all(rd is False for _, _, _, rd in observed)
 

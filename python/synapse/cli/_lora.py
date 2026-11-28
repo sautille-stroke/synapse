@@ -145,6 +145,7 @@ def _cmd_lora_train(
     from synapse.training.backbone import (
         resolve_target_modules,
         resolve_training_backbone,
+        run_lora_shard_training,
     )
 
     model, backbone_kind = resolve_training_backbone(
@@ -163,9 +164,6 @@ def _cmd_lora_train(
             agent_fix_hint="Install torch via 'pip install torch'.",
         ) from err
 
-    from synapse.training.feature_store import (
-        iter_feature_shards,
-    )
     from synapse.training.trainer import StatelessLoRATrainer
 
     # Read shards if provided
@@ -200,20 +198,14 @@ def _cmd_lora_train(
 
     if shards_dir_str and Path(shards_dir_str).is_dir():
         shard_paths = sorted(Path(shards_dir_str).glob("shard-*.tar"))
-        cached_samples = list(iter_feature_shards(shard_paths))
-        if not cached_samples:
+        if not shard_paths:
             raise AssetNotFoundError(
-                f"No valid samples found in shards under {shards_dir_str}",
+                f"No shard-*.tar files found under {shards_dir_str}",
                 agent_fix_hint="Run 'synapse lora prepare-data' first.",
             )
-        while steps_completed < validated.max_steps:
-            sample = cached_samples[steps_completed % len(cached_samples)]
-            latent = torch.as_tensor(sample["latent"], dtype=torch.float32)
-            noise = torch.randn_like(latent)
-            batch = {"latent": latent.unsqueeze(0), "noise": noise.unsqueeze(0)}
-            result = trainer.train_step(model, batch, steps_completed)
-            final_loss = result["loss"]
-            steps_completed += 1
+        steps_completed, final_loss = run_lora_shard_training(
+            trainer, model, shard_paths, validated.max_steps
+        )
     else:
         # Synthetic training loop when --mock-backbone is used without shards
         target_steps = min(validated.max_steps, 10)

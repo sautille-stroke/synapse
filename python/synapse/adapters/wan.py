@@ -23,6 +23,7 @@ import base64
 import contextlib
 import hashlib
 import io
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -45,6 +46,8 @@ from synapse.adapters.base import (
     register_adapter,
 )
 from synapse.errors import BackendUnavailableError
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -245,7 +248,8 @@ class FoundaryHttpTransport(WanBackendTransport):
 
         try:
             validate_safe_url(self.endpoint_url, allow_loopback=self._allow_loopback)
-        except Exception:
+        except (ValueError, Exception) as exc:
+            logger.debug("Foundary endpoint URL validation failed for %r: %s", self.endpoint_url, exc)
             return False
 
         parsed = urllib.parse.urlparse(self.endpoint_url)
@@ -258,7 +262,8 @@ class FoundaryHttpTransport(WanBackendTransport):
             except urllib.error.HTTPError as exc:
                 if exc.code in (200, 204, 405):
                     return True
-            except Exception:
+            except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
+                logger.debug("Foundary probe failed for %r: %s", url, exc)
                 continue
         return False
 

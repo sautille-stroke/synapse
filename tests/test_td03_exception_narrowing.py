@@ -170,3 +170,31 @@ def test_cli_bench_logs_fallback_when_scenario_unresolved(
         _cmd_bench_run(args)
 
     assert "falling back to 'cube'" in caplog.text
+
+
+def test_bucketing_detect_vram_and_geometry_watertight_topology(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detect CUDA VRAM fallback safely; built-in cube/sphere topology is watertight."""
+    import builtins
+
+    from synapse.bench.model_loader import load_model
+    from synapse.recon.geometry import check_watertight
+    from synapse.training.bucketing import detect_cuda_vram_gb
+
+    real_import = builtins.__import__
+
+    def _no_torch(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "torch":
+            raise ImportError("no torch")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _no_torch)
+    assert detect_cuda_vram_gb(default_gb=12.0) == 12.0
+
+    for prim in ("cube", "sphere", "torus", "cylinder"):
+        model = load_model(prim, normalize=True)
+        v, f = model.get_topology_mesh()
+        assert check_watertight(np.asarray(v, dtype=np.float64), np.asarray(f, dtype=np.int64)), (
+            f"Built-in normalized '{prim}' topology must be watertight"
+        )

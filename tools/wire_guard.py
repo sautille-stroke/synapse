@@ -175,6 +175,7 @@ def _check_pixel_types() -> list[str]:
 
 # Expected v2.0.0 fields for StyleDescriptor (aligned with @aether//style).
 _STYLE_PROFILE_V2_EXPECTED_FIELDS: dict[str, str] = {
+    "schema_version": "str",
     "working_colorspace": "str",
     "color_temp_kelvin": "float",
     "tint": "float",
@@ -256,20 +257,41 @@ def _check_style_profile(
     if aether_style_path is not None:
         try:
             header_text = aether_style_path.read_text(encoding="utf-8")
-            header_lower = header_text.lower()
+            hdr_match = re.search(r"struct\s+StyleDescriptor\s*\{", header_text)
+            if hdr_match is None:
+                scan_text = header_text
+            else:
+                depth = 1
+                pos = hdr_match.end()
+                n = len(header_text)
+                while pos < n and depth > 0:
+                    ch = header_text[pos]
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                    pos += 1
+                if depth != 0:
+                    errors.append(
+                        f"StyleProfile v2.0.0: unterminated struct StyleDescriptor in {aether_style_path}"
+                    )
+                    scan_text = ""
+                else:
+                    scan_text = header_text[hdr_match.end() : pos - 1]
+            scan_lower = scan_text.lower()
             for field_name in sorted(expected_fields):
                 snake_pat = re.compile(rf"\b{re.escape(field_name)}\b")
                 camel = re.sub(r"_([a-z0-9])", lambda m: m.group(1).upper(), field_name)
                 camel_pat = re.compile(rf"\b{re.escape(camel)}\b")
                 compact = field_name.replace("_", "")
                 if not (
-                    snake_pat.search(header_text)
-                    or camel_pat.search(header_text)
-                    or compact in header_lower
+                    snake_pat.search(scan_text)
+                    or camel_pat.search(scan_text)
+                    or compact in scan_lower
                 ):
                     errors.append(
                         f"StyleProfile v2.0.0: field '{field_name}' "
-                        f"not found in aether style header ({aether_style_path})"
+                        f"not found in aether StyleDescriptor struct ({aether_style_path})"
                     )
         except OSError as exc:
             if require_style:

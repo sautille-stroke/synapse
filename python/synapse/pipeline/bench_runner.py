@@ -187,6 +187,7 @@ class BenchPipelineRunner:
                     num_frames=num_frames,
                 )
             except Exception as exc:
+                logger.warning("Benchmark scenario '%s' failed: %s", scenario_name, exc)
                 report.error = str(exc)
                 report.timings["total_ms"] = _elapsed_ms(t_total_start)
 
@@ -1282,7 +1283,8 @@ def _compute_metrics(
                 gen_u8 = (np.clip(gen_float, 0.0, 1.0) * 255.0).astype(np.uint8)
                 pred_style = extract_style_optical(gen_u8)
                 pred_ld = np.asarray(pred_style.key_light_dir_world, dtype=np.float64)
-            except Exception:
+            except (ValueError, TypeError, RuntimeError) as exc:
+                logger.warning("Generated light direction extraction failed: %s", exc)
                 pred_ld = None
             if pred_ld is not None:
                 metrics["light_dir_error_deg"] = float(light_dir_error_deg(pred_ld, gt_ld))
