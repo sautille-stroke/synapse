@@ -22,13 +22,13 @@ jobs:
     env:
       AETHER_ROOT: ${{ github.workspace }}/aether
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: synapse
 
       - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dervgen/aether
           path: aether
@@ -197,13 +197,13 @@ jobs:
       SYNAPSE_CI_STRICT_DEPS: "1"
       AETHER_ROOT: ${{ github.workspace }}/aether
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: synapse
 
       - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dervgen/aether
           path: aether
@@ -263,13 +263,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: synapse
 
       - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dervgen/aether
           path: aether
@@ -306,13 +306,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: synapse
 
       - name: Checkout dervgen/aether (sibling)
         id: checkout-aether
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dervgen/aether
           path: aether
@@ -357,7 +357,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: synapse
 
