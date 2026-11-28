@@ -16,9 +16,11 @@ from pathlib import Path
 import numpy as np
 import pydantic
 import pytest
-from hypothesis import given, settings
 
+hypothesis = pytest.importorskip("hypothesis", reason="hypothesis not installed")
 jsonschema = pytest.importorskip("jsonschema", reason="jsonschema not installed")
+
+from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 from synapse.adapters.lora.manifest import LoRAManifest  # noqa: E402
 from synapse.bench.bundle_exporter import InspectionBundleManifest  # noqa: E402
