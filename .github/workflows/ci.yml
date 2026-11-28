@@ -77,6 +77,13 @@ jobs:
             echo "has_tb=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Audit Python dependencies
+        working-directory: synapse
+        run: |
+          pip install pip-audit 2>/dev/null || python -m pip install pip-audit
+          pip-audit --desc
+        continue-on-error: true  # Phase 1: warning mode
+
       - name: Build native extensions (aether_geo + aether_metrics)
         if: steps.checkout-aether.outcome == 'success'
         working-directory: synapse
