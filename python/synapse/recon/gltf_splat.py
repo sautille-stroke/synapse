@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
 from synapse.errors import AssetNotFoundError, ContractValidationError
 from synapse.metrics.image_quality import compute_psnr
 from synapse.recon.gs_quantizer import (
