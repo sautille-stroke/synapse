@@ -39,7 +39,7 @@ image = [
     "openexr>=3.2.0",
 ]
 metrics = [
-    "scipy>=1.10.0",
+    "scipy>=1.18.1",
     "scikit-image>=0.20.0",
 ]
 gpu = [
