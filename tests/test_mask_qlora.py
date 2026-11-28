@@ -196,9 +196,10 @@ class TestTrainerMaskAwareAndQLoRAIntegration:
             use_qlora=True,
             quantization_bits=4,
             qlora_block_size=64,
-            max_trainable_ratio=0.5,
+            max_trainable_ratio=0.25,
         )
         trainer = StatelessLoRATrainer(cfg)
+        trainer.freeze_backbone(model)
         targets = CATEGORY_DEFAULT_TARGETS["identity"]
         injected = trainer.inject_lora(model, targets)
         assert injected >= 1
@@ -206,7 +207,7 @@ class TestTrainerMaskAwareAndQLoRAIntegration:
         assert trainer.inject_lora(model, targets) == 0
 
         freeze_stats = trainer.freeze_backbone(model)
-        assert freeze_stats["trainable_ratio"] < 0.5
+        assert freeze_stats["trainable_ratio"] < 0.25
         assert freeze_stats["total_params"] > freeze_stats["trainable_params"]
 
         # Raw FGPP [1, T=5, H=16, W=16, 15] with Cryptomatte channel 14 active on left half
