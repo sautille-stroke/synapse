@@ -7,10 +7,10 @@ stale_after: 2027-11-19T00:00:00Z
 ---
 # Synapse 全景可落地工程实施总计划 (Master Actionable Implementation Plan)
 
-- **计划版本**: `v4.0`（全量统合 **M1–M52** 共 52 大里程碑、**212 个原子 PR**（`PR-01` ~ `PR-215`, 含 `PR-14a/b`、`PR-92`、Horizon 11 `PR-173 ~ PR-192` + `#185–#189` 及 Horizon 12–13 `PR-193 ~ PR-215`），涵盖 Horizon 1–13B 与 16 份精细化执行子计划）
-- **修订日期**: 2026-11-24
-- **操作模型标识**: `[gemini4]` / `[gemini3.8]` / `[opus4.6]`
-- **发布状态**: ✅ **`v5.0.0`（Horizon 12–13B `M45–M52`, `PR-193 ~ PR-215`）已全量合入 `main`；40 套 `Synapse-Bench` 场景、4 轨道行业横向对比、RFC 0058 OpenUSD 导出、3DGS 量化与全仓静态/动态门禁全绿封板。**
+- **计划版本**: `v5.0`（全量统合 **M1–M60** 共 60 大里程碑，包含 Horizon 1–13B 与 Horizon 14 行业前沿全量集成 `M53–M60`）
+- **修订日期**: 2026-11-28
+- **操作模型标识**: `[gemini4]` / `[gemini3.8]` / `[opus4.6]` / `[gemini4-hydrogen]`
+- **发布状态**: 🚀 **`v5.0.0` 已封板，正在推进 `Horizon 14`（`M53–M60`，9 大行业前沿集成 → `v6.0.0` · 50 套 `Synapse-Bench` 场景）。**
 - **前置架构审查与跨文档对齐决议**:
   - **[docs/DESIGN_REVIEW_AND_ALIGNMENT.md](DESIGN_REVIEW_AND_ALIGNMENT.md)**（跨文档冲突纠偏 `RV-01~RV-17`、权威目录树、统一 CLI 语法树、三级门禁阈值表）
   - **[docs/AUDIT_AND_ARCHITECTURE.md](AUDIT_AND_ARCHITECTURE.md)**（五条绝对负向红线 `NG-1~NG-5` 与跨仓边界定界）
@@ -40,6 +40,7 @@ stale_after: 2027-11-19T00:00:00Z
   15. ↳ **[PLAN-M49-M50 (Horizon 13A · PR #189 加固、3D 评估全指标闭环与外部数据集)](archive/plans/PLAN-M49-M50-EVAL-METRICS-PR189-AND-EXTERNAL-DATASETS.md)**：加固 `synapse#189` 5 项拓扑/UV 实证缺陷（孤立顶点欧拉数、bowtie 非单伞、3D 接缝法线跳变、无 UV Fail-Closed、HTML 渲染与 `profiles` 门禁），补齐 `DESIGN_3D_MODEL_ENHANCEMENT_AND_DATA_SPEC` 剩余 `P0-Perceptual` (`dino_cosine_sim`/`lpips_vgg`)、`P1-Curvature` (`patch_lpips`/曲率方差)、`P2-Misc` (`add_s_norm`/`reprojection_error_px`/`histogram_intersection`) 及 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K` 外部资产接入（30 → 40 套场景，`PR-203` ~ `PR-209` ✅ 已完成，`PR #191`–`#192` 合入）
   16. ↳ **[PLAN-M51-M52 (Horizon 13B · Post-H10 战略待办收口与 4 轨道行业横向评测)](archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md)**：落实 `REVIEW-POST-HORIZON10` §7.1 5 项战略行动建议（每周真实 CUDA `Wan 2.1`/`LoRA` 烟测、协同 `@aether//style` 激活 `wire_guard --require-style`、`generators`/`models` 遗留包收编入 `bench/`、`SYN-RFC-0061/0062` GPU 生产硬化、4 轨道行业横向评测排行榜与 `Release v5.0.0`）及安全替代 Open PR `#163` 的 Ruff SSOT 同步校验器（`PR-210` ~ `PR-215` ✅ 已完成，`Release v5.0.0` 封板）
   17. ↳ **[PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE (Post-v5.0.0 · Traceboard Python SDK 与可观测性集成)](plans/PLAN-TRACEBOARD-PYTHON-AND-SYNAPSE.md)**：在 `aether` 落地统一版本锁步 Python SDK (`aether-traceboard` 收口至 `v0.7.2`, `aether#523–#525`, `#557–#560`, `#569`, `#575`) 与在 `synapse` 落地 `synapse.observability`、CLI `--traceboard`、全链路埋点、Colab/CI、双轨导出及 PR `#212` / `Wave TR-1 ~ TR-3` 全绿整改（`synapse#204–#212`, `#215–#220` ✅ 已合入封板；见 **[整改与硬化落地计划 (`PR-TR01 ~ PR-TR08`)](archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)** ✅ 已完成）
+  18. ↳ **[PLAN-M53-M60 (Horizon 14 · 9 大行业前沿集成与 v6.0.0 演进)](plans/PLAN-M53-M60-HORIZON14-INDUSTRY-INTEGRATION.md)**：落地 `Wan2.1-VACE` / `FLF2V` (`synapse#229`)、`NVIDIA DiffusionRenderer` 双轨逆渲染与 8 光照增强 (`synapse#231`, `synapse#238`)、`TRELLIS.2` O-Voxel + `TopologyPolicy` (`synapse#232`, `synapse#238`)、`SAM 2.1` 视频分割与 LoRA 空域门控 (`synapse#235`, `synapse#238`)、`Spatia` 3D 空间记忆 (`synapse#236`, `synapse#237`)、`Mask-Aware LoRA` / `4-bit NF4 QLoRA` / `FrameBucketSampler` 自动调优 (`synapse#239`, `synapse#241`)、`KHR_gaussian_splatting` glTF 2.0 (`.glb`/SPZ) 与 `.ply` 双向转换 (`synapse#240`) 及 `50` 场景 `Synapse-Bench` 封板 `v6.0.0`（`M53–M60` 🚀 进行中）
 - **专项聚焦与规范索引（Focused Plans & Horizon-3 RFCs）**:
   - ↳ **[PLAN-ALGO-TRAINING-DATA-PIPELINE](PLAN-ALGO-TRAINING-DATA-PIPELINE.md)** (`v2.0`)：算法核心、LoRA 训练与数据流水线三战役攻坚计划（`D1/D4/A1/T1` 收编入 `M12 PR-41~43`）
   - ↳ **[PLAN-REVIEW-PR17-PR18 (归档)](archive/PLAN-REVIEW-PR17-PR18.md)**：PR #17 与 PR #18 联合评审与改进计划（✅ 已归档）
@@ -64,7 +65,8 @@ stale_after: 2027-11-19T00:00:00Z
    - **Horizon 9（Post-Horizon-8 全域复盘整改、原生扩围与真白盒演进，`M33–M36`，20 个 PR）**：落实 `AUDIT-POST-HORIZON8-AND-HOLISTIC-REVIEW-2026-11` 全部 `18×P0 + 24×P1 + 12×P2 + 4×P3` 修复及七大战略级整体改进支柱（`PR-133 ~ PR-152`），实现真 GitHub Actions CI、Go `render-farm` 1:1 `JobBundle` 与 `p02` 真实闭环、三端 `--shm-file` 与 `.glb` 防溢越界、流式 `< 1.5 GB` 内存、`DiffusersWanBackend` 与真实 PEFT 训练、`@aether//geo` C++20 核扩围、`Mitsuba` 可微优化与红线 #3、`Synapse-Bench` 全场景真值与 RSI 飞轮桥、反恒等/`hypothesis` 测试、单进程快测 `<= 20s` / 慢测 `<= 40s`、文档三层收敛与 14 项反作弊硬门禁全绿封板 `v4.0.0`；
    - **Horizon 10 & 11（合流止血、科学正确性与 16 门禁全绿封板，`M37–M44`，`v4.1.0` + `v4.2.0` + `PR #185–#189` ✅）**：先通过 Horizon 10（`PR-153 ~ PR-172`）解决 `v4.0.0 + RFC-0071` 三方强合流断裂并封板 `v4.1.0`；再通过 Horizon 11（`M41–M44`, `PR-173 ~ PR-192` / GH `#165–#184` 及 `#185–#189`）完成 C++/NumPy `camera_math`  parity、C1 有理软肩、15× QEM 标量提速、13.5× OpenEXR 单次批量读、30 场景全参数激活、4-Tab `Data Inspector`、LF 行尾统一及欧拉/非流形/UV 质量指标基础落地，封板 **`Release v4.2.0`**（16 项反作弊硬门禁全绿）；
    - **Horizon 12（`PLAN-0100 Wave 4` 跨 RFC 视频逆向数字孪生与 3DGS 压缩，`M45–M48`，`PR-193 ~ PR-202` 📋）**：承接 `all-overview#692` 跨仓计划，打通 MP4 流式解封装、`foundary` 六位一体容器对齐、`aether_geo_worker`（`remediate` + `quadriflow` 严格 `NEG-100-08` 门禁）、`@aether//animation` / `fulgur::animation` C++ IK（零 Python 生产）、`fulgur` Slang `[Differentiable]` 可微光栅、C++ Graph-Cut 缝合 + RFC 0058 OpenUSD + 3DGS SH 量化压缩及 `colab-gpu` `E6` 真实端到端闭环；
-   - **Horizon 13A & 13B（PR #189 加固、评估体系全指标/外部数据集 & Post-H10 战略收口，`M49–M52`，`PR-203 ~ PR-215` 📋）**：加固 PR #189 5 项实现缺陷并补全 `dino_cosine_sim`/`lpips_vgg`/曲率/`patch_lpips`/`add_s_norm`/`reprojection_error_px` 与 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`（30 → 40 场景）；同步落地每周 GPU 烟测、`@aether//style` 校验激活、Ruff SSOT 校验（替代 `#163`）、`generators`/`models` 收编、`SYN-RFC-0061/0062` GPU 硬化与 4 轨道行业横向评测封板 **`Release v5.0.0`**；
+   - **Horizon 13A & 13B（PR #189 加固、评估体系全指标/外部数据集 & Post-H10 战略收口，`M49–M52`，`PR-203 ~ PR-215` ✅）**：加固 PR #189 5 项实现缺陷并补全 `dino_cosine_sim`/`lpips_vgg`/曲率/`patch_lpips`/`add_s_norm`/`reprojection_error_px` 与 `GSO`/`Objaverse-XL`/`ABO`/`OmniObject3D`/`Thingi10K`（30 → 40 场景）；同步落地每周 GPU 烟测、`@aether//style` 校验激活、Ruff SSOT 校验（替代 `#163`）、`generators`/`models` 收编、`SYN-RFC-0061/0062` GPU 硬化与 4 轨道行业横向评测封板 **`Release v5.0.0`**；
+   - **Horizon 14（行业前沿全量纳入，`M53–M60`，`Release v6.0.0` 🚀）**：引入 `VaceAdapter`、`FLF2V`、`DiffusionRenderer`、`TRELLIS.2` O-Voxel、`SAM 2.1` VOS、`Spatia` 3D 空间记忆、`Mask-Aware LoRA` / `NF4 QLoRA` / `FrameBucketSampler`、`KHR_gaussian_splatting` (`.glb`/SPZ) 与 50 套 `Synapse-Bench` 场景，构建可插拔双轨（真实 CUDA + 零 GPU Mock）确定性 3D-神经互操作立交桥；
    - 每个原子 PR 净增代码严格控制在 **`300 ~ 750` 行**，必须使用 `/tmp/synapse-wt-<branch>` 独立 Git Worktree 走 PR Squash Merge 流程。
 2. **零 GPU 阻塞日常回归（`ubuntu24` P0 主力机优先）**：
    - 依托纯 NumPy 向量化软光栅（`PR-01`）与确定性 `MockVideoAdapter`（`PR-05`）及 Mock Transport/推理桩，**100% 的协议、调度、融合、质检编排、RSI 门禁单测均可在云端 CPU 主力机 `ubuntu24` 上秒级全量回归**；真实大模型权重与 CUDA 算子仅在 `win-dev` 或 `foundary` 容器做专项集成验收。
