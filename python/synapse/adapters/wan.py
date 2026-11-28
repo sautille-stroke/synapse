@@ -834,10 +834,13 @@ class WanAdapter(VideoModelAdapter):
                 ConditionScheduler,
                 DiscontinuityDetector,
                 cross_dissolve_pixels,
+                inject_spatial_memory_control,
             )
 
             stride = int(config.extra.get("stride_frames", 64))
             overlap = int(config.extra.get("overlap_frames", 33))
+            enable_spatial_mem = bool(config.extra.get("enable_spatial_memory", False))
+            ext_spatial_mem = config.extra.get("spatial_memory")
             plan = CausalWindowPlan(
                 window_frames=window_size,
                 stride_frames=stride,
@@ -845,7 +848,12 @@ class WanAdapter(VideoModelAdapter):
                 total_frames=total_frames,
             )
             detector = DiscontinuityDetector()
-            scheduler = ConditionScheduler(plan=plan, detector=detector)
+            scheduler = ConditionScheduler(
+                plan=plan,
+                detector=detector,
+                spatial_memory=ext_spatial_mem,
+                enable_spatial_memory=enable_spatial_mem,
+            )
 
             class _SeqWrapper:
                 def __init__(self, f_list: list[FGPPFrame]) -> None:
@@ -935,6 +943,41 @@ class WanAdapter(VideoModelAdapter):
                         fgpp_frames=sub_fgpp,
                         extra=dict(conditions_to_use.extra),
                     )
+                    if (
+                        sw.spatial_ref_depth is not None
+                        and not sw.needs_reanchor
+                        and w_idx > 0
+                    ):
+                        if (
+                            sub_control is not None
+                            and sub_control.shape[2:] == sw.spatial_ref_depth.shape
+                        ):
+                            z_near = (
+                                float(sub_fgpp[0].camera.z_near)
+                                if sub_fgpp
+                                else 0.1
+                            )
+                            z_far = (
+                                float(sub_fgpp[0].camera.z_far)
+                                if sub_fgpp
+                                else 100.0
+                            )
+                            sub_control = inject_spatial_memory_control(
+                                sub_control,
+                                sw.spatial_ref_depth,
+                                sw.spatial_ref_normal,
+                                overlap_frames=overlap,
+                                z_near=z_near,
+                                z_far=z_far,
+                            )
+                            sub_payload.control_tensor = sub_control
+                        sub_payload.extra["spatial_ref_depth"] = sw.spatial_ref_depth
+                        if sw.spatial_ref_normal is not None:
+                            sub_payload.extra["spatial_ref_normal"] = sw.spatial_ref_normal
+                        if sw.spatial_consistency_score is not None:
+                            sub_payload.extra["spatial_consistency_score"] = (
+                                sw.spatial_consistency_score
+                            )
                     if warm_start:
                         sub_payload.extra["warm_start_frames"] = warm_start
 

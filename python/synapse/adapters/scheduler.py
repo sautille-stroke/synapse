@@ -19,7 +19,10 @@ from typing import Any
 
 import numpy as np
 
-from synapse.fgpp.schema import DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES
+from synapse.fgpp.schema import (
+    DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
+    linear_to_log_normalized_depth,
+)
 from synapse.observability import get_probe, safe_log_scalar
 
 # -----------------------------------------------------------------------
@@ -406,6 +409,9 @@ class ScheduledWindow:
     )
     anchor_first_frame: int | None = None
     anchor_last_frame: int | None = None
+    spatial_ref_depth: np.ndarray | None = None
+    spatial_ref_normal: np.ndarray | None = None
+    spatial_consistency_score: float | None = None
 
 
 # -----------------------------------------------------------------------
@@ -415,12 +421,17 @@ class ScheduledWindow:
 
 class ConditionScheduler:
     """Orchestrator that combines window planning with discontinuity
-    detection and periodic physical reanchoring (RFC 0044 §3.2).
+    detection, periodic physical reanchoring (RFC 0044 §3.2), and optional
+    persistent 3D spatial memory conditioning (Horizon 14 M57 PR-229).
 
     Args:
         plan: The causal window partition plan.
         detector: Discontinuity detector instance.
         anchor_interval: Interval between physical ground-truth anchors (default 48).
+        spatial_memory: Optional pre-configured ``SpatialMemory`` instance for
+            overlap reference depth/normal synthesis.
+        enable_spatial_memory: If ``True`` and ``spatial_memory`` is ``None``,
+            lazily constructs a default ``SpatialMemory`` instance.
     """
 
     def __init__(
@@ -428,10 +439,22 @@ class ConditionScheduler:
         plan: CausalWindowPlan,
         detector: DiscontinuityDetector,
         anchor_interval: int = DEFAULT_PHYSICAL_ANCHOR_INTERVAL_FRAMES,
+        spatial_memory: Any | None = None,
+        enable_spatial_memory: bool = False,
     ) -> None:
         self._plan = plan
         self._detector = detector
         self._anchor_interval = anchor_interval
+        self._owns_spatial_memory = False
+        if spatial_memory is not None:
+            self._spatial_memory: Any | None = spatial_memory
+        elif enable_spatial_memory:
+            from synapse.adapters.spatial_memory import SpatialMemory
+
+            self._spatial_memory = SpatialMemory()
+            self._owns_spatial_memory = True
+        else:
+            self._spatial_memory = None
 
     @property
     def plan(self) -> CausalWindowPlan:
@@ -447,6 +470,11 @@ class ConditionScheduler:
     def anchor_interval(self) -> int:
         """The physical anchor frame interval."""
         return self._anchor_interval
+
+    @property
+    def spatial_memory(self) -> Any | None:
+        """Optional ``SpatialMemory`` attached to this scheduler."""
+        return self._spatial_memory
 
     def schedule(
         self,
@@ -491,6 +519,9 @@ class ConditionScheduler:
         probe = get_probe()
         tb_active = probe is not None and probe.active
 
+        if self._spatial_memory is not None and self._owns_spatial_memory:
+            self._spatial_memory.reset()
+
         scheduled: list[ScheduledWindow] = []
         for idx, w in enumerate(windows):
             t_win = time.perf_counter()
@@ -517,6 +548,7 @@ class ConditionScheduler:
             # to the last frame before the cut.
             flf_first: int | None = None
             flf_last: int | None = None
+            earliest_cut: int | None = None
             if has_discontinuity and window_reanchors:
                 # Find the earliest discontinuity in this window
                 earliest_cut = min(
@@ -527,6 +559,49 @@ class ConditionScheduler:
                     flf_first = earliest_cut
                     flf_last = max(earliest_cut - 1, w.start)
 
+            # SpatialMemory reference rendering in overlap regions & incremental update
+            ref_depth: np.ndarray | None = None
+            ref_normal: np.ndarray | None = None
+            consistency_score: float | None = None
+            if self._spatial_memory is not None:
+                from synapse.adapters.spatial_memory import (
+                    compute_reference_consistency_score,
+                )
+
+                if earliest_cut is not None and earliest_cut == w.start:
+                    self._spatial_memory.reset()
+
+                if (
+                    idx > 0
+                    and self._spatial_memory.num_points > 0
+                    and w.start < len(frames)
+                    and getattr(frames[w.start], "camera", None) is not None
+                    and not (earliest_cut is not None and earliest_cut == w.start)
+                ):
+                    start_frame = frames[w.start]
+                    ref_depth, ref_normal = self._spatial_memory.render_reference(
+                        start_frame.camera,
+                    )
+                    start_depth = getattr(start_frame, "depth", None)
+                    if start_depth is not None:
+                        consistency_score = compute_reference_consistency_score(
+                            ref_depth,
+                            start_depth,
+                        )
+
+                # Incrementally populate memory with valid frames from this window
+                upper = min(w.end, len(frames))
+                for fidx in range(w.start, upper):
+                    if fidx in detector_flagged_frames and fidx > w.start:
+                        self._spatial_memory.reset()
+                    if not self._spatial_memory.has_frame(fidx):
+                        fobj = frames[fidx]
+                        if (
+                            getattr(fobj, "depth", None) is not None
+                            and getattr(fobj, "camera", None) is not None
+                        ):
+                            self._spatial_memory.ingest_frame(fidx, fobj)
+
             scheduled.append(
                 ScheduledWindow(
                     window=w,
@@ -535,6 +610,9 @@ class ConditionScheduler:
                     reanchor_requests=window_reanchors,
                     anchor_first_frame=flf_first,
                     anchor_last_frame=flf_last,
+                    spatial_ref_depth=ref_depth,
+                    spatial_ref_normal=ref_normal,
+                    spatial_consistency_score=consistency_score,
                 )
             )
             if tb_active:
@@ -548,8 +626,99 @@ class ConditionScheduler:
                     step=idx,
                 )
                 safe_log_scalar("adapter/scheduler/window_elapsed_s", w_elapsed_s, step=idx)
+                if consistency_score is not None:
+                    safe_log_scalar(
+                        "adapter/scheduler/spatial_consistency",
+                        float(consistency_score),
+                        step=idx,
+                    )
 
         return scheduled
+
+
+def inject_spatial_memory_control(
+    control_tensor: np.ndarray,
+    spatial_ref_depth: np.ndarray,
+    spatial_ref_normal: np.ndarray | None = None,
+    *,
+    overlap_frames: int = 33,
+    z_near: float = 0.1,
+    z_far: float = 100.0,
+    blend_weight: float = 0.35,
+) -> np.ndarray:
+    """Inject SpatialMemory reference depth/normal into the overlap prefix of a
+    Wan 7-channel control tensor ``[C, T, H, W]``.
+
+    Only pixels where ``spatial_ref_depth > 0`` (projected geometry hits) are
+    blended so occluded or unvisited pixels preserve the frame's original FGPP
+    conditioning intact.
+
+    Args:
+        control_tensor: ``[C, T, H, W]`` control tensor (``C >= 4`` when
+            ``spatial_ref_normal`` is provided, otherwise ``C >= 1``).
+        spatial_ref_depth: ``[H, W]`` float32 metric reference depth (0 = empty).
+        spatial_ref_normal: Optional ``[H, W, 3]`` float32 reference world normals.
+        overlap_frames: Number of leading frames in the window corresponding to
+            the causal overlap zone.
+        z_near: Near depth plane for log-depth normalization.
+        z_far: Far depth plane for log-depth normalization.
+        blend_weight: Linear interpolation weight in ``[0.0, 1.0]`` toward the
+            spatial memory reference on valid hit pixels.
+
+    Returns:
+        Updated copy of ``control_tensor`` as ``float32``.
+    """
+    ctrl = np.asarray(control_tensor, dtype=np.float32).copy()
+    if ctrl.ndim != 4 or ctrl.shape[0] < 1:
+        raise ValueError(
+            f"Expected 4-D control_tensor [C, T, H, W], got shape {ctrl.shape}."
+        )
+
+    ref_d = np.asarray(spatial_ref_depth, dtype=np.float32)
+    _, t_len, h, w = ctrl.shape
+    if ref_d.shape != (h, w):
+        raise ValueError(
+            f"spatial_ref_depth shape {ref_d.shape} does not match control spatial dims {(h, w)}."
+        )
+
+    w_blend = float(np.clip(blend_weight, 0.0, 1.0))
+    n_ov = min(max(0, int(overlap_frames)), t_len)
+    if n_ov == 0 or w_blend == 0.0:
+        return ctrl
+
+    hit = (ref_d > 0.0) & np.isfinite(ref_d)
+    if not np.any(hit):
+        return ctrl
+
+    safe_depth = np.where(hit, np.clip(ref_d, z_near, z_far), z_near).astype(np.float32)
+    ref_log_d = linear_to_log_normalized_depth(safe_depth, z_near, z_far).astype(np.float32)
+    ctrl_d_ov = ctrl[0, :n_ov]
+    ctrl_d_ov[:, hit] = (
+        (1.0 - w_blend) * ctrl_d_ov[:, hit]
+        + w_blend * ref_log_d[hit][np.newaxis, :]
+    )
+
+    if spatial_ref_normal is not None and ctrl.shape[0] >= 4:
+        ref_n = np.asarray(spatial_ref_normal, dtype=np.float32)
+        if ref_n.shape != (h, w, 3):
+            raise ValueError(
+                f"spatial_ref_normal shape {ref_n.shape} does not match {(h, w, 3)}."
+            )
+        # Check non-zero valid normals inside hit mask
+        n_mag = np.linalg.norm(ref_n, axis=-1)
+        n_hit = hit & (n_mag > 1e-4) & np.all(np.isfinite(ref_n), axis=-1)
+        if np.any(n_hit):
+            ref_n_chw = np.transpose(ref_n, (2, 0, 1))  # (3, H, W)
+            ctrl_n_ov = ctrl[1:4, :n_ov]
+            blended_n = (
+                (1.0 - w_blend) * ctrl_n_ov[:, :, n_hit]
+                + w_blend * ref_n_chw[:, n_hit][:, np.newaxis, :]
+            )
+            norms = np.linalg.norm(blended_n, axis=0, keepdims=True)
+            norms = np.maximum(norms, 1e-8)
+            ctrl_n_ov[:, :, n_hit] = blended_n / norms
+
+    return ctrl
 
 
 # -----------------------------------------------------------------------
