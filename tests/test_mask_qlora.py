@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from synapse.observability import TraceSession
 from synapse.training import (
     CATEGORY_DEFAULT_TARGETS,
