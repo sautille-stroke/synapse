@@ -234,9 +234,11 @@ def _get_qlora_linear_class() -> type:
 
         def dequantize_base_weight(self) -> Any:
             """Reconstruct float32 base weight tensor from packed NF4 buffers."""
+            qw: Any = self.qweight
+            am: Any = self.weight_absmax
             qtensor = NF4QuantizedTensor(
-                packed_uint8=self.qweight,
-                absmax=self.weight_absmax,
+                packed_uint8=qw,
+                absmax=am,
                 numel=self.weight_numel,
                 orig_shape=self.orig_weight_shape,
                 block_size=self.block_size,
@@ -245,25 +247,28 @@ def _get_qlora_linear_class() -> type:
 
         def weight_memory_bytes(self) -> int:
             """Return byte size of frozen quantized base weight + scales."""
-            q_bytes = int(self.qweight.numel()) * int(self.qweight.element_size())
-            s_bytes = int(self.weight_absmax.numel()) * int(
-                self.weight_absmax.element_size()
-            )
+            qw: Any = self.qweight
+            am: Any = self.weight_absmax
+            q_bytes = int(qw.numel()) * int(qw.element_size())
+            s_bytes = int(am.numel()) * int(am.element_size())
             return q_bytes + s_bytes
 
         def forward(self, x: Any) -> Any:
             """Compute dequantized frozen linear projection + LoRA delta."""
             base_w = self.dequantize_base_weight().to(dtype=x.dtype, device=x.device)
-            bias = (
-                self.bias.to(dtype=x.dtype, device=x.device)
-                if self.bias is not None
+            bias_buf: Any = self.bias
+            bias: Any = (
+                bias_buf.to(dtype=x.dtype, device=x.device)
+                if bias_buf is not None
                 else None
             )
             base = torch.nn.functional.linear(x, base_w, bias)
             if not self.lora_enabled:
                 return base
+            lora_a: Any = self.lora_A
+            lora_b: Any = self.lora_B
             x_f32 = x.to(dtype=torch.float32)
-            lora_out = (x_f32 @ self.lora_A.T @ self.lora_B.T) * (
+            lora_out = (x_f32 @ lora_a.T @ lora_b.T) * (
                 self.alpha / self.rank
             )
             return base + lora_out.to(dtype=base.dtype)
