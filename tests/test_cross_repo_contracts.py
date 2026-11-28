@@ -5,6 +5,7 @@ Verifies end-to-end parity and contract compliance across:
 2. @aether//color <-> synapse.style.aces_color (D65, kSrgbToAcesCg, negative gamut, bounded soft-knee).
 3. render-farm / grand-studio RFC 0039 JobBundle <-> synapse.pipeline.JobBundleWorker.
 4. tools/data-inspector/native <-> Electron ShmFrameReader (64B Seqlock header, --shm-file mapping).
+5. @aether//style <-> synapse.style.descriptor (StyleDescriptor v2.0.0, ACEScg).
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import os
 import re
 import struct
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -45,6 +47,7 @@ from synapse.style.aces_color import (
     soft_knee_inverse_tonemap,
     srgb_to_linear,
 )
+from synapse.style.descriptor import StyleDescriptor
 
 # ---------------------------------------------------------------------------
 # Path resolution & strict dependency helpers
@@ -67,12 +70,18 @@ def _require_siblings() -> bool:
 
 def _resolve_aether_root() -> Path | None:
     """Find the sibling @aether repository."""
-    candidates = [
-        _REPO_ROOT.parent / "aether",
-        Path("/root/work/dervgen/aether"),
-        Path("/Volumes/work/dervgen/aether"),
-        Path("H:/dervgen/aether"),
-    ]
+    candidates: list[Path] = []
+    env_root = os.environ.get("AETHER_ROOT", "").strip()
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.extend(
+        [
+            _REPO_ROOT.parent / "aether",
+            Path("/root/work/dervgen/aether"),
+            Path("/Volumes/work/dervgen/aether"),
+            Path("H:/dervgen/aether"),
+        ]
+    )
     for c in candidates:
         try:
             if c.is_dir() and (c / "fgpp").is_dir():
@@ -998,3 +1007,60 @@ class TestDataInspectorShmContract:
                 np.testing.assert_array_equal(read_pixels, pixel_data)
 
                 mm.close()
+
+
+# ===========================================================================
+# Contract 5: @aether//style <-> synapse.style (StyleDescriptor v2.0.0)
+# ===========================================================================
+
+
+class TestAetherStyleContract:
+    """Cross-language parity between @aether//style and synapse.style.descriptor."""
+
+    @pytest.mark.external_data
+    def test_style_types_header_parity(self) -> None:
+        """Parse aether/style/include/aether/style/style_types.h and run --require-style."""
+        aether_root = _resolve_aether_root()
+        if aether_root is None or not (aether_root / "fgpp").exists():
+            if _require_siblings():
+                pytest.fail("SYNAPSE_CI_REQUIRE_SIBLINGS=1: sibling @aether repo not found.")
+            pytest.skip("Sibling @aether repo not found; skipping C++ style header parity.")
+
+        style_header = aether_root / "style" / "include" / "aether" / "style" / "style_types.h"
+        assert style_header.is_file(), f"style_types.h missing at {style_header}"
+        header_text = style_header.read_text(encoding="utf-8")
+
+        struct_match = re.search(
+            r"struct\s+StyleDescriptor\s*\{(.*?)\n\};",
+            header_text,
+            re.DOTALL,
+        )
+        assert struct_match is not None, "struct StyleDescriptor not found in style_types.h"
+        struct_body = struct_match.group(1)
+
+        for field_name in StyleDescriptor.model_fields:
+            assert re.search(rf"\b{re.escape(field_name)}\b", struct_body), (
+                f"StyleDescriptor field '{field_name}' missing in C++ header"
+            )
+        assert "schema_version" in struct_body
+        assert "ACEScg" in header_text
+        assert 'kCurrentSchemaVersion = "2.0.0"' in header_text
+
+        fgpp_header = aether_root / "fgpp" / "include" / "aether" / "fgpp" / "fgpp_types.h"
+        cmd = [
+            sys.executable,
+            str(_REPO_ROOT / "tools" / "wire_guard.py"),
+            "--check",
+            "--require-aether",
+            "--require-style",
+            "--aether-header",
+            str(fgpp_header),
+            "--aether-style-header",
+            str(style_header),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        assert res.returncode == 0, (
+            f"wire_guard --require-style failed:\n{res.stdout}\n{res.stderr}"
+        )
+        assert "SKIPPED" not in res.stdout
+

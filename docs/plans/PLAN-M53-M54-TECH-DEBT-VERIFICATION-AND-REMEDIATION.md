@@ -12,7 +12,7 @@ stale_after: 2027-11-28T00:00:00Z
 > - **核查基线**: `main` @ `2540b48`（post `v5.0.0`，含 Traceboard 整改封板）
 > - **核查日期**: `2026-11-28`
 > - **规划模型**: `[gemini4-hydrogen]`
-> - **当前状态**: 🚧 **Wave 52 + Wave 53 本仓 6 PRs (`PR-TD01 ~ PR-TD05`, `PR-TD07`) 已落地合入 (`#223–#227` + 本 PR)；仅剩跨仓 `PR-TD06` 待上游 `dervgen/aether` 落地 `@aether//style` 后启用**
+> - **当前状态**: ✅ **Horizon 14 (M53–M54) 7/7 PRs (`PR-TD01 ~ PR-TD07`) 已全量合入封板（含上游 `dervgen/aether#622` 落地 `@aether//style` 后启用 `PR-TD06`）**
 > - **前置基线**: [`REVIEW-POST-HORIZON10-2026-11.md`](../archive/audits/REVIEW-POST-HORIZON10-2026-11.md) · [`PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md`](../archive/plans/PLAN-M51-M52-POST-H10-STRATEGIC-GOVERNANCE-AND-BENCH.md) · [`PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md`](../archive/plans/PLAN-TRACEBOARD-REMEDIATION-AND-HARDENING.md)
 
 > [!IMPORTANT]
@@ -155,7 +155,7 @@ flowchart LR
 - **防静默失败三问**: `run_gpu_smoke.py` 实跑输出阶段的真实状态与 `planned_stages` 1:1 匹配；`colab-gpu` 实跑产出的 4 轨道对比 HTML/JSON 可被 `compare_runs()` 校验通过。
 
 <a id="pr-td06"></a>
-### `PR-TD06`: 协同 `@aether//style` 落地并启用 CI `--require-style` 硬门禁
+### `PR-TD06`: 协同 `@aether//style` 落地并启用 CI `--require-style` 硬门禁 ✅ 已落地 (`dervgen/aether#622`)
 - **对应债务**: `D-03` (`P1`, 跨仓协同)
 - **前置跨仓依赖**: `dervgen/aether` 落地 `` `style/include/aether/style/style_types.h` ``（含 `StyleDescriptor` v2.0.0 全字段）。
 - **预估体量**: ~120 LOC · **Worktree 分支**: `feat/td06-enable-ci-require-style`
