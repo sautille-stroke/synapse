@@ -273,7 +273,11 @@ def generate_surgical_mask_sequence(
                     vos_fused[global_t] = fuse_sam2_cryptomatte(
                         sam2_combined,
                         cryptomatte_ids[global_t],
-                        target_instance_ids=target_instance_ids,
+                        target_instance_ids=(
+                            sorted(target_instance_ids)
+                            if target_instance_ids is not None
+                            else None
+                        ),
                         dilation_px=dilation_px,
                     )
                 else:

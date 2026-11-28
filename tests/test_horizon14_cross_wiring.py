@@ -143,21 +143,21 @@ class TestPR227MultiLoRASAM2Gating:
             target_modules=["cross_attn.to_k"],
         )
 
-        class _TinyModel(torch.nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.proj = torch.nn.Linear(8, 8)
-                self.cross_attn = torch.nn.ModuleDict({"to_k": torch.nn.Linear(8, 8)})
-
-        model = _TinyModel()
+        model = torch.nn.Module()
+        proj = torch.nn.Linear(8, 8)
+        cross_attn_to_k = torch.nn.Linear(8, 8)
+        model.add_module("proj", proj)
+        model.add_module("cross_attn", torch.nn.ModuleDict({"to_k": cross_attn_to_k}))
         mgr = MultiLoRAManager([(m_id, 1.0), (m_st, 1.0)], test_synthetic=True)
         sam2_mask = np.zeros((1, 8, 8), dtype=bool)
         sam2_mask[:, :4, :4] = True
         # Flatten tokens matching latent grid: here block=8 -> 1x1x1 tokens
         x = torch.ones((1, 1, 8))
         with mgr.manage_spatial_hooks(model, sam2_masks=sam2_mask):
-            out = model.proj(x)
+            out = proj(x)
+            out_k = cross_attn_to_k(x)
             assert out.shape == (1, 1, 8)
+            assert out_k.shape == (1, 1, 8)
 
 
 # ---------------------------------------------------------------------------
