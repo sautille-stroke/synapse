@@ -3,8 +3,8 @@ type: Guide
 title: "Synapse 行业前沿追踪、趋势演进与架构启示录 (Industry Technology Radar, Trends & Architectural Insights)"
 description: "- docs/AUDIT_AND_ARCHITECTURE.md (整体目标审查与生态架构定界)"
 tags: [synapse]
-status: deprecated
-stale_after: 2027-11-19T00:00:00Z
+status: active
+stale_after: 2028-06-01T00:00:00Z
 ---
 # Synapse 行业前沿追踪、趋势演进与架构启示录 (Industry Technology Radar, Trends & Architectural Insights)
 
@@ -276,6 +276,13 @@ flowchart TD
 | **白模反投与 3D 质检门禁** | 顶点下限、拓扑流形、15分钟熔断 | `synapse.inspect` | `PR-21`–`PR-23` | 1500 顶点粗糙度下限防呆，四边面重拓扑对接，HITL 熔断监控 |
 | **物理驱动自演进 (RSI)** | 物理裁判驱动 DPO/自演进 | `synapse.rsi` | `PR-24`–`PR-26` | 自动化误差归因，自动化生成纠偏数据集并驱动循环自训练 |
 | **桌面端轻量可视化审查** | 零重型 Python 桌面端交互 | `tools/data-inspector` | `PR-27`–`PR-29` | Electron + C++ 原生视口，实时检查 15 通道 FGPP 与合成视频对齐 |
+| **Wan2.1-VACE + FLF2V** | VCU 统一条件注入 (`T; F; M`) + R2V/V2V/MV2V + 首尾帧切镜锚定 | `synapse.adapters.vace`, `synapse.adapters.scheduler` | M53 (`#229`) | VCU 7ch 共存枚举、三种任务模式、切镜前后帧连续性锚定 |
+| **NVIDIA DiffusionRenderer** | 神经网络 G-buffer 逆向渲染 + 环境光重照明多光照增强 | `synapse.bridge.diffusion_renderer`, `synapse.recon.pipeline`, `synapse.training.feature_store` | M54 (`#231`, `#238`) | 15ch FGPP 对齐、经典路径双轨互验、`add_relight_augmented_samples()` |
+| **TRELLIS.2 O-Voxel** | O-Voxel 开放拓扑 / PBR Opacity 重建 + `TopologyPolicy` 门禁 | `synapse.recon.trellis2`, `synapse.recon.geometry.topology` | M55 (`#232`, `#238`) | `strict` / `open_surface_allowed` / `permissive` 开曲面兼容与 PBR 贴图 |
+| **SAM 2.1 VOS** | 视频时空实例分割、切镜重启、`Cryptomatte` 融合与 LoRA 空域门控 | `synapse.bridge.sam2_transport`, `synapse.composite.mask`, `synapse.adapters.lora.manager` | M56 (`#235`, `#238`) | 无 Cryptomatte 纯 VOS 掩码驱动、切镜自适应重启与手术刀合成融合 |
+| **Spatia 持久化空间记忆** | 增量 3D 点云投影检索 + 条件注入防长程相机漂移 | `synapse.adapters.spatial_memory`, `synapse.adapters.scheduler`, `synapse.adapters.wan` | M57 (`#236`, `#237`) | OpenGL Y-up 坐标一致性与 97f+ 滑窗空间记忆检索注入 |
+| **Mask-Aware LoRA + NF4 QLoRA + 帧桶自动调优** | 掩码加权流匹配损失、16 级 NF4 4-bit 量化与显存自适应 `4k+1` 帧桶 | `synapse.training.losses`, `synapse.training.qlora`, `synapse.training.bucketing` | M58 (`#239`+) | 背景隔离防漂移、>=3x 权重压缩、<=48 GB 自动启用 QLoRA 与 rank 32–64 |
+| **glTF `KHR_gaussian_splatting` (.glb / SPZ)** | 二进制 glTF 2.0 3DGS 编码/解码 + `.ply` ↔ `.glb`/SPZ 双向转换 | `synapse.recon.gltf_splat`, `synapse.cli._recon` | M59 (`#240`) | 原生无损往返 PSNR >= 90 dB，SPZ v2 >= 3x 压缩比且 PSNR >= 50 dB |
 
 ---
 
@@ -286,7 +293,9 @@ flowchart TD
 | 修订时间 (ISO-8601) | 审阅责任人 / 模型标识 | 追踪技术事件 / 论文 / 工业发布 | 状态评级变动 | 对主架构影响与决策记录 |
 | :--- | :--- | :--- | :---: | :--- |
 | `2026-11-11T23:15:00+08:00` | sautille-stroke 核心架构组 / `[gemini3.8]` | **文档初始化**：全面梳理 2026 Q4 行业前沿格局（Wan 2.1, Sora 2, TRELLIS, UE 5.6 等），建立时效追踪体系与六大架构启发 | `🟢 Baseline Established` | 确立 3D 物理底座代偿路线；锁死 FGPP 15 通道；固化白模反投四边面门禁与 15 分钟熔断 |
-| *待定 (2027 Q1 预定)* | *待定* | *追踪 Wan 2.2 / Sora 2 API 开放情况及 TRELLIS-v2 拓扑导出特性* | *待审阅* | *评估是否在 M5 引入原生多流自注意力微调算子* |
+| `2026-11-28T07:15:00+08:00` | sautille-stroke 核心架构组 / `[opus4.6]` | **Horizon 14 路线立项与 M53–M56 桥接落地**：引入 `Wan2.1-VACE` / `FLF2V`、`NVIDIA DiffusionRenderer`、`TRELLIS.2`、`SAM 2.1` | `🟢 Adopted (M53–M56)` | 建立零 GPU `Mock*` 双轨契约；打通 VCU 多任务注入、O-Voxel 开曲面重建与 VOS 实例追踪 |
+| `2026-11-28T21:45:00+08:00` | sautille-stroke 核心架构组 / `[gemini4-hydrogen]` | **Horizon 14 全域闭环集成 (M54–M60)**：打通 `Spatia` 3D 空间记忆、跨管线接线、`Mask-Aware LoRA`、`NF4 QLoRA`、Wan `4k+1` 帧桶自适应与 `KHR_gaussian_splatting` (`.glb`/SPZ) | `🟢 Landed (Horizon 14)` | 显存 `<=48 GB` 自动切换 QLoRA；SPZ v2 实现 `>=3.0x` 压缩且 `PSNR>=50 dB`；Docs 升级 `active` |
+| *待定 (2027 Q1 预定)* | *待定* | *追踪 Wan 2.2 / Sora 2 API 开放情况与实时 4DGS 流式光栅规范* | *待审阅* | *评估端到端世界模型与实时辐射场交互流协议扩展* |
 
 ---
 
